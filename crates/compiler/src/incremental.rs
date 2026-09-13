@@ -404,6 +404,7 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             content,
             extra_gap_before_pt,
             extra_gap_after_pt,
+            leftmargin,
         } => Block::ListItem {
             level: *level,
             label: match label {
@@ -413,6 +414,7 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             content: shift_inlines(content, changes, deltas)?,
             extra_gap_before_pt: *extra_gap_before_pt,
             extra_gap_after_pt: *extra_gap_after_pt,
+            leftmargin: leftmargin.clone(),
         },
         Block::VSpace { pt } => Block::VSpace { pt: *pt },
         Block::Rule { span } => Block::Rule {
@@ -505,6 +507,22 @@ fn shift_inlines(
                 pt: *pt,
                 span: mapped_span(*span, changes, deltas)?,
             }),
+            Inline::Footnote {
+                number,
+                span,
+                mark,
+                text,
+                space_before,
+            } => Some(Inline::Footnote {
+                number: number.clone(),
+                span: mapped_span(*span, changes, deltas)?,
+                mark: *mark,
+                text: match text {
+                    Some(text) => Some(shift_inlines(text, changes, deltas)?),
+                    None => None,
+                },
+                space_before: *space_before,
+            }),
         })
         .collect()
 }
@@ -522,6 +540,7 @@ fn shift_math_list(
                 Some(MathAtom {
                     nucleus: match &atom.nucleus {
                         Nucleus::Symbol(text) => Nucleus::Symbol(text.clone()),
+                        Nucleus::SizedDelimiter { .. } => atom.nucleus.clone(),
                         Nucleus::Text(text) => Nucleus::Text(text.clone()),
                         Nucleus::Space { em } => Nucleus::Space { em: *em },
                         Nucleus::Fraction {
@@ -662,6 +681,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Footnote { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -702,6 +722,7 @@ fn shifted_signature(
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Footnote { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -790,6 +811,15 @@ mod tests {
             "One paragraph joined to Two paragraph.\n\nThree paragraph.",
         );
         assert_eq!(result.stats.blocks_total, 2);
+    }
+
+    #[test]
+    fn justified_multi_line_paragraphs_reuse_identically() {
+        let body = "Several words wrap across lines and get justified. ".repeat(6);
+        let old = format!("{body}\n\n{body}\n\n{body}");
+        let new = format!("{body}\n\nEdited {body}\n\n{body}");
+        let result = compile_edit(&old, &new);
+        assert!(result.stats.blocks_reused >= 1);
     }
 
     #[test]

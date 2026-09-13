@@ -95,6 +95,19 @@ pub enum Inline {
         pt: f64,
         span: Span,
     },
+    /// `\footnote[<n>]{..}`, `\footnotemark[<n>]` or `\footnotetext[<n>]{..}`.
+    /// `number` is the resolved `\thefootnote` (arabic). `span` is the
+    /// command token, attributed to both superscript marks. `mark` is false
+    /// only for `\footnotetext`; `text` is `None` only for `\footnotemark`.
+    /// Page-bottom placement lives in `layout::footnotes`.
+    Footnote {
+        number: String,
+        span: Span,
+        mark: bool,
+        text: Option<Vec<Inline>>,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
+    },
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -140,6 +153,11 @@ pub enum Block {
         /// Extra gap after this item: `topsep`, set only on the list's last
         /// item.
         extra_gap_after_pt: f64,
+        /// `\setlist{leftmargin=...}`'s effect on this level's own share of
+        /// the cumulative hanging-indent margin (`Default` outside
+        /// `\setlist`, or when the level's default `LIST_LEFTMARGIN_EM`
+        /// share applies unchanged).
+        leftmargin: ListLeftMargin,
     },
     /// `\vspace{<dimen>}`: additional vertical glue, in points.
     VSpace {
@@ -151,6 +169,23 @@ pub enum Block {
     },
     /// `\newpage`: force the next block onto a fresh page.
     PageBreak,
+}
+
+/// `\setlist{leftmargin=...}`'s effect on a `Block::ListItem`'s own
+/// contribution to the cumulative hanging-indent margin (see
+/// `layout::list_margin_pt`); enclosing levels' shares are unaffected.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum ListLeftMargin {
+    /// No override: the level's default `LIST_LEFTMARGIN_EM` share applies.
+    #[default]
+    Default,
+    /// `leftmargin=<dimen>`, already resolved to points.
+    Explicit(f64),
+    /// `leftmargin=*`: every distinct label text that can appear in this
+    /// list, resolved once every `\item` in it has been seen (enumitem picks
+    /// the widest of these once the labels are known — see `set_list`);
+    /// `layout` measures each at the body size and adds `\labelsep`.
+    Widest(Vec<String>),
 }
 
 /// Font selection for one text item, as set by `\textbf`, `\itshape`, etc.
@@ -384,6 +419,9 @@ const BUILT_INS: &[&str] = &[
     "hfill",
     "hfil",
     "hspace",
+    "footnote",
+    "footnotemark",
+    "footnotetext",
     "normalfont",
     "bfseries",
     "mdseries",
@@ -410,6 +448,12 @@ const BUILT_INS: &[&str] = &[
     "newpage",
     "pagestyle",
     "listfiles",
+    "centering",
+    "Centering",
+    "raggedright",
+    "RaggedRight",
+    "raggedleft",
+    "RaggedLeft",
     "noindent",
     "tiny",
     "scriptsize",
@@ -575,6 +619,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         subsection_counter: 0,
         equation_counter: 0,
         figure_counter: 0,
+        footnote_counter: 0,
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
@@ -584,6 +629,9 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         style: TextStyle::default(),
         style_stack: Vec::new(),
         env_styles: Vec::new(),
+        declared_alignment: None,
+        alignment_stack: Vec::new(),
+        env_alignments: Vec::new(),
         list_spacing: HashMap::new(),
     };
     let blocks = p.document();
@@ -642,11 +690,16 @@ struct P<'a> {
     subsection_counter: u32,
     equation_counter: u32,
     figure_counter: u32,
+    /// LaTeX's `footnote` counter; article never resets it.
+    footnote_counter: u32,
     current_counter: Option<String>,
     seen_labels: HashMap<String, Span>,
     /// Environment name, item count, an enumitem label template if given,
-    /// and the `\setlist` spacing resolved when this list's `\begin` ran.
-    list_stack: Vec<(String, u32, Option<String>, ListSpacing)>,
+    /// the `\setlist` spacing resolved when this list's `\begin` ran, and the
+    /// `blocks` length at that point (where this list's own items start, for
+    /// the `leftmargin=*` backpatch once every item is known — see
+    /// `environment`).
+    list_stack: Vec<(String, u32, Option<String>, ListSpacing, usize)>,
     /// The marker text and span set by the most recent `\item`, consumed by
     /// the next `flush_paragraph`/`flush_list_item` call (its own paragraph,
     /// or a later one if the item's text is empty). `None` once consumed, so
@@ -660,6 +713,12 @@ struct P<'a> {
     style: TextStyle,
     style_stack: Vec<TextStyle>,
     env_styles: Vec<TextStyle>,
+    /// `\centering`/`\raggedright`/`\raggedleft` in force. Like TeX's
+    /// paragraph parameters it is read when a paragraph ends, and it is
+    /// saved on `{`/`\begin` and restored on the matching `}`/`\end`.
+    declared_alignment: Option<ParagraphStyle>,
+    alignment_stack: Vec<Option<ParagraphStyle>>,
+    env_alignments: Vec<Option<ParagraphStyle>>,
     /// `\setlist` overrides, keyed by environment name ("itemize" /
     /// "enumerate"). A list resolves its spacing from here when `\begin`
     /// runs, so a later `\setlist` does not retroactively change an
@@ -674,6 +733,20 @@ struct P<'a> {
 struct ListSpacing {
     itemsep_pt: f64,
     topsep_pt: f64,
+    leftmargin: LeftMarginSetting,
+}
+
+/// `\setlist{leftmargin=...}`'s value, resolved into a `Block::ListItem`'s
+/// `ListLeftMargin` once the list's items are known (`Widest` needs every
+/// label; `Explicit` is applied to each item as it is created).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+enum LeftMarginSetting {
+    #[default]
+    Unset,
+    /// `leftmargin=<dimen>`, already resolved to points.
+    Explicit(f64),
+    /// `leftmargin=*`.
+    Widest,
 }
 
 impl P<'_> {
@@ -749,6 +822,9 @@ impl P<'_> {
                         if let Some(style) = self.style_stack.pop() {
                             self.style = style;
                         }
+                        if let Some(alignment) = self.alignment_stack.pop() {
+                            self.declared_alignment = alignment;
+                        }
                     }
                 }
                 TokenKind::MathShift if render => self.dollar_math(tok.span, para),
@@ -816,6 +892,17 @@ impl P<'_> {
             // behaviour is a documented no-op rather than an "unsupported"
             // diagnostic for a command every corpus fixture's preamble carries.
             "listfiles" => {}
+            // Alignment declarations (ragged2e's capitalised forms differ only
+            // in hyphenation, which this compiler does not do). Handled before
+            // the preamble guard because a global `\raggedright` there is
+            // ordinary LaTeX.
+            "centering" | "Centering" => self.declared_alignment = Some(ParagraphStyle::Center),
+            "raggedright" | "RaggedRight" => {
+                self.declared_alignment = Some(ParagraphStyle::FlushLeft)
+            }
+            "raggedleft" | "RaggedLeft" => {
+                self.declared_alignment = Some(ParagraphStyle::FlushRight)
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
@@ -915,7 +1002,7 @@ impl P<'_> {
                 let gap_before = self
                     .list_stack
                     .last()
-                    .map(|(_, count, _, spacing)| {
+                    .map(|(_, count, _, spacing, _)| {
                         if *count <= 1 {
                             spacing.topsep_pt
                         } else {
@@ -925,7 +1012,7 @@ impl P<'_> {
                     .unwrap_or(0.0);
                 self.flush_list_item(blocks, para, gap_before, 0.0);
                 match self.list_stack.last_mut() {
-                    Some((kind, count, template, _)) => {
+                    Some((kind, count, template, _, _)) => {
                         *count += 1;
                         let marker = if kind == "enumerate" {
                             match template {
@@ -969,6 +1056,7 @@ impl P<'_> {
             }
             _ if style_declaration(name) => self.style = apply_style(self.style, name),
             "hfill" | "hfil" => para.push(Inline::HFill { span }),
+            "footnote" | "footnotemark" | "footnotetext" => self.footnote(name, span, para),
             "hspace" => {
                 // The star only affects whether the glue survives being
                 // discarded at a line break in real TeX, which this layout
@@ -1228,10 +1316,11 @@ impl P<'_> {
 
     /// `\setlist[<env list>]{key=value,...}`: enumitem's list-spacing
     /// override. The optional argument names which environments the given
-    /// keys apply to (a comma list; omitted means every list). Only
-    /// `itemsep` and `topsep` change layout today; every other recognised
-    /// enumitem key (`leftmargin`, `label`, `parsep`, `partopsep`, ...) has
-    /// no equivalent in this layout engine and is reported once, by name.
+    /// keys apply to (a comma list; omitted means every list). `itemsep`,
+    /// `topsep` and `leftmargin` (an explicit dimension, or `*`) change
+    /// layout; every other recognised enumitem key (`label`, `parsep`,
+    /// `partopsep`, ...) has no equivalent in this layout engine and is
+    /// reported once, by name.
     fn set_list(&mut self, span: Span) {
         let environments = self
             .optional_bracket_argument()
@@ -1252,6 +1341,7 @@ impl P<'_> {
 
         let mut itemsep_pt = None;
         let mut topsep_pt = None;
+        let mut leftmargin = None;
         let mut ignored_keys: Vec<String> = Vec::new();
         for pair in token_text(&tokens).split(',') {
             let pair = pair.trim();
@@ -1269,6 +1359,14 @@ impl P<'_> {
                 "topsep" if value.and_then(parse_dimen_pt).is_some() => {
                     topsep_pt = value.and_then(parse_dimen_pt);
                 }
+                "leftmargin" if value == Some("*") => {
+                    leftmargin = Some(LeftMarginSetting::Widest);
+                }
+                "leftmargin" if value.and_then(parse_dimen_pt).is_some() => {
+                    leftmargin = value
+                        .and_then(parse_dimen_pt)
+                        .map(LeftMarginSetting::Explicit);
+                }
                 _ if !ignored_keys.iter().any(|seen| seen == key) => {
                     ignored_keys.push(key.to_string());
                 }
@@ -1283,6 +1381,9 @@ impl P<'_> {
             }
             if let Some(pt) = topsep_pt {
                 spacing.topsep_pt = pt;
+            }
+            if let Some(lm) = leftmargin {
+                spacing.leftmargin = lm;
             }
         }
 
@@ -1571,6 +1672,7 @@ impl P<'_> {
                 self.multirow_environment(span, &environment, blocks, para);
                 return;
             }
+            self.env_alignments.push(self.declared_alignment);
             if environment == "document" && self.has_document {
                 self.in_body = true;
             } else if environment == "figure" && self.in_body {
@@ -1578,6 +1680,10 @@ impl P<'_> {
             } else if let (Some(style), true) = (paragraph_style(&environment), self.in_body) {
                 self.flush_paragraph(blocks, para);
                 self.paragraph_styles.push(style);
+                // An inner alignment environment overrides an outer declaration.
+                if style != ParagraphStyle::Quote {
+                    self.declared_alignment = None;
+                }
             } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
                 self.flush_paragraph(blocks, para);
                 let template = self.optional_bracket_argument().map(|(options, _)| options);
@@ -1587,7 +1693,7 @@ impl P<'_> {
                     .copied()
                     .unwrap_or_default();
                 self.list_stack
-                    .push((environment.clone(), 0, template, spacing));
+                    .push((environment.clone(), 0, template, spacing, blocks.len()));
             } else if self.in_body {
                 self.diags.push(Diagnostic::warning(
                     format!(
@@ -1605,6 +1711,7 @@ impl P<'_> {
         }
 
         let popped = self.env_stack.pop();
+        let had_open_environment = popped.is_some();
         if popped.is_some() {
             if let Some(style) = self.env_styles.pop() {
                 self.style = style;
@@ -1631,7 +1738,7 @@ impl P<'_> {
             self.paragraph_styles.pop();
         } else if matches!(environment.as_str(), "itemize" | "enumerate") {
             let (gap_before, gap_after) = match self.list_stack.last() {
-                Some((_, count, _, spacing)) => (
+                Some((_, count, _, spacing, _)) => (
                     if *count <= 1 {
                         spacing.topsep_pt
                     } else {
@@ -1642,7 +1749,43 @@ impl P<'_> {
                 None => (0.0, 0.0),
             };
             self.flush_list_item(blocks, para, gap_before, gap_after);
-            self.list_stack.pop();
+            let level = self.list_stack.len() as u8;
+            if let Some((kind, count, template, spacing, start)) = self.list_stack.pop() {
+                if spacing.leftmargin == LeftMarginSetting::Widest && count > 0 {
+                    let labels: Vec<String> = if kind == "enumerate" {
+                        // An alphabetic counter has only 26 possible single-
+                        // letter values, so enumitem checks every one of them
+                        // regardless of how many items this particular list
+                        // has; other styles use this list's own item count
+                        // (its labels only grow wider as the count does).
+                        let widest_count = match &template {
+                            Some(t) if matches!(enumitem_label_style(t), 'a' | 'A') => 26,
+                            _ => count,
+                        };
+                        (1..=widest_count)
+                            .map(|n| match &template {
+                                Some(template) => enumitem_label(template, n),
+                                None => format!("{n}."),
+                            })
+                            .collect()
+                    } else {
+                        vec!["•".to_string()]
+                    };
+                    for block in &mut blocks[start..] {
+                        if let Block::ListItem {
+                            level: item_level,
+                            leftmargin,
+                            ..
+                        } = block
+                        {
+                            if *item_level == level && matches!(leftmargin, ListLeftMargin::Default)
+                            {
+                                *leftmargin = ListLeftMargin::Widest(labels.clone());
+                            }
+                        }
+                    }
+                }
+            }
         } else if environment == "figure" {
             self.flush_paragraph(blocks, para);
         }
@@ -1650,6 +1793,13 @@ impl P<'_> {
             self.flush_paragraph(blocks, para);
             self.in_body = false;
             self.document_ended = true;
+        }
+        // Restored only after the flushes above: environments that end their
+        // paragraph do so while their own declarations are still in force.
+        if had_open_environment {
+            if let Some(alignment) = self.env_alignments.pop() {
+                self.declared_alignment = alignment;
+            }
         }
     }
 
@@ -2209,6 +2359,7 @@ impl P<'_> {
         self.brace_stack.push(span);
         self.macro_scopes.push(HashMap::new());
         self.style_stack.push(self.style);
+        self.alignment_stack.push(self.declared_alignment);
     }
 
     fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>, base: TextStyle) -> Vec<Inline> {
@@ -2276,6 +2427,98 @@ impl P<'_> {
                 }
                 _ => {}
             }
+        }
+        content
+    }
+
+    /// `\footnote`, `\footnotemark` and `\footnotetext`, following latex.ltx:
+    /// without `[<n>]`, `\footnote`/`\footnotemark` step the counter and
+    /// `\footnotetext` reuses its current value; with `[<n>]` none of them
+    /// step it. The footnote counter and page-bottom placement are
+    /// document-global, so incremental block reuse is disabled (the same
+    /// conservative rule `\label`/`\ref` use).
+    fn footnote(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        self.document_global_state = true;
+        let explicit = self
+            .optional_bracket_argument()
+            .and_then(|(raw, raw_span)| {
+                let parsed = raw.trim().parse::<u32>().ok();
+                if parsed.is_none() {
+                    self.diags.push(Diagnostic::warning(
+                        format!(
+                            "\\{name} optional argument '{}' is not a number",
+                            raw.trim()
+                        ),
+                        Some(raw_span),
+                        Some("numbered the footnote from the footnote counter instead".into()),
+                    ));
+                }
+                parsed
+            });
+        let number = match explicit {
+            Some(number) => number,
+            None if name == "footnotetext" => self.footnote_counter,
+            None => {
+                self.footnote_counter += 1;
+                self.footnote_counter
+            }
+        };
+        let text = if name == "footnotemark" {
+            None
+        } else {
+            let (tokens, _) = self.required_group(name, span);
+            Some(self.footnote_inlines(tokens, span))
+        };
+        para.push(Inline::Footnote {
+            number: number.to_string(),
+            span,
+            mark: name != "footnotetext",
+            text,
+            space_before,
+        });
+    }
+
+    /// Parses a footnote argument with the ordinary dispatch, so math, style
+    /// commands and macros work inside it. The text starts from
+    /// `\normalfont` (`\@footnotetext` resets the font). Paragraph breaks
+    /// inside the argument become line breaks: the footnote is one inline
+    /// sequence, not separate blocks; each break is attributed to `span`.
+    fn footnote_inlines(&mut self, tokens: Vec<InputToken>, span: Span) -> Vec<Inline> {
+        let outer_tokens = std::mem::replace(&mut self.t, tokens);
+        let outer_index = std::mem::replace(&mut self.i, 0);
+        let outer_style = std::mem::take(&mut self.style);
+        let outer_label = self.pending_item_label.take();
+        let outer_dependency_blocks = self.block_dependencies.len();
+        // The argument is a TeX group: definitions inside it stay local.
+        self.macro_scopes.push(HashMap::new());
+        let mut blocks = Vec::new();
+        let mut para = Vec::new();
+        self.parse_stream(&mut blocks, &mut para);
+        self.flush_paragraph(&mut blocks, &mut para);
+        self.restore_scope();
+        self.block_dependencies.truncate(outer_dependency_blocks);
+        self.t = outer_tokens;
+        self.i = outer_index;
+        self.style = outer_style;
+        self.pending_item_label = outer_label;
+
+        let mut content: Vec<Inline> = Vec::new();
+        for block in blocks {
+            let inlines = match block {
+                Block::Paragraph(inlines)
+                | Block::Styled {
+                    content: inlines, ..
+                }
+                | Block::ListItem {
+                    content: inlines, ..
+                } => inlines,
+                _ => continue,
+            };
+            if !content.is_empty() && !inlines.is_empty() {
+                content.push(Inline::LineBreak { span });
+            }
+            content.extend(inlines);
         }
         content
     }
@@ -2362,8 +2605,18 @@ impl P<'_> {
         let list_level = self
             .list_stack
             .last()
-            .filter(|(_, count, _, _)| *count > 0)
+            .filter(|(_, count, _, _, _)| *count > 0)
             .map(|_| self.list_stack.len() as u8);
+        // `leftmargin=*` needs every item's label, so it is resolved later
+        // (backpatched once the list's `\end` is reached — see
+        // `environment`); an explicit dimension is already known.
+        let leftmargin = match self.list_stack.last() {
+            Some((_, _, _, spacing, _)) => match spacing.leftmargin {
+                LeftMarginSetting::Explicit(pt) => ListLeftMargin::Explicit(pt),
+                LeftMarginSetting::Unset | LeftMarginSetting::Widest => ListLeftMargin::Default,
+            },
+            None => ListLeftMargin::Default,
+        };
         blocks.push(match list_level {
             Some(level) => Block::ListItem {
                 level,
@@ -2371,10 +2624,16 @@ impl P<'_> {
                 content,
                 extra_gap_before_pt,
                 extra_gap_after_pt,
+                leftmargin,
             },
-            None => match self.paragraph_styles.last() {
-                Some(&style) => Block::Styled { style, content },
-                None => Block::Paragraph(content),
+            None => match (self.paragraph_styles.last(), self.declared_alignment) {
+                // A declaration inside `quote` would otherwise drop its indent.
+                (Some(&ParagraphStyle::Quote), _) => Block::Styled {
+                    style: ParagraphStyle::Quote,
+                    content,
+                },
+                (_, Some(style)) | (Some(&style), None) => Block::Styled { style, content },
+                (None, None) => Block::Paragraph(content),
             },
         });
         self.finish_block_dependencies();
@@ -2638,6 +2897,34 @@ fn enumitem_label(template: &str, count: u32) -> String {
         ),
         None => template.to_string(),
     }
+}
+
+/// The counter style (`a A i I 1`) an enumitem label template selects,
+/// mirroring `enumitem_label`'s own template parsing (defaulting to `1`,
+/// arabic, exactly like it does). Used by `\setlist{leftmargin=*}` to decide
+/// how far its widest-label search needs to look — see `environment`.
+fn enumitem_label_style(template: &str) -> char {
+    if template.contains('=') {
+        let Some(label) = template
+            .split(',')
+            .find_map(|key| key.trim().strip_prefix("label="))
+        else {
+            return '1';
+        };
+        return [
+            ("\\alph*", 'a'),
+            ("\\Alph*", 'A'),
+            ("\\roman*", 'i'),
+            ("\\Roman*", 'I'),
+        ]
+        .iter()
+        .find(|(command, _)| label.contains(command))
+        .map_or('1', |(_, style)| *style);
+    }
+    template
+        .char_indices()
+        .find(|(_, c)| "aAiI1".contains(*c))
+        .map_or('1', |(_, style)| style)
 }
 
 fn alphabetic(count: u32, base: u8) -> String {
@@ -3254,6 +3541,78 @@ mod tests {
         let cs: Vec<_> = items.iter().filter(|i| i.text == "c").collect();
         assert!(a.x_pt > cs[0].x_pt, "right-aligned column");
         assert_eq!(at("b").x_pt, at("d").x_pt);
+    }
+
+    #[test]
+    fn alignment_declarations_are_group_scoped_and_read_at_paragraph_end() {
+        let styles = |source: &str| {
+            let parsed = parse(source);
+            assert!(
+                !parsed
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.message.contains("not supported")
+                        || d.message.contains("ragged")
+                        || d.message.contains("centering")),
+                "{:?}",
+                parsed.diagnostics
+            );
+            parsed
+                .blocks
+                .iter()
+                .map(|block| match block {
+                    Block::Styled { style, .. } => Some(*style),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        use ParagraphStyle::{Center, FlushLeft, FlushRight, Quote};
+        assert_eq!(
+            styles("{\\centering Title\\par} After."),
+            [Some(Center), None]
+        );
+        assert_eq!(
+            styles("{\\raggedright Ragged\\par}\n\n{\\raggedleft Left\\par}\n\nPlain."),
+            [Some(FlushLeft), Some(FlushRight), None]
+        );
+        // The group closed before the paragraph ended, so (as in TeX) the
+        // declaration no longer applies to it.
+        assert_eq!(styles("{\\centering Early} close.\n\nNext."), [None, None]);
+        // Scope ends at `\end`; environments that end their paragraph do so
+        // with their own declaration still in force.
+        assert_eq!(
+            styles("\\begin{figure}\\centering Body\\end{figure}\nAfter."),
+            [Some(Center), None]
+        );
+        assert_eq!(
+            styles("\\raggedleft\\begin{center}\\RaggedRight Inner\\end{center}\nOuter."),
+            [Some(FlushLeft), Some(FlushRight)]
+        );
+        assert_eq!(
+            styles("\\centering\\begin{center}Env\\end{center}\n\\begin{quote}Q\\end{quote}"),
+            [Some(Center), Some(Quote)]
+        );
+        assert_eq!(
+            styles("\\documentclass{article}\n\\raggedright\n\\begin{document}\nText.\n\\end{document}"),
+            [Some(FlushLeft)]
+        );
+
+        // A declared paragraph lays out exactly like its environment form,
+        // i.e. it is not justified.
+        let words = "Ragged text keeps its natural spaces here. ".repeat(6);
+        let positions = |source: String| {
+            items(&source)
+                .1
+                .iter()
+                .map(|item| item.x_pt)
+                .collect::<Vec<_>>()
+        };
+        let declared = positions(format!("{{\\raggedright {words}\\par}}"));
+        assert_eq!(
+            declared,
+            positions(format!("\\begin{{flushleft}}{words}\\end{{flushleft}}"))
+        );
+        assert_ne!(declared, positions(words.clone()));
     }
 
     #[test]

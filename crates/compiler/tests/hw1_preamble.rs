@@ -74,14 +74,20 @@ fn packages_matching_the_fixed_layout_do_not_warn() {
             "{line} must still report a gap"
         );
     }
-    // itemsep/topsep are implemented, so setting only those keys is silent...
+    // itemsep/topsep/leftmargin are implemented, so setting only those keys
+    // is silent...
     assert!(
         preamble("\\setlist[enumerate]{itemsep=1em}").is_empty(),
         "{:?}",
         preamble("\\setlist[enumerate]{itemsep=1em}")
     );
+    assert!(
+        preamble("\\setlist[enumerate]{leftmargin=*}").is_empty(),
+        "{:?}",
+        preamble("\\setlist[enumerate]{leftmargin=*}")
+    );
     // ...but a key with no layout equivalent still reports a gap, by name.
-    assert!(preamble("\\setlist[enumerate]{leftmargin=*}")
+    assert!(preamble("\\setlist[enumerate]{parsep=1em}")
         .iter()
-        .any(|m| m.contains("\\setlist") && m.contains("leftmargin")));
+        .any(|m| m.contains("\\setlist") && m.contains("parsep")));
 }

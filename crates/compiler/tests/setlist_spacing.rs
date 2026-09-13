@@ -6,6 +6,7 @@
 //! implemented separately — audit A6).
 
 use flashtex_compiler::json::{self, Value};
+use flashtex_compiler::layout::{text_width, Font, MARGIN_PT};
 use flashtex_compiler::parser::{self, Block};
 use flashtex_compiler::protocol::handle_line;
 
@@ -53,6 +54,18 @@ fn baseline_of(response: &Value, text: &str) -> f64 {
         .iter()
         .find(|item| item.get("text").and_then(Value::as_str) == Some(text))
         .and_then(|item| item.get("baseline_y_pt"))
+        .and_then(|v| match v {
+            Value::Num(n) => Some(*n),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no positioned item with text {text:?} in {response:?}"))
+}
+
+fn x_of(response: &Value, text: &str) -> f64 {
+    items(response)
+        .iter()
+        .find(|item| item.get("text").and_then(Value::as_str) == Some(text))
+        .and_then(|item| item.get("x_pt"))
         .and_then(|v| match v {
             Value::Num(n) => Some(*n),
             _ => None,
@@ -158,7 +171,7 @@ fn topsep_adds_extra_gap_only_around_the_list() {
 fn fully_implemented_keys_report_no_diagnostic() {
     let response = reply(&compile_line(
         "silent",
-        &doc(r"\setlist[enumerate]{itemsep=0.45em,topsep=0.35em}"),
+        &doc(r"\setlist[enumerate]{itemsep=0.45em,topsep=0.35em,leftmargin=*}"),
     ));
     let msgs = messages(&response);
     assert!(msgs.is_empty(), "{msgs:?}");
@@ -173,9 +186,78 @@ fn unimplemented_keys_are_named_once_and_implemented_ones_are_not() {
     let msgs = messages(&response);
     let setlist_msgs: Vec<&String> = msgs.iter().filter(|m| m.contains("\\setlist")).collect();
     assert_eq!(setlist_msgs.len(), 1, "{msgs:?}");
-    assert!(setlist_msgs[0].contains("leftmargin"));
+    assert!(
+        !setlist_msgs[0].contains("leftmargin"),
+        "leftmargin=* is implemented and must not be named: {}",
+        setlist_msgs[0]
+    );
     assert!(setlist_msgs[0].contains("parsep"));
     assert!(!setlist_msgs[0].contains("itemsep"));
+}
+
+#[test]
+fn leftmargin_star_narrows_the_margin_to_the_widest_label() {
+    let baseline = reply(&compile_line("leftmargin-base", &doc("")));
+    let starred = reply(&compile_line(
+        "leftmargin-star",
+        &doc(r"\setlist[enumerate]{leftmargin=*}"),
+    ));
+
+    let base_label_x = x_of(&baseline, "1.");
+    let base_text_x = x_of(&baseline, "Alpha");
+    let star_label_x = x_of(&starred, "1.");
+    let star_text_x = x_of(&starred, "Alpha");
+
+    // The default numeric label ("1.") is narrower than the level's default
+    // 2.5em leftmargin, so leftmargin=* pulls both the label and the text
+    // left of their unstarred position...
+    assert!(
+        star_text_x < base_text_x,
+        "leftmargin=* must narrow the hanging indent: base={base_text_x} star={star_text_x}"
+    );
+    assert!(star_label_x < base_label_x);
+    // ...while keeping the label ending exactly `\labelsep` before the
+    // (now narrower) text indent, same as without `\setlist`.
+    assert!(
+        ((base_text_x - base_label_x) - (star_text_x - star_label_x)).abs() < 0.02,
+        "the label must stay exactly \\labelsep before the text either way"
+    );
+}
+
+#[test]
+fn leftmargin_star_with_alph_labels_checks_every_letter_not_just_the_items_present() {
+    // The exact HW1 shape: `\begin{enumerate}[(a)]` with only two items.
+    // enumitem checks every one of the 26 possible single-letter values for
+    // an alphabetic label (it cannot know in general how many items a list
+    // ending later will have), not just "(a)"/"(b)".
+    let source = concat!(
+        r"\documentclass{article}\setlist[enumerate]{leftmargin=*}",
+        r"\begin{document}\begin{enumerate}[(a)]\item Alpha\item Beta\end{enumerate}\end{document}",
+    );
+    let response = reply(&compile_line("leftmargin-alph", source));
+    let text_x = x_of(&response, "Alpha");
+    // "(m)" is the widest of "(a)".."(z)" in Times-Roman.
+    let widest_pt = text_width("(m)", 12.0, Font::TimesRoman) + 0.5 * 12.0;
+    assert!(
+        (text_x - (MARGIN_PT + widest_pt)).abs() < 0.02,
+        "expected the margin sized to the widest possible letter label, got {text_x}"
+    );
+}
+
+#[test]
+fn leftmargin_explicit_dimension_sets_the_margin_directly() {
+    let response = reply(&compile_line(
+        "leftmargin-explicit",
+        &doc(r"\setlist[enumerate]{leftmargin=1in}"),
+    ));
+    assert!(messages(&response).is_empty(), "{:?}", messages(&response));
+    let text_x = x_of(&response, "Alpha");
+    // `parse_dimen_pt` resolves `1in` as 72.27 (true TeX) points, not 72
+    // (PostScript/"big") points.
+    assert!(
+        (text_x - (MARGIN_PT + 72.27)).abs() < 0.02,
+        "expected the text indent to be exactly 1in past the page margin, got {text_x}"
+    );
 }
 
 #[test]
