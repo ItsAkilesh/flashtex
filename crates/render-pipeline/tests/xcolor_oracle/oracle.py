@@ -33,6 +33,7 @@ import argparse, json, os, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 sys.path.insert(0, os.path.join(REPO, "tools", "visual-oracle"))
+import fontenv  # noqa: E402
 import pdftext  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures")
@@ -234,29 +235,45 @@ def cand_v2(path):
 def cmd_check(args):
     passed = 0
     names = fixtures(args.only)
+    env = fontenv.render_env(args.fonts, args.tfm_dirs)
+    print(fontenv.describe(env))
+    font_dirs = fontenv.split(env.get("FLASHTEX_FONT_DIRS"))
     with tempfile.TemporaryDirectory() as work:
         for name in names:
             ref = json.load(open(os.path.join(REFS, name + ".json"), encoding="utf-8"))["pages"]
             tex = os.path.join(FIXTURES, name + ".tex")
             v2 = os.path.join(work, name + ".v2.json")
-            env = dict(os.environ, FLASHTEX_FONT_DIRS=args.fonts, FLASHTEX_TFM_DIRS=args.fonts)
-            subprocess.run([args.render, "--tex", tex, "--v2", v2, "--device-color", "--font-dir", args.fonts],
-                           env=env, capture_output=True, timeout=120)
+            cmd = [args.render, "--tex", tex, "--v2", v2, "--device-color"]
+            for d in font_dirs:
+                cmd += ["--font-dir", d]
+            rp = subprocess.run(cmd, env=env, capture_output=True, timeout=120)
+            font_bad = []
+            for line in rp.stdout.decode("utf-8", "replace").splitlines():
+                try:
+                    m = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if m.get("type") == "compile_result":
+                    font_bad = fontenv.font_diagnostics(m["payload"].get("diagnostics", []))
             cand = cand_v2(v2) if os.path.isfile(v2) else []
             gok, gn, rok, rn, gw, rw, colour = match(ref, cand)
             row = f"{name:32} pages {len(ref)}/{len(cand)} glyphs {gok}/{gn} (worst {gw:.3f}) rules {rok}/{rn} (worst {rw:.3f})"
             exact = ""
             if args.pdf_exact and os.path.isfile(v2):
                 pdf = os.path.join(work, name + ".pdf")
-                p = subprocess.run([args.pdf_exact, "from-v2", v2, "--out", pdf, "--font-dir", args.fonts],
-                                   capture_output=True, text=True, timeout=120)
+                ecmd = [args.pdf_exact, "from-v2", v2, "--out", pdf]
+                for d in font_dirs:
+                    ecmd += ["--font-dir", d]
+                p = subprocess.run(ecmd, env=env, capture_output=True, text=True, timeout=120)
                 if os.path.isfile(pdf):
                     egok, egn, erok, ern, _, _, ecol = match(ref, pdf_pages(pdf))
                     exact = f" | exact pdf glyph colours {egok}/{egn} rules {erok}/{ern}"
                     colour += [f"exact: {c}" for c in ecol[:3]]
                 else:
                     exact = f" | exact pdf failed: {(p.stderr or p.stdout).strip()[:120]}"
-            good = len(ref) == len(cand) and gok == gn and rok == rn
+            good = len(ref) == len(cand) and gok == gn and rok == rn and not font_bad
+            if font_bad:
+                fontenv.report_font_failure(name, font_bad, env)
             passed += good
             print(("PASS " if good else "FAIL ") + row + exact)
             for c in colour[:4]:
@@ -274,7 +291,7 @@ def main():
     c = sub.add_parser("check")
     c.add_argument("--render", required=True)
     c.add_argument("--pdf-exact")
-    c.add_argument("--fonts", default=os.path.join(REPO, "apps", "mac", "Fonts"))
+    fontenv.add_font_arguments(c, REPO)
     c.add_argument("only", nargs="*")
     args = ap.parse_args()
     return cmd_refs(args) if args.cmd == "refs" else cmd_check(args)
