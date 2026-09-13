@@ -267,6 +267,17 @@ expansion cache behind `parser::parse_project`: a keystroke re-expands from the
 nearest engine checkpoint before the edit and re-converts only until the old
 output can be spliced back. `tests/expansion_incremental.rs` checks that the
 cached result equals a from-scratch expansion after random structural edits.
+Engine checkpoints are taken every 512 bytes of source: the engine's state is
+copy-on-write, so a checkpoint is a few reference-count bumps and a
+convergence check compares only what changed. The parser's in-place splits of
+glued words (`\\[3pt]Next`, a row's `\\*`, `\cmidrule(lr)`) borrow the cached
+stream instead of copying it and are undone before it goes back
+(`tests/expansion_lend.rs`).
+
+`\DeclareMathOperator{\cmd}{text}` (and `*`) is a host-prelude definition in
+the expansion pass: `\cmd` becomes `\operatorname{text}` (`\operatorname*`),
+defined with `\newcommand` semantics, so a second declaration of the same name
+reports LaTeX's "Command \cmd already defined." at that declaration.
 
 ## Supported math
 

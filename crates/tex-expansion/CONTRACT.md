@@ -268,7 +268,22 @@ additive, default behaviour unchanged, oracle/unit/incremental suites green:
   diagnostics that embed a line number ("Incomplete \iffalse; all text was
   ignored after line N" kept a stale N).
 
-Open for the crate owner: checkpoint snapshots/convergence compare clone the
-whole assignment state, which dominates small-document keystrokes (HW1 +0.1 ms
-in the compiler); structurally shared scopes would make dense checkpoints cheap.
+- Copy-on-write assignment state (adoption round 2): every `Scopes` table is a
+  `CowMap` (2^k copy-on-write chunks behind a copy-on-write chunk table,
+  FxHash inside), the save stack is a copy-on-write list of copy-on-write
+  frames, integer parameters are an array and counter reset lists sit behind
+  `Rc`. A checkpoint bumps reference counts; the first write to a chunk after
+  it copies that chunk. Each chunk and frame keeps an upper bound on the `end`
+  of the document spans it stores; since every span shift is the identity
+  below its edit start, convergence (`State::eq_mapped`) skips chunks that are
+  the same allocation in both runs and lie below the bound, and compares the
+  rest entry by entry without building shifted copies. `map_spans` shares
+  chunks a shift cannot change.
+- The kernel prelude is lexed under a source id of its own (it was source 0,
+  the document's id, so an edit in the first ~4 KB "shifted" prelude macro
+  spans and no HW1-sized keystroke ever converged).
+- `State::prelude_source_end` marks kernel/host prelude source ids; a
+  diagnostic raised at a prelude-body token is reported at the document
+  invocation being expanded, or at the last token read from source text
+  when look-ahead dropped the invocation origin.
 
