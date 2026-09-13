@@ -7,6 +7,8 @@ name = "flashtex-compiler"
 version = "0.1.0"
 dependencies = [
  "flashtex-font-engine",
+ "flashtex-tex-boxes",
+ "flashtex-tex-text-encoding",
 ]
 
 [[package]]
@@ -40,4 +42,12 @@ dependencies = [
 
 [[package]]
 name = "flashtex-pdf"
+version = "0.1.0"
+
+[[package]]
+name = "flashtex-tex-boxes"
+version = "0.1.0"
+
+[[package]]
+name = "flashtex-tex-text-encoding"
 version = "0.1.0"
