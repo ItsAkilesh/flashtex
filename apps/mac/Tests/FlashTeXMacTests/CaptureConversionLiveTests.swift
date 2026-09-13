@@ -3,27 +3,32 @@ import XCTest
 import FlashTeXProtocol
 @testable import FlashTeXMac
 
-/// LIVE acceptance of the Mac's Grok/xAI wiring: one explanation through the
-/// real `flashtex-assistant-context --provider-session` and one capture
-/// conversion through the real `flashtex-bridge --enable-grok`, both with the
-/// key from the Mac credential adapter. Runs only when
-/// `FLASHTEX_GROK_LIVE=1` AND a key resolves (Keychain or `XAI_API_KEY`);
-/// otherwise every case is skipped, so `swift test` never contacts xAI.
-/// `apps/mac/scripts/grok-live-check.sh` is the entry point; it sets
-/// `FLASHTEX_GROK_EVIDENCE_DIR`, where this writes `explanation.json`,
-/// `conversion.json` and `probe.json` (ids, model, sizes, timings, HTTP class —
-/// never a key, a prompt body or a reply body).
+/// LIVE acceptance of the capture-conversion seam: one capture conversion
+/// through the real `flashtex-bridge` with the selected provider's key from
+/// the Mac credential adapter. Runs only when `FLASHTEX_CONVERSION_LIVE=1`
+/// AND a key resolves for the selected provider; otherwise it is skipped, so
+/// `swift test` never contacts a provider. `FLASHTEX_CONVERSION_EVIDENCE_DIR`
+/// receives `conversion.json` (ids, model, sizes, timings — never a key, a
+/// prompt body or a reply body).
 @MainActor
-final class GrokLiveAcceptanceTests: XCTestCase {
-    static var live: Bool { ProcessInfo.processInfo.environment["FLASHTEX_GROK_LIVE"] == "1" }
+final class CaptureConversionLiveTests: XCTestCase {
+    static var live: Bool {
+        let env = ProcessInfo.processInfo.environment
+        return env["FLASHTEX_CONVERSION_LIVE"] == "1" || env["FLASHTEX_GROK_LIVE"] == "1"
+    }
     static var evidenceDirectory: URL? {
-        ProcessInfo.processInfo.environment["FLASHTEX_GROK_EVIDENCE_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let env = ProcessInfo.processInfo.environment
+        return (env["FLASHTEX_CONVERSION_EVIDENCE_DIR"] ?? env["FLASHTEX_GROK_EVIDENCE_DIR"]).map { URL(fileURLWithPath: $0, isDirectory: true) }
     }
 
-    private func requireLive() throws -> GrokCredential.Resolution {
-        guard Self.live else { throw XCTSkip("FLASHTEX_GROK_LIVE is not 1: no live xAI call") }
-        guard let credential = GrokCredential.resolve() else { throw XCTSkip("no xAI key in the Keychain or XAI_API_KEY: no live xAI call") }
-        return credential
+    private func requireLive() throws -> (ConversionProvider, ConversionCredential.Resolution) {
+        guard Self.live else { throw XCTSkip("FLASHTEX_CONVERSION_LIVE is not 1: no live provider call") }
+        let provider = ConversionCredential.provider()
+        guard provider != .none else { throw XCTSkip("conversion provider is none: no live provider call") }
+        guard let credential = ConversionCredential.resolve(for: provider) else {
+            throw XCTSkip("no \(provider.displayName) key in the Keychain or the environment: no live provider call")
+        }
+        return (provider, credential)
     }
 
     private func record(_ name: String, _ object: [String: Any]) throws {
@@ -44,78 +49,9 @@ final class GrokLiveAcceptanceTests: XCTestCase {
         XCTFail("timed out waiting for \(what)")
     }
 
-    func testProbeReportsTheKeyClass() async throws {
-        let credential = try requireLive()
-        let started = Date()
-        var listed: [String] = []
-        let outcome: GrokProbe.Outcome = await withCheckedContinuation { k in
-            GrokProbe.probe(credential: credential, timeout: 20, models: { listed = $0 }) { k.resume(returning: $0) }
-        }
-        try record("probe.json", ["endpoint": GrokProbe.baseURL().appendingPathComponent(GrokProbe.path).absoluteString,
-                                  "key_source": credential.source.rawValue, "outcome": outcome.text,
-                                  "key_accepted": outcome.keyAccepted, "seconds": Date().timeIntervalSince(started),
-                                  "models_listed": listed])
-        XCTAssertTrue(outcome.keyAccepted, outcome.text)
-    }
-
-    /// prepare (real helper) → admit/poll (real helper, live xAI) → review (real helper).
-    func testLiveExplanationThroughTheProviderSession() async throws {
-        let credential = try requireLive()
-        var env = ProcessInfo.processInfo.environment
-        env["FLASHTEX_ASSISTANT_PROVIDER"] = "grok"
-        let config = ProposalPreview.ExplanationConfiguration.fromEnvironment(env)
-        guard let helper = config.grok?.helper else { throw XCTSkip("no flashtex-assistant-context helper (build crates/assistant-context --features grok)") }
-        XCTAssertEqual(config.grok?.credential, credential)
-        // The shadow compile runs on the deterministic worker double so the
-        // diagnostic Grok explains is known; the context/binding is the real helper's.
-        let preview = ProposalPreview(executable: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path], explanation: config)
-        let input = ProposalPreview.Input(documents: [.init(path: "main.tex", text: "\\documentclass{article}\n\\begin{document}\nHello\n%diag:1 tail\n\\end{document}\n")],
-                                          entryPath: "main.tex",
-                                          anchor: InsertionAnchor(id: "a1", path: "main.tex", byteOffset: 46, revision: 1, contextAfter: "%diag:1 tail\n\\end{document}\n"),
-                                          editorRevision: 1, projectId: "grok-live")
-        preview.update(input: input, latex: "$x^2 + y^2 = z^2$ %diag:0 new")
-        try await waitUntil("preview ready", timeout: 20) { if case .ready = preview.state { return true }; return false }
-        let started = Date()
-        preview.explain()
-        try await waitUntil("explanation settled", timeout: config.providerTimeout + 30) { !preview.explanationInFlight }
-        let seconds = Date().timeIntervalSince(started)
-        var evidence: [String: Any] = [
-            "helper": helper.path, "model": config.grok?.model ?? "?", "key_source": credential.source.rawValue,
-            "model_is_default": config.grok?.model == GrokCredential.defaultModel,
-            "provider_timeout_s": config.providerTimeout,
-            "seconds": seconds, "launches": preview.childLaunches.map { "\($0.role):\($0.stage)" },
-            "session_id": preview.lastGrokLaunch?.sessionId ?? "",
-            "session_argv_has_key": preview.lastGrokLaunch?.arguments.contains { $0.contains("xai-") } ?? false,
-            "session_env_keys": preview.lastGrokLaunch?.environmentKeys ?? [],
-            "note": "xAI response id/model/usage are not surfaced by the helper's provider session (helper request R4 in apps/mac/docs/grok-live.md)",
-        ]
-        switch preview.explanationState {
-        case .ready(let e):
-            evidence["outcome"] = "ready"
-            evidence["context_id"] = e.context.contextId
-            evidence["explanation_bytes"] = e.text.utf8.count
-            evidence["edits"] = e.edits.count
-            evidence["review_id"] = e.reviewId ?? ""
-            evidence["applied"] = e.applied
-        case .failed(let why):
-            evidence["outcome"] = "failed"
-            evidence["failure"] = why
-        default:
-            evidence["outcome"] = "\(preview.explanationState)"
-        }
-        let final = preview.explanationState
-        try record("explanation.json", evidence)
-        preview.close()
-        guard case .ready(let e) = final else { return XCTFail("\(final)") }
-        XCTAssertFalse(e.text.isEmpty)
-        XCTAssertFalse(e.applied)
-        XCTAssertNil(preview.providerStartedAt, "the elapsed counter stops when the reply lands")
-        XCTAssertLessThan(seconds, config.providerTimeout, "the whole flow (prepare, live call, review) fits the sheet's bound")
-    }
-
     /// The deterministic "photo-simulated" capture: handwriting-style text of a
     /// small identity rendered to a PNG (no fixture image exists in the repo;
-    /// the 1×1 protocol fixture is rejected by xAI with HTTP 400).
+    /// the 1×1 protocol fixture is rejected by providers).
     static func renderedCapture() throws -> RuntimeV1.CaptureImage {
         let size = NSSize(width: 900, height: 260)
         let image = NSImage(size: size)
@@ -143,11 +79,11 @@ final class GrokLiveAcceptanceTests: XCTestCase {
     /// compiler (the review sheet's shadow compile, `ProposalPreview`).
     private func compileGate(latex: String, document: String, anchorByte: Int) async throws -> [String: Any] {
         guard let compiler = ShellModel.locateCompiler() else { return ["compiled": false, "reason": "no flashtex-compiler (build crates/compiler or set FLASHTEX_COMPILER)"] }
-        let preview = ProposalPreview(executable: compiler, explanation: .disabled)
+        let preview = ProposalPreview(executable: compiler)
         let ctx = String(decoding: Array(document.utf8.dropFirst(anchorByte).prefix(Insertion.contextLength)), as: UTF8.self)
         let input = ProposalPreview.Input(documents: [.init(path: "main.tex", text: document)], entryPath: "main.tex",
                                           anchor: InsertionAnchor(id: "gate", path: "main.tex", byteOffset: anchorByte, revision: 1, contextAfter: ctx),
-                                          editorRevision: 1, projectId: "grok-gate")
+                                          editorRevision: 1, projectId: "conversion-gate")
         preview.update(input: input, latex: latex)
         try await waitUntil("gate compile", timeout: 30) { if case .ready = preview.state { return true }; if case .failed = preview.state { return true }; return false }
         defer { preview.close() }
@@ -162,44 +98,45 @@ final class GrokLiveAcceptanceTests: XCTestCase {
         }
     }
 
-    /// submit (real bridge) → capture_convert (live Grok vision, with the
+    /// submit (real bridge) → capture_convert (live provider, with the
     /// compiler-derived `supported_features`) → proposal queued for the review
     /// sheet, nothing inserted → the proposal compiled by our compiler.
     func testLiveCaptureConversionThroughTheBridge() async throws {
-        let credential = try requireLive()
+        let (provider, credential) = try requireLive()
         guard let bridge = BridgeClient.locateBridge() else { throw XCTSkip("no flashtex-bridge (build crates/bridge or set FLASHTEX_BRIDGE)") }
-        let launch = ShellModel.bridgeGrokLaunch()
-        XCTAssertTrue(launch.enableGrok)
+        let launch = ShellModel.bridgeConversionLaunch()
+        XCTAssertEqual(launch.provider, provider)
         XCTAssertEqual(launch.credential, credential)
         let store = try BridgeClientTests.tempStore()
         defer { try? FileManager.default.removeItem(at: store) }
         let model = ShellModel()
         model.autoCompile = false
-        let attached = await model.attachBridgeAndWait(executable: bridge, storeDirectory: store, enableGrok: launch.enableGrok,
+        let attached = await model.attachBridgeAndWait(executable: bridge, storeDirectory: store, provider: launch.provider,
                                                        environment: launch.environment, discoverLedger: false)
         XCTAssertTrue(attached, model.captureNote ?? model.bridgeStatus)
-        XCTAssertEqual(model.bridge?.grokEnabled, true)
+        XCTAssertEqual(model.bridge?.conversionEnabled, true)
         let document = "\\documentclass{article}\n\\begin{document}\nThe identity \n\\end{document}\n"
         model.updateActiveText(document)
         model.caretUTF16 = 53
         model.pinAnchorAtCaret()
         try await waitUntil("pin", timeout: 10) { model.bridgeDestination != nil }
         let image = try Self.renderedCapture()
-        let captureId = "grok-live-\(UUID().uuidString.lowercased().prefix(8))"
+        let captureId = "conversion-live-\(UUID().uuidString.lowercased().prefix(8))"
         let received = await model.submitCapture(image: image, captureId: captureId, instructions: CaptureFeatures.defaultInstructions)
         XCTAssertNotNil(received, model.captureNote ?? "")
         let features = CaptureFeatures.supportedFeatures()
         let started = Date()
         let proposal = await model.convertCapture(captureId: captureId, supportedFeatures: features)
         let seconds = Date().timeIntervalSince(started)
+        let keyVariable = provider.bridgeKeyVariable ?? ""
         var evidence: [String: Any] = [
-            "bridge": bridge.path, "model": launch.environment["FLASHTEX_GROK_MODEL"] ?? "?", "key_source": credential.source.rawValue,
-            "capture_id": captureId, "seconds": seconds, "enable_grok": launch.enableGrok,
+            "bridge": bridge.path, "provider": provider.rawValue,
+            "model": launch.environment[ConversionCredential.bridgeModelVariable] ?? "?", "key_source": credential.source.rawValue,
+            "capture_id": captureId, "seconds": seconds, "bridge_flag": provider.bridgeFlag ?? "",
             "image_bytes": Data(base64Encoded: image.dataBase64)?.count ?? 0,
             "supported_features_count": features.count, "supported_features_sha": CaptureFeatures.compilerSHA,
-            "bridge_env_has_key": launch.environment[GrokCredential.bridgeVariable] != nil,
-            "bridge_env_sensitive_names_other_than_key": launch.environment.keys.filter { $0 != GrokCredential.bridgeVariable && ProposalPreview.ExplanationConfiguration.isSensitiveVariable($0) },
-            "note": "xAI response id/usage are not surfaced by the bridge's capture_proposal (helper request R4 in apps/mac/docs/grok-live.md)",
+            "bridge_env_has_key": launch.environment[keyVariable] != nil,
+            "bridge_env_sensitive_names_other_than_key": launch.environment.keys.filter { $0 != keyVariable && ConversionCredential.isSensitiveVariable($0) },
         ]
         if let proposal {
             evidence["outcome"] = "proposal"
