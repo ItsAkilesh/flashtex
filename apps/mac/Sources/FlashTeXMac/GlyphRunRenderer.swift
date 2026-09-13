@@ -142,19 +142,26 @@ struct V2PreparedPage: @unchecked Sendable {
     enum Item {
         case rule(CGRect, RenderingV2.Paint)
         case run(Run)
+        /// display-list-v2-images: a verified, decoded image (V2ImageStore.swift).
+        case image(V2PreparedImage)
     }
     var number: Int
     var widthPt: Double
     var heightPt: Double
     var items: [Item]
     var glyphCount: Int
+    /// Image items on this page whose bytes were refused (stale hash/length,
+    /// symlink, unreadable, no project root): one notice per path, in item
+    /// order. The item painted nothing; the page is otherwise complete.
+    var imageNotices: [String] = []
+    var imageCount = 0
     /// Per source path, the lowest `start_byte` and highest `end_byte` over
     /// every cluster source on the page: a caret byte outside this range
     /// matches no cluster (`V2Geometry.clusters(containing:)`), so the pane
     /// skips the cluster walk for pages that cannot contain it.
     var sourceBounds: [String: ClosedRange<Int>]
 
-    init(page: RenderingV2.Page, fonts: [String: V2FontStore.ResolvedFont]) throws {
+    init(page: RenderingV2.Page, fonts: [String: V2FontStore.ResolvedFont], images: V2ImageStore = .shared) throws {
         let heightPt = page.heightPt
         number = page.number
         widthPt = page.widthPt
@@ -172,6 +179,15 @@ struct V2PreparedPage: @unchecked Sendable {
             case .rule(let r):
                 let rect = GlyphRunRenderer.pdfRect(x: r.x, top: r.top, width: r.width, height: r.height, pageHeight: heightPt)
                 items.append(.rule(CGRect(x: q(rect.origin.x), y: q(rect.origin.y), width: q(rect.width), height: q(rect.height)), r.paint))
+            case .image(let i):
+                // A refused image is NOT a frame failure (proposal §1.3): the
+                // item is dropped, the notice kept, everything else paints.
+                do {
+                    items.append(.image(V2PreparedImage(item: i, resolved: try images.resolve(i.image), pageHeight: heightPt)))
+                    imageCount += 1
+                } catch let refusal as V2ImageStore.Refusal {
+                    if !imageNotices.contains(refusal.notice) { imageNotices.append(refusal.notice) }
+                }
             case .glyphRun(let run):
                 guard let font = fonts[run.fontId] else {
                     throw RenderingV2.ValidationError(code: "invalid_resource", message: "page \(page.number): font resource '\(run.fontId)' did not resolve")
@@ -239,6 +255,9 @@ struct V2Frame: @unchecked Sendable {
     var pageTokens: [String] = []
     /// Pages taken from `V2PageCache` instead of being decoded and prepared.
     var reusedPages = 0
+    /// Refused image items over every page, deduplicated by notice text
+    /// (`V2PreparedPage.imageNotices`); shown by the pane as a non-modal line.
+    var imageNotices: [String] { var seen: [String] = []; for p in prepared { for n in p.imageNotices where !seen.contains(n) { seen.append(n) } }; return seen }
     /// Distinct for every `prepare` call: identifies this frame instance,
     /// independent of the envelope id or file.
     var preparedNonce: UInt64 = V2Frame.nextNonce()
@@ -249,7 +268,7 @@ struct V2Frame: @unchecked Sendable {
 
     /// Resolves every font referenced by a glyph run and prepares every page;
     /// the first failure aborts (no partial frame). Pure: safe off-main.
-    static func prepare(_ envelope: RenderingV2.Envelope, store: V2FontStore = .shared) throws -> V2Frame {
+    static func prepare(_ envelope: RenderingV2.Envelope, store: V2FontStore = .shared, images: V2ImageStore = .shared) throws -> V2Frame {
         var referenced: [String] = []
         for page in envelope.payload.pages {
             for case .glyphRun(let run) in page.items where !referenced.contains(run.fontId) { referenced.append(run.fontId) }
@@ -261,7 +280,7 @@ struct V2Frame: @unchecked Sendable {
             }
             fonts[id] = try store.resolve(resource)
         }
-        let prepared = try envelope.payload.pages.map { try V2PreparedPage(page: $0, fonts: fonts) }
+        let prepared = try envelope.payload.pages.map { try V2PreparedPage(page: $0, fonts: fonts, images: images) }
         let nonce = V2Frame.nextNonce()
         return V2Frame(id: envelope.id, list: envelope.payload, fonts: fonts, prepared: prepared,
                        pageTokens: prepared.map { "page\($0.number)#\(nonce)" }, preparedNonce: nonce)
@@ -306,6 +325,10 @@ enum GlyphRunRenderer {
                 ctx.beginPath()
                 ctx.addRect(rect)
                 ctx.fillPath()
+            case .image(let image):
+                // Never inverted for the dark preview: photographs and figures
+                // keep their own colors; only the page ground changes.
+                image.draw(in: ctx)
             case .run(let run):
                 ctx.setFillColor(color(run.paint, dark: dark))
                 if glyphByGlyph {
@@ -505,6 +528,13 @@ enum V2Geometry {
                     if let rect = c.hitRects.last(where: { $0.contains(x: x, y: y) }) {
                         return Hit(itemIndex: index, clusterIndex: ci, text: run.clusterText(ci), sources: c.sources ?? [], syntheticReason: c.syntheticReason, rect: rect)
                     }
+                }
+            case .image(let i):
+                // Proposal §3: selection ignores images; a click on the box
+                // navigates to the \includegraphics command it names.
+                let rect = RenderingV2.Rect(x: i.x, top: i.top, width: i.width, height: i.height)
+                if rect.contains(x: x, y: y) {
+                    return Hit(itemIndex: index, clusterIndex: nil, text: nil, sources: i.sources ?? [], syntheticReason: i.syntheticReason, rect: rect)
                 }
             }
         }

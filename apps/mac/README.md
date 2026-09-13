@@ -1018,6 +1018,33 @@ not replace, negotiate, or change the v1 path.
   result paint first and stay the product preview. Old producers ignore the capability;
   the pane never requests it while hidden. The preview-controller (helper) route does not
   forward the line yet.
+- Images (`display-list-v2-images`, `protocol/proposals/display-list-v2-image.md`,
+  consumer co-signed): `setLiveV2` requests `display-list-v2-images` alongside
+  `display-list-v2` and the compile request carries `project_root` (the open project's
+  directory) so the producer can size `\includegraphics{…}` files (png/jpeg/pdf, inside
+  `figure`/`table` floats). Image items (`kind: "image"`: tick box, unit-square
+  `transform`, `image{image_id = sha256, byte_length, format, path, pixel dims | pdf_page/
+  pdf_box/pdf_rotate}`) are decoded by both readers and validated like rules
+  (`RenderingV2.validateImageResource`; unknown fields tolerated). Bytes are NOT on the
+  line: `V2ImageStore` (V2ImageStore.swift) reads `path` under the project root with the
+  same rooted, symlink-refusing rule as the project-files helper
+  (`ProjectDocuments.rootedFile`; the helper's `read` is text-only, so binary assets take
+  the rooted local read), verifies `byte_length` and SHA-256 before decoding, and caches
+  by `image_id`. A mismatch refuses that item only: the frame is kept, the item paints
+  nothing, and the pane header shows one non-modal notice per path ("stale image:
+  figures/plot.png"; "image unavailable: …: a.png is a symbolic link" / "no project root").
+  PNG/JPEG paint through `CGImage`, PDF pages through `CGPDFDocument` with the producer's
+  `pdf_box`/`pdf_rotate` mapped onto the unit square (`V2PreparedImage.pageToUnit`), all
+  clipped to the tick box and placed by the item's transform (`[a, −b, c, −d, e, H − f]`
+  in PDF space), in the preview bitmap and in the CoreGraphics `Export PDF (v2)…` alike.
+  A click on the box navigates to the `\includegraphics` command; selection ignores
+  images. `V2PageCache` keys on the image root too, so a page prepared under another root
+  (or with no root) is never reused. Gap: `flashtex-pdf-exact from-v2` (crates/pdf,
+  Commander-owned) still refuses image items ("glyph_run and rule only"), so the exact
+  export of a frame with images fails naming the item; use `Export PDF (v2)…` for those.
+  Tests: `V2ImageTests` (generated PNG/JPEG/PDF fixtures, stale-hash and symlink
+  refusals, rotated PDF box, cache keying, request wiring, and a `FLASHTEX_RENDER`-gated
+  round trip through the real producer with `project_root`).
 - Input, file: a `display_list` JSON envelope written by `flashtex-render --v2 out.json`.
   Open it with `File > Open Display List (v2)…`, or launch with `FLASHTEX_V2_FILE=<json>`
   (`FLASHTEX_PREVIEW_V2=1` starts with the toolbar toggle on). The toolbar's

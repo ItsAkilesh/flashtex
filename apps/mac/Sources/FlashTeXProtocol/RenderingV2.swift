@@ -71,8 +71,19 @@ public enum RenderingV2 {
         public static let fontByteLength: ClosedRange<Int64> = 1...67_108_864
         public static let documentByteLength: ClosedRange<Int64> = 0...8_388_608
     }
-    /// Features this consumer understands (schema `feature` enum).
-    public static let knownFeatures: Set<String> = ["glyph_run", "rule", "static-truetype", "rgba-srgb", "cluster-actualtext"]
+    /// Features this consumer understands (schema `feature` enum, plus
+    /// `image` from the negotiated `display-list-v2-images` proposal —
+    /// protocol/proposals/display-list-v2-image.md; a producer only emits it
+    /// when the request listed `imagesCapability`).
+    public static let knownFeatures: Set<String> = ["glyph_run", "rule", "static-truetype", "rgba-srgb", "cluster-actualtext", "image"]
+    /// Layout capability that lets the `display_list` line carry `image`
+    /// items (accepted only alongside `display-list-v2`).
+    public static let imagesCapability = "display-list-v2-images"
+    /// Image formats the consumer can paint (proposal §3).
+    public static let imageFormats: Set<String> = ["png", "jpeg", "pdf"]
+    /// Upper bound on an image resource's byte length (bytes are read from
+    /// the project, so this bounds one read and one cache entry).
+    public static let maxImageByteLength: Int64 = 256 << 20
     /// Font formats whose bytes this consumer can paint from.
     public static let paintableFontFormats: Set<String> = ["static-truetype", "opentype-cff"]
     /// Formats the pipeline may declare that carry no program (never paintable).
@@ -164,11 +175,60 @@ public enum RenderingV2 {
         }
     }
 
+    /// One `\includegraphics` file as the producer sized it (proposal §3).
+    /// Bytes are NOT on the wire: the consumer reads `path` through the rooted
+    /// project reader and must refuse bytes whose SHA-256/length differ.
+    public struct ImageResource: Codable, Equatable {
+        public var imageId: String
+        public var sha256: String
+        public var byteLength: Int64
+        /// `png`, `jpeg` or `pdf`.
+        public var format: String
+        /// Project-relative, as resolved (extension search applied).
+        public var path: String
+        /// png/jpeg only.
+        public var pixelWidth: Int?
+        public var pixelHeight: Int?
+        /// pdf only: 1-based page, `[llx, lly, urx, ury]` in points, `/Rotate`.
+        public var pdfPage: Int?
+        public var pdfBox: [Double]?
+        public var pdfRotate: Int?
+        enum CodingKeys: String, CodingKey {
+            case imageId = "image_id", sha256, byteLength = "byte_length", format, path
+            case pixelWidth = "pixel_width", pixelHeight = "pixel_height", pdfPage = "pdf_page", pdfBox = "pdf_box", pdfRotate = "pdf_rotate"
+        }
+        public init(imageId: String, sha256: String, byteLength: Int64, format: String, path: String,
+                    pixelWidth: Int? = nil, pixelHeight: Int? = nil, pdfPage: Int? = nil, pdfBox: [Double]? = nil, pdfRotate: Int? = nil) {
+            self.imageId = imageId; self.sha256 = sha256; self.byteLength = byteLength; self.format = format; self.path = path
+            self.pixelWidth = pixelWidth; self.pixelHeight = pixelHeight; self.pdfPage = pdfPage; self.pdfBox = pdfBox; self.pdfRotate = pdfRotate
+        }
+    }
+
+    /// `kind: "image"`: the bounding box on the page (ticks, exact geometry,
+    /// clip to it) and the affine `transform` `[a, b, c, d, e, f]` mapping the
+    /// image's unit square (u right, v up, origin lower-left) to page points
+    /// with y down: `page_x = e + a·u + c·v`, `page_y = f + b·u + d·v`.
+    public struct Image: Codable, Equatable {
+        public var x: Int64, top: Int64, width: Int64, height: Int64
+        public var transform: [Double]
+        public var image: ImageResource
+        public var sources: [SourceRange]?
+        public var syntheticReason: String?
+        enum CodingKeys: String, CodingKey { case x, top, width, height, transform, image, sources, syntheticReason = "synthetic_reason" }
+        public init(x: Int64, top: Int64, width: Int64, height: Int64, transform: [Double], image: ImageResource, sources: [SourceRange]?, syntheticReason: String? = nil) {
+            self.x = x; self.top = top; self.width = width; self.height = height; self.transform = transform; self.image = image
+            self.sources = sources; self.syntheticReason = syntheticReason
+        }
+        /// The unrotated transform for a box at `(x, top, w, h)` points: `[w, 0, 0, -h, x, top + h]`.
+        public static func upright(x: Double, top: Double, width: Double, height: Double) -> [Double] { [width, 0, 0, -height, x, top + height] }
+    }
+
     /// Paint-ordered page item. Decoding an unknown `kind` throws
     /// `ValidationError.unknownItemKind`: nothing is skipped silently.
     public enum Item: Codable, Equatable {
         case glyphRun(GlyphRun)
         case rule(Rule)
+        case image(Image)
 
         private enum KindKey: String, CodingKey { case kind }
 
@@ -177,6 +237,7 @@ public enum RenderingV2 {
             switch kind {
             case "glyph_run": self = .glyphRun(try GlyphRun(from: decoder))
             case "rule": self = .rule(try Rule(from: decoder))
+            case "image": self = .image(try Image(from: decoder))
             default: throw ValidationError(code: "unknown_item_kind", message: "display list item kind '\(kind)' is not supported by this consumer")
             }
         }
@@ -186,6 +247,7 @@ public enum RenderingV2 {
             switch self {
             case .glyphRun(let r): try kind.encode("glyph_run", forKey: .kind); try r.encode(to: encoder)
             case .rule(let r): try kind.encode("rule", forKey: .kind); try r.encode(to: encoder)
+            case .image(let i): try kind.encode("image", forKey: .kind); try i.encode(to: encoder)
             }
         }
     }
@@ -436,6 +498,17 @@ public enum RenderingV2 {
                     }
                     try validatePaint(r.paint, at)
                     try validateProvenance(sources: r.sources, synthetic: r.syntheticReason, documents: documents, at)
+                case .image(let i):
+                    usedFeatures.insert("image")
+                    guard isTick(i.x), isTick(i.top), isPositiveTick(i.width), isPositiveTick(i.height),
+                          isTick(i.x &+ i.width), isTick(i.top &+ i.height), isTick(page.height &- i.top &- i.height) else {
+                        throw fail("invalid_display_list", "\(at): image needs positive width/height and exact-range coordinates")
+                    }
+                    guard i.transform.count == 6, i.transform.allSatisfy(\.isFinite) else {
+                        throw fail("invalid_display_list", "\(at): image transform must be six finite numbers [a, b, c, d, e, f]")
+                    }
+                    try validateImageResource(i.image, at)
+                    try validateProvenance(sources: i.sources, synthetic: i.syntheticReason, documents: documents, at)
                 case .glyphRun(let run):
                     usedFeatures.insert("glyph_run")
                     guard let font = fontsById[run.fontId] else { throw fail("invalid_resource", "\(at): font resource '\(run.fontId)' is not declared in fonts") }
@@ -536,6 +609,31 @@ public enum RenderingV2 {
 
     private static func isBoundary(_ bytes: [UInt8], _ i: Int) -> Bool {
         i == bytes.count || (i >= 0 && i < bytes.count && (bytes[i] & 0xC0) != 0x80)
+    }
+
+    /// Proposal §3 resource shape: `image_id` is the SHA-256, a bounded
+    /// positive byte length, a known format, a project-relative path, pixel
+    /// dimensions for raster formats and a page/box/rotation for PDF.
+    static func validateImageResource(_ r: ImageResource, _ at: String) throws {
+        func fail(_ m: String) -> ValidationError { ValidationError(code: "invalid_resource", message: "\(at): image resource \(m)") }
+        guard isHex64(r.sha256) else { throw fail("sha256 is not 64 lowercase hex digits") }
+        guard r.imageId == r.sha256 else { throw fail("image_id '\(r.imageId)' must equal sha256") }
+        guard r.byteLength >= 1, r.byteLength <= maxImageByteLength else { throw fail("byte_length \(r.byteLength) is outside 1...\(maxImageByteLength)") }
+        guard imageFormats.contains(r.format) else {
+            throw ValidationError(code: "unsupported_feature", message: "\(at): image format '\(r.format)' is not supported (\(imageFormats.sorted().joined(separator: ", ")))")
+        }
+        guard isProjectPath(r.path) else { throw fail("path '\(r.path)' must be project-relative: no empty, '.' or '..' components, no backslash, colon or NUL") }
+        if r.format == "pdf" {
+            guard let page = r.pdfPage, page >= 1, page <= 100_000 else { throw fail("pdf_page must be a positive page number") }
+            guard let box = r.pdfBox, box.count == 4, box.allSatisfy(\.isFinite), box[2] > box[0], box[3] > box[1] else {
+                throw fail("pdf_box must be [llx, lly, urx, ury] with positive extent")
+            }
+            guard [0, 90, 180, 270].contains(r.pdfRotate ?? 0) else { throw fail("pdf_rotate must be 0, 90, 180 or 270") }
+        } else {
+            guard let w = r.pixelWidth, let h = r.pixelHeight, w >= 1, h >= 1, w <= 1 << 20, h <= 1 << 20 else {
+                throw fail("pixel_width/pixel_height must be positive for \(r.format)")
+            }
+        }
     }
 
     private static func validatePaint(_ p: Paint, _ at: String) throws {

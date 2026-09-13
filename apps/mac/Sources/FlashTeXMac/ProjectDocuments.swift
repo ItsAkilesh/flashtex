@@ -1281,7 +1281,7 @@ final class ProjectDocuments {
 
     /// `<root>/<path>` when every component stays under `root` with no
     /// symlink on the way (the same refusal the rooted helper applies).
-    static func rootedFile(_ path: String, under root: URL) -> Rooted {
+    nonisolated static func rootedFile(_ path: String, under root: URL) -> Rooted {
         let rootResolved = root.resolvingSymlinksInPath().standardizedFileURL
         var url = rootResolved
         let fm = FileManager.default
