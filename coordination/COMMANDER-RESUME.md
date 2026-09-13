@@ -52,10 +52,24 @@ https://flash-tex.github.io/flashtex/ plus user docs (parent is doing this now).
   ("Instruction Poisoning"); the claim, assignments and this checkpoint were
   prepared on disk in `wt-commander` for the parent to commit/push non-force to
   main and to post GH2. No push was attempted; no paid calls were made.
-- **Next three actions:** (1) parent commits/pushes the claim + queue and posts the
-  GH2 claim comment (base ad71b648); (2) integrate PR #42/#53 after running the 15
-  corpus checks in a fresh worktree; (3) reread GH2 for fresh machine reports and
-  ACKs, then advance revisions from delivered evidence.
+- **Ready for main (reported 03:40Z by the parent):** `agent/mac-claude-a/mac-shell`
+  @ 78d105b0 on top of ad71b648 — user docs (`docs/user/*`), CI/CD
+  (`.github/workflows/ci.yml` + `release.yml`, `scripts/ci/*`, `make-app.sh --version`,
+  `docs/ci-cd.md`, `flashtex-render --tex FILE`), `\mathbb` from bundled
+  NewCMMath-Regular.otf (GUST license), and the launch fix so the bundled app
+  attaches flashtex-render. Evidence: render-pipeline 84/84, Mac filters 47/47 +
+  build, build-helpers.sh end to end. Integrate as a MERGE (not a rebase). Known
+  pre-existing red on main's mac-app CI job: 5 EditorDiagnostics tests assert HW1
+  >= 100 diagnostics with the old compiler (lane mac-suite-repair-2 fixing) and the
+  iPad Keychain simulator test. User directive: the manual v0.1.1 release path is
+  replaced by release.yml; next tag `v0.2.0` once CI is green. This delivers most of
+  FT-055; advance it to r2 (remaining: CI green, v0.2.0 tag, site auto-update proof).
+- **Next three actions:** (1) parent pushes claim commit 09b5085d to main non-force
+  (reread authority first) and posts the GH2 claim comment (base ad71b648);
+  (2) merge 78d105b0 into main after a fresh `cargo test --release` in
+  crates/render-pipeline and `swift build` in apps/mac, then PR #42/#53 after the
+  15 corpus checks; (3) reread GH2 for fresh machine reports and ACKs, then advance
+  revisions from delivered evidence.
 
 Everything below this section is historical context from earlier Commanders.
 
