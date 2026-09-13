@@ -1,5 +1,5 @@
 {
- "passed": 29,
+ "passed": 33,
  "total": 36,
  "tolerance_bp": 0.5,
  "fixtures": [
@@ -109,43 +109,29 @@
   },
   {
    "fixture": "09-long-equation-number-below",
-   "pass": false,
-   "pages": [
-    1,
-    1
-   ],
-   "aligned": 36,
-   "within_tol": 5,
-   "unaligned": 17,
-   "worst_bp": 70.626,
-   "sample": [
-    "p1 '+a' dx +12.05 dy +0.00",
-    "p1 '+a' dx +16.24 dy +0.00",
-    "p1 '+a' dx +20.42 dy +0.00",
-    "p1 '+a' dx +24.61 dy +0.00",
-    "p1 '+a' dx +28.79 dy +0.00",
-    "p1 '+a' dx +32.97 dy +0.00"
-   ]
-  },
-  {
-   "fixture": "10-long-equation-leqno-above",
-   "pass": false,
+   "pass": true,
    "pages": [
     1,
     1
    ],
    "aligned": 38,
-   "within_tol": 6,
-   "unaligned": 15,
-   "worst_bp": 70.626,
-   "sample": [
-    "p1 '+a' dx +12.06 dy +0.00",
-    "p1 '+a' dx +16.24 dy +0.00",
-    "p1 '+a' dx +20.42 dy +0.00",
-    "p1 '+a' dx +24.61 dy +0.00",
-    "p1 '+a' dx +28.79 dy +0.00",
-    "p1 '+a' dx +32.97 dy +0.00"
-   ]
+   "within_tol": 38,
+   "unaligned": 0,
+   "worst_bp": 0.003,
+   "sample": []
+  },
+  {
+   "fixture": "10-long-equation-leqno-above",
+   "pass": true,
+   "pages": [
+    1,
+    1
+   ],
+   "aligned": 38,
+   "within_tol": 38,
+   "unaligned": 0,
+   "worst_bp": 0.002,
+   "sample": []
   },
   {
    "fixture": "11-dollars-short",
@@ -232,31 +218,26 @@
     1,
     1
    ],
-   "aligned": 13,
-   "within_tol": 13,
-   "unaligned": 6,
-   "worst_bp": 0.005,
-   "sample": []
+   "aligned": 16,
+   "within_tol": 15,
+   "unaligned": 0,
+   "worst_bp": 0.784,
+   "sample": [
+    "p1 '(2.1).' dx -0.78 dy +0.00"
+   ]
   },
   {
    "fixture": "18-subequations",
-   "pass": false,
+   "pass": true,
    "pages": [
     1,
     1
    ],
-   "aligned": 19,
-   "within_tol": 5,
-   "unaligned": 10,
-   "worst_bp": 18.821,
-   "sample": [
-    "p1 'a' dx +0.00 dy -11.95",
-    "p1 '=' dx -0.00 dy -11.95",
-    "p1 'b' dx -0.00 dy -11.95",
-    "p1 'c' dx +0.00 dy -11.95",
-    "p1 '=' dx -0.00 dy -11.95",
-    "p1 'd' dx -0.00 dy -11.95"
-   ]
+   "aligned": 24,
+   "within_tol": 24,
+   "unaligned": 0,
+   "worst_bp": 0.109,
+   "sample": []
   },
   {
    "fixture": "19-itemize-display",
@@ -449,23 +430,16 @@
   },
   {
    "fixture": "33-wide-tag-shifts-formula",
-   "pass": false,
+   "pass": true,
    "pages": [
     1,
     1
    ],
-   "aligned": 40,
-   "within_tol": 7,
-   "unaligned": 4,
-   "worst_bp": 10.419,
-   "sample": [
-    "p1 'a' dx +0.94 dy +0.00",
-    "p1 '+' dx +1.42 dy +0.00",
-    "p1 'a' dx +1.89 dy +0.00",
-    "p1 '+' dx +2.37 dy +0.00",
-    "p1 'a' dx +2.84 dy +0.00",
-    "p1 '+' dx +3.32 dy +0.00"
-   ]
+   "aligned": 43,
+   "within_tol": 43,
+   "unaligned": 0,
+   "worst_bp": 0.004,
+   "sample": []
   },
   {
    "fixture": "34-parindent-medium-line",

@@ -1001,7 +1001,7 @@ pub fn adapt_cached(
                 let only_labels = parts
                     .iter()
                     .all(|p| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. }))));
-                if parts.is_empty() || only_labels {
+                if parts.is_empty() {
                     continue;
                 }
                 // A display environment inside a paragraph (no blank line or
@@ -1013,7 +1013,8 @@ pub fn adapt_cached(
                 let first_span = inlines.iter().map(inline_span).next();
                 let starts_display = matches!(parts.first(), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
                 if let (Some(Block::Paragraph { parts: prev_parts, style: prev_style, list: prev_list, .. }), Some(f), Some(p)) = (blocks.last_mut(), first_span, prev_para_end) {
-                    let label_only = |p: &ParaPart| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. })));
+                    // Labels only, or a `label_line` (labels then one space).
+                    let label_only = |p: &ParaPart| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. } | Item::Space { .. })));
                     // A display's `\label` is flushed after it as a part of
                     // labels only.
                     let prev_ends_display = matches!(prev_parts.iter().rev().find(|p| !label_only(p)), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
@@ -1032,10 +1033,29 @@ pub fn adapt_cached(
                         && !caption
                         && env_open.is_none();
                     if same_flow && (starts_display || prev_ends_display) && gap_continues(texts, p, f) {
+                        if only_labels {
+                            // A `\label` outside the display, still in the
+                            // paragraph's horizontal mode (`\begin{subequations}
+                            // \label{..}`): a whatsit TeX sets on a line of its
+                            // own when a display or the paragraph end follows.
+                            // Kept as a `label_line` (labels, then one space)
+                            // that text following it absorbs below.
+                            let mut items: Vec<Item> = parts
+                                .into_iter()
+                                .flat_map(|p| match p {
+                                    ParaPart::Lines(items) => items,
+                                    _ => Vec::new(),
+                                })
+                                .collect();
+                            items.push(Item::Space { style: TextStyle::default(), factor: 1000, no_break: false });
+                            prev_parts.push(ParaPart::Lines(items));
+                            prev_para_end = inlines.iter().map(inline_span).last().or(prev_para_end);
+                            continue;
+                        }
                         if matches!(parts.first(), Some(ParaPart::Lines(_))) && prev_parts.last().is_some_and(label_only) {
                             if let (Some(ParaPart::Lines(labels)), Some(ParaPart::Lines(head))) = (prev_parts.pop(), parts.first_mut()) {
                                 let at = usize::from(matches!(head.first(), Some(Item::Space { .. })));
-                                head.splice(at..at, labels);
+                                head.splice(at..at, labels.into_iter().filter(|i| matches!(i, Item::Label { .. })));
                             }
                         }
                         prev_parts.extend(parts);
@@ -1043,6 +1063,9 @@ pub fn adapt_cached(
                         after_heading = false;
                         continue;
                     }
+                }
+                if only_labels {
+                    continue;
                 }
                 prev_para_end = inlines.iter().map(inline_span).last();
                 // `\noindent` right before the paragraph's first material.
