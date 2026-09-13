@@ -56,9 +56,24 @@ pub const FIXTURES: &[&str] = &[
     "30-report-twoside-openright",
     "31-article-maketitle-headings",
     "32-article-maketitle-empty",
+    "33-article-maketitle-and",
+    "34-article-maketitle-author-lines-nodate",
+    "35-article-maketitle-thanks",
+    "36-article-titlepage",
+    "37-report-maketitle",
+    "38-book-maketitle",
+    "39-report-notitlepage",
+    "40-article-twocolumn-maketitle",
+    "41-article-11pt-twoside-maketitle-nodate",
+    "42-article-12pt-maketitle-long-title",
+    "43-book-frontmatter-mainmatter-backmatter",
+    "44-article-twoside-titlepage",
 ];
 
-const MAKETITLE_Y_UNGATED: &[&str] = &["31-article-maketitle-headings", "32-article-maketitle-empty"];
+/// `\thanks` footnotes (marks and the page-bottom `\footins` material)
+/// are not implemented: the first page's text area and glue differ, so
+/// body baselines there are reported, not gated.
+const MAKETITLE_Y_UNGATED: &[&str] = &["35-article-maketitle-thanks"];
 
 #[derive(Debug, Clone)]
 struct W {
@@ -335,9 +350,9 @@ fn page_frame_against_pdflatex() {
         if r.chrome_ok != r.chrome_total || r.rules_ok != r.rules_total || r.edge_ok != r.edge_total {
             failures.push(format!("{}\n  {}", summary(name, &r), r.chrome_fail.iter().chain(&r.rules_fail).chain(&r.edge_fail).take(6).cloned().collect::<Vec<_>>().join("\n  ")));
         }
-        // `\@maketitle`'s `\vskip`s (2em, 1.5em, 1em, 1.5em) and tabular
-        // author block are not implemented: body baselines below the title
-        // are reported, not gated (chrome, edges and x still are).
+        // `\thanks` (fixture 35): its footnote marks and `\footins` text are
+        // not implemented, so body baselines there are reported, not gated
+        // (chrome, edges and x still are).
         let y_gated = !MAKETITLE_Y_UNGATED.contains(&name);
         if r.lines_x_ok != r.lines_matched || (y_gated && r.lines_y_ok != r.lines_y_checked) {
             failures.push(format!("{}\n  {}", summary(name, &r), r.lines_fail.iter().take(6).cloned().collect::<Vec<_>>().join("\n  ")));
