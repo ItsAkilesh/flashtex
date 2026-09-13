@@ -39,6 +39,13 @@
 //!   cluster's text); a glyph seen with two different texts keeps the first
 //!   and the report says so. Marked-content `/ActualText` is outside the
 //!   bounded operator set.
+//! - `image` items (`display-list-v2-images`,
+//!   `protocol/proposals/display-list-v2-image.md`) need
+//!   a project root ([`from_v2_rooted`]): the file is read under it without following
+//!   links, its length and SHA-256 must match the item, and PNG/JPEG become
+//!   image XObjects and PDF pages form XObjects the way pdfTeX 1.40.29 writes
+//!   them (`crate::images`). Placement is `q [a -b c -d e H-f] cm … /ImN Do Q`
+//!   with the item's own decimals. One XObject per distinct (bytes, page).
 //!
 //! Everything unsupported is an error naming the item; nothing is dropped.
 
@@ -46,6 +53,7 @@ use crate::exact::{
     Content, Decimal, ExactDocument, ExactFont, ExactPage, GlyphRun, Op, PlacedGlyph, Ratio,
     SubsetOutcome,
 };
+use crate::images::{self, Geometry};
 use crate::json::{self, Value};
 use crate::sha256;
 use crate::truetype::TrueTypeFont;
@@ -79,6 +87,19 @@ pub struct V2Options {
     pub font_dirs: Vec<PathBuf>,
 }
 
+/// One distinct image resource (same bytes and PDF page) in first-use order.
+struct ImageRequest {
+    first_item: String,
+    path: String,
+    sha256: String,
+    byte_length: u64,
+    format: String,
+    page: u32,
+    pixels: Option<(f64, f64)>,
+    pdf_box: Option<[f64; 4]>,
+    pdf_rotate: Option<f64>,
+}
+
 /// One embedded font, for the report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FontNote {
@@ -100,6 +121,10 @@ pub struct V2Report {
     pub glyphs: usize,
     pub runs: usize,
     pub rules: usize,
+    /// Image items placed (`q … cm /ImN Do Q`).
+    pub images: usize,
+    /// Distinct image XObjects embedded.
+    pub image_resources: usize,
     /// Glyphs that continued the previous string at the natural advance.
     pub joined_glyphs: usize,
     /// Glyphs that continued the previous segment with an exact `TJ`
@@ -305,6 +330,18 @@ pub fn font_dirs(options: &V2Options) -> Vec<PathBuf> {
 
 /// Builds the exact document from a rendering-v2 `display_list` envelope.
 pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2Report), String> {
+    from_v2_rooted(envelope, options, None)
+}
+
+/// [`from_v2`] with the absolute project directory `image` item paths
+/// resolve under (`display-list-v2-images`); `None` refuses every image
+/// item. A separate entry point keeps [`V2Options`] (built with a struct
+/// literal by `crates/rendering-core`) unchanged.
+pub fn from_v2_rooted(
+    envelope: &str,
+    options: &V2Options,
+    project_root: Option<&Path>,
+) -> Result<(ExactDocument, V2Report), String> {
     if envelope.len() > MAX_ENVELOPE_BYTES {
         return Err("envelope larger than 256 MiB".into());
     }
@@ -397,7 +434,14 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
             glyphs: Vec<Glyph>,
         },
         Ops(Vec<Op>),
+        Image {
+            index: usize,
+            transform: [f64; 6],
+            height_ticks: i128,
+        },
     }
+    let mut image_requests: Vec<ImageRequest> = Vec::new();
+    let mut image_index: BTreeMap<(String, u32), usize> = BTreeMap::new();
     let mut pages_ops: Vec<(Decimal, Decimal, Vec<Pending>, BTreeSet<String>)> = Vec::new();
     for (pi, pv) in arr(p.get("pages"), "payload.pages")?.iter().enumerate() {
         let what = format!("payload.pages[{pi}]");
@@ -535,9 +579,106 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
                     report.rules += 1;
                     items.push(Pending::Ops(ops));
                 }
+                "image" => {
+                    let w = ticks(iv.get("width"), &format!("{iw}.width"))?;
+                    let h = ticks(iv.get("height"), &format!("{iw}.height"))?;
+                    if w <= 0 || h <= 0 {
+                        return Err(format!("{iw}: image box {w}x{h} ticks is not positive"));
+                    }
+                    let t = arr(iv.get("transform"), &format!("{iw}.transform"))?;
+                    if t.len() != 6 {
+                        return Err(format!(
+                            "{iw}.transform: expected 6 numbers, found {}",
+                            t.len()
+                        ));
+                    }
+                    let mut transform = [0.0; 6];
+                    for (k, v) in t.iter().enumerate() {
+                        let n = f(Some(v), &format!("{iw}.transform[{k}]"))?;
+                        if !n.is_finite() || n.abs() > 1.0e7 {
+                            return Err(format!("{iw}.transform[{k}]: {n} is out of range"));
+                        }
+                        transform[k] = n;
+                    }
+                    let im = iv
+                        .get("image")
+                        .ok_or_else(|| format!("{iw}: image item without an image resource"))?;
+                    let what = format!("{iw}.image");
+                    let sha = s(im.get("sha256"), &format!("{what}.sha256"))?;
+                    if sha.len() != 64
+                        || !sha.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                    {
+                        return Err(format!(
+                            "{what}.sha256: {sha:?} is not 64 lowercase hex digits"
+                        ));
+                    }
+                    if let Some(id) = im.get("image_id").and_then(Value::as_str)
+                        && id != sha
+                    {
+                        return Err(format!("{what}: image_id {id} differs from sha256 {sha}"));
+                    }
+                    let byte_length = f(im.get("byte_length"), &format!("{what}.byte_length"))?;
+                    if byte_length.fract() != 0.0 || !(0.0..=9.0e15).contains(&byte_length) {
+                        return Err(format!(
+                            "{what}.byte_length: {byte_length} is not a byte count"
+                        ));
+                    }
+                    let format = s(im.get("format"), &format!("{what}.format"))?;
+                    if !matches!(format, "png" | "jpeg" | "pdf") {
+                        return Err(format!("{what}.format: {format:?} is not png, jpeg or pdf"));
+                    }
+                    let path = s(im.get("path"), &format!("{what}.path"))?;
+                    let page = if format == "pdf" {
+                        let n = f(im.get("pdf_page"), &format!("{what}.pdf_page"))?;
+                        if n.fract() != 0.0 || !(1.0..=1.0e6).contains(&n) {
+                            return Err(format!("{what}.pdf_page: {n} is not a page number"));
+                        }
+                        n as u32
+                    } else {
+                        0
+                    };
+                    let key = (sha.to_string(), page);
+                    let index = match image_index.get(&key) {
+                        Some(&i) => i,
+                        None => {
+                            let num = |k: &str| im.get(k).and_then(Value::as_f64);
+                            let pdf_box = match im.get("pdf_box").and_then(Value::as_array) {
+                                Some(b) if b.len() == 4 => {
+                                    let mut v = [0.0; 4];
+                                    for (k, x) in b.iter().enumerate() {
+                                        v[k] = f(Some(x), &format!("{what}.pdf_box[{k}]"))?;
+                                    }
+                                    Some(v)
+                                }
+                                Some(_) => {
+                                    return Err(format!("{what}.pdf_box: expected 4 numbers"));
+                                }
+                                None => None,
+                            };
+                            image_requests.push(ImageRequest {
+                                first_item: iw.clone(),
+                                path: path.to_string(),
+                                sha256: sha.to_string(),
+                                byte_length: byte_length as u64,
+                                format: format.to_string(),
+                                page,
+                                pixels: num("pixel_width").zip(num("pixel_height")),
+                                pdf_box,
+                                pdf_rotate: num("pdf_rotate"),
+                            });
+                            image_index.insert(key, image_requests.len() - 1);
+                            image_requests.len() - 1
+                        }
+                    };
+                    items.push(Pending::Image {
+                        index,
+                        transform,
+                        height_ticks: height,
+                    });
+                }
                 other => {
                     return Err(format!(
-                        "{iw}: item kind {other:?} is not supported by the exact route (glyph_run and rule only)"
+                        "{iw}: item kind {other:?} is not supported by the exact route (glyph_run, rule and image only)"
                     ));
                 }
             }
@@ -653,6 +794,71 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
         exact_fonts.insert(entry.resource.clone(), exact);
     }
 
+    // Pass 2b: read, verify and convert the images (first-use order: Im1, Im2, …).
+    let mut exact_images: BTreeMap<String, images::ImageXObject> = BTreeMap::new();
+    let mut image_names: Vec<String> = Vec::with_capacity(image_requests.len());
+    if !image_requests.is_empty() {
+        let root = project_root.ok_or_else(|| {
+            format!(
+                "{}: image {:?} needs a project root (from_v2_rooted, --project-root DIR); images are read only under it",
+                image_requests[0].first_item, image_requests[0].path
+            )
+        })?;
+        for (n, r) in image_requests.iter().enumerate() {
+            let name = format!("Im{}", n + 1);
+            let fail = |e: String| format!("{}: image {:?}: {e}", r.first_item, r.path);
+            let bytes =
+                images::read_verified(root, &r.path, r.byte_length, &r.sha256).map_err(fail)?;
+            let x = match r.format.as_str() {
+                "png" => images::from_png(&bytes),
+                "jpeg" => images::from_jpeg(&bytes),
+                _ => images::from_pdf_page(&bytes, r.page),
+            }
+            .map_err(fail)?;
+            match &x.geometry {
+                Geometry::Raster { width, height } => {
+                    if let Some((pw, ph)) = r.pixels
+                        && (pw != f64::from(*width) || ph != f64::from(*height))
+                    {
+                        return Err(fail(format!(
+                            "decoded {width}x{height} px, the display list sized {pw}x{ph} px"
+                        )));
+                    }
+                }
+                Geometry::Form { bbox, rotate } => {
+                    if let Some(b) = r.pdf_box {
+                        for (k, t) in bbox.iter().enumerate() {
+                            let v: f64 = t.parse().unwrap_or(f64::NAN);
+                            if !((v - b[k]).abs() <= 1.0e-3) {
+                                return Err(fail(format!(
+                                    "page box is [{}], the display list sized [{} {} {} {}]",
+                                    bbox.join(" "),
+                                    b[0],
+                                    b[1],
+                                    b[2],
+                                    b[3]
+                                )));
+                            }
+                        }
+                    }
+                    if let Some(rot) = r.pdf_rotate
+                        && rot != f64::from(*rotate)
+                    {
+                        return Err(fail(format!(
+                            "page /Rotate is {rotate}, the display list says {rot}"
+                        )));
+                    }
+                }
+            }
+            report
+                .notes
+                .push(format!("image /{name} {}: {}", r.path, x.summary));
+            exact_images.insert(name.clone(), x);
+            image_names.push(name);
+        }
+        report.image_resources = image_names.len();
+    }
+
     // Pass 3: finish the glyph runs now that advances are known.
     let mut pages = Vec::with_capacity(pages_ops.len());
     for (pi, (width, height, items, page_fonts)) in pages_ops.into_iter().enumerate() {
@@ -665,6 +871,17 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
             let (resource, size_ticks, rgb, glyphs) = match item {
                 Pending::Ops(o) => {
                     ops.extend(o);
+                    continue;
+                }
+                Pending::Image {
+                    index,
+                    transform,
+                    height_ticks,
+                } => {
+                    let name = &image_names[index];
+                    let unit = unit_to_pdf(&transform, height_ticks)?;
+                    ops.extend(exact_images[name].placement(name, unit)?);
+                    report.images += 1;
                     continue;
                 }
                 Pending::Run {
@@ -769,9 +986,74 @@ pub fn from_v2(envelope: &str, options: &V2Options) -> Result<(ExactDocument, V2
         ExactDocument {
             pages,
             fonts: exact_fonts,
+            images: exact_images,
         },
         report,
     ))
+}
+
+/// The display list's number as a PDF token: Rust's shortest round-trip
+/// decimal (never an exponent), e.g. `148.712`.
+fn json_decimal(v: f64) -> Result<Decimal, String> {
+    let s = format!("{}", v + 0.0);
+    Decimal::new(&s).map_err(|e| format!("transform value {v}: {e}"))
+}
+
+fn negate(d: &Decimal) -> Decimal {
+    let t = d.as_str();
+    let s = match t.strip_prefix('-') {
+        Some(rest) => rest.to_string(),
+        None if Ratio::from_decimal(d) == Ratio::int(0) => "0".to_string(),
+        None => format!("-{t}"),
+    };
+    Decimal::new(&s).expect("negated decimal token")
+}
+
+/// `ticks / 2^20 - f`, exactly: `f` has at most 18 fractional digits, so
+/// the result terminates within `20 + 18` digits.
+fn ticks_minus(ticks: i128, f: &Decimal) -> Result<Decimal, String> {
+    let t = f.as_str();
+    let (neg, body) = match t.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, t.strip_prefix('+').unwrap_or(t)),
+    };
+    let (int, frac) = body.split_once('.').unwrap_or((body, ""));
+    if frac.len() > 18 || int.len() > 18 {
+        return Err(format!("transform value {t} has too many digits"));
+    }
+    let digits = format!("{int}{frac}");
+    let mut m: i128 = if digits.is_empty() {
+        0
+    } else {
+        digits.parse().map_err(|_| format!("bad number {t}"))?
+    };
+    if neg {
+        m = -m;
+    }
+    let scale = 10i128.pow(frac.len() as u32);
+    let num = ticks * scale - m * TICKS_PER_BP;
+    Decimal::from_ratio(num, (TICKS_PER_BP * scale) as u128, 20 + frac.len())
+        .ok_or_else(|| format!("page height minus {t} does not terminate"))
+}
+
+/// The contract's transform (`page_x = e + a·u + c·v`, `page_y = f + b·u +
+/// d·v`, y down) as a `cm` in PDF's y-up page space: `[a, -b, c, -d, e, H - f]`
+/// (proposal §5.4). The operands are the display list's own decimals.
+pub fn unit_to_pdf(t: &[f64; 6], page_height_ticks: i128) -> Result<[Decimal; 6], String> {
+    let a = json_decimal(t[0])?;
+    let b = json_decimal(t[1])?;
+    let c = json_decimal(t[2])?;
+    let d = json_decimal(t[3])?;
+    let e = json_decimal(t[4])?;
+    let f = json_decimal(t[5])?;
+    Ok([
+        a,
+        negate(&b),
+        c,
+        negate(&d),
+        e,
+        ticks_minus(page_height_ticks, &f)?,
+    ])
 }
 
 /// The `/W` map of a CID font (empty for simple fonts).
@@ -832,8 +1114,17 @@ fn apply_display_widths(
 
 /// Convenience for callers with a path.
 pub fn from_v2_file(path: &Path, options: &V2Options) -> Result<(ExactDocument, V2Report), String> {
+    from_v2_file_rooted(path, options, None)
+}
+
+/// [`from_v2_rooted`] for callers with a path.
+pub fn from_v2_file_rooted(
+    path: &Path,
+    options: &V2Options,
+    project_root: Option<&Path>,
+) -> Result<(ExactDocument, V2Report), String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    from_v2(&text, options)
+    from_v2_rooted(&text, options, project_root)
 }
 
 #[cfg(test)]

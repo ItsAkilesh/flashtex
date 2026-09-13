@@ -4,7 +4,7 @@
 //! flashtex-pdf-exact reemit REF.pdf OUT.pdf      # rebuild REF through the exact API
 //! flashtex-pdf-exact classify A.pdf B.pdf        # classify every difference
 //! flashtex-pdf-exact dump X.pdf                  # pages, fonts, content operators
-//! flashtex-pdf-exact from-v2 LIST.json --out OUT.pdf [--font-dir DIR]...
+//! flashtex-pdf-exact from-v2 LIST.json --out OUT.pdf [--font-dir DIR]... [--project-root DIR]
 //!                                                # rendering-v2 display list -> exact PDF
 //! ```
 //!
@@ -26,7 +26,7 @@ use flashtex_pdf::compare;
 use flashtex_pdf::reader::PdfFile;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: flashtex-pdf-exact reemit REF.pdf OUT.pdf | classify A.pdf B.pdf | dump X.pdf | from-v2 LIST.json --out OUT.pdf [--font-dir DIR]...";
+const USAGE: &str = "usage: flashtex-pdf-exact reemit REF.pdf OUT.pdf | classify A.pdf B.pdf | dump X.pdf | from-v2 LIST.json --out OUT.pdf [--font-dir DIR]... [--project-root DIR]";
 
 fn read_pdf(path: &str) -> Result<PdfFile, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
@@ -63,11 +63,18 @@ fn from_v2(args: &[&str]) -> Result<u8, String> {
     let mut input = None;
     let mut out = None;
     let mut options = flashtex_pdf::v2::V2Options::default();
+    let mut project_root: Option<std::path::PathBuf> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i] {
             "--out" => {
                 out = args.get(i + 1).map(|s| s.to_string());
+                i += 2;
+            }
+            "--project-root" => {
+                project_root = Some(std::path::PathBuf::from(
+                    args.get(i + 1).ok_or("--project-root needs a directory")?,
+                ));
                 i += 2;
             }
             "--font-dir" => {
@@ -90,7 +97,11 @@ fn from_v2(args: &[&str]) -> Result<u8, String> {
             "from-v2 needs LIST.json and --out OUT.pdf\n{USAGE}"
         ));
     };
-    let (doc, report) = flashtex_pdf::v2::from_v2_file(std::path::Path::new(&input), &options)?;
+    let (doc, report) = flashtex_pdf::v2::from_v2_file_rooted(
+        std::path::Path::new(&input),
+        &options,
+        project_root.as_deref(),
+    )?;
     let rendered = flashtex_pdf::exact::render_exact(&doc).map_err(|e| e.to_string())?;
     flashtex_pdf::verify::check_structure(&rendered.bytes)
         .map_err(|e| format!("generated PDF failed self-check: {e}"))?;
@@ -117,13 +128,15 @@ fn from_v2(args: &[&str]) -> Result<u8, String> {
         eprintln!("diagnostic (from the display list): {d}");
     }
     eprintln!(
-        "note: {} page(s), {} glyph run(s), {} glyph(s) ({} continued at the natural advance, {} with an exact TJ kern), {} rule(s), {} bytes -> {out}",
+        "note: {} page(s), {} glyph run(s), {} glyph(s) ({} continued at the natural advance, {} with an exact TJ kern), {} rule(s), {} image(s) ({} XObject(s)), {} bytes -> {out}",
         report.pages,
         report.runs,
         report.glyphs,
         report.joined_glyphs,
         report.kerned_glyphs,
         report.rules,
+        report.images,
+        report.image_resources,
         rendered.bytes.len()
     );
     eprintln!(
