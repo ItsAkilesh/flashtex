@@ -573,6 +573,10 @@ impl Parsed {
 }
 
 pub(crate) const BUILT_INS: &[&str] = &[
+    "lstset",
+    "lstdefinestyle",
+    "lstloadlanguages",
+    "lstinputlisting",
     "section",
     "subsection",
     "subsubsection",
@@ -1381,8 +1385,16 @@ impl P<'_> {
                     let space_before = self.space_precedes(self.i);
                     self.i += 1;
                     if !terminated && render {
+                        let lstinline = self.documents[tok.span.document.0]
+                            .text
+                            .get(tok.span.start..)
+                            .is_some_and(|rest| rest.starts_with("\\lstinline"));
                         self.diags.push(Diagnostic::error(
-                            "\\verb has no closing delimiter on this line",
+                            if lstinline {
+                                "\\lstinline has no closing delimiter on this line"
+                            } else {
+                                "\\verb has no closing delimiter on this line"
+                            },
                             Some(tok.span),
                             Some("used the text through end of line and continued".into()),
                         ));
@@ -2024,6 +2036,23 @@ impl P<'_> {
             // `\def\enskip{\hskip.5em\relax}` (latex.ltx 9434): glue, like `\quad`.
             "enskip" => para.push(Inline::TextGlue { em: 0.5, span }),
             "rule" => self.text_rule(span, para),
+            // listings.sty configuration: `\lstset{<keys>}`,
+            // `\lstdefinestyle{<name>}{<keys>}` and `\lstloadlanguages{..}`
+            // change no text of their own; the keys they set are laid out by
+            // the render pipeline, which reads them from the source.
+            "lstset" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                self.listing_options_diagnostic(&token_text(&tokens), argument_span, "\\lstset");
+            }
+            "lstdefinestyle" => {
+                let _ = self.required_group(name, span);
+                let (tokens, argument_span) = self.required_group(name, span);
+                self.listing_options_diagnostic(&token_text(&tokens), argument_span, "\\lstdefinestyle");
+            }
+            "lstloadlanguages" => {
+                let _ = self.required_group(name, span);
+            }
+            "lstinputlisting" => self.input_listing(span, blocks, para),
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
                 format!("\\{} requires math mode", name),
                 Some(span),
@@ -3032,13 +3061,7 @@ impl P<'_> {
         if name == "lstlisting" {
             if let Some((options, options_span)) = self.optional_bracket_argument() {
                 content_start = options_span.end;
-                if !options.trim().is_empty() {
-                    self.diags.push(Diagnostic::warning(
-                        "lstlisting options are not implemented; typeset as plain verbatim",
-                        Some(options_span),
-                        Some("ignored the options and typeset the body literally".into()),
-                    ));
-                }
+                self.listing_options_diagnostic(&options, options_span, "lstlisting");
             }
         }
         let document = open.document;
@@ -3087,6 +3110,62 @@ impl P<'_> {
             lines,
             span: Span::in_document(document, open.start, tag_end),
         });
+        self.finish_block_dependencies();
+    }
+
+    /// Reports the `lstlisting`/`\lstset` keys the render pipeline does not
+    /// lay out (see [`LISTING_KEYS`]); the others need no diagnostic.
+    fn listing_options_diagnostic(&mut self, options: &str, span: Span, context: &str) {
+        let unknown: Vec<&str> = listing_option_keys(options)
+            .into_iter()
+            .filter(|key| !LISTING_KEYS.contains(key))
+            .collect();
+        if unknown.is_empty() {
+            return;
+        }
+        self.diags.push(Diagnostic::warning(
+            format!("{context} option(s) not implemented: {}", unknown.join(", ")),
+            Some(span),
+            Some("ignored those keys; the code is typeset with the others".into()),
+        ));
+    }
+
+    /// `\lstinputlisting[<options>]{<file>}`: the file's lines as a
+    /// `Block::Verbatim` when the file is one of the project documents (the
+    /// block's span is the command's; its lines point into that document).
+    fn input_listing(&mut self, span: Span, blocks: &mut Vec<Block>, para: &mut Vec<Inline>) {
+        if let Some((options, options_span)) = self.optional_bracket_argument() {
+            self.listing_options_diagnostic(&options, options_span, "\\lstinputlisting");
+        }
+        let (tokens, argument_span) = self.required_group("lstinputlisting", span);
+        let requested = token_text(&tokens).trim().to_string();
+        let whole = span.merge(argument_span);
+        let document = if path_is_safe(&requested) {
+            self.document_by_path.get(requested.as_str()).copied()
+        } else {
+            None
+        };
+        let Some(document) = document else {
+            self.diags.push(Diagnostic::error(
+                format!("\\lstinputlisting file '{requested}' is not a project document"),
+                Some(whole),
+                Some("skipped the listing".into()),
+            ));
+            return;
+        };
+        self.flush_paragraph(blocks, para);
+        let text = self.documents[document].text;
+        let body = text.strip_suffix('\n').unwrap_or(text);
+        let mut lines = Vec::new();
+        let mut line_start = 0usize;
+        for raw_line in body.split('\n') {
+            lines.push(VerbatimLine {
+                text: verbatim_display(raw_line, false),
+                span: Span::in_document(DocumentId(document), line_start, line_start + raw_line.len()),
+            });
+            line_start += raw_line.len() + 1;
+        }
+        blocks.push(Block::Verbatim { lines, span: whole });
         self.finish_block_dependencies();
     }
 
@@ -3974,11 +4053,21 @@ impl P<'_> {
                         span: input.token.span,
                     })
                 }
-                TokenKind::Verb { text, starred, .. } => content.push(Inline::Verbatim {
-                    text: verbatim_display(text, *starred),
-                    span: input.token.span,
-                    space_before,
-                }),
+                TokenKind::Verb { text, starred, .. } => {
+                    // latex.ltx `\@@sverb`: `\verb` read as part of another
+                    // command's argument has already been tokenized, so
+                    // LaTeX stops with "\verb illegal in argument".
+                    self.diags.push(Diagnostic::error(
+                        "\\verb illegal in argument",
+                        Some(input.token.span),
+                        Some("typeset the text literally".into()),
+                    ));
+                    content.push(Inline::Verbatim {
+                        text: verbatim_display(text, *starred),
+                        span: input.token.span,
+                        space_before,
+                    })
+                }
                 TokenKind::Command(name)
                     if text_builtins::TEXT_SYMBOLS.iter().any(|(n, _)| n == name) =>
                 {
@@ -4561,6 +4650,9 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // array.sty's preamble builder, column types and row strut are
         // implemented (parser/tabular.rs, crate::tabular); no options.
         "array" => options.is_empty(),
+        // lstlisting/\lstinline bodies are literal text; the listings keys
+        // are laid out by the render pipeline (see `LISTING_KEYS`).
+        "listings" => options.is_empty(),
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep
@@ -4777,40 +4869,63 @@ fn url_segments(text: &str) -> Vec<&str> {
     segments
 }
 
-/// Expands tabs to the next multiple of 8 columns (a common editor default;
-/// real TeX has no tab stops of its own and would simply treat a raw tab as
-/// an ordinary space, which this crate treats as too lossy for source code)
-/// and, for a starred `\verb*`/`verbatim*`, marks every resulting literal
-/// space with a middle dot. That dot is a deliberate, honest stand-in for
+/// Sets a tab as one space, exactly like LaTeX (latex.ltx `\@vobeytabs`
+/// makes `^^I` active as `\@xobeytab`, which is `\let` to `\@xobeysp`, the
+/// same one space `\@vobeyspaces` gives a space; `\@setupverbvisibletab`
+/// makes it the visible space under the star form) and, for a starred
+/// `\verb*`/`verbatim*`, marks every literal space with a middle dot. That dot is a deliberate, honest stand-in for
 /// TeX's `\textvisiblespace`: the Core 14 Courier face has no such glyph, and
 /// a middle dot is both WinAnsi-safe (see `export.rs`) and a widely
 /// recognised "visible space" mark on its own. CRLF line endings are not
 /// specially handled; a trailing `\r` is kept as a literal character.
-fn verbatim_display(line: &str, starred: bool) -> String {
-    const TAB_STOP: usize = 8;
-    const VISIBLE_SPACE: char = '\u{B7}';
-    let mut out = String::with_capacity(line.len());
-    let mut column = 0usize;
-    for ch in line.chars() {
-        match ch {
-            '\t' => {
-                let spaces = TAB_STOP - (column % TAB_STOP);
-                for _ in 0..spaces {
-                    out.push(if starred { VISIBLE_SPACE } else { ' ' });
+/// listings keys the render pipeline lays out (listings.sty/lstmisc.sty
+/// semantics); `lstlisting`, `\lstset`, `\lstdefinestyle` and
+/// `\lstinputlisting` report any other key once.
+#[rustfmt::skip]
+pub const LISTING_KEYS: &[&str] = &[
+    "language", "style", "basicstyle", "keywordstyle", "commentstyle", "stringstyle",
+    "identifierstyle", "directivestyle", "columns", "flexiblecolumns", "basewidth", "numbers",
+    "numberstyle", "numbersep", "stepnumber", "firstnumber", "numberblanklines", "frame",
+    "framesep", "framerule", "rulesep", "xleftmargin", "xrightmargin", "aboveskip", "belowskip",
+    "breaklines", "breakindent", "breakatwhitespace", "breakautoindent", "tabsize", "gobble",
+    "showspaces", "showstringspaces", "keepspaces", "morekeywords", "keywords", "deletekeywords",
+    "sensitive", "firstline", "lastline", "extendedchars", "inputencoding",
+];
+
+/// The keys of a listings key-value list (`key=value` or a bare `key`),
+/// split at top-level commas.
+fn listing_option_keys(options: &str) -> Vec<&str> {
+    let mut keys = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    let bytes = options.as_bytes();
+    for i in 0..=bytes.len() {
+        match bytes.get(i) {
+            Some(b'{') => depth += 1,
+            Some(b'}') => depth = depth.saturating_sub(1),
+            Some(b',') | None if depth == 0 => {
+                let item = options[start..i].trim();
+                let key = item.split('=').next().unwrap_or("").trim();
+                if !key.is_empty() {
+                    keys.push(key);
                 }
-                column += spaces;
+                start = i + 1;
             }
-            ' ' => {
-                out.push(if starred { VISIBLE_SPACE } else { ' ' });
-                column += 1;
-            }
-            _ => {
-                out.push(ch);
-                column += 1;
-            }
+            _ => {}
         }
     }
-    out
+    keys
+}
+
+fn verbatim_display(line: &str, starred: bool) -> String {
+    const VISIBLE_SPACE: char = '\u{B7}';
+    line.chars()
+        .map(|ch| match ch {
+            '\t' | ' ' if starred => VISIBLE_SPACE,
+            '\t' => ' ',
+            _ => ch,
+        })
+        .collect()
 }
 
 fn paragraph_style(environment: &str) -> Option<ParagraphStyle> {
@@ -6352,28 +6467,79 @@ mod tests {
     }
 
     #[test]
-    fn verbatim_expands_tabs_to_the_next_stop() {
-        let source = "\\begin{verbatim}\n\ta\n\\end{verbatim}";
+    fn verbatim_sets_a_tab_as_one_space() {
+        // latex.ltx: `\@xobeytab` is `\@xobeysp`, one space (visible under
+        // the star form).
+        let source = "\\begin{verbatim}\n\ta\tb\n\\end{verbatim}\n\\begin{verbatim*}\n\ta\n\\end{verbatim*}";
         let parsed = parse(source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         let Block::Verbatim { lines, .. } = &parsed.blocks[0] else {
             panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[0]);
         };
-        assert_eq!(lines[0].text, format!("{}a", " ".repeat(8)));
+        assert_eq!(lines[0].text, " a b");
+        let Block::Verbatim { lines, .. } = &parsed.blocks[1] else {
+            panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[1]);
+        };
+        assert_eq!(lines[0].text, "\u{B7}a");
     }
 
     #[test]
-    fn lstlisting_options_are_parsed_and_diagnosed_then_typeset_literally() {
-        let source = "\\begin{lstlisting}[language=Python]\nprint(1)\n\\end{lstlisting}";
+    fn lstlisting_reports_only_keys_that_are_not_laid_out() {
+        let source = "\\begin{lstlisting}[language=Python,basicstyle=\\ttfamily\\small,escapeinside={(*}{*)},frame=single]\nprint(1)\n\\end{lstlisting}";
         let parsed = parse(source);
-        assert!(parsed
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.message.contains("lstlisting options")));
+        let messages: Vec<&str> = parsed.diagnostics.iter().map(|d| d.message.as_str()).collect();
+        assert_eq!(messages, vec!["lstlisting option(s) not implemented: escapeinside"], "{messages:?}");
         let Block::Verbatim { lines, .. } = &parsed.blocks[0] else {
             panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[0]);
         };
         assert_eq!(lines[0].text, "print(1)");
+    }
+
+    #[test]
+    fn listings_configuration_commands_set_no_text() {
+        let source = "\\lstset{basicstyle=\\ttfamily,columns=flexible}\n\\lstdefinestyle{mine}{numbers=left}\n\\lstloadlanguages{C}\nBody \\lstinline|x = 1;| text.";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let Block::Paragraph(inlines) = &parsed.blocks[0] else {
+            panic!("expected a paragraph, got {:?}", parsed.blocks);
+        };
+        let texts: Vec<String> = inlines
+            .iter()
+            .map(|i| match i {
+                Inline::Text { text, .. } | Inline::Verbatim { text, .. } => text.clone(),
+                other => format!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(texts, vec!["Body", "x = 1;", "text."]);
+    }
+
+    #[test]
+    fn verb_inside_a_command_argument_is_reported() {
+        // A heading's argument is read as tokens first (`inlines_from_tokens`);
+        // `\\textbf{..}` re-enters its argument as an ordinary group, so it is
+        // not diagnosed here even though LaTeX rejects `\\verb` there too.
+        let parsed = parse("\\section{A \\verb|x|} and {\\bfseries \\verb|y|}");
+        let illegal: Vec<_> = parsed.diagnostics.iter().filter(|d| d.message == "\\verb illegal in argument").collect();
+        assert_eq!(illegal.len(), 1, "{:?}", parsed.diagnostics);
+    }
+
+    #[test]
+    fn lstinputlisting_lists_a_project_document() {
+        let documents = [
+            SourceDocument { path: "main.tex", text: "Before\n\\lstinputlisting[language=C]{code/a.c}\nAfter" },
+            SourceDocument { path: "code/a.c", text: "int x;\n\treturn;\n" },
+        ];
+        let parsed = parse_project(&documents, "main.tex");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let Some(Block::Verbatim { lines, span }) = parsed.blocks.iter().find(|b| matches!(b, Block::Verbatim { .. })) else {
+            panic!("expected a Block::Verbatim, got {:?}", parsed.blocks);
+        };
+        assert_eq!(lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), vec!["int x;", " return;"]);
+        assert_eq!(lines[1].span.document, DocumentId(1));
+        assert_eq!((lines[1].span.start, lines[1].span.end), (7, 15));
+        assert_eq!(span.document, DocumentId(0));
+        let missing = parse("\\lstinputlisting{nowhere.c}");
+        assert!(missing.diagnostics.iter().any(|d| d.message.contains("'nowhere.c' is not a project document")));
     }
 
     #[test]

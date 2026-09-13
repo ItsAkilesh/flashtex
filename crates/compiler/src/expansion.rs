@@ -187,6 +187,7 @@ fn prepare<'a>(text: &'a str, document: DocumentId) -> Prepared<'a> {
     if !(has_labels
         || has_urls
         || text.contains("\\verb")
+        || text.contains("\\lstinline")
         || text.contains("verbatim")
         || text.contains("lstlisting"))
     {
@@ -203,19 +204,20 @@ fn prepare<'a>(text: &'a str, document: DocumentId) -> Prepared<'a> {
                 let (start, end) = (token.span.start, token.span.end);
                 prepared.verbs.insert(start, token.clone());
                 prepared.skip.push((start + 1, end));
-                // `\verb` + blanks + `\/`: the engine reads one undefined
-                // control word (mapped back to this token) and a control
-                // symbol that restores mid-line state, so a space after the
-                // argument still counts.
-                if end - start >= 7 {
-                    for b in &mut bytes[start + 5..end - 2] {
+                // `\verb` (or listings' `\lstinline`, #144) + blanks + `\/`:
+                // the engine reads one undefined control word (mapped back to
+                // this token) and a control symbol that restores mid-line
+                // state, so a space after the argument still counts.
+                let name_len = if text[start..].starts_with("\\lstinline") { 10 } else { 5 };
+                if end - start >= name_len + 2 {
+                    for b in &mut bytes[start + name_len..end - 2] {
                         *b = b' ';
                     }
                     bytes[end - 2] = b'\\';
                     bytes[end - 1] = b'/';
                     prepared.verb_markers.insert(end - 2);
                 } else {
-                    for b in &mut bytes[start + 5..end] {
+                    for b in &mut bytes[(start + name_len).min(end)..end] {
                         *b = b' ';
                     }
                 }
@@ -712,7 +714,7 @@ impl<'d> Converter<'d> {
                     "[" => conv.push(TokenKind::DisplayMathOpen, at),
                     "]" => conv.push(TokenKind::DisplayMathClose, at),
                     "par" if !real_text.starts_with('\\') && at.real.is_some() => conv.push(TokenKind::ParBreak, at),
-                    "verb" | "verb*" => {
+                    "verb" | "verb*" | "lstinline" => {
                         let verb = at
                             .real
                             .and_then(|real| prepared[real.document.0].verbs.get(&real.start).cloned());
