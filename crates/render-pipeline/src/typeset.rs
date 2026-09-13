@@ -3975,9 +3975,9 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
 }
 
 /// The atom class a `\mathbin`/`\mathrel`/`\mathord`/`\mathop`/`\mathopen`/
-/// `\mathclose`/`\mathpunct` command, or `\bot`/`\bigtriangleup`, forces on
-/// the atom whose span starts at `at` (pin `d416472a` carries it as the
-/// compiler's crate-private `MathAtom::class_override`, so it is re-read
+/// `\mathclose`/`\mathpunct` command, or `\bot`/`\bigtriangleup`/`\colon`,
+/// forces on the atom whose span starts at `at` (pin `d416472a` carries it as
+/// the compiler's crate-private `MathAtom::class_override`, so it is re-read
 /// from the control word at the span, like [`fence_of`]).
 pub fn class_override_of(text: &str, at: usize) -> Option<ml::AtomClass> {
     let rest = text.get(at..)?.strip_prefix('\\')?;
@@ -3992,6 +3992,12 @@ pub fn class_override_of(text: &str, at: usize) -> Option<ml::AtomClass> {
         "mathpunct" => ml::AtomClass::Punct,
         "bot" => ml::AtomClass::Ord,
         "bigtriangleup" => ml::AtomClass::Bin,
+        // `fontmath.ltx` 400: `\colon` is `\mathpunct` where the identical
+        // character `:` is `\mathrel` (385). Without this the compiler's
+        // `:` atom is classified by glyph here (math-layout's
+        // `default_class` has `:` as Rel) and `f\colon A` gets the relation's
+        // 5mu on both sides instead of 3mu after the colon only.
+        "colon" => ml::AtomClass::Punct,
         // amsfonts' dashed arrows: a `\mathrel` group of msam pieces.
         "dashrightarrow" | "dasharrow" | "dashleftarrow" => ml::AtomClass::Rel,
         _ => return None,

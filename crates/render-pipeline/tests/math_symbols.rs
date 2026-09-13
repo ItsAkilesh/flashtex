@@ -575,3 +575,70 @@ fn varnothing_sets_at_msbm_width_and_paints_from_new_computer_modern_when_bundle
     assert_eq!(notes.len(), 1, "one \\varnothing profile note with NewCM: {notes:?}");
     assert!(notes[0].contains("NewCMMath-Regular"), "{}", notes[0]);
 }
+
+/// `fontmath.ltx` 385/400 give the one operators-family character "3A two
+/// classes: `:` is `\mathrel`, `\colon` is `\mathpunct`. The compiler carries
+/// that as a crate-private `MathAtom::class_override`, so the pipeline
+/// re-reads the control word at the atom's span
+/// ([`flashtex_render_pipeline::typeset::class_override_of`]) exactly as it
+/// does for `\bot`/`\bigtriangleup`.
+#[test]
+fn colon_is_punctuation_where_a_bare_colon_is_a_relation() {
+    use flashtex_render_pipeline::typeset::class_override_of;
+    assert_eq!(class_override_of("$f\\colon A$", 2), Some(AtomClass::Punct));
+    assert_eq!(class_override_of("$f:A$", 2), None, "a bare : keeps its glyph class (Rel)");
+    assert_eq!(
+        class_override_of("$\\coloneqq$", 1),
+        None,
+        "\\coloneqq is an amssymb relation, not \\colon"
+    );
+    // The existing overrides are untouched.
+    assert_eq!(class_override_of("$\\bot$", 1), Some(AtomClass::Ord));
+    assert_eq!(class_override_of("$\\mathpunct{x}$", 1), Some(AtomClass::Punct));
+}
+
+/// End-to-end acceptance for the above, against TeX Live 2025 pdflatex: at
+/// 12pt `\hbox{$f\colon A$}` is 21.14493pt and `\hbox{$f:A$}` 25.81152pt
+/// against `\hbox{$f{:}A$}`'s 19.14496pt, so the colon's own spacing is 3mu
+/// (Punct-Ord) against the relation's 10mu (5mu each side) — a 7mu = 4.667pt
+/// difference at this size. Measured end to end on this fixture with
+/// `vendor/compiler` swapped to the compiler branch: every word is within
+/// 0.006 bp of pdflatex, and 4.647 bp out per `\colon` without the
+/// `class_override_of` arm above.
+///
+/// Ignored until `vendor/compiler` is re-pinned: the pinned compiler has no
+/// `\colon` arm at all, so it emits the literal text `\colon` and there is no
+/// `:` atom for the class to land on.
+#[test]
+#[ignore = "needs vendor/compiler re-pinned to the \\colon arm (agent/kabir-claude/math-symbols-compiler); the pinned compiler still sets \\colon literally"]
+fn colon_gets_thin_space_after_only_end_to_end() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    // Per-glyph origins: the whole formula is one run.
+    let gap = |body: &str| {
+        let r = render_one(&doc(body));
+        let mut xs: Vec<(char, f64, f64)> = Vec::new();
+        for item in &r.v2.pages[0].items {
+            if let Item::GlyphRun(run) = item {
+                for (g, c) in run.glyphs.iter().zip(run.text.chars()) {
+                    xs.push((c, g.origin_x.to_bp(), g.advance_x.to_bp()));
+                }
+            }
+        }
+        let colon = xs.iter().find(|g| g.0 == ':').unwrap_or_else(|| panic!("no colon in {xs:?}"));
+        let a = xs.iter().find(|g| g.0 == '\u{1D434}' || g.0 == 'A').unwrap_or_else(|| panic!("no A in {xs:?}"));
+        a.1 - (colon.1 + colon.2)
+    };
+    // 3mu against 5mu at the 12pt body `doc` gets from the compiler's
+    // implicit preamble: 1mu = 12/18 pt. Only the space *after* the colon is
+    // compared; the space before it (0mu against 5mu) moves the colon itself.
+    let two_mu = 2.0 * 12.0 / 18.0 * 72.0 / 72.27;
+    let punct_gap = gap("$f\\colon A$");
+    let rel_gap = gap("$f:A$");
+    assert!(
+        (rel_gap - punct_gap - two_mu).abs() < 0.02,
+        "Punct-Ord is 3mu where Rel-Ord is 5mu: {punct_gap} vs {rel_gap}"
+    );
+}
