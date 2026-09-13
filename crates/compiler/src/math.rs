@@ -1725,6 +1725,26 @@ fn left_right_delimiter(atom: MathAtom, role: DelimiterRole) -> MathAtom {
     }
 }
 
+/// `\LaTeXe`'s `$_{\textstyle\varepsilon}$` subscript body as a one-atom
+/// math list attributed to `span`, for layouts that set the logo's `ε` with
+/// their own math fonts (`text_builtins::layout_logo` gives its position).
+pub fn varepsilon_list(span: Span) -> MathList {
+    let glyph = COMMAND_GLYPHS
+        .iter()
+        .find(|(name, _)| *name == "varepsilon")
+        .map_or("\u{03B5}", |(_, glyph)| *glyph);
+    MathList {
+        atoms: vec![MathAtom {
+            nucleus: Nucleus::Symbol(glyph.to_string()),
+            span,
+            superscript: None,
+            subscript: None,
+            class_override: None,
+            width_em: None,
+        }],
+    }
+}
+
 fn space(em: f64, span: Span) -> MathAtom {
     MathAtom {
         nucleus: Nucleus::Space { em },

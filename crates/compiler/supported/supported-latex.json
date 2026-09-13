@@ -158,6 +158,15 @@
     {"name": "textcopyright", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textcopyright: OT1 ©, T1 © (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
     {"name": "textsterling", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textsterling: OT1 £, T1 £ (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
     {"name": "textellipsis", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textellipsis: OT1 …, T1 … (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
+    {"name": "textbackslash", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textbackslash: OT1 \\, T1 \\ (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
+    {"name": "textasciitilde", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textasciitilde: OT1 ~, T1 ~ (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
+    {"name": "textasciicircum", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textasciicircum: OT1 ^, T1 ^ (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
+    {"name": "textunderscore", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textunderscore: OT1 _, T1 _ (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
+    {"name": "textbar", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textbar: OT1 |, T1 | (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
+    {"name": "textless", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textless: OT1 <, T1 < (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
+    {"name": "textgreater", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textgreater: OT1 >, T1 > (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
+    {"name": "textbraceleft", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textbraceleft: OT1 {, T1 { (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
+    {"name": "textbraceright", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "text symbol \\textbraceright: OT1 }, T1 } (tex-text-encoding; unavailable is a LaTeX error)", "renders": true},
     {"name": "newtheorem", "mode": "text", "origin": "text_dispatch", "arguments": "{env}[counter]{name}", "description": "defines a numbered theorem-like environment (amsthm)", "renders": true},
     {"name": "theoremstyle", "mode": "text", "origin": "text_dispatch", "arguments": "{style}", "description": "selects the amsthm style for following \\newtheorem", "renders": true},
     {"name": "\\", "mode": "text", "origin": "control_symbol", "arguments": "", "description": "line break; an optional [length] is consumed", "renders": true},
@@ -537,7 +546,7 @@
       "Source tikz: tokens of tikz.sty, tikz.code.tex (tikz.sty 2025-08-29 v3.1.11a (3.1.11a); pgf 3.1.11a); dependency baseline: pgf, pgfrcs, pgfcore, graphicx, keyval, graphics, trig, pgfsys, xcolor, pgfcomp-version-0-65, pgfcomp-version-1-18, pgffor, pgfkeys, pgfmath"
     ],
     "rows": [
-      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 135, "percent": 32.9},
+      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 136, "percent": 33.2},
       {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
       {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 33, "percent": 32.4},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
@@ -550,6 +559,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 223, "percent": 22.2}
+    "total": {"canonical": 1003, "supported": 224, "percent": 22.3}
   }
 }

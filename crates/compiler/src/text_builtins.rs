@@ -66,6 +66,33 @@ pub const TEXT_SYMBOLS: &[(&str, &str)] = &[
     ("textcopyright", "\\textcopyright"),
     ("textsterling", "\\textsterling"),
     ("textellipsis", "\\textellipsis"),
+    ("textbackslash", "\\textbackslash"),
+    ("textasciitilde", "\\textasciitilde"),
+    ("textasciicircum", "\\textasciicircum"),
+    ("textunderscore", "\\textunderscore"),
+    ("textbar", "\\textbar"),
+    ("textless", "\\textless"),
+    ("textgreater", "\\textgreater"),
+    ("textbraceleft", "\\textbraceleft"),
+    ("textbraceright", "\\textbraceright"),
+];
+
+/// Text symbols for printable ASCII characters. The `*.dfu` tables declare
+/// only non-ASCII input, so the character is the ASCII one the command names
+/// (T1 slots `"5C` `"7E` `"5E` `"5F` `"7C` `"3C` `"3E` `"7B` `"7D`). In OT1
+/// they resolve to kernel defaults in other encodings (`\textbackslash`,
+/// `\textbar`, `\textbraceleft/right` from OMS; `\textless`/`\textgreater`
+/// from OML), which `encoding::resolve` reports as available.
+const ASCII_TEXT_SYMBOLS: &[(&str, char)] = &[
+    ("\\textbackslash", '\\'),
+    ("\\textasciitilde", '~'),
+    ("\\textasciicircum", '^'),
+    ("\\textunderscore", '_'),
+    ("\\textbar", '|'),
+    ("\\textless", '<'),
+    ("\\textgreater", '>'),
+    ("\\textbraceleft", '{'),
+    ("\\textbraceright", '}'),
 ];
 
 /// What a text symbol command typesets under the current encoding.
@@ -107,6 +134,9 @@ pub fn text_symbol(name: &str, enc: Encoding) -> Option<SymbolOutcome> {
             return Some(SymbolOutcome::Text(body.to_string()))
         }
         _ => {}
+    }
+    if let Some((_, ch)) = ASCII_TEXT_SYMBOLS.iter().find(|(c, _)| c == command) {
+        return Some(SymbolOutcome::Char(*ch));
     }
     let ch = UNICODE_DECLARATIONS
         .iter()
@@ -626,6 +656,23 @@ mod tests {
         assert_eq!(t1("dots"), Some(SymbolOutcome::Char('\u{2026}')));
         assert_eq!(t1("i"), Some(SymbolOutcome::Char('\u{0131}')));
         assert_eq!(t1("pounds"), Some(SymbolOutcome::Char('\u{00A3}')));
+        assert_eq!(t1("textbackslash"), Some(SymbolOutcome::Char('\\')));
+        assert_eq!(t1("textless"), Some(SymbolOutcome::Char('<')));
+        for name in [
+            "textbackslash",
+            "textless",
+            "textgreater",
+            "textbar",
+            "textbraceleft",
+        ] {
+            assert!(
+                matches!(
+                    text_symbol(name, Encoding::OT1),
+                    Some(SymbolOutcome::Char(_))
+                ),
+                "\\{name} must be available in OT1 through its kernel default"
+            );
+        }
     }
 
     #[test]

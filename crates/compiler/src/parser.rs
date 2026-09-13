@@ -655,6 +655,15 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "textcopyright",
     "textsterling",
     "textellipsis",
+    "textbackslash",
+    "textasciitilde",
+    "textasciicircum",
+    "textunderscore",
+    "textbar",
+    "textless",
+    "textgreater",
+    "textbraceleft",
+    "textbraceright",
 ];
 
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
@@ -1707,7 +1716,9 @@ impl P<'_> {
             | "TH" | "th" | "DH" | "dh" | "DJ" | "dj" | "NG" | "ng" | "IJ" | "ij" | "i" | "j"
             | "S" | "P" | "dag" | "ddag" | "copyright" | "pounds" | "dots" | "ldots"
             | "textsection" | "textparagraph" | "textdagger" | "textdaggerdbl"
-            | "textcopyright" | "textsterling" | "textellipsis" => {
+            | "textcopyright" | "textsterling" | "textellipsis" | "textbackslash"
+            | "textasciitilde" | "textasciicircum" | "textunderscore" | "textbar" | "textless"
+            | "textgreater" | "textbraceleft" | "textbraceright" => {
                 self.text_symbol(name, span, para)
             }
             "TeX" | "LaTeX" | "LaTeXe" => self.text_logo(name, span, para),
