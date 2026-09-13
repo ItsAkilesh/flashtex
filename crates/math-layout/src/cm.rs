@@ -351,8 +351,8 @@ pub fn symbol_slot(ch: char) -> Option<(Family, u8)> {
         '\u{2296}' => (Symbol, 0x09), // \ominus 289
         '\u{2298}' => (Symbol, 0x0B), // \oslash 287
         '\u{2299}' => (Symbol, 0x0C), // \odot 286
-        '\u{25CB}' => (Symbol, 0x0D), // \bigcirc 294
-        '\u{2022}' => (Symbol, 0x0F), // \bullet 283
+        '\u{25EF}' => (Symbol, 0x0D), // \bigcirc 294
+        '\u{2219}' => (Symbol, 0x0F), // \bullet 283
         '\u{22C4}' => (Symbol, 0x05), // \diamond 282
         '\u{224D}' => (Symbol, 0x10), // \asymp 346
         '\u{2AAF}' => (Symbol, 0x16), // \preceq 324

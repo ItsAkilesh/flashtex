@@ -13,6 +13,13 @@
 //!
 //! `$ab$` is 9.57755pt, the control both are read against. Nothing here runs
 //! TeX; the oracle output is evidence recorded in the table.
+//!
+//! The *character* each row is keyed by is the code point that cmsy/cmmi slot
+//! carries, as `crates/compiler/tests/amsmath_corpus/oracle.py`'s `OMS_TEXT`
+//! already states for family 2 — not always `unicode-math`'s alias for the
+//! command. The two differ at cmsy `"0D` (`\bigcirc` is the 1 em `◯` U+25EF,
+//! not U+25CB) and cmsy `"0F` (`\bullet` is `∙` U+2219, not U+2022); the
+//! widths below are the check, since a slot is 1 em wide or it is not.
 
 use flashtex_math_layout::{Atom, CmMathMetrics, MathList, Style, layout};
 
@@ -56,9 +63,9 @@ const KERNEL_SYMBOLS: &[(&str, char, &str, &str)] = &[
     ("sqsupseteq", '\u{2292}', "7.77780", "22.91077"),
     ("uplus", '\u{228E}', "6.66669", "20.68857"),
     ("wr", '\u{2240}', "2.77779", "16.79967"),
-    ("bullet", '\u{2022}', "5.00002", "19.02190"),
+    ("bullet", '\u{2219}', "5.00002", "19.02190"),
     ("diamond", '\u{22C4}', "5.00002", "19.02190"),
-    ("bigcirc", '\u{25CB}', "10.00002", "24.02190"),
+    ("bigcirc", '\u{25EF}', "10.00002", "24.02190"),
     ("surd", '\u{221A}', "8.33336", "17.91090"),
     ("mathparagraph", '\u{00B6}', "6.11111", "15.68866"),
     ("mathsection", '\u{00A7}', "4.44447", "14.02202"),
