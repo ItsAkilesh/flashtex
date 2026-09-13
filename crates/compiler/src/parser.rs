@@ -113,6 +113,17 @@ pub enum Inline {
     },
     /// `tabular`/`tabular*`: an inline box (see `crate::tabular`).
     Tabular(Box<crate::tabular::Tabular>),
+    /// `\verb`/`\verb*` sitting inline in running text: an unbreakable run of
+    /// literal Courier text (already tab-expanded, and with visible dots for
+    /// starred spaces — see `verbatim_display`). Ligatures are never applied.
+    /// Wraps to a new line like an ordinary long word rather than breaking
+    /// internally, since it is placed as a single `Inline::Text`-shaped item.
+    Verbatim {
+        text: String,
+        span: Span,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
+    },
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -174,6 +185,25 @@ pub enum Block {
     },
     /// `\newpage`: force the next block onto a fresh page.
     PageBreak,
+    /// `verbatim`/`verbatim*` and basic `lstlisting`: literal, unreflowed
+    /// Courier text at body size, one output line per source line, set off
+    /// from surrounding paragraphs the way `\trivlist`'s `\topsep` does (see
+    /// `layout::VERBATIM_TOPSEP_PT`). `span` covers the whole environment,
+    /// from `\begin` through `\end`, so an edit anywhere inside it correctly
+    /// invalidates the cached block (see `incremental::shift_block`).
+    Verbatim {
+        lines: Vec<VerbatimLine>,
+        span: Span,
+    },
+}
+
+/// One physical source line of a `Block::Verbatim`. `text` is already
+/// tab-expanded (and dot-marked for a starred environment); `span` is the
+/// exact original source bytes for that line, excluding its trailing `\n`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VerbatimLine {
+    pub text: String,
+    pub span: Span,
 }
 
 /// `\setlist{leftmargin=...}`'s effect on a `Block::ListItem`'s own
@@ -889,6 +919,28 @@ impl P<'_> {
                 TokenKind::Command(name) => {
                     self.i += 1;
                     self.command(&name, tok.span, input.expansion_depth, blocks, para);
+                }
+                TokenKind::Verb {
+                    text,
+                    starred,
+                    terminated,
+                } => {
+                    let space_before = self.space_precedes(self.i);
+                    self.i += 1;
+                    if !terminated && render {
+                        self.diags.push(Diagnostic::error(
+                            "\\verb has no closing delimiter on this line",
+                            Some(tok.span),
+                            Some("used the text through end of line and continued".into()),
+                        ));
+                    }
+                    if render {
+                        para.push(Inline::Verbatim {
+                            text: verbatim_display(&text, starred),
+                            span: tok.span,
+                            space_before,
+                        });
+                    }
                 }
             }
         }
@@ -1740,6 +1792,14 @@ impl P<'_> {
                 self.tabular_environment(span, &environment, para);
                 return;
             }
+            if matches!(
+                environment.as_str(),
+                "verbatim" | "verbatim*" | "lstlisting"
+            ) && self.in_body
+            {
+                self.verbatim_environment(span, argument_span, &environment, blocks, para);
+                return;
+            }
             self.env_alignments.push(self.declared_alignment);
             if environment == "document" && self.has_document {
                 self.in_body = true;
@@ -2049,6 +2109,87 @@ impl P<'_> {
             space_before: true,
         });
         self.style = TextStyle::default();
+    }
+
+    /// `verbatim`, `verbatim*`, and basic `lstlisting`. The body is not read
+    /// from `self.t` at all: those tokens were produced by the ordinary
+    /// tokenizer, which has already (mis)interpreted anything special inside
+    /// (a `%` there would otherwise swallow the rest of its "line" as a
+    /// `Comment`, hiding a real `\end{verbatim}` after it). Instead this
+    /// finds the raw source bytes directly, with a plain literal search for
+    /// `\end{name}` — the same finicky, whitespace-intolerant match real
+    /// LaTeX's own verbatim scanner performs — then fast-forwards `self.i`
+    /// past every token whose span the raw region swallowed.
+    fn verbatim_environment(
+        &mut self,
+        open: Span,
+        argument_span: Span,
+        name: &str,
+        blocks: &mut Vec<Block>,
+        para: &mut Vec<Inline>,
+    ) {
+        self.flush_paragraph(blocks, para);
+        let starred = name.ends_with('*');
+        let mut content_start = argument_span.end;
+        if name == "lstlisting" {
+            if let Some((options, options_span)) = self.optional_bracket_argument() {
+                content_start = options_span.end;
+                if !options.trim().is_empty() {
+                    self.diags.push(Diagnostic::warning(
+                        "lstlisting options are not implemented; typeset as plain verbatim",
+                        Some(options_span),
+                        Some("ignored the options and typeset the body literally".into()),
+                    ));
+                }
+            }
+        }
+        let document = open.document;
+        let source = self.documents[document.0].text;
+        // The newline right after `\begin{...}` is not part of the body.
+        if source.as_bytes().get(content_start) == Some(&b'\n') {
+            content_start += 1;
+        }
+        let end_tag = format!("\\end{{{name}}}");
+        let (content_end, tag_end, found) = match source[content_start..].find(end_tag.as_str()) {
+            Some(offset) => {
+                let tag_start = content_start + offset;
+                (tag_start, tag_start + end_tag.len(), true)
+            }
+            None => (source.len(), source.len(), false),
+        };
+        // The newline right before `\end{...}` is not part of the body either.
+        let mut trimmed_end = content_end;
+        if trimmed_end > content_start && source.as_bytes()[trimmed_end - 1] == b'\n' {
+            trimmed_end -= 1;
+        }
+        let body = &source[content_start..trimmed_end];
+        let mut lines = Vec::new();
+        let mut line_start = content_start;
+        for raw_line in body.split('\n') {
+            lines.push(VerbatimLine {
+                text: verbatim_display(raw_line, starred),
+                span: Span::in_document(document, line_start, line_start + raw_line.len()),
+            });
+            line_start += raw_line.len() + 1;
+        }
+        if !found {
+            self.diags.push(Diagnostic::error(
+                format!("unterminated environment '{name}' — no matching \\end"),
+                Some(open),
+                Some("closed the verbatim block at end of input".into()),
+            ));
+        }
+        while self.i < self.t.len()
+            && self.t[self.i].token.span.document == document
+            && self.t[self.i].token.span.start < tag_end
+        {
+            self.i += 1;
+        }
+        blocks.push(Block::Verbatim {
+            lines,
+            span: Span::in_document(document, open.start, tag_end),
+        });
+        self.finish_block_dependencies();
     }
 
     fn equation_environment(
@@ -2818,6 +2959,11 @@ impl P<'_> {
                         span: input.token.span,
                     })
                 }
+                TokenKind::Verb { text, starred, .. } => content.push(Inline::Verbatim {
+                    text: verbatim_display(text, *starred),
+                    span: input.token.span,
+                    space_before,
+                }),
                 _ => {}
             }
         }
@@ -3444,6 +3590,40 @@ fn url_segments(text: &str) -> Vec<&str> {
         segments.push(&text[start..]);
     }
     segments
+/// Expands tabs to the next multiple of 8 columns (a common editor default;
+/// real TeX has no tab stops of its own and would simply treat a raw tab as
+/// an ordinary space, which this crate treats as too lossy for source code)
+/// and, for a starred `\verb*`/`verbatim*`, marks every resulting literal
+/// space with a middle dot. That dot is a deliberate, honest stand-in for
+/// TeX's `\textvisiblespace`: the Core 14 Courier face has no such glyph, and
+/// a middle dot is both WinAnsi-safe (see `export.rs`) and a widely
+/// recognised "visible space" mark on its own. CRLF line endings are not
+/// specially handled; a trailing `\r` is kept as a literal character.
+fn verbatim_display(line: &str, starred: bool) -> String {
+    const TAB_STOP: usize = 8;
+    const VISIBLE_SPACE: char = '\u{B7}';
+    let mut out = String::with_capacity(line.len());
+    let mut column = 0usize;
+    for ch in line.chars() {
+        match ch {
+            '\t' => {
+                let spaces = TAB_STOP - (column % TAB_STOP);
+                for _ in 0..spaces {
+                    out.push(if starred { VISIBLE_SPACE } else { ' ' });
+                }
+                column += spaces;
+            }
+            ' ' => {
+                out.push(if starred { VISIBLE_SPACE } else { ' ' });
+                column += 1;
+            }
+            _ => {
+                out.push(ch);
+                column += 1;
+            }
+        }
+    }
+    out
 }
 
 fn paragraph_style(environment: &str) -> Option<ParagraphStyle> {
@@ -4607,6 +4787,90 @@ mod tests {
             parsed.diagnostics.is_empty(),
             "\\nolinkurl was never a link, so it needs no 'not clickable' notice: {:?}",
             parsed.diagnostics
+    fn verbatim_preserves_specials_and_splits_lines() {
+        let source = "\\begin{verbatim}\n100% \\foo ${x}\nline two\n\\end{verbatim}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let Block::Verbatim { lines, .. } = &parsed.blocks[0] else {
+            panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[0]);
+        };
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text, "100% \\foo ${x}");
+        assert_eq!(lines[1].text, "line two");
+    }
+
+    #[test]
+    fn verbatim_star_marks_spaces_with_a_visible_dot() {
+        let source = "\\begin{verbatim*}\na b\n\\end{verbatim*}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let Block::Verbatim { lines, .. } = &parsed.blocks[0] else {
+            panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[0]);
+        };
+        assert_eq!(lines[0].text, "a\u{B7}b");
+    }
+
+    #[test]
+    fn verbatim_expands_tabs_to_the_next_stop() {
+        let source = "\\begin{verbatim}\n\ta\n\\end{verbatim}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let Block::Verbatim { lines, .. } = &parsed.blocks[0] else {
+            panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[0]);
+        };
+        assert_eq!(lines[0].text, format!("{}a", " ".repeat(8)));
+    }
+
+    #[test]
+    fn lstlisting_options_are_parsed_and_diagnosed_then_typeset_literally() {
+        let source = "\\begin{lstlisting}[language=Python]\nprint(1)\n\\end{lstlisting}";
+        let parsed = parse(source);
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("lstlisting options")));
+        let Block::Verbatim { lines, .. } = &parsed.blocks[0] else {
+            panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[0]);
+        };
+        assert_eq!(lines[0].text, "print(1)");
+    }
+
+    #[test]
+    fn lstlisting_without_options_has_no_diagnostic() {
+        let source = "\\begin{lstlisting}\nplain\n\\end{lstlisting}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    }
+
+    #[test]
+    fn unterminated_verbatim_environment_recovers_at_end_of_input() {
+        let source = "\\begin{verbatim}\nabc";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("unterminated environment 'verbatim'")));
+        let Block::Verbatim { lines, .. } = &parsed.blocks[0] else {
+            panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[0]);
+        };
+        assert_eq!(lines[0].text, "abc");
+    }
+
+    #[test]
+    fn inline_verb_wraps_like_a_word_in_running_text() {
+        let source = r"Use \verb|foo(x)| here.";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let verb_item = items
+            .iter()
+            .find(|item| item.text == "foo(x)")
+            .expect("verb content placed as its own item");
+        assert_eq!(verb_item.font, layout::Font::Courier);
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| item.text.as_str())
+                .collect::<Vec<_>>(),
+            ["Use", "foo(x)", "here."]
         );
     }
 
@@ -4651,5 +4915,13 @@ mod tests {
         );
         assert_eq!(url_segments("plain"), ["plain"]);
         assert!(url_segments("").is_empty());
+    fn unterminated_verb_diagnoses_and_recovers_at_end_of_line() {
+        let source = "\\verb|open\nmore text";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("\\verb has no closing delimiter")));
+        assert!(items.iter().any(|item| item.text == "open"));
+        assert!(items.iter().any(|item| item.text == "more"));
     }
 }

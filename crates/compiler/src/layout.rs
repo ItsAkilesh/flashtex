@@ -36,6 +36,12 @@ pub const PARAGRAPH_GAP_PT: f64 = 6.0;
 /// (so no gap exceeds 3x its natural size), standing in for TeX's
 /// tolerance/badness limit on an underfull line.
 const JUSTIFY_MAX_STRETCH: f64 = 2.0;
+/// `\topsep`'s flat point value, as `\@verbatim`'s underlying `\trivlist`
+/// would apply it around a `verbatim`/`lstlisting` block (article's 10pt
+/// class default is close to this; this layout has no per-class variation or
+/// rubber lengths, so — like `SMALL_SKIP_PT` et al. — one representative flat
+/// amount stands in for the real `plus`/`minus` stretch).
+pub const VERBATIM_TOPSEP_PT: f64 = 8.0;
 /// `quote` margins: LaTeX's `\leftmargini` (2.5em at 10pt).
 pub const QUOTE_INDENT_PT: f64 = 25.0;
 /// `\leftmargini`..`\leftmarginiv` (standard classes' 10pt-class defaults):
@@ -881,6 +887,15 @@ impl LayoutCursor {
                     self.force_page_break();
                 }
             }
+            Block::Verbatim { .. } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(
+                        self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT)
+                            + VERBATIM_TOPSEP_PT,
+                    );
+                }
+            }
         }
         self.first_block = false;
         self.state()
@@ -1000,6 +1015,21 @@ impl LayoutCursor {
                     .push(item);
                 // A rule has no depth: end its line without adding a text line.
                 self.newline(0.0);
+            }
+            Block::Verbatim { lines, .. } => {
+                self.x = self.left_edge();
+                self.content_end = self.x;
+                for (index, line) in lines.iter().enumerate() {
+                    // One `TextItem` per source line, never split across a
+                    // `place` call, so the measure-overflow check in `place`
+                    // (only triggered once something already sits on the
+                    // line) never wraps it — long lines simply overflow the
+                    // margin, exactly like real LaTeX's own verbatim.
+                    self.place(line.text.clone(), body_size, line.span, Font::Courier, true);
+                    if index + 1 < lines.len() {
+                        self.newline(body_size);
+                    }
+                }
             }
         }
         // A block is the incremental cache unit. Resolve its final line before
@@ -1383,7 +1413,10 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
             | Block::Heading { content, .. }
             | Block::FigureCaption { content }
             | Block::Styled { content, .. } => content,
-            Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+            Block::VSpace { .. }
+            | Block::Rule { .. }
+            | Block::PageBreak
+            | Block::Verbatim { .. } => &[],
         };
         visit_inline_references(inlines, visitor);
     }
@@ -1510,6 +1543,11 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 let b = crate::tabular::layout(c, table, table_size);
                 c.place_math(b, size, table.space_before);
             }
+            Inline::Verbatim {
+                text,
+                span,
+                space_before,
+            } => c.place(text.clone(), size, *span, Font::Courier, *space_before),
         }
     }
 }
