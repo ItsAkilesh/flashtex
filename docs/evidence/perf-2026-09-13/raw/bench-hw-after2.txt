@@ -1,0 +1,23 @@
+# machine: Apple M5 Pro, 15 logical CPUs | load(1,5,15): 4.03 5.97 5.24 | font set + first HW1 request: 27.8 ms
+scenario                           steps    p50 ms    p95 ms    max ms  first ms  digest           load
+HW1 full                              40      1.42      2.05      2.93      2.93  c478157a4b55842c 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW1 type-paragraph                    40      0.86      0.98      1.02      0.89  2c3df7f3089a787d 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW1 type-inline-math                  40      0.84      0.91      0.96      0.89  2ac9c6fb4aaaac8b 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW1 type-display-eq                   40      0.83      0.91      0.96      0.88  08c0adb622246429 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW1 delete-restore-line               40      0.78      0.83      0.84      0.79  25dfa476c26f6340 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW2 full                              40      1.43      1.58      1.79      1.79  9f6fe8f88071a58e 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW2 type-paragraph                    40      0.94      1.00      1.08      0.99  4369b79f15834cb2 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW2 type-inline-math                  40      0.94      1.02      1.09      0.97  0f0ab95b676fbb30 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW2 type-display-eq                   40      0.91      1.02      1.03      0.94  738276439ac2623b 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW2 delete-restore-line               40      0.86      0.93      0.95      0.93  ce22cfa3b2c2f1e4 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW1 full +v2                          40      1.91      2.03      2.11      2.02  1470ca676c9a472b 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW1 type-paragraph +v2                40      1.58      1.76      1.90      1.64  868dd7cba7ab3533 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW1 type-inline-math +v2              40      1.55      1.72      1.76      1.70  c2c38dcdbfe5b477 4.03 5.97 5.24 -> 4.03 5.97 5.24
+HW1 type-display-eq +v2               40      1.45      1.55      1.56      1.42  9f53071ccb2f1299 4.03 5.97 5.24 -> 4.11 5.96 5.24
+HW1 delete-restore-line +v2           40      1.41      1.53      1.59      1.39  556e3efd440a5398 4.11 5.96 5.24 -> 4.11 5.96 5.24
+HW2 full +v2                          40      2.00      2.14      2.31      2.31  29a9a3cfa2764ef4 4.11 5.96 5.24 -> 4.11 5.96 5.24
+HW2 type-paragraph +v2                40      1.52      1.60      1.65      1.65  9afe946b76bd1dad 4.11 5.96 5.24 -> 4.11 5.96 5.24
+HW2 type-inline-math +v2              40      1.54      1.64      1.65      1.48  8fc96eeca23aa4b9 4.11 5.96 5.24 -> 4.11 5.96 5.24
+HW2 type-display-eq +v2               40      1.56      1.76      1.86      1.56  3574ea908c2c8586 4.11 5.96 5.24 -> 4.11 5.96 5.24
+HW2 delete-restore-line +v2           40      1.61      1.76      1.85      1.63  4a521125a8113d23 4.11 5.96 5.24 -> 4.11 5.96 5.24
+# digest check against /private/tmp/claude-501/-Users-kubar-code-flashtex/725966af-c852-4dd0-a718-6ce11942557d/scratchpad/digests-hw-base.txt: identical
