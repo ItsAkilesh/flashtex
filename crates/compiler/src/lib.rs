@@ -18,6 +18,7 @@ mod color_names;
 pub mod diagnostics;
 pub mod export;
 pub mod expansion;
+pub mod graphics;
 pub mod hyperref;
 pub mod incremental;
 pub mod json;

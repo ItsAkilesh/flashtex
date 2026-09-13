@@ -217,6 +217,35 @@ Merged on nixos-pc-kabir (Linux, TeX Live 2025) after the session handoff.
   except `supported_latex::generated_artifacts_are_current` (stale generated
   docs; regenerated at the end of stage 1).
 
+### #169 inline-graphics-compiler (compiler) @ 5e425dcf
+
+- Textual conflicts:
+  - `src/lib.rs`: `pub mod graphics` before `pub mod hyperref` (alphabetical).
+  - `src/incremental.rs`: the span-shifting arms (main's `Box`/`SetLength`/
+    `LengthGlue`/`ColorBox` vs `Graphic`/`Transform`) and the `span_of` arms;
+    both kept. Git had shared the brace closing the `ColorBox` arm, which was
+    restored.
+  - `src/layout.rs`: `visit_inline_references` (main's `Box` arm plus #169's
+    `Transform` arm) and the Core 14 emitter (main's `ColorBox` plus #169's
+    `Graphic`/`Transform` "this layout draws no images" diagnostics); both kept.
+  - `src/parser.rs`:
+    - `Inline` enum: git shared one brace between the end of the enum and the
+      end of #150's `ColorBox` struct, so #169's variants were placed first and
+      main's `Box`/`SetLength`/`LengthGlue`/`ColorBox` variants after them; the
+      shared brace then closes `ColorBox` as before.
+    - Preamble dispatch: main's arms plus #169's `\graphicspath`; both kept.
+    - Helper functions: git aligned the tail of #163's `siunitx_group_at`
+      against #169's new `bracket_inner` (both end in the same
+      `_ => {} } } None }` shape). The tail was duplicated so each function
+      keeps its own.
+  - Generated `supported/coverage.md`, `supported/supported-latex.json` and
+    `docs/user/compiler.md`: took main's side (regenerated at the end of stage 1).
+- Main's `\includegraphics` stub (an "unsupported" diagnostic) was replaced by
+  #169's `include_graphics` without conflict; only one dispatch arm remains.
+  #169's new `graphics.rs` uses no pre-expansion parser APIs.
+- Checks: `cargo test --release --no-fail-fast` in crates/compiler: all pass
+  except `supported_latex::generated_artifacts_are_current`.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.

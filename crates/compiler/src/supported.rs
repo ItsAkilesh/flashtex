@@ -111,7 +111,7 @@ pub struct Inventory {
 }
 
 /// Text commands that have a dispatch arm but only ever emit a diagnostic.
-pub const TEXT_DIAGNOSTIC_ONLY: &[&str] = &["includegraphics", "frac", "sqrt"];
+pub const TEXT_DIAGNOSTIC_ONLY: &[&str] = &["frac", "sqrt"];
 
 /// `parser::BUILT_INS` names read only inside another command's argument
 /// (`\maketitle`'s title/author block); on their own they are diagnosed.
@@ -320,6 +320,12 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("footnote", "[n]{...}", "numbered mark and page-bottom footnote text"),
     ("footnotemark", "[n]", "footnote mark only"),
     ("footnotetext", "[n]{...}", "footnote text without a mark"),
+    ("includegraphics", "*[keys]{file}", "image box in running text (graphicx keys as written)"),
+    ("scalebox", "{x}[y]{...}", "graphics.sty scaled box of the content"),
+    ("resizebox", "*{width}{height}{...}", "graphics.sty box scaled to a width and/or height; ! keeps the aspect ratio"),
+    ("rotatebox", "[keys]{angle}{...}", "graphicx rotated box; the box is the rotated bounding box"),
+    ("reflectbox", "{...}", "graphics.sty box mirrored left to right"),
+    ("graphicspath", "{{dir/}...}", "image search directories; no material"),
     ("clearpage", "", "forces a page break"),
     ("cleardoublepage", "", "forces a page break (one-sided article)"),
     ("TeX", "", "latex.ltx logo: T, kern -.1667em, E lowered .5ex, kern -.125em, X"),
