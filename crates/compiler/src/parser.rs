@@ -4517,7 +4517,7 @@ pub const LISTING_KEYS: &[&str] = &[
     "framesep", "framerule", "rulesep", "xleftmargin", "xrightmargin", "aboveskip", "belowskip",
     "breaklines", "breakindent", "breakatwhitespace", "breakautoindent", "tabsize", "gobble",
     "showspaces", "showstringspaces", "keepspaces", "morekeywords", "keywords", "deletekeywords",
-    "sensitive", "firstline", "lastline", "extendedchars", "inputencoding", "upquote", "label",
+    "sensitive", "firstline", "lastline", "extendedchars", "inputencoding",
 ];
 
 /// The keys of a listings key-value list (`key=value` or a bare `key`),
