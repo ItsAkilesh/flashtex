@@ -94,8 +94,9 @@ impl Lexer {
             if c2.is_ascii_hexdigit() && c2.is_ascii_lowercase_hexish() && c3.is_ascii_hexdigit() && c3.is_ascii_lowercase_hexish()
             {
                 let byte = u8::from_str_radix(&format!("{c2}{c3}"), 16).ok()?;
+                // Indices are relative to `rest`, so `end` is the length.
                 let end = i3 + c3.len_utf8();
-                return Some((byte as char, end - pos));
+                return Some((byte as char, end));
             }
         }
         // single-char form: char code c2 XOR 64 if < 128, else + 64
@@ -103,7 +104,7 @@ impl Lexer {
             let code = (c2 as u32) ^ 64;
             let ch = char::from_u32(code)?;
             let end = i2 + c2.len_utf8();
-            return Some((ch, end - pos));
+            return Some((ch, end));
         }
         None
     }
@@ -124,14 +125,31 @@ impl Lexer {
     /// control-symbol named " "). An empty following (immediate EOL) is
     /// the "null control sequence" `\csname` builds sometimes; treated
     /// as an empty-name control word.
-    fn read_cs_name(&mut self, cat_table: &CatCodeTable) -> (String, State) {
+    fn read_cs_name(&mut self, cat_table: &CatCodeTable, endlinechar: i64) -> (String, State) {
         let mut name = String::new();
-        match self.peek_char() {
+        // `^^` notation is resolved inside names too (`\^^M`, `\^^J`).
+        let peek = |me: &Self| me.try_superscript_notation(cat_table, me.pos).or_else(|| me.peek_char());
+        // A *physical* line break right after the escape character (not a
+        // `^^J`/`^^M` written in notation, which is an ordinary symbol).
+        let physical_break = matches!(self.peek_char(), Some(('\n' | '\r', _)));
+        match peek(self) {
             None => (name, State::MidLine),
+            Some((c @ ('\n' | '\r'), len)) if physical_break => {
+                // `\` at the end of a line: the name is the \endlinechar
+                // (control symbol `\^^M`), or empty when there is none.
+                self.pos += len;
+                if c == '\r' && self.src.as_bytes().get(self.pos) == Some(&b'\n') {
+                    self.pos += 1;
+                }
+                if let Some(e) = char::from_u32(endlinechar as u32).filter(|_| (0..256).contains(&endlinechar)) {
+                    name.push(e);
+                }
+                (name, State::NewLine)
+            }
             Some((c, len)) => {
                 let cat = cat_table.get(c);
                 if cat == CatCode::Letter {
-                    while let Some((c, len)) = self.peek_char() {
+                    while let Some((c, len)) = peek(self) {
                         if cat_table.get(c) == CatCode::Letter {
                             name.push(c);
                             self.pos += len;
@@ -150,17 +168,67 @@ impl Lexer {
         }
     }
 
+    /// Are the bytes from the current position to the end of the physical
+    /// line all spaces? (TeX's `input_ln` strips trailing spaces.)
+    fn rest_of_line_blank(&self) -> bool {
+        self.src.as_bytes()[self.pos..].iter().take_while(|&&b| b != b'\n' && b != b'\r').all(|&b| b == b' ')
+    }
+
+    /// Skip the rest of the physical line including its line break
+    /// (`\n`, `\r\n` or `\r`).
+    fn discard_rest_of_line(&mut self) {
+        self.skip_comment_to_eol();
+        match self.peek_char() {
+            Some(('\r', _)) => {
+                self.pos += 1;
+                if self.src.as_bytes().get(self.pos) == Some(&b'\n') {
+                    self.pos += 1;
+                }
+            }
+            Some(('\n', _)) => self.pos += 1,
+            _ => {}
+        }
+    }
+
     /// Produce the next token, given the current catcode table (owned by
     /// the caller so `\catcode` assignments made mid-stream take effect
-    /// immediately, as real TeX requires).
-    pub fn next_token(&mut self, cat_table: &CatCodeTable) -> Option<Token> {
+    /// immediately, as real TeX requires) and `\endlinechar`.
+    ///
+    /// Each physical line break (`\n`, `\r\n` or `\r`) stands for the
+    /// `\endlinechar` TeX appends to every line -- processed with *its*
+    /// catcode (normally `^^M`, end of line) -- or for nothing when
+    /// `\endlinechar` is outside 0..255. Trailing spaces of a line are
+    /// ignored, as TeX's `input_ln` strips them.
+    pub fn next_token(&mut self, cat_table: &CatCodeTable, endlinechar: i64) -> Option<Token> {
         loop {
             let start = self.pos;
+            let prev_state = self.state;
+            let mut line_end = false;
             // Resolve `^^` notation into an effective character + length
             // before catcode lookup, so `^^41` etc. behave like the literal
             // character for catcode purposes.
             let (ch, raw_len) = match self.peek_char() {
                 None => return None,
+                Some((c @ ('\n' | '\r'), len)) => {
+                    let n = if c == '\r' && self.src.as_bytes().get(self.pos + 1) == Some(&b'\n') { len + 1 } else { len };
+                    match char::from_u32(endlinechar as u32).filter(|_| (0..256).contains(&endlinechar)) {
+                        Some(e) => {
+                            line_end = true;
+                            (e, n)
+                        }
+                        None => {
+                            self.pos += n;
+                            self.state = State::NewLine;
+                            continue;
+                        }
+                    }
+                }
+                Some((' ', _)) if self.rest_of_line_blank() => {
+                    while self.src.as_bytes().get(self.pos) == Some(&b' ') {
+                        self.pos += 1;
+                    }
+                    continue;
+                }
                 Some((c, len)) => {
                     if let Some((rc, rlen)) = self.try_superscript_notation(cat_table, self.pos) {
                         (rc, rlen)
@@ -170,16 +238,38 @@ impl Lexer {
                 }
             };
             let cat = cat_table.get(ch);
+            if line_end && cat != CatCode::EndLine {
+                // An \endlinechar with a non-end-of-line catcode (e.g.
+                // `\catcode`\^^M=13` under \obeylines) is an ordinary
+                // character ending the line; the next line starts in N.
+                self.pos += raw_len;
+                self.state = State::NewLine;
+                let span = Span::new(self.source_id, start as u32, self.pos as u32);
+                match cat {
+                    CatCode::Escape => return Some(Token::new(TokenKind::ControlSequence(String::new()), span)),
+                    CatCode::Space if prev_state == State::MidLine => {
+                        return Some(Token::new(TokenKind::Char(' ', CatCode::Space), span))
+                    }
+                    CatCode::Space | CatCode::Comment | CatCode::Ignored | CatCode::Invalid => continue,
+                    CatCode::Active => return Some(Token::new(TokenKind::ActiveChar(ch), span)),
+                    other => return Some(Token::new(TokenKind::Char(ch, other), span)),
+                }
+            }
             match cat {
                 CatCode::Escape => {
                     self.pos += raw_len;
-                    let (name, next_state) = self.read_cs_name(cat_table);
+                    let (name, next_state) = self.read_cs_name(cat_table, endlinechar);
                     self.state = next_state;
                     let span = Span::new(self.source_id, start as u32, self.pos as u32);
                     return Some(Token::new(TokenKind::ControlSequence(name), span));
                 }
                 CatCode::EndLine => {
                     self.pos += raw_len;
+                    if !line_end {
+                        // A catcode-5 character inside a line (`^^M`
+                        // typed as such) ends it: the rest is discarded.
+                        self.discard_rest_of_line();
+                    }
                     let span = Span::new(self.source_id, start as u32, self.pos as u32);
                     let out = match self.state {
                         State::NewLine => {
@@ -215,11 +305,7 @@ impl Lexer {
                     // its end-of-line character (TeXbook p. 47: "the rest
                     // of the line is thrown away"), so no space or `\par`
                     // is produced for it; the next line starts in state N.
-                    if let Some((c, len)) = self.peek_char() {
-                        if c == '\n' {
-                            self.pos += len;
-                        }
-                    }
+                    self.discard_rest_of_line();
                     self.state = State::NewLine;
                     continue;
                 }

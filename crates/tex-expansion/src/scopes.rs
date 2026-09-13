@@ -84,6 +84,20 @@ pub enum Primitive {
     Detokenize,
     /// pdfTeX/e-TeX 2019 `\expanded`.
     Expanded,
+    // -- file/terminal I/O. `\input` reads through the host's file reader
+    // when one is set (and otherwise passes through); the rest are
+    // side-effect-free stand-ins so format code can be expanded.
+    InputFile,
+    Immediate,
+    Write,
+    Openout,
+    Closeout,
+    Openin,
+    Closein,
+    Read,
+    Message,
+    Errmessage,
+    Jobname,
     /// e-TeX `\eTeXrevision` (expands to `.6`).
     ETeXRevision,
     /// pdfTeX `\pdfstrcmp` (XeTeX `\strcmp`).

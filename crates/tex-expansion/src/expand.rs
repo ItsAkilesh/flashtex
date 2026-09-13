@@ -181,6 +181,8 @@ const PRIMITIVE_TABLE: &[(&str, Primitive)] = &[
     ("detokenize", Primitive::Detokenize),
     ("expanded", Primitive::Expanded),
     ("eTeXversion", Primitive::IntPar(IntParam::ETeXVersion)),
+    ("input", Primitive::InputFile),
+    ("jobname", Primitive::Jobname),
     ("eTeXrevision", Primitive::ETeXRevision),
     ("pdfstrcmp", Primitive::Pdfstrcmp),
     ("strcmp", Primitive::Pdfstrcmp),
@@ -321,6 +323,10 @@ pub struct Engine {
     /// `next_content_token`), e.g. prefixes passed through ahead of an
     /// unmodelled control sequence.
     emit_queue: Vec<Token>,
+    /// Host file access for `\input` (None: `\input` passes through).
+    file_reader: Option<Rc<dyn Fn(&str) -> Option<String>>>,
+    /// Files opened by `\input`, as (source id, name).
+    opened_files: Vec<(u32, String)>,
 }
 
 impl Engine {
@@ -357,6 +363,8 @@ impl Engine {
             measurer: Rc::new(DefaultBoxMeasurer),
             stopped: false,
             emit_queue: Vec::new(),
+            file_reader: None,
+            opened_files: Vec::new(),
         }
     }
 
@@ -366,6 +374,20 @@ impl Engine {
 
     pub fn set_font_metrics(&mut self, metrics: Rc<dyn FontMetrics>) {
         self.metrics = metrics;
+    }
+
+    /// Let `\input <name>` read files: `reader(name)` returns the file's
+    /// text (the host decides how names resolve, e.g. adding `.tex` or
+    /// asking kpathsea). Without a reader `\input` is passed through to
+    /// the typesetting layer untouched.
+    pub fn set_file_reader(&mut self, reader: Rc<dyn Fn(&str) -> Option<String>>) {
+        self.file_reader = Some(reader);
+    }
+
+    /// `(source id, name)` of every file `\input` has opened; token spans
+    /// with that `source_id` point into it.
+    pub fn opened_files(&self) -> &[(u32, String)] {
+        &self.opened_files
     }
 
     pub fn set_box_measurer(&mut self, measurer: Rc<dyn BoxMeasurer>) {
@@ -501,7 +523,7 @@ impl Engine {
             }
             match self.sources.last_mut()? {
                 Input::Text(lexer) => {
-                    if let Some(tok) = lexer.next_token(self.st.scopes.cat_table()) {
+                    if let Some(tok) = lexer.next_token(self.st.scopes.cat_table(), self.st.scopes.int_param(IntParam::Endlinechar)) {
                         return Some(Pending { tok, frozen: false });
                     } else if self.sources.len() == 1 {
                         return None;
@@ -1703,6 +1725,73 @@ impl Engine {
                 self.push_tokens(chars_as_other(".6", tok.span));
                 Step::Continue
             }
+            Jobname => {
+                self.push_tokens(chars_as_other("texput", tok.span));
+                Step::Continue
+            }
+            InputFile => {
+                let Some(reader) = self.file_reader.clone() else {
+                    return Step::Emit(tok);
+                };
+                let name = self.scan_file_name();
+                match reader(&name) {
+                    Some(text) => {
+                        let id = self.st.next_source_id;
+                        self.st.next_source_id += 1;
+                        self.opened_files.push((id, name));
+                        self.prune_exhausted();
+                        self.sources.push(Input::Text(Lexer::new(Rc::from(text), id)));
+                    }
+                    None => self.err(format!("LaTeX Error: File `{name}' not found."), tok.span),
+                }
+                Step::Continue
+            }
+            Immediate => Step::Continue,
+            Write => {
+                // The text is scanned but, like a non-shipped \write, not
+                // expanded (expansion could run assignments via \csname).
+                self.scan_number();
+                let saved = std::mem::replace(&mut self.st.scanner_status, ScannerStatus::Absorbing("\\write".into()));
+                self.scan_braced_group(false);
+                self.st.scanner_status = saved;
+                Step::Continue
+            }
+            Message | Errmessage => {
+                let name = if matches!(p, Message) { "\\message" } else { "\\errmessage" };
+                let saved = std::mem::replace(&mut self.st.scanner_status, ScannerStatus::Absorbing(name.into()));
+                let toks = self.scan_braced_group(true);
+                self.st.scanner_status = saved;
+                if matches!(p, Errmessage) {
+                    let text = self.detokenize(&toks);
+                    self.err(text, tok.span);
+                }
+                Step::Continue
+            }
+            Openout | Openin => {
+                self.scan_number();
+                self.expect_equals();
+                self.scan_file_name();
+                Step::Continue
+            }
+            Closeout | Closein => {
+                self.scan_number();
+                Step::Continue
+            }
+            Read => {
+                // No input streams: `\read<n> to \cs` defines \cs as empty
+                // (real TeX would read the terminal and, in batch mode, die).
+                let global = self.take_assignment_prefixes("read");
+                self.scan_number();
+                self.skip_spaces();
+                self.maybe_consume_keyword("to");
+                self.skip_spaces();
+                if let Some(t) = self.next_raw_token() {
+                    self.warn(format!("\\read from a closed stream: {} defined as empty.", self.cs_display(&t)), t.span);
+                    self.define_cs_token(&t, Meaning::Macro(Rc::new(MacroDef::simple(Vec::new()))), global);
+                }
+                self.finish_assignment();
+                Step::Continue
+            }
             Expanded => {
                 // Expand like an `\edef` body, then put the result back
                 // into the input (pdfTeX `back_list`), unfrozen.
@@ -2144,6 +2233,41 @@ impl Engine {
                 Step::Continue
             }
         }
+    }
+
+    /// TeX's `scan_file_name`: optional spaces, then expanded character
+    /// tokens up to a space (consumed) or a non-character; LaTeX's
+    /// `\input{name}` form reads a braced group instead.
+    fn scan_file_name(&mut self) -> String {
+        let mut name = String::new();
+        loop {
+            match self.peek_one_expanding() {
+                Some(t) if matches!(t.kind, TokenKind::Char(_, CatCode::Space)) => {
+                    self.next_raw_token();
+                }
+                _ => break,
+            }
+        }
+        if let Some(t) = self.peek_one_expanding() {
+            if matches!(t.kind, TokenKind::Char(_, CatCode::BeginGroup)) {
+                let toks = self.scan_braced_group(true);
+                return self.detokenize(&toks).trim().to_string();
+            }
+        }
+        loop {
+            match self.next_expanding_raw() {
+                Some(p) => match p.tok.kind {
+                    TokenKind::Char(_, CatCode::Space) => break,
+                    TokenKind::Char(c, _) => name.push(c),
+                    _ => {
+                        self.push_pending(vec![p]);
+                        break;
+                    }
+                },
+                None => break,
+            }
+        }
+        name
     }
 
     fn consume_star(&mut self) -> bool {
@@ -3924,7 +4048,10 @@ impl Engine {
                     RegisterKind::Skip => "skip",
                     RegisterKind::Toks => "toks",
                 };
-                format!("{esc}{kw}{idx}")
+                match (*idx as usize).checked_sub(TEX_PARAM_BASE as usize).and_then(|i| TEX_PARAMS.get(i)) {
+                    Some((name, _)) => format!("{esc}{name}"),
+                    None => format!("{esc}{kw}{idx}"),
+                }
             }
             Meaning::CharDef(n) => format!("{esc}char\"{:X}", n),
             Meaning::MathCharDef(n) => format!("{esc}mathchar\"{:X}", n),
@@ -4024,6 +4151,8 @@ fn meaning_is_expandable(m: &Meaning, expand_only: bool) -> bool {
                 | Detokenize
                 | Expanded
                 | ETeXRevision
+                | InputFile
+                | Jobname
                 | Pdfstrcmp
                 | Scantokens
                 | If
@@ -4178,6 +4307,17 @@ fn primitive_name(p: Primitive) -> &'static str {
         Detokenize => "detokenize",
         Expanded => "expanded",
         ETeXRevision => "eTeXrevision",
+        InputFile => "input",
+        Immediate => "immediate",
+        Write => "write",
+        Openout => "openout",
+        Closeout => "closeout",
+        Openin => "openin",
+        Closein => "closein",
+        Read => "read",
+        Message => "message",
+        Errmessage => "errmessage",
+        Jobname => "jobname",
         IntPar(IntParam::ETeXVersion) => "eTeXversion",
         Pdfstrcmp => "pdfstrcmp",
         Scantokens => "scantokens",
@@ -4593,8 +4733,99 @@ impl Engine {
             }
         }
         st.next_free_register = 0;
+        for (name, prim) in [
+            ("immediate", Primitive::Immediate),
+            ("write", Primitive::Write),
+            ("openout", Primitive::Openout),
+            ("closeout", Primitive::Closeout),
+            ("openin", Primitive::Openin),
+            ("closein", Primitive::Closein),
+            ("read", Primitive::Read),
+            ("message", Primitive::Message),
+            ("errmessage", Primitive::Errmessage),
+        ] {
+            st.scopes.assign_cs(name, Meaning::Primitive(prim), true);
+        }
+        let (year, month, day, minutes) = civil_now();
+        for (i, (name, kind)) in TEX_PARAMS.iter().enumerate() {
+            let idx = TEX_PARAM_BASE + i as u16;
+            st.scopes.assign_cs(name, Meaning::RegisterAlias(*kind, idx), true);
+            let initial = match *name {
+                "tolerance" => 10000,
+                "mag" => 1000,
+                "maxdeadcycles" => 25,
+                "hangafter" => 1,
+                "year" => year,
+                "month" => month,
+                "day" => day,
+                "time" => minutes,
+                _ => 0,
+            };
+            if *kind == RegisterKind::Count && initial != 0 {
+                st.scopes.set_count(idx, initial, true);
+            }
+        }
         Self::from_parts(Rc::from(source), 0, LexState::NewLine, st, limits)
     }
+}
+
+/// TeX's (and e-TeX's/pdfTeX's commonly used) internal parameters, modelled
+/// in INITEX mode as registers at reserved indices `TEX_PARAM_BASE..`
+/// (printed by name in `\meaning`). In the default LaTeX-mode engine they
+/// stay undefined and pass through to the typesetter, which owns them.
+const TEX_PARAM_BASE: u16 = 60000;
+const TEX_PARAMS: &[(&str, RegisterKind)] = {
+    use RegisterKind::*;
+    &[
+        ("pretolerance", Count), ("tolerance", Count), ("linepenalty", Count), ("hyphenpenalty", Count),
+        ("exhyphenpenalty", Count), ("clubpenalty", Count), ("widowpenalty", Count), ("displaywidowpenalty", Count),
+        ("brokenpenalty", Count), ("binoppenalty", Count), ("relpenalty", Count), ("predisplaypenalty", Count),
+        ("postdisplaypenalty", Count), ("interlinepenalty", Count), ("doublehyphendemerits", Count),
+        ("finalhyphendemerits", Count), ("adjdemerits", Count), ("mag", Count), ("delimiterfactor", Count),
+        ("looseness", Count), ("time", Count), ("day", Count), ("month", Count), ("year", Count),
+        ("showboxbreadth", Count), ("showboxdepth", Count), ("hbadness", Count), ("vbadness", Count), ("pausing", Count),
+        ("tracingonline", Count), ("tracingmacros", Count), ("tracingstats", Count), ("tracingparagraphs", Count),
+        ("tracingpages", Count), ("tracingoutput", Count), ("tracinglostchars", Count), ("tracingcommands", Count),
+        ("tracingrestores", Count), ("uchyph", Count), ("outputpenalty", Count), ("maxdeadcycles", Count),
+        ("hangafter", Count), ("floatingpenalty", Count), ("globaldefs", Count), ("fam", Count),
+        ("defaulthyphenchar", Count), ("defaultskewchar", Count), ("language", Count), ("lefthyphenmin", Count),
+        ("righthyphenmin", Count), ("holdinginserts", Count), ("errorcontextlines", Count), ("tracingassigns", Count),
+        ("tracinggroups", Count), ("tracingifs", Count), ("tracingscantokens", Count), ("tracingnesting", Count),
+        ("predisplaydirection", Count), ("lastlinefit", Count), ("savingvdiscards", Count), ("savinghyphcodes", Count),
+        ("pdfoutput", Count), ("pdfcompresslevel", Count), ("pdfobjcompresslevel", Count), ("pdfdecimaldigits", Count),
+        ("pdfpkresolution", Count), ("pdfminorversion", Count), ("pdfmajorversion", Count),
+        ("parindent", Dimen), ("mathsurround", Dimen), ("lineskiplimit", Dimen), ("hsize", Dimen), ("vsize", Dimen),
+        ("maxdepth", Dimen), ("splitmaxdepth", Dimen), ("boxmaxdepth", Dimen), ("hfuzz", Dimen), ("vfuzz", Dimen),
+        ("delimitershortfall", Dimen), ("nulldelimiterspace", Dimen), ("scriptspace", Dimen),
+        ("predisplaysize", Dimen), ("displaywidth", Dimen), ("displayindent", Dimen), ("overfullrule", Dimen),
+        ("hangindent", Dimen), ("hoffset", Dimen), ("voffset", Dimen), ("emergencystretch", Dimen),
+        ("pdfpagewidth", Dimen), ("pdfpageheight", Dimen), ("pdfhorigin", Dimen), ("pdfvorigin", Dimen),
+        ("baselineskip", Skip), ("lineskip", Skip), ("parskip", Skip), ("abovedisplayskip", Skip),
+        ("belowdisplayskip", Skip), ("abovedisplayshortskip", Skip), ("belowdisplayshortskip", Skip),
+        ("leftskip", Skip), ("rightskip", Skip), ("topskip", Skip), ("splittopskip", Skip), ("tabskip", Skip),
+        ("spaceskip", Skip), ("xspaceskip", Skip), ("parfillskip", Skip), ("thinmuskip", Skip),
+        ("medmuskip", Skip), ("thickmuskip", Skip),
+        ("output", Toks), ("everypar", Toks), ("everymath", Toks), ("everydisplay", Toks), ("everyhbox", Toks),
+        ("everyvbox", Toks), ("everyjob", Toks), ("everycr", Toks), ("errhelp", Toks), ("everyeof", Toks),
+    ]
+};
+
+/// (year, month, day, minutes since midnight) in UTC, for INITEX's
+/// `\year`/`\month`/`\day`/`\time` (Hinnant's civil-from-days).
+fn civil_now() -> (i64, i64, i64, i64) {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let days = secs.div_euclid(86400);
+    let minutes = secs.rem_euclid(86400) / 60;
+    let z = days + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    (y, m, d, minutes)
 }
 
 /// Primitives bound (all of them, or with `tex_only` just the real TeX/

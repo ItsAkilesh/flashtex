@@ -43,7 +43,9 @@ fn main() {
     let bytes: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(500_000);
     let edits: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(300);
     let doc = synthetic_document(bytes);
-    let limits = Limits { max_expansion_steps: u64::MAX / 2, max_output_tokens: u64::MAX / 2, ..Limits::default() };
+    // Finite limits, as the IDE would use: a random keystroke can turn the
+    // document into an infinite macro loop.
+    let limits = Limits { max_expansion_steps: 20_000_000, max_output_tokens: 5_000_000, ..Limits::default() };
 
     let t = Instant::now();
     let full = expand_str(&doc);
@@ -74,9 +76,14 @@ fn main() {
         } else {
             Edit { start: pos, end: pos, replacement: "x".into() }
         };
+        let removed = inc.source()[edit.start..edit.end].to_string();
         let t = Instant::now();
         let stats = inc.edit(&edit);
-        times.push(t.elapsed().as_secs_f64() * 1e3);
+        let ms = t.elapsed().as_secs_f64() * 1e3;
+        times.push(ms);
+        if ms > 50.0 && std::env::var_os("BENCH_VERBOSE").is_some() {
+            eprintln!("slow edit #{k}: {ms:.1} ms, removed {removed:?}, inserted {:?}, {stats:?}", edit.replacement);
+        }
         if stats.converged_at.is_some() {
             converged += 1;
         }

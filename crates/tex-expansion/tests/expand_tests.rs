@@ -364,3 +364,21 @@ fn tail_recursive_loop_does_not_grow_the_input_stack() {
     assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
     assert!(run_allow_diag(r"\count1=0 \loop\advance\count1 by 1 \ifnum\count1<50000 \repeat\the\count1").0.ends_with("50000"));
 }
+
+
+#[test]
+fn crlf_line_endings_count_once() {
+    // A blank CRLF line is one \par, not two; a CRLF mid-paragraph is a space.
+    assert_eq!(run_allow_diag("a\r\nb\r\n\r\nc").0, "a b \\par c");
+}
+
+#[test]
+fn trailing_spaces_are_stripped_before_endlinechar() {
+    assert_eq!(run("\\endlinechar=-1 a   \nb"), "ab");
+    assert_eq!(run("a   \nb"), "a b");
+}
+
+#[test]
+fn active_endlinechar_under_obeylines_style_catcode() {
+    assert_eq!(run("\\catcode`\\^^M=13 \\def^^M{|}%\na\nb"), "a|b");
+}
