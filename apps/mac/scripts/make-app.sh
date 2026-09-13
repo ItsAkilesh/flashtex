@@ -6,10 +6,10 @@
 # wraps the built executable in a minimal .app bundle so it can be launched
 # with `open` and eventually granted such permissions.
 #
-# Usage: apps/mac/scripts/make-app.sh [--debug] [--helper-root <repo>]
+# Usage: apps/mac/scripts/make-app.sh [--debug] [--version <x.y.z>] [--helper-root <repo>]
 #          [--compiler <path>] [--pdf <path>] [--bridge <path>] [--ledger <path>]
 #          [--render <path>] [--pdf-exact <path>] [--controller <path>] [--project-files <path>]
-#          [--assistant <path>] [--explain <path>] [--source-sha <key>=<sha>]
+#          [--explain <path>] [--source-sha <key>=<sha>]
 #          [--sign <identity>] [--entitlements <file>] [--notarize <keychain-profile>]
 #          [--open] [--install] [--install-dir <dir>] [--dmg]
 #
@@ -21,6 +21,10 @@
 # --notarize <profile> (requires --sign) submits with `xcrun notarytool submit
 # --wait` using a keychain profile created by `xcrun notarytool
 # store-credentials <profile>`, then staples the app (and the DMG with --dmg).
+# --version <x.y.z> (or the APP_VERSION environment variable) sets
+# CFBundleShortVersionString; the default below is the last released version.
+# CI passes the tag (.github/workflows/release.yml), so cutting a release never
+# edits this script.
 # --source-sha <key>=<sha> declares the source revision of a helper built
 # outside a repository checkout (e.g. from an archive export): components.json
 # then records it with git_sha_origin "declared" instead of "resolved".
@@ -42,7 +46,8 @@ MAC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$MAC_DIR/../.." && pwd)"
 RESOURCES_SRC="$MAC_DIR/Resources"
 
-APP_VERSION="0.1.1"
+DEFAULT_APP_VERSION="0.1.1"
+APP_VERSION="${APP_VERSION:-$DEFAULT_APP_VERSION}"
 BUNDLE_ID="tech.jay3332.flashtex.mac"
 
 CONFIG="release"
@@ -50,6 +55,10 @@ HELPER_ROOT="$REPO_ROOT"
 SIGN_IDENTITY=""
 ENTITLEMENTS="$RESOURCES_SRC/FlashTeX.entitlements"
 NOTARY_PROFILE=""
+# Keychain file holding the notarytool profile (CI's temporary keychain);
+# empty means notarytool's default, the login keychain.
+NOTARY_KEYCHAIN="${FLASHTEX_NOTARY_KEYCHAIN:-}"
+NOTARY_KEYCHAIN_ARGS=()
 DO_OPEN=0
 DO_INSTALL=0
 INSTALL_DIR="$HOME/Applications"
@@ -68,7 +77,6 @@ HELPER_TABLE=(
   "pdf_exact|flashtex-pdf-exact|pdf|--pdf-exact"
   "preview_controller|flashtex-preview-controller|preview-controller|--controller"
   "project_files|flashtex-project-files|project-files|--project-files"
-  "assistant|flashtex-assistant-context|assistant-context|--assistant"
   "explain|flashtex-explain|diagnostic-explanations|--explain"
 )
 # Explicit --<flag> <path> overrides as "key=path" (bash 3.2: no assoc arrays).
@@ -114,7 +122,11 @@ while [[ $# -gt 0 ]]; do
       HELPER_ROOT="${2:?--helper-root needs a path}"
       shift 2
       ;;
-    --compiler|--pdf|--bridge|--ledger|--render|--pdf-exact|--controller|--project-files|--assistant|--explain)
+    --version)
+      APP_VERSION="${2:?--version needs x.y.z}"
+      shift 2
+      ;;
+    --compiler|--pdf|--bridge|--ledger|--render|--pdf-exact|--controller|--project-files|--explain)
       key="$(helper_key_for_flag "$1")"
       HELPER_OVERRIDES+=("$key=${2:-}")
       shift 2
@@ -155,7 +167,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,26p' "${BASH_SOURCE[0]}"
+      sed -n '2,30p' "${BASH_SOURCE[0]}"
       exit 0
       ;;
     *)
@@ -166,6 +178,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 die() { echo "make-app.sh: $*" >&2; exit 1; }
+
+# A leading "v" (a git tag such as v0.2.0) is accepted and dropped; the
+# bundle version must be dotted digits (CFBundleShortVersionString rules).
+APP_VERSION="${APP_VERSION#v}"
+[[ "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || die "--version/APP_VERSION must be x[.y[.z]] digits, got \"$APP_VERSION\""
+echo "==> App version: $APP_VERSION"
 
 # --- Pre-flight: fail before the (slow) build when signing inputs are absent --
 # None of these checks print or touch a secret: identities are matched by name
@@ -203,11 +221,17 @@ if [[ -n "$NOTARY_PROFILE" ]]; then
   xcrun --find notarytool >/dev/null 2>&1 || die "--notarize: xcrun notarytool not found (Xcode 13+ command line tools required)"
   xcrun --find stapler >/dev/null 2>&1 || die "--notarize: xcrun stapler not found"
   # notarytool store-credentials keeps the profile as a keychain item with
-  # service com.apple.gke.notary.tool and the profile name as the account.
-  if ! security find-generic-password -s com.apple.gke.notary.tool -a "$NOTARY_PROFILE" >/dev/null 2>&1; then
-    die "--notarize: no notarytool keychain profile named \"$NOTARY_PROFILE\". Create it once with: xcrun notarytool store-credentials \"$NOTARY_PROFILE\" --apple-id <id> --team-id <TEAMID> (app-specific password prompted, never passed on the command line), or omit --notarize."
+  # service com.apple.gke.notary.tool and the profile name as the account,
+  # in the login keychain unless it was stored with --keychain <file>; CI
+  # uses a temporary keychain and names it in FLASHTEX_NOTARY_KEYCHAIN.
+  if [[ -n "$NOTARY_KEYCHAIN" ]]; then
+    [[ -f "$NOTARY_KEYCHAIN" ]] || die "--notarize: FLASHTEX_NOTARY_KEYCHAIN is not a keychain file: $NOTARY_KEYCHAIN"
+    NOTARY_KEYCHAIN_ARGS=(--keychain "$NOTARY_KEYCHAIN")
   fi
-  echo "==> notarytool keychain profile found: \"$NOTARY_PROFILE\""
+  if ! security find-generic-password -s com.apple.gke.notary.tool -a "$NOTARY_PROFILE" ${NOTARY_KEYCHAIN:+"$NOTARY_KEYCHAIN"} >/dev/null 2>&1; then
+    die "--notarize: no notarytool keychain profile named \"$NOTARY_PROFILE\"${NOTARY_KEYCHAIN:+ in $NOTARY_KEYCHAIN}. Create it once with: xcrun notarytool store-credentials \"$NOTARY_PROFILE\" --apple-id <id> --team-id <TEAMID> (app-specific password prompted, never passed on the command line), or omit --notarize."
+  fi
+  echo "==> notarytool keychain profile found: \"$NOTARY_PROFILE\"${NOTARY_KEYCHAIN:+ (keychain $NOTARY_KEYCHAIN)}"
 fi
 
 # --- Pre-flight: pinned rooted TFM metrics must verify before the build -------
@@ -489,7 +513,7 @@ fi
 notarize_path() {  # $1=path to submit (zip/dmg) $2=what it is (for messages)
   local submit_log="$MAC_DIR/build/notarytool-$2.log"
   echo "==> Submitting $2 for notarization (xcrun notarytool submit --wait, profile \"$NOTARY_PROFILE\")"
-  if ! xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1 | tee "$submit_log"; then
+  if ! xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" ${NOTARY_KEYCHAIN_ARGS[@]+"${NOTARY_KEYCHAIN_ARGS[@]}"} --wait 2>&1 | tee "$submit_log"; then
     die "notarytool submit failed for $2 (see $submit_log; no credential is written there)"
   fi
   if ! grep -qE '^ *status: Accepted' "$submit_log"; then

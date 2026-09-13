@@ -2,11 +2,11 @@ import Foundation
 
 /// What our compiler ACTUALLY renders today, as the `supported_features` list
 /// the Mac sends with every `capture_convert` (transfer-v1; the bridge forwards
-/// it to Grok, whose system prompt says "prefer the listed supported features
-/// only when faithful; report an unsupported feature instead of changing
-/// meaning"). Grok otherwise returns correct LaTeX our pipeline cannot typeset
-/// (`gather*`, `\mathbb`, `\text` …) and every symbol inside cascades into
-/// errors (issue #2, Daniel's finding).
+/// it to the conversion provider, whose prompt says "prefer the listed
+/// supported features only when faithful; report an unsupported feature
+/// instead of changing meaning"). A model otherwise returns correct LaTeX our
+/// pipeline cannot typeset (`gather*`, `\mathbb`, `\text` …) and every symbol
+/// inside cascades into errors (issue #2, Daniel's finding).
 ///
 /// Pinned to `crates/compiler/src/math.rs` `COMMAND_GLYPHS` and
 /// `crates/compiler/src/parser.rs` `BUILT_INS` / environments at
@@ -45,7 +45,7 @@ enum CaptureFeatures {
         "plain paragraphs of text; ASCII punctuation; digits and Latin letters in math",
     ]
 
-    /// Constructs the pipeline cannot typeset; Grok must report them in
+    /// Constructs the pipeline cannot typeset; the provider must report them in
     /// `ambiguities` rather than emit them or silently rewrite the mathematics.
     static let unsupported: [String] = [
         "NOT supported: amsmath/amssymb environments (align, align*, gather, gather*, cases, pmatrix, bmatrix, matrix, split, multline)",

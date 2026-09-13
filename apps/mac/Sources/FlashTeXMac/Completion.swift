@@ -44,6 +44,9 @@ enum Completion {
     struct Snippet: Equatable {
         let text: String
         let caretUTF16: Int
+        /// Further placeholders (UTF-16 offsets into `text`, in Tab order,
+        /// after the caret's); the editor visits them with Tab / ⇧Tab.
+        var stops: [Int] = []
     }
 
     static let maxSuggestions = 12
@@ -87,8 +90,9 @@ enum Completion {
             /// braces (`\section{|}`, `\frac{|}{}`, `\newcommand{|}{}`).
             /// Nil for commands without a braced argument.
             var snippet: Completion.Snippet? {
+                if name == "left" { return Completion.Snippet(text: "\\left( \\right)", caretUTF16: 6, stops: [14]) }
                 var out = "\\" + name
-                var caret: Int?
+                var stops: [Int] = []
                 var i = arguments.startIndex
                 while i < arguments.endIndex {
                     let c = arguments[i]
@@ -96,15 +100,16 @@ enum Completion {
                         i = arguments[i...].firstIndex(of: "]").map(arguments.index(after:)) ?? arguments.endIndex
                     } else if c == "{" {
                         out += "{"
-                        if caret == nil { caret = (out as NSString).length }
+                        stops.append((out as NSString).length)
                         out += "}"
                         i = arguments[i...].firstIndex(of: "}").map(arguments.index(after:)) ?? arguments.endIndex
                     } else {
                         i = arguments.index(after: i)
                     }
                 }
-                guard let caret else { return nil }
-                return Completion.Snippet(text: out, caretUTF16: caret)
+                guard let caret = stops.first else { return nil }
+                // Tab visits the later braces, then leaves the snippet.
+                return Completion.Snippet(text: out, caretUTF16: caret, stops: Array(stops.dropFirst()) + [(out as NSString).length])
             }
             var detail: String {
                 switch mode {
@@ -282,7 +287,7 @@ enum Completion {
         /// A run of letters, with what immediately precedes it (`\begin{`, `\ref{`, …).
         case word(text: String, start: Int, end: Int, context: Context)
 
-        enum Context: Equatable { case none, beginEnvironment, endEnvironment, reference, citation, label }
+        enum Context: Equatable { case none, beginEnvironment, endEnvironment, reference, citation, label, package, file }
 
         var start: Int {
             switch self { case .command(_, let s, _), .word(_, let s, _, _): return s }
@@ -301,6 +306,7 @@ enum Completion {
 
     private static func token(in b: UnsafeBufferPointer<UInt8>, caretByte: Int) -> Token? {
         guard caretByte <= b.count, let p = b.baseAddress else { return nil }
+        if let key = argumentKeyToken(in: b, caretByte: caretByte) { return key }
         let table = wordByteClass
         var start = caretByte
         var asciiLettersOnly = true
@@ -336,7 +342,82 @@ enum Completion {
             return .reference
         }
         if citationCommands.contains(where: { endsWith(b, upTo: start, suffix: "\\" + $0 + "{") }) { return .citation }
+        if endsWith(b, upTo: start, suffix: "\\usepackage{") { return .package }
+        if fileCommands.contains(where: { endsWith(b, upTo: start, suffix: "\\" + $0 + "{") }) { return .file }
         return .none
+    }
+
+    /// Commands whose `{` argument completes a project file path.
+    static let fileCommands = ["input", "include", "includegraphics"]
+
+    /// Argument keys are wider than words: `eq:main`, `knuth-84`, `ch/one.tex`,
+    /// `amsmath` after a comma. Scanned back from the caret over key bytes to
+    /// the argument opener (`{`, or `,` inside a list argument), and only kept
+    /// when that opener belongs to a key-taking command; otherwise the plain
+    /// word scan applies.
+    private static func argumentKeyToken(in b: UnsafeBufferPointer<UInt8>, caretByte: Int) -> Token? {
+        let table = wordByteClass
+        var start = caretByte
+        while start > 0 {
+            let c = b[start - 1]
+            let key = table[Int(c)] != 0 || (c >= 0x30 && c <= 0x39) || c == UInt8(ascii: ":") || c == UInt8(ascii: "-")
+                || c == UInt8(ascii: "_") || c == UInt8(ascii: ".") || c == UInt8(ascii: "/") || c == UInt8(ascii: "+") || c == UInt8(ascii: "*")
+            guard key else { break }
+            start -= 1
+        }
+        guard start > 0 else { return nil }
+        var opener = start
+        if b[start - 1] == UInt8(ascii: ",") { // `\usepackage{a,b`, `\cite{k1,k2`: back to the brace
+            var j = start - 1
+            while j > 0, b[j - 1] != UInt8(ascii: "{"), b[j - 1] != UInt8(ascii: "\n"), b[j - 1] != UInt8(ascii: "}") { j -= 1 }
+            guard j > 0, b[j - 1] == UInt8(ascii: "{") else { return nil }
+            opener = j
+        }
+        let context = context(in: b, before: opener)
+        switch context {
+        case .reference, .citation, .label, .package, .file:
+            let text = String(decoding: b[start..<caretByte], as: UTF8.self)
+            guard text.utf8.allSatisfy({ $0 < 0x80 }) || text.unicodeScalars.allSatisfy({ $0.properties.isAlphabetic }) else { return nil }
+            return .word(text: text, start: start, end: caretByte, context: context)
+        case .none, .beginEnvironment, .endEnvironment:
+            return nil
+        }
+    }
+
+    // MARK: fuzzy matching
+
+    /// 0 exact, 1 prefix, 2 subsequence (the typed characters appear in order,
+    /// `sbs` in `subsection`), nil no match. Subsequence matches need at
+    /// least two typed characters.
+    static func matchRank(_ candidate: String, prefix: String) -> Int? {
+        if prefix.isEmpty { return 1 }
+        if candidate == prefix { return 0 }
+        if candidate.hasPrefix(prefix) { return 1 }
+        guard prefix.utf8.count >= 2 else { return nil }
+        var it = candidate.utf8.makeIterator()
+        for p in prefix.utf8 {
+            var found = false
+            while let c = it.next() { if c == p { found = true; break } }
+            if !found { return nil }
+        }
+        return 2
+    }
+
+    /// Items whose key matches `prefix`: the exact and prefix matches (in the
+    /// given order) when there are any; otherwise the subsequence matches
+    /// (`\ref{main}` → `eq:main` only when nothing starts with `main`), so a
+    /// typed prefix never has fuzzy rows mixed under it.
+    static func fuzzyFilter<T>(_ items: [T], prefix: String, key: (T) -> String) -> [T] {
+        var strong: [T] = []
+        var weak: [T] = []
+        for item in items {
+            switch matchRank(key(item), prefix: prefix) {
+            case 0?, 1?: strong.append(item)
+            case 2?: weak.append(item)
+            default: break
+            }
+        }
+        return strong.isEmpty ? weak : strong
     }
 
     /// UTF-16 range the chosen suggestion replaces: the token before the caret
@@ -365,7 +446,7 @@ enum Completion {
     /// this function's to detect. `cancelled` is polled between scan phases
     /// so an off-main computation stops early; a cancelled call returns `[]`.
     static func suggestions(in text: String, caretUTF16: Int, metadata: Metadata?,
-                            supported: [String] = defaultSupported,
+                            supported: [String] = defaultSupported, projectFiles: [String] = [],
                             cancelled: () -> Bool = { false }) -> [Suggestion] {
         guard let token = token(in: text, caretUTF16: caretUTF16), !cancelled() else { return [] }
         let out: [Suggestion]
@@ -385,6 +466,10 @@ enum Completion {
                 out = citationSuggestions(prefix: prefix, text: text, metadata: metadata)
             case .label:
                 out = labelSuggestions(prefix: prefix, tokenStart: token.start, text: text, metadata: metadata)
+            case .package:
+                out = packageSuggestions(prefix: prefix)
+            case .file:
+                out = fileSuggestions(prefix: prefix, files: projectFiles)
             case .none:
                 out = wordSuggestions(prefix: prefix, tokenStart: token.start, text: text)
             }
@@ -436,7 +521,49 @@ enum Completion {
             if let message = metadata?.diagnosticsByCommand[name] { detail += " — " + message }
             out.append(Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command, detail: detail))
         }
+        // 4. Fuzzy fallback: when nothing starts with the prefix, vocabulary
+        //    commands whose name contains the typed characters in order
+        //    (`\sbs` → `\subsection`).
+        if out.isEmpty, prefix.utf8.count >= 2 {
+            for name in supported where out.count < maxSuggestions && !offered.contains(name) && matchRank(name, prefix: prefix) == 2 {
+                offered.insert(name)
+                let entry = Vocabulary.byName[name] ?? Vocabulary.generic(name)
+                out.append(Suggestion(label: entry.label, insertText: "\\" + name, kind: .command, detail: entry.detail, snippet: entry.snippet))
+            }
+        }
         return Array(out.prefix(maxSuggestions))
+    }
+
+    /// `\usepackage{` candidates: common CTAN package names (static; the
+    /// compiler records packages without implementing them).
+    static let knownPackages = [
+        "amsmath", "amssymb", "amsthm", "amsfonts", "mathtools", "graphicx", "hyperref", "geometry", "inputenc", "fontenc",
+        "babel", "xcolor", "color", "tikz", "pgfplots", "booktabs", "tabularx", "array", "multirow", "longtable", "enumitem",
+        "natbib", "biblatex", "cite", "url", "listings", "minted", "float", "caption", "subcaption", "subfig", "setspace",
+        "fancyhdr", "titlesec", "microtype", "lmodern", "fontspec", "unicode-math", "siunitx", "physics", "bm", "cleveref",
+        "algorithm", "algorithmic", "algorithm2e", "verbatim", "comment", "todonotes", "lipsum", "parskip", "csquotes",
+        "textcomp", "wrapfig", "adjustbox", "pdfpages", "xspace", "etoolbox", "ifthen", "calc", "times", "mathptmx",
+    ]
+
+    private static func packageSuggestions(prefix: String) -> [Suggestion] {
+        let names = fuzzyFilter(knownPackages, prefix: prefix) { $0 }
+        return names.prefix(maxSuggestions).map {
+            Suggestion(label: $0, insertText: $0, kind: .command, detail: "package (recognised, not implemented by this compiler)")
+        }
+    }
+
+    /// `\input{`/`\include{`/`\includegraphics{` candidates: the project's
+    /// document paths, matched on the path or its basename.
+    private static func fileSuggestions(prefix: String, files: [String]) -> [Suggestion] {
+        var seen = Set<String>()
+        let unique = files.filter { seen.insert($0).inserted }
+        let matched = fuzzyFilter(unique, prefix: prefix) { path in
+            let base = path.split(separator: "/").last.map(String.init) ?? path
+            return matchRank(path, prefix: prefix) != nil ? path : base
+        }
+        return matched.prefix(maxSuggestions).map {
+            Suggestion(label: $0, insertText: $0, kind: .command, detail: "project document")
+        }
     }
 
     private static func environmentSuggestions(prefix: String, tokenStart: Int, text: String, closing: Bool,
@@ -452,43 +579,102 @@ enum Completion {
         // Opening an environment inserts its body skeleton with the caret on
         // the (indented) middle line; closing stays the exact name.
         let indent = closing ? "" : lineIndent(in: text, beforeByte: tokenStart)
-        for name in names where name.hasPrefix(prefix) && seen.insert(name).inserted {
+        for name in fuzzyFilter(names, prefix: prefix, key: { $0 }) where seen.insert(name).inserted {
             var detail = knownEnvironments.contains(name) ? "supported by this compiler" : "seen in this document"
             if let message = metadata?.diagnosticsByEnvironment[name] { detail += " — " + message }
-            var snippet: Snippet?
-            if !closing {
-                let head = "\(name)}\n\(indent)"
-                snippet = Snippet(text: head + "\n\(indent)\\end{\(name)}", caretUTF16: (head as NSString).length)
-            }
+            let snippet = closing ? nil : environmentSnippet(name, indent: indent)
             out.append(Suggestion(label: name, insertText: name + "}", kind: .environment, detail: detail, snippet: snippet))
         }
         return Array(out.prefix(maxSuggestions))
+    }
+
+    /// Body skeleton inserted after `\begin{` for `name`: the caret on the
+    /// (indented) middle line, or inside the first placeholder of a richer
+    /// template (`itemize`/`enumerate` with `\item`, `figure`/`table` with
+    /// `\centering`, `\caption{}` and `\label{}`), the later placeholders as
+    /// Tab stops. Offsets are UTF-16 into the inserted text, which starts
+    /// right after the `\begin{` the user typed.
+    static func environmentSnippet(_ name: String, indent: String) -> Snippet {
+        let nl = "\n" + indent
+        let base = name.hasSuffix("*") ? String(name.dropLast()) : name
+        var lines: [String]
+        switch base {
+        case "itemize", "enumerate": lines = ["\(name)}", "\\item ⟨⟩", "\\end{\(name)}"]
+        case "description": lines = ["\(name)}", "\\item[⟨⟩] ⟨⟩", "\\end{\(name)}"]
+        case "figure": lines = ["\(name)}", "\\centering", "\\includegraphics[width=0.8\\linewidth]{⟨⟩}", "\\caption{⟨⟩}", "\\label{fig:⟨⟩}", "\\end{\(name)}"]
+        case "table": lines = ["\(name)}", "\\centering", "\\begin{tabular}{⟨⟩}", "\\end{tabular}", "\\caption{⟨⟩}", "\\label{tab:⟨⟩}", "\\end{\(name)}"]
+        case "align", "gather", "equation", "multline", "flalign", "alignat":
+            lines = ["\(name)}", "⟨⟩", "\\end{\(name)}"]
+        default: lines = ["\(name)}", "⟨⟩", "\\end{\(name)}"]
+        }
+        // Placeholders `⟨⟩` become stops (removed from the text).
+        var out = ""
+        var stops: [Int] = []
+        for (i, line) in lines.enumerated() {
+            if i > 0 { out += nl }
+            var rest = Substring(line)
+            while let r = rest.range(of: "⟨⟩") {
+                out += rest[..<r.lowerBound]
+                stops.append((out as NSString).length)
+                rest = rest[r.upperBound...]
+            }
+            out += rest
+        }
+        let caret = stops.first ?? (out as NSString).length
+        return Snippet(text: out, caretUTF16: caret, stops: Array(stops.dropFirst()) + [(out as NSString).length])
     }
 
     /// One candidate for `\label{`: a key derived from the enclosing
     /// `\section`/`\subsection` title (`sec:` + kebab-case), made unique against
     /// the document's labels and the project index's labels at this revision.
     private static func labelSuggestions(prefix: String, tokenStart: Int, text: String, metadata: Metadata?) -> [Suggestion] {
-        guard let heading = enclosingHeading(in: text, beforeByte: tokenStart) else { return [] }
-        let slug = kebabCase(heading.title)
-        guard !slug.isEmpty else { return [] }
+        let heading = enclosingHeading(in: text, beforeByte: tokenStart)
+        let slug = heading.map { kebabCase($0.title) } ?? ""
         var taken = Set(labels(in: text))
         if let metadata { taken.formUnion(metadata.labels.map(\.name)) }
-        let base = "sec:" + slug
-        var key = base
-        var n = 2
-        while taken.contains(key) { key = "\(base)-\(n)"; n += 1 }
-        guard key.hasPrefix(prefix) else { return [] }
-        var detail = "unique key for \\\(heading.command){\(heading.title)}"
-        if key != base { detail += " (\(base) is taken)" }
-        if let metadata { detail += " · checked against \(metadata.labels.count) project label\(metadata.labels.count == 1 ? "" : "s") · revision \(metadata.revision)" }
-        return [Suggestion(label: key, insertText: key + "}", kind: .reference, detail: detail)]
+        // The key's prefix follows the innermost open environment (`fig:`
+        // inside figure, `tab:` inside table, `eq:` inside a math display);
+        // `sec:` for a heading's own label.
+        let (kind, noun) = labelPrefix(forEnvironment: openEnvironments(in: text, beforeByte: tokenStart).last?.name)
+        guard !slug.isEmpty || kind != "sec:" else { return [] }
+        let base = kind + slug
+        var out: [Suggestion] = []
+        if !slug.isEmpty {
+            var key = base
+            var n = 2
+            while taken.contains(key) { key = "\(base)-\(n)"; n += 1 }
+            if matchRank(key, prefix: prefix) != nil {
+                var detail = heading.map { kind == "sec:" ? "unique key for \\\($0.command){\($0.title)}" : "unique \(noun) key under \\\($0.command){\($0.title)}" }
+                    ?? "unique \(noun) key"
+                if key != base { detail += " (\(base) is taken)" }
+                if let metadata { detail += " · checked against \(metadata.labels.count) project label\(metadata.labels.count == 1 ? "" : "s") · revision \(metadata.revision)" }
+                out.append(Suggestion(label: key, insertText: key + "}", kind: .reference, detail: detail))
+            }
+        }
+        if kind != "sec:", prefix.isEmpty || kind.hasPrefix(prefix) {
+            out.append(Suggestion(label: kind, insertText: kind, kind: .reference, detail: "\(noun) key prefix"))
+        }
+        return out
+    }
+
+    /// Conventional label prefix and noun for the innermost open environment.
+    static func labelPrefix(forEnvironment env: String?) -> (String, String) {
+        let base = env.map { $0.hasSuffix("*") ? String($0.dropLast()) : $0 } ?? ""
+        switch base {
+        case "figure", "wrapfigure", "subfigure": return ("fig:", "figure")
+        case "table", "tabular", "longtable": return ("tab:", "table")
+        case "equation", "align", "gather", "multline", "flalign", "alignat", "eqnarray", "displaymath", "subequations":
+            return ("eq:", "equation")
+        case "lstlisting", "minted", "algorithm": return ("lst:", "listing")
+        case "theorem", "lemma", "proposition", "corollary", "definition": return ("thm:", "theorem")
+        default: return ("sec:", "section")
+        }
     }
 
     private static func referenceSuggestions(prefix: String, text: String, metadata: Metadata?) -> [Suggestion] {
         var seen = Set<String>()
         var out: [Suggestion] = []
-        for label in labels(in: text) where label.hasPrefix(prefix) && seen.insert(label).inserted {
+        for label in labels(in: text) where matchRank(label, prefix: prefix) != nil && seen.insert(label).inserted {
             var detail = "\\label in this document"
             if let metadata, metadata.unresolvedReferences.contains(label) {
                 detail += " — undefined when revision \(metadata.revision) compiled"
@@ -497,12 +683,13 @@ enum Completion {
         }
         // Labels the project index knows from other documents of the project.
         if let metadata {
-            for item in metadata.labels where item.name.hasPrefix(prefix) && seen.insert(item.name).inserted {
+            for item in metadata.labels where matchRank(item.name, prefix: prefix) != nil && seen.insert(item.name).inserted {
                 out.append(Suggestion(label: item.name, insertText: item.name + "}", kind: .reference,
                                       detail: item.detail(noun: "defined", revision: metadata.revision)))
             }
         }
-        return Array(out.prefix(maxSuggestions))
+        // Exact and prefix matches before subsequence matches, each in source order.
+        return Array(fuzzyFilter(out, prefix: prefix, key: \.label).prefix(maxSuggestions))
     }
 
     /// `\cite{` candidates: `\bibitem` keys of this document, then the
@@ -516,12 +703,12 @@ enum Completion {
     private static func citationSuggestions(prefix: String, text: String, metadata: Metadata?) -> [Suggestion] {
         var seen = Set<String>()
         var out: [Suggestion] = []
-        for key in bibitems(in: text) where key.hasPrefix(prefix) && seen.insert(key).inserted {
+        for key in bibitems(in: text) where matchRank(key, prefix: prefix) != nil && seen.insert(key).inserted {
             out.append(Suggestion(label: key, insertText: key + "}", kind: .citation, detail: "\\bibitem in this document"))
         }
         if let metadata {
             var ranked: [(rank: Int, suggestion: Suggestion)] = []
-            for item in metadata.citations where item.name.hasPrefix(prefix) && seen.insert(item.name).inserted {
+            for item in metadata.citations where matchRank(item.name, prefix: prefix) != nil && seen.insert(item.name).inserted {
                 let (rank, detail) = citationDetail(item, metadata: metadata)
                 ranked.append((rank, Suggestion(label: item.name, insertText: item.name + "}", kind: .citation, detail: detail)))
             }
@@ -529,7 +716,7 @@ enum Completion {
             out += ranked.enumerated().sorted { a, b in a.element.rank != b.element.rank ? a.element.rank < b.element.rank : a.offset < b.offset }
                 .map(\.element.suggestion)
         }
-        return Array(out.prefix(maxSuggestions))
+        return Array(fuzzyFilter(out, prefix: prefix, key: \.label).prefix(maxSuggestions))
     }
 
     /// Rank (0 declared bibliography record, 1 `\bibitem` in a LaTeX source,
@@ -1257,6 +1444,8 @@ final class CompletionScheduler {
         /// Already bound to the revision of `text` (`Metadata.bound(to:)`).
         var metadata: Completion.Metadata?
         var supported: [String] = Completion.defaultSupported
+        /// Project document paths offered after `\input{`, `\include{` and `\includegraphics{`.
+        var projectFiles: [String] = []
     }
 
     struct Outcome: Equatable {
@@ -1329,7 +1518,7 @@ final class CompletionScheduler {
             let range = Completion.completionRange(in: request.text, caretUTF16: request.caretUTF16)
             let items = job.isCancelled ? [] : Completion.suggestions(in: request.text, caretUTF16: request.caretUTF16,
                                                                      metadata: request.metadata, supported: request.supported,
-                                                                     cancelled: { job.isCancelled })
+                                                                     projectFiles: request.projectFiles, cancelled: { job.isCancelled })
             let t1 = MonotonicClock.nowNs()
             let outcome = Outcome(generation: job.generation, caretUTF16: request.caretUTF16, range: range, items: items,
                                   computeMs: Double(t1 - t0) / 1e6, queuedMs: Double(t0 - scheduledAt) / 1e6, computedAtNs: t1)
@@ -1782,6 +1971,119 @@ final class CompletingTextView: NSTextView {
         didSet { resultMetadata = compileResult.map(Completion.Metadata.from) }
     }
     var supportedCommands = Completion.defaultSupported
+    /// Project document paths for `\input{`/`\include{`/`\includegraphics{` (the owner sets them).
+    var projectFiles: [String] = []
+
+    // MARK: snippet tab stops (Snippets: Tab / ⇧Tab between placeholders, Esc leaves)
+
+    /// Absolute UTF-16 placeholder positions of the last inserted snippet
+    /// still being filled in, in Tab order (the last one is the snippet's
+    /// end); empty when no snippet is active. Kept aligned with edits.
+    private(set) var snippetStops: [Int] = []
+    /// Index into `snippetStops` of the placeholder the caret last jumped to
+    /// (-1: still at the snippet's caret position).
+    private(set) var snippetStopIndex = -1
+    /// Start of the active snippet (edits before it shift everything).
+    private var snippetStart = 0
+    var isSnippetActive: Bool { !snippetStops.isEmpty }
+
+    /// Moves the caret to the next (`delta` 1) or previous (-1) placeholder;
+    /// past the last one the snippet ends. Returns false when no snippet is active.
+    @discardableResult
+    func moveSnippetStop(by delta: Int) -> Bool {
+        guard isSnippetActive else { return false }
+        let next = snippetStopIndex + delta
+        guard next >= -1 else { return true }
+        guard next < snippetStops.count else { endSnippet(); return true }
+        snippetStopIndex = next
+        let target = next == -1 ? snippetStart : snippetStops[next]
+        let length = (string as NSString).length
+        guard target <= length else { endSnippet(); return true }
+        applyingCompletion = true
+        setSelectedRange(NSRange(location: target, length: 0))
+        lastCaret = selectedRange()
+        applyingCompletion = false
+        if next == snippetStops.count - 1 { endSnippet() } // the end stop: the snippet is done
+        return true
+    }
+
+    func endSnippet() {
+        snippetStops = []
+        snippetStopIndex = -1
+    }
+
+    /// Edits shift the stops after them (typing at a placeholder keeps the
+    /// placeholder at the start of the typed text); an edit spanning a stop
+    /// drops the snippet (its placeholders no longer mean anything).
+    private func shiftSnippetStops(edit range: NSRange, replacementLength: Int) {
+        guard isSnippetActive else { return }
+        let delta = replacementLength - range.length
+        if NSMaxRange(range) < snippetStart || (range.length > 0 && NSMaxRange(range) == snippetStart) {
+            snippetStart += delta
+            snippetStops = snippetStops.map { $0 + delta }
+            return
+        }
+        if range.location < snippetStart { endSnippet(); return }
+        var shifted: [Int] = []
+        for stop in snippetStops {
+            if NSMaxRange(range) < stop || (range.length > 0 && NSMaxRange(range) == stop) { shifted.append(stop + delta) }
+            else if range.location >= stop { shifted.append(stop) }
+            else { endSnippet(); return }
+        }
+        snippetStops = shifted
+    }
+
+    override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
+        let ok = super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
+        if ok { shiftSnippetStops(edit: affectedCharRange, replacementLength: (replacementString as NSString?)?.length ?? 0) }
+        return ok
+    }
+
+    // MARK: signature help (SignatureHelp.swift)
+
+    private lazy var signaturePanel = SignatureHelpPanel()
+    /// The panel (created on first use), for tests and evidence.
+    var signatureHelpPanel: SignatureHelpPanel { signaturePanel }
+    var isSignatureHelpVisible: Bool { signaturePanel.info != nil }
+    private(set) var lastSignatureInfo: SignatureHelp.Info?
+
+    /// ⌘⇧Space: show help for the argument the caret is in (nothing when it
+    /// is not inside one).
+    func requestSignatureHelp() { refreshSignatureHelp(open: true) }
+
+    func hideSignatureHelp() { if isSignatureHelpVisible { signaturePanel.hide() } }
+
+    /// Recomputes the help for the caret: `open` (⌘⇧Space, or a `{`/`[` just
+    /// typed after a command name) shows it; otherwise a visible panel
+    /// follows the caret within the argument and closes once it leaves.
+    private func refreshSignatureHelp(open: Bool) {
+        guard !hasMarkedText(), let window else { hideSignatureHelp(); return }
+        let caret = selectedRange()
+        guard caret.length == 0, let info = SignatureHelp.info(in: string, caretUTF16: caret.location) else {
+            hideSignatureHelp()
+            return
+        }
+        lastSignatureInfo = info
+        guard open || isSignatureHelpVisible else { return }
+        if !open, let shown = signaturePanel.info, shown == info { return }
+        let caretRect = firstRect(forCharacterRange: NSRange(location: caret.location, length: 0), actualRange: nil)
+        signaturePanel.show(info, above: caretRect, parent: window)
+    }
+
+    // MARK: ⌘/ line comment
+
+    /// Toggles `% ` on every line the selection touches (one undo step).
+    func toggleLineComment() {
+        guard !hasMarkedText() else { return }
+        let text = string as NSString
+        let sel = selectedRange()
+        guard let edit = EditorIntelligence.toggleComment(in: text, selection: sel) else { return }
+        breakUndoCoalescing()
+        insertText(edit.replacement, replacementRange: edit.range)
+        setSelectedRange(edit.selection)
+        undoManager?.setActionName("Toggle Comment")
+        breakUndoCoalescing()
+    }
 
     /// Revision of `string` as the owner (ShellModel) counts it. Nil until the
     /// owner sets it, and nil binds no metadata: candidates then come from the
@@ -1932,7 +2234,7 @@ final class CompletingTextView: NSTextView {
         lastCaret = caret
         let metadata = boundMetadata
         let request = CompletionScheduler.Request(text: string, caretUTF16: caret.location, metadata: metadata,
-                                                  supported: supportedCommands)
+                                                  supported: supportedCommands, projectFiles: projectFiles)
         scheduler.schedule(request) { [weak self] outcome in
             self?.present(outcome, metadataRevision: metadata?.revision)
         }
@@ -2024,6 +2326,12 @@ final class CompletingTextView: NSTextView {
         undoManager?.setActionName(kind == .environment ? "Insert Environment" : "Insert Snippet")
         setSelectedRange(NSRange(location: range.location + snippet.caretUTF16, length: 0))
         breakUndoCoalescing()
+        // Tab stops (absolute) for the placeholders after the caret's.
+        snippetStart = range.location + snippet.caretUTF16
+        snippetStops = snippet.stops.map { range.location + $0 }
+        snippetStopIndex = -1
+        lastCaret = selectedRange()
+        refreshSignatureHelp(open: true) // `\frac{|}{}`: the argument pattern is useful right away
     }
 
     // MARK: events
@@ -2034,10 +2342,29 @@ final class CompletingTextView: NSTextView {
             requestCompletion()
             return
         }
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if modifiers == [.command, .shift], event.charactersIgnoringModifiers == " " { // ⌘⇧Space: signature help
+            requestSignatureHelp()
+            return
+        }
+        if modifiers == .command, event.charactersIgnoringModifiers == "/" { // ⌘/: toggle line comment
+            toggleLineComment()
+            return
+        }
         guard session != nil else {
+            let plain = event.modifierFlags.intersection([.command, .option, .control]).isEmpty
+            if plain, event.keyCode == 48, isSnippetActive { // Tab / ⇧Tab between snippet placeholders
+                moveSnippetStop(by: event.modifierFlags.contains(.shift) ? -1 : 1)
+                return
+            }
+            if plain, event.keyCode == 53, isSnippetActive || isSignatureHelpVisible { // Esc leaves the snippet / closes the help
+                endSnippet()
+                hideSignatureHelp()
+                return
+            }
             // Esc opens the list (AppKit's own `cancelOperation:` → `complete:`
             // binding is not reliable outside a key window, so it is explicit).
-            if event.keyCode == 53, event.modifierFlags.intersection([.command, .option, .control]).isEmpty {
+            if event.keyCode == 53, plain {
                 requestCompletion()
             } else {
                 super.keyDown(with: event)
@@ -2074,6 +2401,8 @@ final class CompletingTextView: NSTextView {
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelectingFlag)
         guard !typingThroughSession, !applyingCompletion else { return }
         let caret = selectedRange()
+        if isSnippetActive, caret.length != 0 || caret.location < snippetStart || caret.location > (snippetStops.last ?? 0) { endSnippet() }
+        if isSignatureHelpVisible { refreshSignatureHelp(open: false) }
         guard let last = lastCaret, caret != last else { return }
         lastCaret = caret
         scheduler.cancel()
@@ -2083,6 +2412,21 @@ final class CompletingTextView: NSTextView {
     override func didChangeText() {
         super.didChangeText()
         textChanged()
+        signatureHelpAfterTextChange()
+    }
+
+    /// A `{` or `[` just typed after a command name opens the help; any other
+    /// change updates or closes a visible panel (`}` typed: the caret leaves
+    /// the argument).
+    private func signatureHelpAfterTextChange() {
+        guard !applyingCompletion else { return }
+        let caret = selectedRange()
+        var justOpened = false
+        if caret.length == 0, caret.location >= 1, let storage = textStorage, caret.location <= storage.length {
+            let c = (storage.string as NSString).character(at: caret.location - 1)
+            justOpened = c == 0x7B || c == 0x5B
+        }
+        if justOpened || isSignatureHelpVisible { refreshSignatureHelp(open: justOpened && EditorPreferences.shared.completionPopup) }
     }
 
     // MARK: VoiceOver rotor (EditorRotor.swift)
@@ -2115,6 +2459,7 @@ final class CompletingTextView: NSTextView {
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
         if ok, session != nil { scheduler.cancel(); close(.resignedFirstResponder) }
+        if ok { hideSignatureHelp() }
         return ok
     }
 }

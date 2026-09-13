@@ -6,7 +6,7 @@ import SwiftUI
 
 /// Primary screen: draw with Apple Pencil (or a finger in the simulator) or
 /// pick a photo, add an instruction, and send it to the Mac as a transfer-v1
-/// `capture_submit`. The Mac's bridge converts it (Grok when a key exists,
+/// `capture_submit`. The Mac's bridge converts it (the configured conversion provider when a key exists,
 /// else the deterministic local provider) into a reviewed LaTeX/TikZ proposal
 /// and the Mac user approves insertion; the iPad only receives the receipt.
 struct CaptureView: View {

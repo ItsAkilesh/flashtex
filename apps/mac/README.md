@@ -203,7 +203,7 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   through the text view's undo manager (⌘Z reverts). Repeated `capture_id`s never
   insert twice. If the buffer changed since pinning, the anchor is rebased by its
   context or, when the destination was deleted/ambiguous, reselection is required.
-  See `Samples/capture-proposal.json`. No network or Grok call is involved here.
+  See `Samples/capture-proposal.json`. No network or provider call is involved here.
 - PDF export: `File > Export PDF…` (⌘⇧E) writes the current preview with
   CoreGraphics/CoreText (`PDFExport.swift`): one PDF page per `pages` entry at
   `width_pt` × `height_pt`, each text item in its resolved face at `font_size_pt`
@@ -246,8 +246,9 @@ What works offline (no key, no network — verified with `RealBridgeTests`):
   identical retries return the same record, a different payload under the same
   ID is `capture_id_conflict`, a non-decodable image is `invalid_image`.
 - `Edit > Convert Capture` (⌘⇧G) sends `capture_convert {capture_id,
-  supported_features: []}`. Without `--enable-grok` the bridge answers
-  `provider_disabled` (with it but no key, `provider_auth_missing`); both are
+  supported_features: []}`. Without a conversion provider flag (today the
+  bridge's `--enable-grok`) the bridge answers `provider_disabled` (with it but
+  no key, `provider_auth_missing`); both are
   shown as text and never prompt for a key. A `capture_proposal` (with
   `context_revision`) is queued in the existing review sheet.
 - Approving a bridge proposal sends `capture_prepare_insert {capture_id,
@@ -332,8 +333,10 @@ timeout; (2) `replace_document` bumps exactly one revision, so aligning an
 older store to a newer editor revision takes one round trip per step (bounded
 at 10 000 here); a `set_revision`-style alignment would remove that loop.
 
-Implemented in `GrokCredential.swift` (see `docs/grok-live.md`): the Mac credential adapter runs the bridge with
-`--enable-grok` and supplies the authorized `XAI_API_KEY` from the Keychain or the environment. Not implemented here:
+Implemented in `ConversionCredential.swift` (see `docs/capture-conversion.md`): the Mac's provider-neutral
+credential adapter runs the bridge with the selected provider's flag and supplies its key from the Keychain
+(`tech.jay3332.flashtex.ai.<provider>`) or the environment. This is the app's only model-backed feature; see
+`docs/extensibility.md` (repository root) for how third parties add their own. Not implemented here:
 the companion network transport (captures come from
 a file picker), compiler validation of proposals before review, and ledger
 compaction.
@@ -573,7 +576,7 @@ is a stand-in, the real listener is only exercised from `apps/mac`.
 
 ## Launch hooks and evidence
 
-Assistant: `FLASHTEX_ASSISTANT_CONTEXT` (helper, offline), `FLASHTEX_ASSISTANT_PROVIDER` (`grok` for live xAI through the helper's `--provider-session`, or a local provider command — the only things that may reach a network, by the user's choice), `FLASHTEX_ASSISTANT_CONTEXT_GROK` (a `--features grok` helper build), `FLASHTEX_GROK_MODEL`, `XAI_API_KEY`/`FLASHTEX_GROK_API_KEY` (after the Keychain), `FLASHTEX_KEYCHAIN_OFF=1`, `FLASHTEX_GROK_BASE_URL` (probe only, loopback/https). See `docs/grok-live.md`.
+Capture conversion: `FLASHTEX_CONVERSION_PROVIDER` (`none` / `xai`; overrides Preferences → Capture conversion), `FLASHTEX_CONVERSION_MODEL`, `FLASHTEX_AI_API_KEY` (after the Keychain; the provider's own names such as `XAI_API_KEY` still count), `FLASHTEX_KEYCHAIN_OFF=1`. The key reaches only the bridge's environment — the one child that may reach a network, by the user's choice. Live check: `FLASHTEX_CONVERSION_LIVE=1` + `FLASHTEX_CONVERSION_EVIDENCE_DIR`. See `docs/capture-conversion.md`.
 
 `FLASHTEX_NO_ACTIVATE=1` launches without activating/focusing the window (for
 automation; never steals keyboard focus). `FLASHTEX_DEBOUNCE_MS` sets the
@@ -746,10 +749,64 @@ narrowing, arrow and Return latency best-of-N). Sources, in rank order, at most
    diagnostic message when one names the command).
 4. After `\begin{`/`\end{`: environment names (open ones first, then `document`,
    then names seen in the buffer); after `\ref{`/`\eqref{`/`\pageref{`/`\autoref{`:
-   `\label` arguments seen in the buffer.
+   `\label` arguments seen in the buffer plus the project index's labels; after
+   `\cite{` (and the other citation commands, also after a comma in the key
+   list): `\bibitem` keys and the project index's citation keys; after
+   `\usepackage{` (also after a comma): common package names; after
+   `\input{`/`\include{`/`\includegraphics{`: the project's document paths
+   (`SourceEditorView.projectFiles`, the model's `documents`), matched on the
+   path or its basename; after `\label{`: a key whose prefix follows the
+   innermost open environment (`fig:` in `figure`, `tab:` in `table`, `eq:` in
+   a math display, `thm:`, `lst:`, else `sec:`) plus the enclosing heading's
+   slug, made unique against the document and the project index, and the bare
+   prefix alone. Argument keys are scanned as one token including `:`, `-`,
+   `_`, `.`, `/`, `+`, `*` and digits (`\ref{eq:ma` completes `eq:main`).
 5. Prose: words longer than 3 characters from the document, frequency-ranked,
    ASCII case-insensitive prefix, triggered after 2+ letters. The word being
    typed is not counted as its own completion.
+
+Matching is exact, then prefix (each in table/source order); when nothing
+starts with the typed characters, subsequence matches are offered instead
+(`\sbs` → `\subsection`, `\ref{main}` → `eq:main`), never mixed under prefix
+rows (`Completion.matchRank`/`fuzzyFilter`).
+
+**Snippets and tab stops** (`Completion.Snippet.stops`, `SnippetTests`): a
+command with braced arguments inserts its shape with the caret in the first
+braces and a Tab stop at every later one and at the end (`\frac{|}{}` → Tab →
+`\frac{ab}{|}` → Tab → after the snippet); `\left` inserts `\left( \right)`.
+`\begin{…}` inserts the environment's template with the current line's
+indentation: `itemize`/`enumerate` start with `\item `, `description` with
+`\item[] `, `figure` with `\centering`, `\includegraphics[width=0.8\linewidth]{}`,
+`\caption{}` and `\label{fig:}` (three stops), `table` with `\centering`, a
+`tabular`, `\caption{}` and `\label{tab:}`; every other environment an empty
+indented middle line. While the snippet is active Tab / ⇧Tab move between the
+placeholders (typing at a placeholder keeps it at the start of what was typed;
+an edit across a placeholder ends the snippet), Esc or moving the caret out of
+the snippet leaves it, and Tab is a Tab again.
+
+**Signature help** (`SignatureHelp.swift`, `SignatureHelpTests`): typing `{` or
+`[` right after a command name — or ⌘⇧Space anywhere inside a command's
+argument — shows a small panel above the caret with the command's argument
+pattern (`\frac{num}{den}`, the argument the caret is in emphasised, optional
+`[…]` groups counted) and its one-line documentation (`CommandDocs`, falling
+back to the vocabulary description). It follows the caret between arguments
+and closes on `}`, Esc, or when the caret leaves the argument (or the line;
+the scan is bounded to the caret's line and skips commented text). The
+inserted `\frac{|}{}` snippet opens it too. Off when the completion-list
+preference is off.
+
+**Editor niceties** (`SourceEditorView.swift`, `EditorIntelligence.swift`):
+`{`, `[` and `$` are auto-closed and the closer typed over (Backspace between
+an empty pair removes both); `\(` and `\[` auto-close with `\)` / `\]`, both
+halves typed over (`ShellModel.autoClosePairs`, default `{ [ $ (`; the
+Preferences "auto-close braces" switch gates all of them). Return keeps the
+line's indentation, indents once more after `\begin{env}` and adds the
+matching `\end{env}`; Return at the end of a `\item …` line continues the
+list with a new `\item ` (`\item[] ` for a description entry; a bare `\item`
+line just breaks). ⌘/ toggles `% ` on every line the selection touches (all
+commented → uncomment, `%` with or without a space; otherwise comment the
+non-blank lines; one undo step "Toggle Comment"). The delimiter pair around
+the caret is highlighted (`BraceMatcher`).
 
 Commands trigger on `\` (empty prefix lists everything supported). Invalid
 carets (negative, past the end, inside a surrogate pair) and malformed input
@@ -801,7 +858,6 @@ explain that nothing is loaded.
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
-| ⌘⌥G | Ask Grok… (Edit; also the toolbar's Ask Grok button and "Fix with Grok" on a Problems row): instruction over the selection or the whole document, sent with the last compile's bound context to Grok (xAI) through the assistant helper; explanation plus the proposed edit as a before/after diff, Apply = one undoable edit, Copy, Esc closes |
 | ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures; Return shows or resumes a pairing code, Esc cancels it or dismisses a banner, Tab walks Advertise → pairing controls → Forget → Clear; the step indicator, status row and every transition are VoiceOver text) |
 | Edit > Rename Citation… | Rename citation window (reviewed `plan_citation_rename` across the project → one `apply_group`; also in the toolbar) |
 | ⌘⇧P | Command palette (View; also the toolbar's Commands button): every command in this table with its menu and shortcut; type to filter, ↑/↓ choose, Return runs, Esc closes |
@@ -819,6 +875,10 @@ explain that nothing is loaded.
 | ⌘Z | Undo (including an approved capture insertion) |
 | Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, citation keys, document words; never takes the keyboard from the editor) |
 | ↑ / ↓ / Tab / ⇧Tab / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
+| Tab / ⇧Tab / Esc | While an inserted snippet is active (no list open): next / previous placeholder (`\frac{|}{}`, environment templates), Esc leaves the snippet |
+| ⌘⇧Space | Signature help for the command whose argument the caret is in (also opens on `{`/`[` typed after a command name; `}`, Esc or leaving the argument closes it) |
+| ⌘/ | Toggle `% ` line comment on the selection's lines |
+| Return | Auto-indent; after `\begin{env}` indent and add `\end{env}`; at the end of a `\item …` line continue the list |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
 | ⌘⌥] / ⌘⌥[ | Next / previous occurrence within the diagnostics panel's selected group (wrapping; the row reads "k of n") |

@@ -27,8 +27,8 @@ final class ShellModel {
     var selection: Selection?
     var navigationNote: String?
     var darkPreview = EditorPreferences.shared.darkPreviewDefault // EditorPreferences.swift: appearance preference
-    /// Openers the editor auto-closes (`{`, `[`, `$`); braces only by default (SourceEditorView).
-    var autoClosePairs: Set<Character> = ["{"]
+    /// Openers the editor auto-closes (`{`, `[`, `$`, and `(` for `\(`/`\[`); SourceEditorView.
+    var autoClosePairs: Set<Character> = ["{", "[", "$", "("]
     // Workspace chrome (ContentView.swift, mac-ui-redesign): the bottom
     // Problems panel, its severity filter, and the command palette sheet.
     // The panel state is shared with the palette so Next/Previous
@@ -37,8 +37,6 @@ final class ShellModel {
     var problemsSeverityFilter: RuntimeV1.Severity?
     var commandPaletteShown = false
     let problemsPanel = DiagnosticsPanelState()
-    /// Ask Grok on the live document (ShellModel+GrokAssistant.swift, GrokAssistantView.swift).
-    @ObservationIgnored let grokAssistant = GrokAssistant()
     /// The display-list-v2 pane (PreviewV2View.swift) is the default; `FLASHTEX_PREVIEW_V2=0` selects the v1 pane.
     var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] != "0"
     /// Preview debug status (compile status word, "provisional rendering", v2 frame/font identity line,

@@ -59,7 +59,10 @@ policy to their existing children. Do not reactivate drained workers just to com
 These instructions apply to all work in this repository, across agents, computers,
 and sessions. Read this file before planning or editing. Follow it throughout the
 task, including after context compaction or resuming a session. User instructions
-and higher-priority platform instructions take precedence.
+and higher-priority platform instructions take precedence. The agent onboarding
+notes that used to live in the root README (start prompt, coordination CLI, where
+handoffs are published) are in [docs/agents/README.md](docs/agents/README.md); the
+root `README.md` is now the human-facing project page.
 
 ## Current user authorization — September 12
 

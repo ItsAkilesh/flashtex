@@ -51,6 +51,41 @@ hashes agree. This archive is distinct from the Commander's pinned baseline ZIP;
 its hash equivalence is not claimed. See the sidecar's provenance and
 `docs/evidence/opus-fonts-takeover-20260912T1800Z/archive-verification.json`.
 
+## Secondary math face: New Computer Modern Math (`NewCMMath-Regular.otf`)
+
+pdfLaTeX draws `\mathbb` from AMS `msbm10`, a serifed double-struck design;
+Latin Modern Math's double-struck block (U+2102 ℂ … U+2124 ℤ, U+1D538–U+1D56B)
+is the sans-like "open face" design, which is why `\mathbb{Z}` looked wrong next
+to Overleaf. New Computer Modern Math (Antonis Tsolomitis) reproduces the msbm
+design and its advances track msbm's, so `flashtex-render` draws every
+double-struck code point from this face as a secondary math face
+(`crates/render-pipeline/src/mathfont.rs`, `BB_FONT`) whenever
+`NewCMMath-Regular.otf` is in a font directory; without it Latin Modern Math
+draws `\mathbb` and one `math_resource_profile` note (`msbm10: …`) says so.
+Everything else in math stays Latin Modern Math.
+
+* File: `NewCMMath-Regular.otf`, 1,187,476 bytes, sha256
+  `60394d357348f68cd301764fe61cc502a5858e1c4ff21b948a1d14d82586a7a2`,
+  PostScript name `NewCMMath-Regular`, name-table version `4.0`
+  (`head.fontRevision` 3.00), package `newcomputermodern` 7.1.1.
+* Source: copied byte-for-byte from MacTeX 2026
+  `/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/newcomputermodern/NewCMMath-Regular.otf`
+  (TeX Live file dated 2026-01-07); the hash above was checked before and after
+  the copy. Nothing downloaded.
+* License: GUST Font License v1.0 or later — the font's own name table (nameID 0)
+  says "This work is released under the GUST Font License", and the package
+  README (`texmf-dist/doc/fonts/newcomputermodern/README`) says "GustFLv1 or
+  later". It is therefore covered by the `GUST-FONT-LICENSE.TXT` already in this
+  directory (sha256 `49ea6cb9…`), the same licence as Latin Modern. (An earlier
+  brief described it as GPL-3.0 with the font exception; that is not what this
+  release declares.)
+* Pinned in `SUPPLEMENTARY-FACES.json` (tier `supplementary-face`, 20 entries
+  now); `bundle-texmf.py check`/`make-app.sh` verify it like every other face and
+  stage it into `Contents/Resources/Fonts`, where the producer's
+  `<exe>/../Resources/Fonts` discovery finds it. `V2FontStore` loads it by raw
+  bytes (GH31) like the rest; `PreviewFonts.latinModernFaceFiles` lists it so a
+  missing copy is reported, never silently substituted.
+
 `bundle-texmf.py check Fonts/texmf Fonts` checks every face. `make-app.sh` stages
 faces through verified copies and refuses missing, altered, symlinked or unpinned
 OTFs before building/signing. `FLASHTEX_BUNDLE_FONTS_DIR` selects an explicit

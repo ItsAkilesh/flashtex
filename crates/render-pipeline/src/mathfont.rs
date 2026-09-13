@@ -9,6 +9,15 @@
 //!
 //! `\usepackage{times}` changes only the text fonts in LaTeX; math stays in
 //! Computer Modern, so this provider is used for both families.
+//!
+//! Blackboard bold is the exception to "one face": pdfLaTeX's `\mathbb`
+//! comes from AMS `msbm10`, a serifed double-struck design, while Latin
+//! Modern Math's double-struck block is the sans-like open-face design. New
+//! Computer Modern Math reproduces the msbm design (and its widths track
+//! msbm's), so when `NewCMMath-Regular.otf` is in a font directory every
+//! double-struck code point is drawn from it as a secondary face
+//! ([`BB_FONT`]); otherwise Latin Modern Math draws it and the typesetter
+//! reports the profile difference once.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -49,6 +58,13 @@ struct VertVariant {
 
 pub struct MathFonts {
     face: Rc<LoadedFace>,
+    /// The double-struck face (New Computer Modern Math), when found.
+    bb: Option<Rc<LoadedFace>>,
+    /// Why `bb` is absent (the font set's reason), for the profile note.
+    bb_status: Option<String>,
+    /// Set once a double-struck glyph was served from `face` because `bb`
+    /// is absent; drained by the typesetter for its one profile note.
+    bb_fallback: RefCell<bool>,
     sizes: MathSizes,
     constants: OpenTypeMathConstants,
     x_height_units: i16,
@@ -57,8 +73,23 @@ pub struct MathFonts {
     missing: RefCell<Vec<char>>,
 }
 
-/// `FontId(0)` is the math face; this provider uses exactly one font.
+/// `FontId(0)` is the math face (Latin Modern Math).
 const MATH_FONT: MathFontId = MathFontId(0);
+/// `FontId(1)` is the double-struck face (New Computer Modern Math); glyphs
+/// carry it only when that face is loaded.
+pub const BB_FONT: MathFontId = MathFontId(1);
+/// File name of the double-struck face, looked up in the font directories.
+pub const BB_FONT_FILE: &str = "NewCMMath-Regular.otf";
+
+/// The code points `\mathbb` produces (the letter-like symbols and the
+/// Mathematical Alphanumeric Symbols double-struck block), drawn from
+/// [`BB_FONT`] when it is available.
+pub fn is_double_struck(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{2102}' | '\u{210D}' | '\u{2115}' | '\u{2119}' | '\u{211A}' | '\u{211D}' | '\u{2124}' | '\u{1D538}'..='\u{1D56B}'
+    )
+}
 
 impl MathFonts {
     /// `face` must carry a `MATH` table (Latin Modern Math); `None` otherwise.
@@ -94,6 +125,9 @@ impl MathFonts {
             .unwrap_or_default();
         Some(MathFonts {
             face,
+            bb: None,
+            bb_status: None,
+            bb_fallback: RefCell::new(false),
             sizes,
             constants,
             x_height_units,
@@ -102,8 +136,39 @@ impl MathFonts {
         })
     }
 
+    /// Attaches the double-struck face (`Ok`) or records why it is absent
+    /// (`Err`, the font set's reason). A face without a `cmap` entry for
+    /// U+2124 is refused as not double-struck.
+    pub fn with_double_struck(mut self, bb: Result<Rc<LoadedFace>, String>) -> MathFonts {
+        match bb {
+            Ok(f) if f.face().glyph_id('\u{2124}').is_some() => {
+                self.bb = Some(f);
+                self.bb_status = None;
+            }
+            Ok(f) => self.bb_status = Some(format!("{} has no double-struck glyphs", f.name)),
+            Err(reason) => self.bb_status = Some(reason),
+        }
+        self
+    }
+
     pub fn face(&self) -> &Rc<LoadedFace> {
         &self.face
+    }
+
+    /// The face that draws [`BB_FONT`] glyphs, when loaded.
+    pub fn bb_face(&self) -> Option<&Rc<LoadedFace>> {
+        self.bb.as_ref()
+    }
+
+    /// Why no double-struck face is attached, when none is.
+    pub fn bb_status(&self) -> Option<&str> {
+        self.bb_status.as_deref()
+    }
+
+    /// Whether a double-struck glyph was drawn from the primary face since
+    /// the last call (the secondary face being absent).
+    pub fn take_bb_fallback(&self) -> bool {
+        std::mem::take(&mut *self.bb_fallback.borrow_mut())
     }
 
     pub fn take_missing(&self) -> Vec<char> {
@@ -165,7 +230,13 @@ impl MathFonts {
     }
 
     fn glyph_for(&self, gid: u16, ch: char, size_pt: f64) -> Glyph {
-        let face = &self.face;
+        Self::glyph_from(&self.face, MATH_FONT, gid, ch, size_pt)
+    }
+
+    /// `gid` of `face` as a math glyph tagged `font_id`: advance, ink box
+    /// and (when the face has a `MATH` table) italic correction and accent
+    /// attachment, at `size_pt`.
+    fn glyph_from(face: &Rc<LoadedFace>, font_id: MathFontId, gid: u16, ch: char, size_pt: f64) -> Glyph {
         let g = GlyphId(gid);
         let adv = i64::from(face.face().advance(g).unwrap_or(0));
         let b = face.bounds(g, Some(ch));
@@ -187,7 +258,7 @@ impl MathFonts {
             None => (0.0, 0.0),
         };
         Glyph {
-            font_id: MATH_FONT,
+            font_id,
             gid,
             ch,
             size: size_pt,
@@ -234,11 +305,24 @@ impl MathFontMetrics for MathFonts {
         MathParams::from_opentype(&self.constants, self.x_height_units, upem, self.sizes.at(size))
     }
 
-    fn font_name(&self, _font: MathFontId) -> String {
-        self.face.name.clone()
+    fn font_name(&self, font: MathFontId) -> String {
+        match (&self.bb, font) {
+            (Some(bb), BB_FONT) => bb.name.clone(),
+            _ => self.face.name.clone(),
+        }
     }
 
     fn glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
+        if is_double_struck(ch) {
+            match &self.bb {
+                Some(bb) => {
+                    if let Some(gid) = bb.face().glyph_id(ch) {
+                        return Some(Self::glyph_from(bb, BB_FONT, gid.0, ch, self.sizes.at(size)));
+                    }
+                }
+                None => *self.bb_fallback.borrow_mut() = true,
+            }
+        }
         let gid = self.base_gid(ch)?;
         Some(self.glyph_for(gid, Self::math_char(ch), self.sizes.at(size)))
     }

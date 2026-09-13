@@ -35,7 +35,7 @@ final class BundledFacesTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(atPath: Self.fontsDir.path)
         let onDisk = Set(files.filter { $0.hasSuffix(".otf") })
         XCTAssertEqual(onDisk, Set(PreviewFonts.latinModernFaceFiles), "vendored OTFs must be exactly the requestable faces")
-        XCTAssertEqual(PreviewFonts.latinModernFaceFiles.count, 22)
+        XCTAssertEqual(PreviewFonts.latinModernFaceFiles.count, 23)
         XCTAssertEqual(PreviewFonts.latinModernMissingFaces(in: Self.fontsDir.path), [])
 
         for (name, pin) in Self.commanderPinned {
@@ -60,7 +60,7 @@ final class BundledFacesTests: XCTestCase {
             XCTAssertEqual(Self.sha256Hex(data), e["sha256"] as? String, path)
         }
         XCTAssertEqual(listed.union(Self.commanderPinned.keys), onDisk, "every vendored OTF is pinned by one tier")
-        XCTAssertEqual(entries.count, 19)
+        XCTAssertEqual(entries.count, 20)
     }
 
     /// `bundle-texmf.py check` with the fonts directory verifies every tier
@@ -72,7 +72,7 @@ final class BundledFacesTests: XCTestCase {
         XCTAssertEqual(verified.status, 0, verified.output)
         let report = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(verified.output.utf8)) as? [String: Any])
         let rows = try XCTUnwrap(report["entries"] as? [[String: Any]])
-        XCTAssertEqual(rows.filter { $0["tier"] as? String == "supplementary-face" }.count, 19)
+        XCTAssertEqual(rows.filter { $0["tier"] as? String == "supplementary-face" }.count, 20)
         XCTAssertEqual(rows.filter { $0["tier"] as? String == "pinned" && ($0["bundle_path"] as? String ?? "").hasPrefix("Fonts/") }.count, 3)
         XCTAssertTrue(rows.allSatisfy { $0["status"] as? String == "verified" })
 

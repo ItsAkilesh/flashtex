@@ -27,15 +27,17 @@ final class BridgeClient {
     /// `arguments` precede `--store <dir>` so a test double can be
     /// `python3 fake_bridge.py --store <dir>`.
     /// `environment` nil inherits the app's; the shell passes
-    /// `GrokCredential.bridgeEnvironment` (secrets stripped, `XAI_API_KEY`
-    /// added only when a key resolved and `enableGrok` is on).
-    init(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false,
+    /// `ConversionCredential.bridgeEnvironment` (secrets stripped, the
+    /// provider's key variable added only when a key resolved). `provider`
+    /// selects the bridge's conversion flag (`ConversionProvider.bridgeFlag`;
+    /// `.none` passes nothing and `capture_convert` is refused).
+    init(executable: URL, arguments: [String] = [], storeDirectory: URL, provider: ConversionProvider = .none,
          environment: [String: String]? = nil,
          queue: DispatchQueue = .main, events: @escaping (Event) -> Void = { _ in }) throws {
         self.storeDirectory = storeDirectory
         core = try LineProcessClient(
             executable: executable,
-            arguments: arguments + ["--store", storeDirectory.path] + (enableGrok ? ["--enable-grok"] : []),
+            arguments: arguments + ["--store", storeDirectory.path] + (provider.bridgeFlag.map { [$0] } ?? []),
             label: "bridge", queue: queue, environment: environment,
             classify: { line in
                 guard let header = try? JSONDecoder().decode(LenientHeader.self, from: line) else { return nil }

@@ -3,24 +3,97 @@ import XCTest
 @testable import FlashTeXAccessibility
 @testable import FlashTeXMac
 
-/// Partial output on a real result: `fixtures/real-world/hw1/HW1.tex` compiles
-/// (live `flashtex-compiler`, `FLASHTEX_COMPILER`) to `recovered` with pages
-/// AND ~120 diagnostics, many in regions the compiler skipped. Every mark must
-/// slice to the command its message names, survive an edit sequence only by
-/// rebasing onto the same bytes or being withheld, be kept and flagged (never
-/// cleared or duplicated) while a later result fails with no output, and group
-/// with its identical siblings for the panel. Skips loudly without the compiler.
+/// Partial output on a real result: a generated homework-shaped document
+/// (`PartialOutputFixture`) compiles (live `flashtex-compiler`,
+/// `FLASHTEX_COMPILER`) to `recovered` with pages AND ~115 diagnostics, many
+/// in regions the compiler skipped. Every mark must slice to the command its
+/// message names, survive an edit sequence only by rebasing onto the same
+/// bytes or being withheld, be kept and flagged (never cleared or duplicated)
+/// while a later result fails with no output, and group with its identical
+/// siblings for the panel. Skips loudly without the compiler.
+///
+/// The fixture used to be `fixtures/real-world/hw1/HW1.tex`, which measured
+/// 119 diagnostics on 2026-09-12 and ten a day later once the compiler grew
+/// `\in`, `\hfill`, `\setlength` and friends. The generated document keeps
+/// the same shape (a `\problem` macro whose expansion carries three
+/// diagnostics per call site, `\Z`/`\R` macros, a repeated math command, a
+/// skipped preamble command, a package warning first) but spells every
+/// unsupported command with an `hw` prefix that no compiler version will
+/// implement, so the diagnostic count is a property of the fixture, not of
+/// the compiler's current coverage.
 final class EditorDiagnosticsPartialOutputTests: XCTestCase {
-    static let repoRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        .deletingLastPathComponent().deletingLastPathComponent()
-    static let hw1URL = repoRoot.appendingPathComponent("fixtures/real-world/hw1/HW1.tex")
-
     /// A multi-byte first line so UTF-16 offsets differ from byte offsets for
-    /// every span of the (otherwise ASCII) homework: "naïve", curly quotes,
+    /// every span of the (otherwise ASCII) fixture: "naïve", curly quotes,
     /// an em dash and a ZWJ emoji sequence. Comments are skipped by the
     /// compiler, so the diagnostics are the fixture's own.
     static let prefix = "% naïve “HW1” — 👩‍💻 partial-output fixture\n"
+
+    /// The generated partial-output document and what it is built from.
+    enum PartialOutputFixture {
+        /// Number of `\problem` sections; every per-section count below scales with it.
+        static let problems = 8
+        /// The repeated unsupported math command (`\in` in the original HW1).
+        static let mathCommand = "\\hwin"
+        /// `\hwin` occurrences: three per section (two in the first sentence, one in the list).
+        static var mathCommandCount: Int { 3 * problems }
+        /// `\problem` macro body: `\subsection*` is supported, the other three commands are not.
+        static let problemBody = "[2]{\\subsection*{Problem #1} \\hwfill \\hwpoints{#2 points} \\hwrule}"
+        /// The first diagnosed span (a package warning on line 4 with the prefix).
+        static let firstMark = "\\usepackage{microtype}"
+
+        /// The document without the prefix. Line 4 with the prefix is the
+        /// `microtype` warning; `\hwpreamble` is an unsupported preamble
+        /// command the compiler skips; `\Z` and `\R` expand to an unsupported
+        /// math command so their call sites carry a diagnostic; `\hwskip{0.6em}`
+        /// and `\hwstrike{nothing}` have arguments the compiler treats as
+        /// parameters (skipped), `\hwbox` and `\hwnote` carry prose (typeset).
+        static let text: String = {
+            var lines: [String] = [
+                "\\documentclass[11pt]{article}",
+                "",
+                firstMark,
+                "\\usepackage{amsmath,amssymb,amsthm}",
+                "\\hwpreamble{secnumdepth}",
+                "\\newcommand{\\Z}{\\mathbf{Z}\\hwbolt}",
+                "\\newcommand{\\R}{\\mathbf{R}\\hwbolt}",
+                "\\newcommand{\\problem}" + problemBody,
+                "\\begin{document}",
+                "\\pagestyle{empty}",
+                "",
+            ]
+            for k in 1...problems {
+                lines += [
+                    "\\problem{\(k)}{5}",
+                    "",
+                    "Let $x \(mathCommand) \\Z$ and $y \(mathCommand) \\R$. Then \\hwbox{$x + y$} is \\hwskip{0.6em} fine.",
+                    "\\begin{enumerate}",
+                    "    \\item Show $x \(mathCommand) \\Z$ using \\hwnote{a lemma from lecture}.",
+                    "    \\item Prove \\hwstrike{nothing} about $\\R$.",
+                    "\\end{enumerate}",
+                    "",
+                ]
+            }
+            lines.append("\\end{document}")
+            return lines.joined(separator: "\n") + "\n"
+        }()
+
+        /// Marks whose message names the command under the mark: `\hwin`
+        /// (3 per section), the four body commands (4 per section) and
+        /// `\hwpreamble` once.
+        static var checkedByName: Int { 7 * problems + 1 }
+        /// Marks on a macro call site whose expansion contains the named
+        /// command: `\Z`/`\R` (4 per section) and `\problem` (3 per section).
+        static var viaMacro: Int { 7 * problems }
+        /// Diagnostics whose recovery says the compiler skipped something:
+        /// the body and macro commands (7 per section) and the preamble one.
+        static var skippedRegion: Int { 7 * problems + 1 }
+        /// Every diagnostic the fixture yields: the above plus 4 `\hwbolt`
+        /// per section and two package warnings.
+        static var diagnostics: Int { checkedByName + viaMacro + 2 }
+    }
+
+    /// The fixture with the multi-byte prefix, as compiled by every test here.
+    static var fixtureText: String { prefix + PartialOutputFixture.text }
 
     private func compiler() throws -> URL {
         guard let path = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"],
@@ -28,13 +101,6 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
             throw XCTSkip("set FLASHTEX_COMPILER=crates/compiler/target/release/flashtex-compiler (cargo build --release in crates/compiler)")
         }
         return URL(fileURLWithPath: path)
-    }
-
-    private func hw1Text() throws -> String {
-        guard let text = try? String(contentsOf: Self.hw1URL, encoding: .utf8) else {
-            throw XCTSkip("fixtures/real-world/hw1/HW1.tex not found at \(Self.hw1URL.path)")
-        }
-        return Self.prefix + text
     }
 
     /// One compile request over the live compiler (one line in, first line out).
@@ -54,28 +120,22 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
         return try RuntimeV1.decodeCompileResult(Data(first))
     }
 
-    /// The premise of every HW1 test here is partial output: at least one
-    /// diagnostic to place. A compile that renders the fixture clean (status
-    /// `ok`, nothing to mark) skips with the fixture's actual shape in the
-    /// reason — a checkout whose HW1.tex is dirty (2026-09-12: a 6-line stub
-    /// in place of the 164-line homework) is the known way to get there —
-    /// instead of running assertions that index into empty marks.
-    private func hw1Result(_ compiler: URL, text: String) throws -> RuntimeV1.Envelope<RuntimeV1.CompileResult> {
+    /// The premise of every test here is partial output: pages AND many
+    /// diagnostics to place. The fixture only uses commands the compiler
+    /// never implements, so a clean or failed compile is a real regression
+    /// (reported with the result's actual shape), never a skip.
+    private func fixtureResult(_ compiler: URL, text: String) throws -> RuntimeV1.Envelope<RuntimeV1.CompileResult> {
         let env = try Self.compile([.init(path: "main.tex", text: text)], revision: 1, id: "hw1-1", with: compiler)
         let r = env.payload
-        guard !r.diagnostics.isEmpty else {
-            let lines = text.split(separator: "\n", omittingEmptySubsequences: false).count
-            throw XCTSkip("the compiler renders HW1 clean (status \(r.status), \(r.pages.count) pages, 0 diagnostics); the fixture at " +
-                          "\(Self.hw1URL.path) is \(lines) lines / \(text.utf8.count) bytes with the prefix (the committed homework is 164 lines) — " +
-                          "the partial-output premise needs the committed fixture and a compiler that still reports its unsupported commands")
-        }
-        XCTAssertEqual(r.status, .recovered, "HW1 is partial output: pages AND diagnostics")
+        XCTAssertEqual(r.status, .recovered, "the fixture is partial output: pages AND diagnostics (\(r.pages.count) pages, \(r.diagnostics.count) diagnostics)")
         XCTAssertGreaterThanOrEqual(r.pages.count, 1)
-        XCTAssertGreaterThanOrEqual(r.diagnostics.count, 100, "HW1 measured 119 diagnostics on 2026-09-12; the fixture or compiler changed")
+        XCTAssertEqual(r.diagnostics.count, PartialOutputFixture.diagnostics,
+                       "the fixture yields exactly its own diagnostics: \(r.diagnostics.map(\.message))")
+        XCTAssertGreaterThanOrEqual(r.diagnostics.count, 100, "the partial-output premise needs many marks")
         return env
     }
 
-    /// The command a message names ("\in is not supported…", "\subsection
+    /// The command a message names ("\hwin is not supported…", "\subsection
     /// requires a braced argument"), nil for messages that start otherwise.
     private static func namedCommand(_ message: String) -> String? {
         guard message.hasPrefix("\\") else { return nil }
@@ -88,8 +148,8 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
 
     /// `\newcommand{\name}…{body}` definitions of `text`: the diagnostics the
     /// compiler raises while expanding a user macro are reported at the call
-    /// site, so a mark on `\problem` may name `\subsection`, `\hfill` or
-    /// `\normalfont` (HW1 line 18) and a mark on `\Z` may name `\mathbb`.
+    /// site, so a mark on `\problem` may name `\hwfill`, `\hwpoints` or
+    /// `\hwrule` and a mark on `\Z` may name `\hwbolt`.
     private static func macroBodies(in text: String) -> [String: String] {
         var out: [String: String] = [:]
         for line in text.split(separator: "\n") where line.hasPrefix("\\newcommand{") {
@@ -102,14 +162,14 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
 
     // MARK: partial output: every mark slices to the diagnosed command (or its macro)
 
-    func testHW1PartialOutputMarksSliceToTheNamedCommand() throws {
+    func testPartialOutputMarksSliceToTheNamedCommand() throws {
         let compiler = try compiler()
-        let text = try hw1Text()
-        let env = try hw1Result(compiler, text: text)
+        let text = Self.fixtureText
+        let env = try fixtureResult(compiler, text: text)
         let result = env.payload
-        XCTAssertEqual(result.diagnostics.filter { $0.source == nil }.count, 0, "every HW1 diagnostic is sourced")
+        XCTAssertEqual(result.diagnostics.filter { $0.source == nil }.count, 0, "every fixture diagnostic is sourced")
         let macros = Self.macroBodies(in: text)
-        XCTAssertEqual(macros["\\problem"], "[2]{\\subsection*{Problem #1 \\hfill \\normalfont[#2 points]}}")
+        XCTAssertEqual(macros["\\problem"], PartialOutputFixture.problemBody)
 
         let report = EditorDiagnostics.report(for: result, resultID: env.id, path: "main.tex", compiledText: text, currentText: text)
         XCTAssertEqual(report.marks.count, result.diagnostics.count, "one mark per sourced diagnostic, none refused")
@@ -143,18 +203,18 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
             }
             if d.recovery?.contains("skipped") == true { skippedRegion += 1 }
         }
-        XCTAssertGreaterThanOrEqual(checkedByName, 80, "most HW1 messages name the command under the mark; only \(checkedByName) checked")
-        XCTAssertGreaterThanOrEqual(viaMacro, 20, "\\problem/\\Z/\\R/\\Q call sites carry their expansion's diagnostics; only \(viaMacro) found")
-        XCTAssertGreaterThanOrEqual(skippedRegion, 10, "marks inside regions the compiler skipped: \(skippedRegion)")
+        XCTAssertEqual(checkedByName, PartialOutputFixture.checkedByName, "messages naming the command under the mark")
+        XCTAssertEqual(viaMacro, PartialOutputFixture.viaMacro, "\\problem/\\Z/\\R call sites carry their expansion's diagnostics")
+        XCTAssertEqual(skippedRegion, PartialOutputFixture.skippedRegion, "marks inside regions the compiler skipped")
         // Three diagnostics of one \problem expansion share one span and stay three distinct marks.
         let problemMarks = report.marks.filter { ns.substring(with: $0.nsRange) == "\\problem" }
-        XCTAssertGreaterThanOrEqual(problemMarks.count, 3)
+        XCTAssertEqual(problemMarks.count, 3 * PartialOutputFixture.problems)
         XCTAssertEqual(Set(problemMarks.map(\.id)).count, problemMarks.count)
         XCTAssertEqual(Set(problemMarks.map(\.nsRange)).count, problemMarks.count / 3, "each call site carries the three expansion diagnostics")
         // The preamble region the compiler skipped entirely still maps exactly.
-        let setlength = report.marks.first { result.diagnostics[$0.diagnosticIndex].message.hasPrefix("\\setlength") }
-        XCTAssertEqual(setlength.map { ns.substring(with: $0.nsRange) }, "\\setlength")
-        XCTAssertTrue(result.diagnostics[try XCTUnwrap(setlength).diagnosticIndex].recovery?.contains("skipped") == true)
+        let preamble = report.marks.first { result.diagnostics[$0.diagnosticIndex].message.hasPrefix("\\hwpreamble") }
+        XCTAssertEqual(preamble.map { ns.substring(with: $0.nsRange) }, "\\hwpreamble")
+        XCTAssertTrue(result.diagnostics[try XCTUnwrap(preamble).diagnosticIndex].recovery?.contains("skipped") == true)
         // Document order for keyboard navigation: the first stop is the first byte.
         let items = EditorDiagnostics.navigationItems(report.marks)
         XCTAssertEqual(items.count, report.marks.count)
@@ -162,7 +222,7 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
         let step = try XCTUnwrap(EditorDiagnostics.step(report.marks, fromUTF16: 0, forward: true, in: text))
         let firstMark = try XCTUnwrap(report.marks.min { $0.nsRange.location < $1.nsRange.location })
         let firstLine = try XCTUnwrap(EditorDiagnostics.lineNumber(ofByte: firstMark.originalSource.startByte, in: text))
-        XCTAssertEqual(ns.substring(with: firstMark.nsRange), "\\usepackage[T1]{fontenc}")
+        XCTAssertEqual(ns.substring(with: firstMark.nsRange), PartialOutputFixture.firstMark)
         XCTAssertEqual(step.announcement, "Warning 1 of \(report.marks.count), line \(firstLine): \(firstMark.message) — \(firstMark.recoveryLine!)")
         XCTAssertEqual(firstLine, 4, "prefix comment, \\documentclass, blank, \\usepackage")
     }
@@ -173,10 +233,10 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
     /// same bytes it covered at revision N (never an old offset over new
     /// text), a withheld one overlaps the edited region, and together they
     /// account for every diagnostic.
-    func testHW1MarksRebaseOntoTheSameBytesOrAreWithheldThroughEdits() throws {
+    func testMarksRebaseOntoTheSameBytesOrAreWithheldThroughEdits() throws {
         let compiler = try compiler()
-        let compiled = try hw1Text()
-        let env = try hw1Result(compiler, text: compiled)
+        let compiled = Self.fixtureText
+        let env = try fixtureResult(compiler, text: compiled)
         let result = env.payload
         let base = EditorDiagnostics.report(for: result, resultID: env.id, path: "main.tex", compiledText: compiled, currentText: compiled)
         let baseText = Dictionary(uniqueKeysWithValues: base.marks.map { ($0.id, (compiled as NSString).substring(with: $0.nsRange)) })
@@ -207,18 +267,19 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
         XCTAssertEqual(r1.marks.count, base.marks.count)
         XCTAssertEqual(try XCTUnwrap(r1.marks.first).nsRange.location, try XCTUnwrap(base.marks.first).nsRange.location + "% revision 2\n".utf16.count)
 
-        // N+2 (on top of N+1, no compile between): replace the 5th "\in" with
-        // "\notin" — that occurrence is withheld, every other mark keeps its text.
-        let inGroup = EditorDiagnostics.groups(of: result).first { $0.message.hasPrefix("\\in ") }
+        // N+2 (on top of N+1, no compile between): replace the 5th "\hwin" with
+        // "\hwnotin" — that occurrence is withheld, every other mark keeps its text.
+        let math = PartialOutputFixture.mathCommand
+        let inGroup = EditorDiagnostics.groups(of: result).first { $0.message.hasPrefix(math + " ") }
         let fifth = try XCTUnwrap(EditorDiagnostics.occurrence(4, of: try XCTUnwrap(inGroup), in: result))
         let fifthNS = try XCTUnwrap(n1.nsRange(utf8Bytes: .init(path: "main.tex", startByte: fifth.startByte + "% revision 2\n".utf8.count,
                                                                   endByte: fifth.endByte + "% revision 2\n".utf8.count)))
-        XCTAssertEqual((n1 as NSString).substring(with: fifthNS), "\\in")
-        let n2 = (n1 as NSString).replacingCharacters(in: fifthNS, with: "\\notin")
+        XCTAssertEqual((n1 as NSString).substring(with: fifthNS), math)
+        let n2 = (n1 as NSString).replacingCharacters(in: fifthNS, with: "\\hwnotin")
         // Two separate edits since the compile: the single covering region
         // spans from the first inserted byte to the replaced command, so the
         // marks between them are withheld (conservative, never misplaced).
-        let r2 = check(n2, "prefix + replace 5th \\in", expectStale: 1...result.diagnostics.count)
+        let r2 = check(n2, "prefix + replace 5th \(math)", expectStale: 1...result.diagnostics.count)
         XCTAssertTrue(r2.stale.contains { $0.identity.source == fifth }, "the edited occurrence is withheld")
         XCTAssertTrue(r2.marks.count >= 1, "marks after the last edit are still drawn")
         XCTAssertNotNil(r2.staleNote)
@@ -243,10 +304,10 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
 
     // MARK: a failed follow-up keeps the last marks, flagged, exactly once
 
-    func testHW1FailedFollowUpKeepsMarksFlaggedNotClearedNorDuplicated() throws {
+    func testFailedFollowUpKeepsMarksFlaggedNotClearedNorDuplicated() throws {
         let compiler = try compiler()
-        let text = try hw1Text()
-        let env = try hw1Result(compiler, text: text)
+        let text = Self.fixtureText
+        let env = try fixtureResult(compiler, text: text)
         let good = env.payload
         let retainedAfterGood = EditorDiagnostics.retained(after: good, resultID: env.id, compiledDocuments: ["main.tex": text], previous: nil)
         XCTAssertEqual(retainedAfterGood?.result.revision, 1)
@@ -276,7 +337,7 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
         XCTAssertTrue(kept.marks.allSatisfy { $0.carried == carried })
         XCTAssertTrue(kept.marks.allSatisfy { $0.identity.resultID == env.id }, "identities stay those of the retained result")
         XCTAssertEqual(kept.staleNote, "\(good.diagnostics.count) underlines kept from revision 1: revision 2 failed with no output")
-        let first = try XCTUnwrap(kept.marks.first, "the retained HW1 marks are kept: \(kept.staleNote ?? "no stale note")")
+        let first = try XCTUnwrap(kept.marks.first, "the retained marks are kept: \(kept.staleNote ?? "no stale note")")
         XCTAssertTrue(first.toolTip.hasSuffix("\n↳ kept from revision 1: revision 2 failed with no output"), first.toolTip)
         XCTAssertTrue(first.spokenDescription.hasSuffix(" — kept from revision 1: revision 2 failed with no output"), first.spokenDescription)
         let fresh = EditorDiagnostics.report(for: good, resultID: env.id, path: "main.tex", compiledText: text, currentText: text)
@@ -355,42 +416,44 @@ final class EditorDiagnosticsPartialOutputTests: XCTestCase {
 
     // MARK: follow-up 1: identical diagnostics grouped with a per-occurrence jump
 
-    func testHW1GroupsIdenticalDiagnosticsWithCountAndPerOccurrenceJump() throws {
+    func testGroupsIdenticalDiagnosticsWithCountAndPerOccurrenceJump() throws {
         let compiler = try compiler()
-        let text = try hw1Text()
-        let env = try hw1Result(compiler, text: text)
+        let text = Self.fixtureText
+        let env = try fixtureResult(compiler, text: text)
         let result = env.payload
         let groups = EditorDiagnostics.groups(of: result, documentOrder: ["main.tex"])
         XCTAssertEqual(groups.reduce(0) { $0 + $1.count }, result.diagnostics.count, "every diagnostic is in exactly one group")
         XCTAssertEqual(Set(groups.flatMap(\.occurrences)).count, result.diagnostics.count)
-        XCTAssertLessThan(groups.count, result.diagnostics.count / 2, "HW1 repeats itself: \(groups.count) groups for \(result.diagnostics.count) diagnostics")
+        XCTAssertLessThan(groups.count, result.diagnostics.count / 2, "the fixture repeats itself: \(groups.count) groups for \(result.diagnostics.count) diagnostics")
         XCTAssertEqual(groups.map(\.id).count, Set(groups.map(\.id)).count)
 
-        let inGroup = try XCTUnwrap(groups.first { $0.message == "\\in is not supported in math mode" })
-        XCTAssertEqual(inGroup.count, 12, "HW1 measured 12× \\in on 2026-09-12")
+        let math = PartialOutputFixture.mathCommand
+        let n = PartialOutputFixture.mathCommandCount
+        let inGroup = try XCTUnwrap(groups.first { $0.message == "\(math) is not supported in math mode" })
+        XCTAssertEqual(inGroup.count, n, "\(math) three times per section")
         XCTAssertEqual(inGroup.severity, .error)
-        XCTAssertEqual(inGroup.title, "12× \\in is not supported in math mode")
-        XCTAssertNotNil(inGroup.recovery, "all twelve share the compiler's recovery note")
-        // Occurrences are in document order and each jumps to its own "\in".
+        XCTAssertEqual(inGroup.title, "\(n)× \(math) is not supported in math mode")
+        XCTAssertNotNil(inGroup.recovery, "all \(n) share the compiler's recovery note")
+        // Occurrences are in document order and each jumps to its own "\hwin".
         let starts = try inGroup.occurrences.map { try XCTUnwrap(result.diagnostics[$0].source, "occurrence \($0) is sourced").startByte }
         XCTAssertEqual(starts, starts.sorted())
-        XCTAssertEqual(Set(starts).count, 12)
+        XCTAssertEqual(Set(starts).count, n)
         let bytes = Array(text.utf8)
-        for k in 0..<12 {
+        for k in 0..<n {
             let src = try XCTUnwrap(EditorDiagnostics.occurrence(k, of: inGroup, in: result))
-            XCTAssertEqual(String(decoding: bytes[src.startByte..<src.endByte], as: UTF8.self), "\\in", "occurrence \(k + 1)")
+            XCTAssertEqual(String(decoding: bytes[src.startByte..<src.endByte], as: UTF8.self), math, "occurrence \(k + 1)")
             let label = EditorDiagnostics.occurrenceLabel(k, of: inGroup, in: result, texts: ["main.tex": text])
             let line = try XCTUnwrap(EditorDiagnostics.lineNumber(ofByte: src.startByte, in: text))
-            XCTAssertEqual(label, "\(k + 1) of 12: main.tex line \(line)")
+            XCTAssertEqual(label, "\(k + 1) of \(n): main.tex line \(line)")
             XCTAssertGreaterThan(line, 1, "the multi-byte comment is line 1")
         }
-        XCTAssertNil(EditorDiagnostics.occurrence(12, of: inGroup, in: result))
-        let fourth = try XCTUnwrap(starts.count > 3 ? starts[3] : nil, "a fourth \\in occurrence")
-        XCTAssertEqual(EditorDiagnostics.occurrenceLabel(3, of: inGroup, in: result), "4 of 12: main.tex bytes \(fourth)..<\(fourth + 3)")
+        XCTAssertNil(EditorDiagnostics.occurrence(n, of: inGroup, in: result))
+        let fourth = try XCTUnwrap(starts.count > 3 ? starts[3] : nil, "a fourth \(math) occurrence")
+        XCTAssertEqual(EditorDiagnostics.occurrenceLabel(3, of: inGroup, in: result), "4 of \(n): main.tex bytes \(fourth)..<\(fourth + math.utf8.count)")
         // Groups are ordered by first occurrence; singles keep the plain message.
         let groupStarts = try groups.map { try XCTUnwrap(result.diagnostics[$0.first].source, "group \($0.id) is sourced").startByte }
         XCTAssertEqual(groupStarts, groupStarts.sorted())
-        XCTAssertEqual(groups.first?.message.contains("fontenc"), true, "the first group is the first \\usepackage warning: \(groups.first?.message ?? "nil")")
+        XCTAssertEqual(groups.first?.message.contains("microtype"), true, "the first group is the first \\usepackage warning: \(groups.first?.message ?? "nil")")
         if let single = groups.first(where: { $0.count == 1 }) { XCTAssertEqual(single.title, single.message) }
         // A group's first occurrence is what the row's explanation/quick fix use.
         XCTAssertEqual(inGroup.first, inGroup.occurrences.first)
