@@ -319,16 +319,19 @@ public struct RenderingV2Fast {
     }
 
     private mutating func item() throws -> RenderingV2.Item {
-        // All fields of both kinds are collected in one pass (keys may come in any order).
+        // All fields of every kind are collected in one pass (keys may come in any order).
         var kind: String?
         var fontId: String?, fontSize: Int64?, text: String?, glyphs: [RenderingV2.Glyph]?, clusters: [RenderingV2.Cluster]?
         var paint: RenderingV2.Paint?
         var x: Int64?, top: Int64?, width: Int64?, height: Int64?
         var sources: [RenderingV2.SourceRange]?, synthetic: String?
+        var transform: [Double]?, image: RenderingV2.ImageResource?
         let start = i
         try object { key, p in
             switch key {
             case "kind": kind = try p.string()
+            case "transform": transform = try p.array { try $0.double() }
+            case "image": image = try p.imageResource()
             case "font_id": fontId = try p.string()
             case "font_size": fontSize = try p.int64()
             case "text": text = try p.string()
@@ -352,11 +355,45 @@ public struct RenderingV2Fast {
         case "rule":
             guard let x, let top, let width, let height, let paint else { throw Error(offset: start, message: "missing rule field") }
             return .rule(RenderingV2.Rule(x: x, top: top, width: width, height: height, paint: paint, sources: sources, syntheticReason: synthetic))
+        case "image":
+            guard let x, let top, let width, let height, let transform, let image else { throw Error(offset: start, message: "missing image field") }
+            return .image(RenderingV2.Image(x: x, top: top, width: width, height: height, transform: transform, image: image, sources: sources, syntheticReason: synthetic))
         default:
             // Fall back so the slow path reports it after the header checks
             // (a runtime-v1 compile_result must be refused for its version, not its items).
             throw Error(offset: start, message: "item kind '\(kind)' is not supported by the fast reader")
         }
+    }
+
+    /// `image` resource object (display-list-v2-images §3); optional fields
+    /// absent or `null` are nil, as `JSONDecoder` reads them.
+    private mutating func imageResource() throws -> RenderingV2.ImageResource {
+        var id: String?, sha: String?, length: Int64?, format: String?, path: String?
+        var pw: Int?, ph: Int?, page: Int?, box: [Double]?, rotate: Int?
+        try object { key, p in
+            switch key {
+            case "image_id": id = try p.string()
+            case "sha256": sha = try p.string()
+            case "byte_length": length = try p.int64()
+            case "format": format = try p.string()
+            case "path": path = try p.string()
+            case "pixel_width": pw = try p.optionalInt()
+            case "pixel_height": ph = try p.optionalInt()
+            case "pdf_page": page = try p.optionalInt()
+            case "pdf_box": box = try p.optionalArray { try $0.double() }
+            case "pdf_rotate": rotate = try p.optionalInt()
+            default: try p.skip(depth: 5)
+            }
+        }
+        guard let id, let sha, let length, let format, let path else { throw err("missing image resource field") }
+        return RenderingV2.ImageResource(imageId: id, sha256: sha, byteLength: length, format: format, path: path,
+                                         pixelWidth: pw, pixelHeight: ph, pdfPage: page, pdfBox: box, pdfRotate: rotate)
+    }
+
+    private mutating func optionalInt() throws -> Int? {
+        ws()
+        if try literalNull() { return nil }
+        return try int()
     }
 
     private mutating func glyph() throws -> RenderingV2.Glyph {

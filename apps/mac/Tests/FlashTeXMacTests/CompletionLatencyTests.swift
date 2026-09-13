@@ -125,17 +125,19 @@ final class CompletionLatencyTests: XCTestCase {
             // Narrow: "u" → list updated for `\su` with the popup rows replaced.
             t0 = MonotonicClock.nowNs()
             key("u", code: 32)
-            // The synchronized vocabulary (main f803a711 + mac-completion-sync): text entries, then operators, then symbols.
-            let narrowed = ["\\subsection{...}", "\\sup", "\\subset", "\\subseteq", "\\supset", "\\supseteq", "\\sum"]
+            // The vocabulary generated from the compiler's inventory: text entries, then operators, then symbols.
+            let narrowed = ["\\subsection{...}", "\\subsubsection{...}", "\\sup", "\\subset", "\\subseteq", "\\supset", "\\supseteq",
+                            "\\sum", "\\subsetneq", "\\supsetneq"]
             narrow.samples.append(msUntil("narrowed \(i)", from: t0) { tv.session?.range.length == 3 && tv.completionPopup.items.count == narrowed.count })
             XCTAssertEqual(tv.session?.items.map(\.label), narrowed)
             XCTAssertTrue(tv.completionPopup.isVisible)
             // Arrow: ↓ → selection moved in the session and in the table (synchronous).
-            t0 = MonotonicClock.nowNs()
             key("\u{F701}", code: 125)
+            t0 = MonotonicClock.nowNs()
+            key("\u{F701}", code: 125) // to `\sup`, the first plain (no-argument) candidate
             arrow.samples.append(ms(since: t0))
-            XCTAssertEqual(tv.session?.selectedIndex, 1)
-            XCTAssertEqual(tv.completionPopup.selectedRow, 1)
+            XCTAssertEqual(tv.session?.selectedIndex, 2)
+            XCTAssertEqual(tv.completionPopup.selectedRow, 2)
             XCTAssertEqual(tv.selectedRange(), NSRange(location: caret + 1, length: 0), "choosing never moves the caret")
             // Accept: Return → text replaced, caret placed, list closed and hidden (synchronous).
             t0 = MonotonicClock.nowNs()
@@ -264,7 +266,7 @@ final class CompletionLatencyTests: XCTestCase {
         tv.requestCompletion()
         exec.runAll()
         spin("session B") { tv.session != nil }
-        XCTAssertEqual(tv.session?.items.first?.label, "\\textbf{...}")
+        XCTAssertEqual(tv.session?.items.first?.label, "\\tableofcontents")
         XCTAssertTrue(tv.session!.items.allSatisfy { $0.label.hasPrefix("\\t") }, "\(tv.session!.items.map(\.label))")
         XCTAssertEqual(tv.session?.range, NSRange(location: caretA - 1, length: 2))
 

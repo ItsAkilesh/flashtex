@@ -88,8 +88,10 @@ pub struct Expansion {
     pub arraystretch: HashMap<(usize, usize), String>,
 }
 
-/// Host definitions run before the document. LaTeX's `\tabular`/`\array`
-/// read `\arraystretch` when the environment begins; here they emit a
+/// Host definitions run before the document. `\DeclareMathOperator` is
+/// amsopn.sty's definition reduced to its effect: `\cmd` becomes
+/// `\operatorname{text}` (`\operatorname*{text}` when starred).
+/// LaTeX's `\tabular`/`\array` read `\arraystretch` when the environment begins; here they emit a
 /// marker plus `\arraystretch`'s current expansion, which the converter
 /// turns back into `\begin{<env>}` and records for the parser.
 ///
@@ -102,6 +104,8 @@ pub const HOST_PRELUDE: &str = "\\let\\setlength\\flashtexundefined
 \\let\\label\\flashtexundefined
 \\let\\verb\\flashtexundefined
 \\let\\:\\flashtexundefined
+\\long\\def\\flashtexdeclaremathop#1#2#3{\\newcommand#2{\\operatorname#1{#3}}}%
+\\expandafter\\def\\expandafter\\DeclareMathOperator\\expandafter{\\csname @ifstar\\endcsname{\\flashtexdeclaremathop*}{\\flashtexdeclaremathop{}}}%
 \\def\\arraystretch{1}%
 \\def\\tabular{\\flashtexbegintabular\\expandafter{\\arraystretch}}%
 \\expandafter\\def\\csname tabular*\\endcsname{\\flashtexbegintabularstar\\expandafter{\\arraystretch}}%

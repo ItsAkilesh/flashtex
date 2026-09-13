@@ -16,7 +16,7 @@ fn v1_items_are_positioned_exactly_where_v2_glyph_runs_start() {
         return;
     }
     let r = render_one(MATH_DOC);
-    let v1 = v1_of(&r, Capabilities { rules: true, font_hints: true, display_list: false });
+    let v1 = v1_of(&r, Capabilities { rules: true, font_hints: true, display_list: false, images: false });
     // Only the outline-resource profile notes for lmmi/lmex (drawn from
     // Latin Modern Math) are expected; they make the status `recovered`.
     assert!(v1.diagnostics.iter().all(|d| d.code == "math_resource_profile"), "{:?}", v1.diagnostics);
@@ -47,6 +47,7 @@ fn v1_items_are_positioned_exactly_where_v2_glyph_runs_start() {
                         v2_origins.push((g.origin_x.to_bp(), g.baseline_y.to_bp(), String::new()));
                     }
                 }
+                Item::Image(_) => {}
                 Item::Rule(rule) => {
                     v2_rules += 1;
                     assert!(rule.width.0 > 0 && rule.height.0 > 0);
@@ -127,7 +128,7 @@ fn fraction_bars_are_explicit_rules_in_v2_and_negotiated_in_v1() {
     assert!((dash.0 * 0.0857 - rule.height.to_bp()).abs() < 1e-6);
     assert!((dash.1 - (rule.top.to_bp() + rule.height.to_bp())).abs() < 1e-6);
     // Negotiated route: typed rule with top-left corner and source.
-    let typed = v1_of(&r, Capabilities { rules: true, font_hints: false, display_list: false });
+    let typed = v1_of(&r, Capabilities { rules: true, font_hints: false, display_list: false, images: false });
     let typed_rule = typed
         .pages[0]
         .items
@@ -236,4 +237,32 @@ fn times_is_used_only_when_the_document_selects_it() {
     assert!(lm.v2.fonts.iter().all(|f| f.format == "opentype-cff"));
     let times = render_one("\\documentclass{article}\\usepackage{times}\\begin{document}Hello\\end{document}");
     assert!(times.v2.fonts.iter().any(|f| f.format == "core14-afm" && f.postscript_name == "Times-Roman"));
+}
+
+/// A word set as several shaped fragments (kern/ligature boundaries) is
+/// joined into one run; every caret's `text_byte` must be re-based onto the
+/// joined text like the cluster ranges are (regression: `join_runs` shifted
+/// the ranges only, so "office"/"before" carried carets outside their cluster
+/// and the Mac consumer refused the whole frame).
+#[test]
+fn joined_word_fragments_keep_carets_inside_their_clusters() {
+    if !lm_available() {
+        return;
+    }
+    let r = render_one("\\begin{document}The AV office fixed the fi ligature: before the figure.\\end{document}");
+    let mut runs = 0;
+    for page in &r.v2.pages {
+        for item in &page.items {
+            if let Item::GlyphRun(run) = item {
+                runs += 1;
+                for (ci, c) in run.clusters.iter().enumerate() {
+                    let range = c.text_start_byte..=c.text_end_byte;
+                    for caret in c.carets.iter() {
+                        assert!(range.contains(&caret.text_byte), "run {:?} cluster {ci}: caret {} outside {:?}", run.text, caret.text_byte, range);
+                    }
+                }
+            }
+        }
+    }
+    assert!(runs > 0);
 }

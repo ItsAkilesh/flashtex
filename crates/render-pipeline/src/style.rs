@@ -7,7 +7,8 @@
 //! `\@startsection`'s `ex` skips evaluate to in LaTeX. All lengths are TeX
 //! points (72.27/in).
 
-use flashtex_document_style::{BaseSize, Block, ClassOptions, Geometry, Paper, Pt, Stylesheet as DsStylesheet};
+use flashtex_class_geometry::{ResolvedDocument, Sp};
+use flashtex_document_style::{BaseSize, Block, ClassOptions, Geometry, Paper, Stylesheet as DsStylesheet};
 
 use crate::fonts::Family;
 use crate::params;
@@ -80,8 +81,14 @@ pub struct Stylesheet {
     pub pretolerance: f64,
     pub linepenalty: f64,
     pub adjdemerits: f64,
-    /// `\raggedbottom` (article one-column default).
+    /// `\raggedbottom` (standard classes: one-sided, one-column documents;
+    /// otherwise the kernel's `\flushbottom`).
     pub raggedbottom: bool,
+    /// `\emergencystretch` (0; `3em` under `\sloppy`, which the standard
+    /// classes select for two-column documents).
+    pub emergency_stretch_pt: f64,
+    /// `\columnseprule` (the class default, or a preamble `\setlength`).
+    pub columnseprule_pt: f64,
     /// `\topsep`, `\partopsep` and `\leftmargini` of a level-1 list
     /// (`\` of size1x.clo): the glue around and the margins of
     /// `center`/`quote`-style environments.
@@ -95,6 +102,9 @@ pub struct Stylesheet {
     /// list label's right edge and the item text.
     pub labelsep_pt: f64,
     headings: [HeadingStyle; 3],
+    /// The resolved class + geometry frame this stylesheet was built from
+    /// ([`Stylesheet::from_resolved`]); `None` for [`Stylesheet::article`].
+    pub class_geometry: Option<Box<ResolvedDocument>>,
 }
 
 impl Stylesheet {
@@ -178,63 +188,162 @@ impl Stylesheet {
             linepenalty: 10.0,
             adjdemerits: 10000.0,
             raggedbottom: true,
+            emergency_stretch_pt: 0.0,
+            columnseprule_pt: 0.0,
             topsep: Skip::new(list.topsep.pt, list.topsep.plus, list.topsep.minus),
             partopsep: Skip::new(list.partopsep.pt, list.partopsep.plus, list.partopsep.minus),
             leftmargini_pt: list.leftmargin.0,
             parsep: Skip::new(list.parsep.pt, list.parsep.plus, list.parsep.minus),
             labelsep_pt: list.labelsep.0,
             headings: [heading(1), heading(2), heading(3)],
+            class_geometry: None,
         }
     }
 
-    /// Derives the stylesheet from the parse result: class option size,
-    /// font-selecting packages and a `geometry` `margin=` option.
-    pub fn from_document(class_options: &str, packages: &[String], geometry: Option<Geometry>, parindent_pt: f64) -> Stylesheet {
-        let size = class_options
-            .split(',')
-            .filter_map(|o| o.trim().strip_suffix("pt"))
-            .filter_map(|n| n.parse::<u32>().ok())
-            .find(|n| matches!(n, 10 | 11 | 12))
-            .unwrap_or(10);
-        let family = if packages.iter().any(|p| matches!(p.as_str(), "times" | "mathptmx" | "newtxtext" | "txfonts")) {
+    /// The stylesheet of a resolved standard-class document
+    /// (`flashtex-class-geometry`, exact to the sp against pdflatex): the
+    /// page frame (MediaBox, text block, `\textheight`), `\topskip`,
+    /// `\maxdepth` and `\parindent` come from `doc`; sizes, heading fonts
+    /// and skips (evaluated in `family`'s TFM `ex`), display skips, `\parskip`
+    /// and the list glue/margins (`\leftmargini`, `\labelsep`, `\topsep`, ...)
+    /// stay document-style's article tables at `doc`'s class size
+    /// (class-geometry CONTRACT step 6).
+    ///
+    /// The page is the PDF MediaBox, not the paper: without `geometry`
+    /// pdfTeX keeps the engine default of `pdftexconfig.tex` (US Letter in
+    /// MacTeX 2026), so `\documentclass[a4paper]{article}` alone ships a
+    /// Letter page with the A4 text block placed from its top-left corner.
+    /// The frame values are the `\oddsidemargin` (odd/one-sided page) text
+    /// block of the first column (`text_width_pt` is `\columnwidth`); the
+    /// page builder takes even-page left edges, the second column and the
+    /// header/footer baselines from `class_geometry`.
+    ///
+    /// article/report/book end with `\if@twoside\else\raggedbottom\fi` and
+    /// `\if@twocolumn \sloppy\flushbottom\fi`: two-sided or two-column
+    /// documents keep `\flushbottom`, two-column ones `\sloppy`
+    /// (`\tolerance 9999`, `\emergencystretch 3em`).
+    pub fn from_resolved(doc: &ResolvedDocument, family: Family) -> Stylesheet {
+        let size = match doc.options.size {
+            flashtex_class_geometry::BaseSize::Pt10 => 10,
+            flashtex_class_geometry::BaseSize::Pt11 => 11,
+            flashtex_class_geometry::BaseSize::Pt12 => 12,
+        };
+        let mut s = Stylesheet::article(size, family, None);
+        let (frame, p) = (&doc.frame, &doc.params);
+        s.page_width_pt = media_pt(frame.pdf_page_width);
+        s.page_height_pt = media_pt(frame.pdf_page_height);
+        s.text_x_pt = frame_pt(frame.text_left(1));
+        s.text_y_pt = frame_pt(frame.text_top);
+        s.text_width_pt = frame_pt(frame.columns[0].width);
+        s.text_height_pt = frame_pt(frame.text_height);
+        s.topskip_pt = frame_pt(p.topskip);
+        s.maxdepth_pt = frame_pt(p.maxdepth);
+        s.parindent_pt = frame_pt(p.parindent);
+        s.raggedbottom = !(doc.flags.twoside || doc.flags.twocolumn);
+        s.columnseprule_pt = frame_pt(frame.columnseprule);
+        if doc.flags.twocolumn {
+            s.tolerance = 9999.0;
+            s.emergency_stretch_pt = 3.0 * s.body_size_pt;
+        }
+        s.class_geometry = Some(Box::new(doc.clone()));
+        s
+    }
+
+    /// The body family selected by the loaded packages.
+    pub fn family_of(packages: &[String]) -> Family {
+        if packages.iter().any(|p| matches!(p.as_str(), "times" | "mathptmx" | "newtxtext" | "txfonts")) {
             Family::Times
         } else {
             Family::LatinModern
-        };
-        let mut s = Stylesheet::article(size, family, geometry);
-        s.parindent_pt = parindent_pt;
-        s
+        }
     }
 
     pub fn heading(&self, level: u8) -> HeadingStyle {
         self.headings[usize::from(level.clamp(1, 3) - 1)]
     }
+}
 
-    /// `\usepackage[margin=1in]{geometry}` as the sibling's `Geometry`; only
-    /// `margin=`, `left/right/top/bottom=` and `textwidth/textheight=` are read.
-    pub fn geometry_from_options(options: &str) -> Geometry {
-        let mut g = Geometry::default();
-        for opt in options.split(',') {
-            let Some((k, v)) = opt.split_once('=') else { continue };
-            let Ok(pt) = Pt::parse(v.trim()) else { continue };
-            match k.trim() {
-                "margin" => g.margin = Some(pt),
-                "left" | "lmargin" | "inner" => g.left = Some(pt),
-                "right" | "rmargin" | "outer" => g.right = Some(pt),
-                "top" | "tmargin" => g.top = Some(pt),
-                "bottom" | "bmargin" => g.bottom = Some(pt),
-                "textwidth" | "width" => g.textwidth = Some(pt),
-                "textheight" | "height" => g.textheight = Some(pt),
-                _ => {}
-            }
-        }
-        g
+/// A frame length in TeX points for the f64 layout. `len` is exact (sp);
+/// when a 0.001 pt decimal lies within [`FRAME_SNAP_SP`] of it, that
+/// decimal is used (`1in` = 4736286 sp is laid out as 72.27 pt, a letter
+/// `margin=1in` `\textwidth` of 30785865 sp as 469.755 pt), so the f64
+/// values equal the unit declarations the pipeline used before and its
+/// display lists stay byte-identical; every value remains within 2 sp of
+/// pdflatex, 30x finer than the 0.001 bp pdfTeX writes positions with.
+/// Lengths further from a 0.001 pt decimal keep their exact sp value.
+pub(crate) fn frame_pt(len: Sp) -> f64 {
+    let exact = len.to_pt();
+    let decimal = (exact * 1000.0).round() / 1000.0;
+    if ((decimal - exact) * 65536.0).abs() <= FRAME_SNAP_SP {
+        decimal
+    } else {
+        exact
     }
+}
+
+/// See [`frame_pt`].
+const FRAME_SNAP_SP: f64 = 2.0;
+
+/// A MediaBox length as pdfTeX writes it (big points rounded to
+/// `\pdfdecimaldigits` = 3, MacTeX `pdftexconfig.tex`), back in TeX points.
+fn media_pt(len: Sp) -> f64 {
+    (len.to_bp() * 1000.0).round() / 1000.0 * 72.27 / 72.0
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flashtex_class_geometry::{resolve, DocumentSetup};
+    use flashtex_document_style::Pt;
+
+    /// HW1/HW2's preamble (`11pt` article, `margin=1in`) and body-only
+    /// input (`12pt`, `margin=1in`): the class-geometry frame is within 2 sp
+    /// of the document-style frame the pipeline used before, and the f64
+    /// values laid out are identical (display lists byte-identical).
+    #[test]
+    fn resolved_frame_keeps_the_document_style_frame_for_margin_1in() {
+        for (size, preamble) in [
+            (11, "\\documentclass[11pt]{article}\n\\usepackage[margin=1in]{geometry}\n"),
+            (12, "\\documentclass[12pt]{article}\n\\usepackage[margin=1in]{geometry}\n"),
+            (10, "\\documentclass{article}\n"),
+        ] {
+            let doc = resolve(&DocumentSetup::from_preamble(preamble).expect("standard class"));
+            let geometry = preamble.contains("geometry").then(|| Geometry::margin(Pt::inches(1.0)));
+            let old = Stylesheet::article(size, Family::LatinModern, geometry);
+            let new = Stylesheet::from_resolved(&doc, Family::LatinModern);
+            let f = &doc.frame;
+            for (what, old_pt, new_pt, exact) in [
+                ("text_x", old.text_x_pt, new.text_x_pt, f.text_left(1)),
+                ("text_y", old.text_y_pt, new.text_y_pt, f.text_top),
+                ("text_width", old.text_width_pt, new.text_width_pt, f.columns[0].width),
+                ("text_height", old.text_height_pt, new.text_height_pt, f.text_height),
+                ("topskip", old.topskip_pt, new.topskip_pt, doc.params.topskip),
+                ("maxdepth", old.maxdepth_pt, new.maxdepth_pt, doc.params.maxdepth),
+            ] {
+                if geometry.is_some() {
+                    // The digest-relevant case: bit-identical f64.
+                    assert_eq!(old_pt, new_pt, "{preamble}: {what}");
+                } else {
+                    // document-style sums floats (72.27 + 62 = 134.26999999999998);
+                    // the snapped decimal is the same length far below one tick.
+                    assert!((old_pt - new_pt).abs() < 1e-9, "{preamble}: {what} {old_pt} vs {new_pt}");
+                }
+                assert!(((new_pt * 65536.0) - exact.0 as f64).abs() <= 2.0, "{preamble}: {what} {new_pt} vs {exact:?}");
+            }
+            assert_eq!((old.page_width_pt, old.page_height_pt), (new.page_width_pt, new.page_height_pt), "{preamble}");
+        }
+    }
+
+    #[test]
+    fn a4paper_without_geometry_is_a_letter_media_box() {
+        let doc = resolve(&DocumentSetup::from_preamble("\\documentclass[a4paper]{article}\n").unwrap());
+        let s = Stylesheet::from_resolved(&doc, Family::LatinModern);
+        assert!((s.page_width_pt - 614.295).abs() < 1e-9 && (s.page_height_pt - 794.97).abs() < 1e-9);
+        assert_eq!((s.text_width_pt, s.text_height_pt), (345.0, 598.0));
+        let with = resolve(&DocumentSetup::from_preamble("\\documentclass[a4paper]{article}\n\\usepackage{geometry}\n").unwrap());
+        let a4 = Stylesheet::from_resolved(&with, Family::LatinModern);
+        assert!((a4.page_width_pt * 72.0 / 72.27 - 595.276).abs() < 1e-9, "{}", a4.page_width_pt);
+    }
 
     #[test]
     fn oracle_geometry_matches_paragraph_layout_and_document_style() {

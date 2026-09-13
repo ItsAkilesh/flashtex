@@ -675,7 +675,8 @@ fn compile(id: &str, payload: &Value) -> Value {
                 && item
                     .text
                     .chars()
-                    .any(|c| crate::lm_math::advance(c).is_some())
+                    // lm.math has no ASCII glyphs; skip the table scan for them.
+                    .any(|c| !c.is_ascii() && crate::lm_math::advance(c).is_some())
             {
                 first_lm_math_span = Some(item.span);
             }

@@ -323,7 +323,7 @@ impl TextStyle {
 }
 
 /// Argument-taking style commands (`\textbf{...}`).
-fn style_command(name: &str) -> bool {
+pub(crate) fn style_command(name: &str) -> bool {
     matches!(
         name,
         "textbf"
@@ -344,7 +344,7 @@ fn style_command(name: &str) -> bool {
 /// (a common `\textbf{...}`-style misuse) is deliberately handled the same
 /// way as `{\Large ...}` — its size stays active past the immediate group,
 /// matching real LaTeX (the group only undoes assignments made *inside* it).
-fn style_declaration(name: &str) -> bool {
+pub(crate) fn style_declaration(name: &str) -> bool {
     matches!(
         name,
         "bfseries"
@@ -495,6 +495,7 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "setlist",
     "newcommand",
     "renewcommand",
+    "DeclareMathOperator",
     "input",
     "include",
     "label",
@@ -1104,6 +1105,9 @@ impl P<'_> {
             "setlength" => self.set_length(span),
             "usepackage" => self.use_package(span),
             "setlist" => self.set_list(span),
+            // Definitions run in the expansion pass (`crate::expansion`); the
+            // parser only sees their expansions, never these names.
+            "newcommand" | "renewcommand" | "DeclareMathOperator" => {}
             "newtheorem" => self.new_theorem(span),
             "theoremstyle" => self.set_theorem_style(span),
             "begin" | "end" => self.environment(name, span, blocks, para),

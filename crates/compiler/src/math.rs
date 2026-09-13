@@ -49,7 +49,7 @@ pub struct MathAtom {
     /// Forces a symbol atom's advance, in ems of its size, when the glyph is
     /// shared by commands whose TeX fonts differ (`\varnothing` is msbm10's
     /// 0.777781em where `\emptyset`'s identical U+2205 is cmsy10's).
-    pub(crate) width_em: Option<f64>,
+    pub width_em: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +112,53 @@ pub enum Nucleus {
     /// exists so a multi-atom argument stays one atom for spacing purposes
     /// instead of flattening into the surrounding list.
     Group(MathList),
+    /// amsmath `\genfrac{left}{right}{thickness}{style}{num}{den}`
+    /// (`amsmath.sty` lines 237-312) and its shorthands: `\dfrac`/`\tfrac`
+    /// (no delimiters, display/text style), `\binom`/`\dbinom`/`\tbinom`
+    /// (parentheses, zero thickness). `thickness_pt` `None` is the default
+    /// rule; empty `left`/`right` are null delimiters; `style` `None` keeps
+    /// the current style. amsmath wraps the result in a group (an ordinary
+    /// atom), unlike the plain `\frac`'s inner [`Nucleus::Fraction`].
+    GenFraction {
+        numerator: MathList,
+        denominator: MathList,
+        thickness_pt: Option<f64>,
+        left: String,
+        right: String,
+        style: Option<MathStyle>,
+    },
+    /// `\phantom`/`\hphantom`/`\vphantom` (`latex.ltx` `\ph@nt`): an empty box
+    /// with `body`'s width (`horizontal`) and/or height and depth (`vertical`).
+    Phantom {
+        body: MathList,
+        horizontal: bool,
+        vertical: bool,
+    },
+    /// `\operatorname{...}`, `\operatorname*{...}` and commands declared by
+    /// `\DeclareMathOperator` (`amsopn.sty` `\qopname`): `\mathop{\operator@font
+    /// body}` followed by `\limits` (`limits`, the starred forms) or
+    /// `\nolimits`. `body` holds upright [`Nucleus::Text`] runs and the math
+    /// glue written inside the argument (`arg\,max`).
+    Operator {
+        body: MathList,
+        limits: bool,
+    },
+    /// amsmath `\substack{a \\ b}` (`subarray{c}`, `amsmath.sty` lines
+    /// 1030-1059): rows in `\scriptstyle`, centred, `\vcenter`ed.
+    SubArray {
+        rows: Vec<MathList>,
+        align: char,
+    },
+}
+
+/// An explicit math style (`\displaystyle` .. `\scriptscriptstyle`, and the
+/// `{0..3}` style argument of amsmath's `\genfrac`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MathStyle {
+    Display,
+    Text,
+    Script,
+    ScriptScript,
 }
 
 /// The atom class plain TeX gives a `\big` delimiter: `\bigl` opens, `\bigr`
@@ -225,6 +272,8 @@ pub(crate) const GRID_ENVIRONMENTS: &[(&str, char, &str, &str)] = &[
     ("vmatrix", 'c', "|", "|"),
     ("Vmatrix", 'c', "‖", "‖"),
     ("cases", 'l', "{", ""),
+    // mathtools.sty `\newcases{dcases}`: `cases` with `\displaystyle` cells.
+    ("dcases", 'l', "{", ""),
     ("aligned", 'c', "", ""),
     ("alignedat", 'c', "", ""),
     ("split", 'c', "", ""),
@@ -643,10 +692,50 @@ impl MathParser<'_> {
                     width_em: None,
                 }
             }
-            "operatorname" => {
+            // amsopn.sty: `\operatorname` is `\qopname\newmcodes@ o` (`\nolimits`),
+            // `\operatorname*` is `\qopname\newmcodes@ m` (`\limits`).
+            "operatorname" | "operatornamewithlimits" => {
+                let starred = name == "operatornamewithlimits"
+                    || matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "*");
                 self.skip_star();
-                let (text, argument_span) = self.required_text_group("operatorname", span);
-                text_atom(text, span.merge(argument_span))
+                let body = self.required_group(&name, span);
+                MathAtom {
+                    nucleus: Nucleus::Operator {
+                        body: operator_body(body),
+                        limits: starred,
+                    },
+                    span,
+                    superscript: None,
+                    subscript: None,
+                    class_override: None,
+                    width_em: None,
+                }
+            }
+            "phantom" | "hphantom" | "vphantom" => {
+                let body = self.required_group(&name, span);
+                MathAtom {
+                    nucleus: Nucleus::Phantom {
+                        body,
+                        horizontal: name != "vphantom",
+                        vertical: name != "hphantom",
+                    },
+                    span,
+                    superscript: None,
+                    subscript: None,
+                    class_override: None,
+                    width_em: None,
+                }
+            }
+            "substack" => {
+                let rows = self.braced_rows(&name, span);
+                MathAtom {
+                    nucleus: Nucleus::SubArray { rows, align: 'c' },
+                    span,
+                    superscript: None,
+                    subscript: None,
+                    class_override: None,
+                    width_em: None,
+                }
             }
             // Upright roman is already the math default in this subset, and
             // the other style switches have no distinct face yet: keep the
@@ -681,7 +770,75 @@ impl MathParser<'_> {
             "rbrace" => symbol("}".into(), span),
             "iiint" => symbol("∫∫∫".into(), span),
             "bmod" | "mod" => text_atom("mod".into(), span),
-            "dfrac" | "tfrac" | "cfrac" => self.command_atom("frac".into(), span),
+            // amsmath.sty lines 237-241: `\dfrac` = `\genfrac{}{}{}0`,
+            // `\tfrac` = `\genfrac{}{}{}1`, `\binom` = `\genfrac()\z@{}`,
+            // `\dbinom` = `\genfrac(){0pt}0`, `\tbinom` = `\genfrac(){0pt}1`.
+            "dfrac" | "tfrac" | "binom" | "dbinom" | "tbinom" => {
+                let numerator = self.required_group(&name, span);
+                let denominator = self.required_group(&name, span);
+                let binom = name.ends_with("binom");
+                let style = match name.chars().next() {
+                    Some('d') => Some(MathStyle::Display),
+                    Some('t') => Some(MathStyle::Text),
+                    _ => None,
+                };
+                gen_fraction(numerator, denominator, binom, style, span)
+            }
+            "genfrac" => {
+                let (left, _) = self.required_text_group("genfrac", span);
+                let (right, _) = self.required_text_group("genfrac", span);
+                let (thickness, thickness_span) = self.required_text_group("genfrac", span);
+                let (style, _) = self.required_text_group("genfrac", span);
+                let numerator = self.required_group("genfrac", span);
+                let denominator = self.required_group("genfrac", span);
+                let thickness = thickness.trim();
+                let thickness_pt = if thickness.is_empty() {
+                    None
+                } else if let Some(pt) = thickness
+                    .strip_suffix("pt")
+                    .and_then(|v| v.trim().parse::<f64>().ok())
+                {
+                    Some(pt)
+                } else {
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("\\genfrac thickness {thickness:?} is not a pt dimension"),
+                        Some(thickness_span),
+                        Some("used the default fraction rule thickness".into()),
+                    ));
+                    None
+                };
+                let delimiter = |s: String| match s.trim() {
+                    "." => String::new(),
+                    "\\{" | "\\lbrace" => "{".into(),
+                    "\\}" | "\\rbrace" => "}".into(),
+                    "\\langle" => "⟨".into(),
+                    "\\rangle" => "⟩".into(),
+                    "\\|" => "‖".into(),
+                    other => other.to_string(),
+                };
+                MathAtom {
+                    nucleus: Nucleus::GenFraction {
+                        numerator,
+                        denominator,
+                        thickness_pt,
+                        left: delimiter(left),
+                        right: delimiter(right),
+                        style: match style.trim() {
+                            "0" => Some(MathStyle::Display),
+                            "1" => Some(MathStyle::Text),
+                            "2" => Some(MathStyle::Script),
+                            "3" => Some(MathStyle::ScriptScript),
+                            _ => None,
+                        },
+                    },
+                    span,
+                    superscript: None,
+                    subscript: None,
+                    class_override: None,
+                    width_em: None,
+                }
+            }
+            "cfrac" => self.command_atom("frac".into(), span),
             "frac" => {
                 let numerator = self.required_group("frac", span);
                 let denominator = self.required_group("frac", span);
@@ -730,23 +887,6 @@ impl MathParser<'_> {
                 };
                 MathAtom {
                     nucleus: Nucleus::Stacked { base, over, under },
-                    span,
-                    superscript: None,
-                    subscript: None,
-                    class_override: None,
-                    width_em: None,
-                }
-            }
-            "binom" | "dbinom" | "tbinom" => {
-                let top = self.required_group(&name, span);
-                let bottom = self.required_group(&name, span);
-                MathAtom {
-                    nucleus: Nucleus::Matrix {
-                        rows: vec![vec![top], vec![bottom]],
-                        columns: "c".into(),
-                        left: "(".into(),
-                        right: ")".into(),
-                    },
                     span,
                     superscript: None,
                     subscript: None,
@@ -1397,6 +1537,121 @@ impl MathParser<'_> {
     }
 }
 
+impl MathParser<'_> {
+    /// The rows of a braced `\substack` argument, split at top-level `\\`
+    /// (a trailing `\\` adds no row, as `\crcr` does not).
+    fn braced_rows(&mut self, command: &str, span: Span) -> Vec<MathList> {
+        while matches!(
+            self.tokens.get(self.i).map(|t| &t.kind),
+            Some(TokenKind::Space)
+        ) {
+            self.i += 1;
+        }
+        if !matches!(
+            self.tokens.get(self.i).map(|t| &t.kind),
+            Some(TokenKind::LBrace)
+        ) {
+            return vec![self.required_group(command, span)];
+        }
+        let start = self.i + 1;
+        let mut depth = 0usize;
+        let mut end = start;
+        let mut breaks = Vec::new();
+        while let Some(token) = self.tokens.get(end) {
+            match &token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace if depth == 0 => break,
+                TokenKind::RBrace => depth -= 1,
+                TokenKind::LineBreak if depth == 0 => breaks.push(end),
+                _ => {}
+            }
+            end += 1;
+        }
+        if end >= self.tokens.len() {
+            self.diagnostics.push(Diagnostic::error(
+                format!("\\{command} argument is missing its closing brace"),
+                Some(span),
+                Some("closed the argument at the end of the formula".into()),
+            ));
+        }
+        self.i = (end + 1).min(self.tokens.len());
+        let mut rows = Vec::new();
+        let mut from = start;
+        for at in breaks.into_iter().chain(std::iter::once(end)) {
+            let row = self.sub_list(&self.tokens[from..at.min(self.tokens.len())]);
+            rows.push(row);
+            from = at + 1;
+        }
+        if rows.len() > 1 && rows.last().is_some_and(|r| r.atoms.is_empty()) {
+            rows.pop();
+        }
+        rows
+    }
+}
+
+/// amsmath's `\genfrac` shorthands: `\dfrac`/`\tfrac` (default rule, no
+/// delimiters) and `\binom`/`\dbinom`/`\tbinom` (zero rule, parentheses).
+fn gen_fraction(
+    numerator: MathList,
+    denominator: MathList,
+    binom: bool,
+    style: Option<MathStyle>,
+    span: Span,
+) -> MathAtom {
+    let (thickness_pt, left, right) = if binom {
+        (Some(0.0), "(", ")")
+    } else {
+        (None, "", "")
+    };
+    MathAtom {
+        nucleus: Nucleus::GenFraction {
+            numerator,
+            denominator,
+            thickness_pt,
+            left: left.into(),
+            right: right.into(),
+            style,
+        },
+        span,
+        superscript: None,
+        subscript: None,
+        class_override: None,
+        width_em: None,
+    }
+}
+
+/// The body of `\operatorname{...}` in `\operator@font`: runs of single
+/// characters become upright [`Nucleus::Text`]; math glue (`\,`) and any
+/// other construct stay as they are.
+fn operator_body(list: MathList) -> MathList {
+    let mut atoms: Vec<MathAtom> = Vec::new();
+    for atom in list.atoms {
+        let plain = atom.superscript.is_none() && atom.subscript.is_none();
+        match (&atom.nucleus, atoms.last_mut()) {
+            (Nucleus::Symbol(s), Some(last))
+                if plain
+                    && s.chars().count() == 1
+                    && matches!(&last.nucleus, Nucleus::Text(_))
+                    && last.superscript.is_none()
+                    && last.subscript.is_none() =>
+            {
+                if let Nucleus::Text(text) = &mut last.nucleus {
+                    text.push_str(s);
+                }
+                last.span = last.span.merge(atom.span);
+            }
+            (Nucleus::Symbol(s), _) if plain && s.chars().count() == 1 => {
+                atoms.push(MathAtom {
+                    nucleus: Nucleus::Text(s.clone()),
+                    ..atom
+                });
+            }
+            _ => atoms.push(atom),
+        }
+    }
+    MathList { atoms }
+}
+
 /// `\varnothing`'s advance in ems: msbm10.tfm character "3F (CHARWD R 0.777781).
 pub(crate) const VARNOTHING_MSBM_EM: f64 = 0.777781;
 
@@ -1784,6 +2039,7 @@ fn atom_class(atom: &MathAtom) -> Option<AtomClass> {
         Nucleus::Text(text) if text == "mod" => Bin,
         Nucleus::Text(text) if text == "..." => Inner,
         Nucleus::Fraction { .. } => Inner,
+        Nucleus::Operator { .. } => Op,
         Nucleus::Matrix { left, right, .. } if !left.is_empty() || !right.is_empty() => Inner,
         // amsmath's `\overset`/`\stackrel` keep a relation or binary base's class.
         Nucleus::Stacked { base, .. } if base.atoms.len() == 1 => {
@@ -2418,6 +2674,70 @@ fn layout_nucleus(
         // `\mathbin{...}` and kin: laid out exactly like a bare `{...}`
         // group; only the enclosing atom's forced class differs.
         Nucleus::Group(body) => layout_list(body, size, root_size, level, diagnostics),
+        // The compiler's own (base-14) layout has no delimiter sizing or
+        // style changes: a delimited `\genfrac` is set like the grid `\binom`
+        // used to be, an undelimited one like `\frac`.
+        Nucleus::GenFraction {
+            numerator,
+            denominator,
+            left,
+            right,
+            ..
+        } => {
+            let nucleus = if left.is_empty() && right.is_empty() {
+                Nucleus::Fraction {
+                    numerator: numerator.clone(),
+                    denominator: denominator.clone(),
+                }
+            } else {
+                Nucleus::Matrix {
+                    rows: vec![vec![numerator.clone()], vec![denominator.clone()]],
+                    columns: "c".into(),
+                    left: left.clone(),
+                    right: right.clone(),
+                }
+            };
+            layout_nucleus(
+                &MathAtom {
+                    nucleus,
+                    ..atom.clone()
+                },
+                size,
+                root_size,
+                level,
+                diagnostics,
+            )
+        }
+        Nucleus::Phantom {
+            body,
+            horizontal,
+            vertical,
+        } => {
+            let mut b = layout_list(body, size, root_size, level, diagnostics);
+            b.items.clear();
+            if !horizontal {
+                b.width = 0.0;
+            }
+            if !vertical {
+                b.ascent = 0.0;
+                b.descent = 0.0;
+            }
+            b
+        }
+        Nucleus::Operator { body, .. } => layout_list(body, size, root_size, level, diagnostics),
+        Nucleus::SubArray { rows, .. } => {
+            let rows: Vec<Vec<MathList>> = rows.iter().map(|r| vec![r.clone()]).collect();
+            layout_matrix(
+                atom,
+                &rows,
+                "c",
+                ("", ""),
+                size,
+                root_size,
+                level,
+                diagnostics,
+            )
+        }
     }
 }
 
@@ -2699,6 +3019,38 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
                 body: shift_list(body, delta),
             },
             Nucleus::Group(inner) => Nucleus::Group(shift_list(inner, delta)),
+            Nucleus::GenFraction {
+                numerator,
+                denominator,
+                thickness_pt,
+                left,
+                right,
+                style,
+            } => Nucleus::GenFraction {
+                numerator: shift_list(numerator, delta),
+                denominator: shift_list(denominator, delta),
+                thickness_pt: *thickness_pt,
+                left: left.clone(),
+                right: right.clone(),
+                style: *style,
+            },
+            Nucleus::Phantom {
+                body,
+                horizontal,
+                vertical,
+            } => Nucleus::Phantom {
+                body: shift_list(body, delta),
+                horizontal: *horizontal,
+                vertical: *vertical,
+            },
+            Nucleus::Operator { body, limits } => Nucleus::Operator {
+                body: shift_list(body, delta),
+                limits: *limits,
+            },
+            Nucleus::SubArray { rows, align } => Nucleus::SubArray {
+                rows: rows.iter().map(|r| shift_list(r, delta)).collect(),
+                align: *align,
+            },
         },
         span: shift(atom.span, delta),
         superscript: atom.superscript.as_ref().map(|l| shift_list(l, delta)),
@@ -2995,9 +3347,11 @@ mod parse_tests {
         let list = parse_tokens(&tokens, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let nuclei: Vec<&Nucleus> = list.atoms.iter().map(|atom| &atom.nucleus).collect();
-        assert!(
-            matches!(nuclei[0], Nucleus::Matrix { rows, left, .. } if rows.len() == 2 && left == "(")
-        );
+        assert!(matches!(
+            nuclei[0],
+            Nucleus::GenFraction { left, right, thickness_pt: Some(t), style: None, .. }
+                if left == "(" && right == ")" && *t == 0.0
+        ));
         assert!(
             list.atoms[1].superscript.is_some(),
             "root index is a raised script"
@@ -3069,10 +3423,12 @@ mod parse_tests {
             .atoms
             .iter()
             .any(|atom| atom.nucleus == Nucleus::Text("lim".into()) && atom.subscript.is_some()));
-        assert!(list
-            .atoms
-            .iter()
-            .any(|atom| atom.nucleus == Nucleus::Text("rank".into())));
+        // amsopn: `\operatorname*{rank}` is `\mathop{\operator@font rank}\limits`.
+        assert!(list.atoms.iter().any(|atom| matches!(
+            &atom.nucleus,
+            Nucleus::Operator { body, limits: true }
+                if body.atoms.len() == 1 && body.atoms[0].nucleus == Nucleus::Text("rank".into())
+        )));
     }
 
     #[test]
@@ -3294,6 +3650,11 @@ mod unbraced_argument_tests {
                 Nucleus::Fraction {
                     numerator,
                     denominator,
+                }
+                | Nucleus::GenFraction {
+                    numerator,
+                    denominator,
+                    ..
                 } => {
                     assert_eq!(numerator.atoms.len(), 1, "{source}: {:?}", numerator.atoms);
                     assert_eq!(numerator.atoms[0].nucleus, Nucleus::Symbol("1".into()));
@@ -3326,12 +3687,25 @@ mod unbraced_argument_tests {
             assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
             assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
             match &list.atoms[0].nucleus {
-                Nucleus::Matrix { rows, .. } => {
-                    assert_eq!(rows.len(), 2, "{source}");
-                    assert_eq!(rows[0][0].atoms[0].nucleus, Nucleus::Symbol("n".into()));
-                    assert_eq!(rows[1][0].atoms[0].nucleus, Nucleus::Symbol("k".into()));
+                Nucleus::GenFraction {
+                    numerator,
+                    denominator,
+                    left,
+                    right,
+                    style,
+                    ..
+                } => {
+                    assert_eq!(numerator.atoms[0].nucleus, Nucleus::Symbol("n".into()));
+                    assert_eq!(denominator.atoms[0].nucleus, Nucleus::Symbol("k".into()));
+                    assert_eq!((left.as_str(), right.as_str()), ("(", ")"), "{source}");
+                    let expected = match command {
+                        "dbinom" => Some(MathStyle::Display),
+                        "tbinom" => Some(MathStyle::Text),
+                        _ => None,
+                    };
+                    assert_eq!(*style, expected, "{source}");
                 }
-                other => panic!("{source}: expected a matrix, got {other:?}"),
+                other => panic!("{source}: expected a generalized fraction, got {other:?}"),
             }
         }
     }
@@ -4031,7 +4405,17 @@ mod shift_tests {
                             .min()
                             .unwrap_or(usize::MAX),
                         Nucleus::Accent { body, .. } => min_start(body),
-                        Nucleus::Group(body) => min_start(body),
+                        Nucleus::Group(body)
+                        | Nucleus::Phantom { body, .. }
+                        | Nucleus::Operator { body, .. } => min_start(body),
+                        Nucleus::GenFraction {
+                            numerator,
+                            denominator,
+                            ..
+                        } => min_start(numerator).min(min_start(denominator)),
+                        Nucleus::SubArray { rows, .. } => {
+                            rows.iter().map(min_start).min().unwrap_or(usize::MAX)
+                        }
                     };
                     let scripts = a
                         .superscript

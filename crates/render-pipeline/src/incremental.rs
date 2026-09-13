@@ -326,6 +326,38 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 11u8.hash(h);
                 hash_math(body, h);
             }
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::GenFraction { numerator, denominator, thickness_pt, left, right, style } => {
+                12u8.hash(h);
+                hash_math(numerator, h);
+                hash_math(denominator, h);
+                thickness_pt.map(f64::to_bits).hash(h);
+                left.hash(h);
+                right.hash(h);
+                style.map(|s| s as u8).hash(h);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::Phantom { body, horizontal, vertical } => {
+                13u8.hash(h);
+                horizontal.hash(h);
+                vertical.hash(h);
+                hash_math(body, h);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::Operator { body, limits } => {
+                14u8.hash(h);
+                limits.hash(h);
+                hash_math(body, h);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::SubArray { rows, align } => {
+                15u8.hash(h);
+                align.hash(h);
+                rows.len().hash(h);
+                for r in rows {
+                    hash_math(r, h);
+                }
+            }
         }
         match &a.superscript {
             Some(s) => {
@@ -467,6 +499,13 @@ pub fn place_item(item: &crate::display::Item, dy: crate::display::Tick, path: &
             rule.provenance = shift_prov(&rule.provenance);
             Item::Rule(rule)
         }
+        Item::Image(img) => {
+            let mut img = img.clone();
+            img.top = add(img.top);
+            img.transform[5] += dy.to_bp();
+            img.provenance = shift_prov(&img.provenance);
+            Item::Image(img)
+        }
     }
 }
 
@@ -491,6 +530,15 @@ fn shift_math(list: &mut MathList, delta: isize) {
                     shift_math(cell, delta);
                 }
             }
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::GenFraction { numerator, denominator, .. } => {
+                shift_math(numerator, delta);
+                shift_math(denominator, delta);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::Phantom { body, .. } | Nucleus::Operator { body, .. } => shift_math(body, delta),
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::SubArray { rows, .. } => rows.iter_mut().for_each(|r| shift_math(r, delta)),
         }
         if let Some(s) = &mut a.superscript {
             shift_math(s, delta);

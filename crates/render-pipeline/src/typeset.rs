@@ -256,11 +256,21 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
     }
 }
 
+pub mod floatpage;
+
 pub struct Laid {
     pub blocks: Vec<BuiltBlock>,
     pub pages: pl::Pages,
     pub recs: Vec<BoxRec>,
     pub maths: Vec<MathRec>,
+    /// Image items per page number (FT-063 floats).
+    pub images: Vec<(u32, display::Item)>,
+    /// The page of every float `\label`.
+    pub float_labels: Vec<(String, u32)>,
+    /// Per page, per placed line: the x offset (TeX points) from the
+    /// one-sided first-column left edge the blocks were assembled at (an even
+    /// page's `\evensidemargin`, the second column's offset).
+    pub line_dx: Vec<Vec<f64>>,
 }
 
 pub struct Context<'a> {
@@ -420,14 +430,7 @@ impl<'a> Context<'a> {
     }
 
     fn face(&mut self, style: TextStyle, size: f64, span: Span) -> Rc<LoadedFace> {
-        let r = self.fonts.resolve(
-            self.style.family,
-            Role::Text {
-                bold: style.bold,
-                italic: style.italic,
-            },
-            size,
-        );
+        let r = self.fonts.resolve(self.style.family, role_of(style), size);
         if let Some(reason) = r.substituted {
             let src = self.source(span);
             self.report_once(
@@ -543,14 +546,7 @@ impl<'a> Context<'a> {
     /// `\fontdimen`s of the face for `style` at `size`: the face's TFM
     /// when it has one (exact fixwords), else the transcribed table.
     fn text_params(&self, style: TextStyle, size: f64) -> params::TextParamsPt {
-        let r = self.fonts.resolve(
-            self.style.family,
-            Role::Text {
-                bold: style.bold,
-                italic: style.italic,
-            },
-            size,
-        );
+        let r = self.fonts.resolve(self.style.family, role_of(style), size);
         if let (None, Some(tfm)) = (&r.substituted, &r.face.tfm) {
             let dim = |n: usize| tfm.param(n).map_or(0.0, |v| crate::tfm::Tfm::pt(v, size));
             return params::TextParamsPt {
@@ -743,7 +739,9 @@ impl<'a> Context<'a> {
                 _ => math_glue_em(&flashtex_compiler::math::MathList { atoms: vec![a.clone()] }),
             })
             .sum();
-        if nested_glue_em.abs() > 0.0 {
+        // With math-layout's `Glue` atom (feature `amsmath-inline`) nested
+        // glue is set, not dropped.
+        if nested_glue_em.abs() > 0.0 && cfg!(not(feature = "amsmath-inline")) {
             let src = self.source(span);
             let msg = format!("\\quad/\\qquad glue ({nested_glue_em} em in this formula) inside \\left...\\right or a sub-formula dropped: math-layout has no kern atom and only top-level glue can be split into separate runs");
             self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
@@ -1185,6 +1183,7 @@ impl<'a> Context<'a> {
                                 italic: seg.style.italic || base.italic,
                                 size_cpt: seg.style.size_cpt,
                                 medium: seg.style.medium,
+                                slanted: seg.style.slanted || base.slanted,
                             },
                         };
                         // A size declaration in force (`{\Large ...}`) sets
@@ -1201,6 +1200,7 @@ impl<'a> Context<'a> {
                         italic: style.italic || base.italic,
                         size_cpt: style.size_cpt,
                         medium: style.medium,
+                        slanted: style.slanted || base.slanted,
                     };
                     if *no_break {
                         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
@@ -1295,7 +1295,7 @@ impl<'a> Context<'a> {
             algorithm: pl::Algorithm::TotalFit,
             pretolerance: s.pretolerance,
             tolerance: s.tolerance,
-            emergency_stretch: 0.0,
+            emergency_stretch: s.emergency_stretch_pt,
             line_penalty: s.linepenalty,
             adj_demerits: s.adjdemerits,
             double_hyphen_demerits: 10_000.0,
@@ -1438,9 +1438,7 @@ impl<'a> Context<'a> {
             h.size_pt,
             TextStyle {
                 bold: h.bold,
-                italic: false,
-                size_cpt: 0,
-                medium: false,
+                ..TextStyle::default()
             },
             ParaStyle::Plain,
         );
@@ -1588,27 +1586,28 @@ impl<'a> Context<'a> {
     /// one-line block whose single box is a [`BoxRec::Rule`].
     fn rule_block(&mut self, span: Span) -> BuiltBlock {
         const HRULE_HEIGHT: f64 = 0.4;
-        let width = self.style.text_width_pt;
-        self.recs.push(BoxRec::Rule {
-            width,
-            height: HRULE_HEIGHT,
-            span,
-        });
+        self.rule_block_sized(span, self.style.text_width_pt, HRULE_HEIGHT, 0.0)
+    }
+
+    /// A rule `width` x `height` whose bottom sits on the line's baseline,
+    /// `x` from the line's left edge.
+    fn rule_block_sized(&mut self, span: Span, width: f64, height: f64, x: f64) -> BuiltBlock {
+        self.recs.push(BoxRec::Rule { width, height, span });
         let rec = self.recs.len() - 1;
         let run = pl::GlyphRun {
             font: MATH_SENTINEL,
             size: self.style.body_size_pt,
             glyphs: Vec::new(),
             width,
-            height: HRULE_HEIGHT,
+            height,
             depth: 0.0,
             source: span.start..span.end,
         };
         let line = pl::Line {
             index: 0,
-            runs: vec![position_run(&run, 0.0, HRULE_HEIGHT)],
-            baseline_y: HRULE_HEIGHT,
-            height: HRULE_HEIGHT,
+            runs: vec![position_run(&run, x, height)],
+            baseline_y: height,
+            height,
             depth: 0.0,
             natural_width: width,
             set_width: width,
@@ -1620,21 +1619,12 @@ impl<'a> Context<'a> {
         let lines = pl::Lines {
             lines: vec![line],
             breaks: Vec::new(),
-            stats: pl::Stats {
-                algorithm: pl::Algorithm::TotalFit,
-                lines: 1,
-                pass: 1,
-                total_demerits: 0.0,
-                overfull: Vec::new(),
-                underfull: Vec::new(),
-                hyphenated_lines: 0,
-                emergency_pass_used: false,
-            },
+            stats: one_line_stats(),
             diagnostics: Vec::new(),
-            height: HRULE_HEIGHT,
+            height,
         };
         let vertical = VBlock {
-            lines: vec![(HRULE_HEIGHT, 0.0)],
+            lines: vec![(height, 0.0)],
             penalty_before: None,
             space_before: None,
             parskip: None,
@@ -1656,6 +1646,221 @@ impl<'a> Context<'a> {
             labels: Vec::new(),
             cache_key: None,
         }
+    }
+
+    /// `\@makechapterhead` / `\@makeschapterhead` (report.cls, book.cls)
+    /// after `\clearpage`: `\vspace*{50\p@}` (a zero-height rule kept at the
+    /// page top, its baseline at `\topskip`, then `\nobreak` and the skip),
+    /// `\huge\bfseries Chapter <n>\par\nobreak\vskip 20\p@` (numbered only),
+    /// `\Huge\bfseries <title>\par\nobreak\vskip 40\p@`, both `\raggedright`
+    /// at their own `\baselineskip`.
+    fn chapter_blocks(&mut self, number: Option<&str>, title: &[AItem], span: Span, spec: &flashtex_class_geometry::ChapterSpec, base: flashtex_class_geometry::BaseSize) -> Vec<BuiltBlock> {
+        use crate::style::frame_pt;
+        let empty = pl::Lines {
+            lines: vec![pl::Line {
+                index: 0,
+                runs: Vec::new(),
+                baseline_y: 0.0,
+                height: 0.0,
+                depth: 0.0,
+                natural_width: 0.0,
+                set_width: 0.0,
+                ratio: 0.0,
+                badness: 0.0,
+                items: 0..0,
+                hyphenated: false,
+            }],
+            breaks: Vec::new(),
+            stats: one_line_stats(),
+            diagnostics: Vec::new(),
+            height: 0.0,
+        };
+        let mut out = vec![BuiltBlock {
+            block: pl::ParagraphBlock::body(empty),
+            items: Vec::new(),
+            recs: Vec::new(),
+            vertical: VBlock {
+                lines: vec![(0.0, 0.0)],
+                penalty_before: Some(pagebuild::EJECT_PENALTY),
+                space_before: None,
+                parskip: None,
+                interline_penalty: 0,
+                club_penalty: 0,
+                widow_penalty: 0,
+                penalty_after: Some(pagebuild::INF_PENALTY),
+                space_after: Some((frame_pt(spec.top_space), 0.0, 0.0)),
+                no_interline_first: true,
+                no_interline_after: false,
+                baselineskip: None,
+                vskip_after: Vec::new(),
+            },
+            labels: Vec::new(),
+            cache_key: None,
+        }];
+        let metrics = |size: flashtex_class_geometry::FontSize| {
+            let (s, b) = size.metrics(base);
+            (frame_pt(s), frame_pt(b))
+        };
+        if let Some(n) = number {
+            let (size, bs) = metrics(spec.number_size);
+            let words = adapter::command_words(&format!("{} {n}", spec.prefix), span);
+            out.extend(self.chapter_line(&words, size, bs, frame_pt(spec.number_title_skip)));
+        }
+        let (size, bs) = metrics(spec.title_size);
+        out.extend(self.chapter_line(title, size, bs, frame_pt(spec.after_title)));
+        out
+    }
+
+    /// One bold `\raggedright` chapter-head paragraph at `size_pt` with its
+    /// `\baselineskip`, `\nobreak` and `\vskip after_pt` after it.
+    fn chapter_line(&mut self, items: &[AItem], size_pt: f64, baselineskip_pt: f64, after_pt: f64) -> Option<BuiltBlock> {
+        let (list, recs, labels, skips) = self.hlist(
+            items,
+            size_pt,
+            TextStyle {
+                bold: true,
+                ..TextStyle::default()
+            },
+            ParaStyle::FlushLeft,
+        );
+        if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
+            return None;
+        }
+        let params = self.line_params(false, baselineskip_pt, ParaStyle::FlushLeft, 0.0);
+        let lines = self.break_paragraph(&list, &params, items)?;
+        let vertical = VBlock {
+            lines: line_extents(&lines),
+            penalty_before: None,
+            space_before: None,
+            parskip: Some(skip_tuple(self.style.parskip)),
+            interline_penalty: pagebuild::INF_PENALTY,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: Some(pagebuild::INF_PENALTY),
+            space_after: Some((after_pt, 0.0, 0.0)),
+            no_interline_first: false,
+            no_interline_after: false,
+            baselineskip: Some(baselineskip_pt),
+            vskip_after: vskips_of(&lines, &skips),
+        };
+        Some(BuiltBlock {
+            block: pl::ParagraphBlock::body(lines),
+            items: list,
+            recs,
+            vertical,
+            labels,
+            cache_key: None,
+        })
+    }
+
+    /// A header or footer line, `\hb@xt@\textwidth{<left>\hfil <center>\hfil
+    /// <right>}` in the `\normalsize` body font: each slot is `(text,
+    /// \slshape)`; `\thepage` is upright, marks slanted. Words are separated
+    /// by interword glue (space factor 1000, `\ `/`\space` in the class
+    /// macros) or a `\quad`.
+    fn chrome_line(&mut self, slots: [Option<(&str, bool)>; 3], width: f64, span: Span) -> Option<BuiltBlock> {
+        let size = self.style.body_size_pt;
+        let mut placed: Vec<(pl::GlyphRun, usize, f64, usize)> = Vec::new();
+        let mut widths = [0.0f64; 3];
+        for (k, slot) in slots.iter().enumerate() {
+            let Some((text, slanted)) = slot else { continue };
+            let style = TextStyle {
+                slanted: *slanted,
+                ..TextStyle::default()
+            };
+            let mut x = 0.0;
+            for tok in chrome_tokens(text) {
+                match tok {
+                    ChromeTok::Space(factor) => x += self.space_glue(style, size, factor).width,
+                    ChromeTok::Quad => x += self.text_params(style, size).quad,
+                    ChromeTok::Word(w) => {
+                        let seg = adapter::Segment {
+                            chars: w
+                                .chars()
+                                .map(|_| adapter::CharSrc {
+                                    document: span.document,
+                                    start: span.start,
+                                    end: span.end,
+                                })
+                                .collect(),
+                            text: w,
+                            style,
+                        };
+                        for (item, rec) in self.word_items(&seg, size, false) {
+                            match (item, rec) {
+                                (pl::Item::Box(run), Some(rec)) => {
+                                    let advance = run.width;
+                                    placed.push((run, rec, x, k));
+                                    x += advance;
+                                }
+                                (pl::Item::Box(run), None) => x += run.width,
+                                (pl::Item::Kern(kern), _) => x += kern.width,
+                                (pl::Item::Glue(glue), _) => x += glue.width,
+                                (pl::Item::Penalty(_), _) => {}
+                            }
+                        }
+                    }
+                }
+            }
+            widths[k] = x;
+        }
+        if placed.is_empty() {
+            return None;
+        }
+        let origin = [0.0, widths[0] + (width - widths[0] - widths[1] - widths[2]) / 2.0, width - widths[2]];
+        let (mut height, mut depth) = (0.0f64, 0.0f64);
+        let mut runs = Vec::with_capacity(placed.len());
+        let mut items = Vec::with_capacity(placed.len());
+        let mut recs = Vec::with_capacity(placed.len());
+        for (run, rec, x, k) in placed {
+            height = height.max(run.height);
+            depth = depth.max(run.depth);
+            runs.push(position_run(&run, origin[k] + x, 0.0));
+            items.push(pl::Item::Box(run));
+            recs.push(Some(rec));
+        }
+        let n = items.len();
+        let lines = pl::Lines {
+            lines: vec![pl::Line {
+                index: 0,
+                runs,
+                baseline_y: height,
+                height,
+                depth,
+                natural_width: width,
+                set_width: width,
+                ratio: 0.0,
+                badness: 0.0,
+                items: 0..n,
+                hyphenated: false,
+            }],
+            breaks: Vec::new(),
+            stats: one_line_stats(),
+            diagnostics: Vec::new(),
+            height: height + depth,
+        };
+        Some(BuiltBlock {
+            block: pl::ParagraphBlock::body(lines),
+            items,
+            recs,
+            vertical: VBlock {
+                lines: vec![(height, depth)],
+                penalty_before: None,
+                space_before: None,
+                parskip: None,
+                interline_penalty: 0,
+                club_penalty: 0,
+                widow_penalty: 0,
+                penalty_after: None,
+                space_after: None,
+                no_interline_first: true,
+                no_interline_after: true,
+                baselineskip: None,
+                vskip_after: Vec::new(),
+            },
+            labels: Vec::new(),
+            cache_key: None,
+        })
     }
 
     /// `(\displayindent, \displaywidth)` of a display in a paragraph set
@@ -2405,6 +2610,19 @@ fn drop_trailing_break(list: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, 
     Some(trailing_skip)
 }
 
+/// The font role of a text style: `\slshape` applies to upright medium text
+/// only (Latin Modern has no bold or italic slanted T1 shape in use here).
+fn role_of(style: TextStyle) -> Role {
+    if style.slanted && !style.bold && !style.italic {
+        Role::Slanted
+    } else {
+        Role::Text {
+            bold: style.bold,
+            italic: style.italic,
+        }
+    }
+}
+
 pub(crate) fn design_size(family: Family, size: f64) -> u32 {
     match family {
         Family::Times => 10,
@@ -2543,6 +2761,37 @@ pub fn convert_math_classed(
         let sub = |l: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink| convert_math_classed(l, sink, fence, class);
         let mut out: Vec<ml::Atom> = match &a.nucleus {
             N::Text(text) => vec![sink.atom(text)],
+            // Glue inside a sub-formula (`\operatorname*{arg\,max}`, `\;`
+            // inside `\left...\right`): math-layout's `Glue` atom, which
+            // takes no part in atom spacing, like TeX's glue node. Top-level
+            // glue is still split out by `split_at_spaces`.
+            #[cfg(feature = "amsmath-inline")]
+            N::Space { em } if a.superscript.is_none() && a.subscript.is_none() => vec![ml::Atom::glue(em * 18.0, 0.0)],
+            // amsmath `\genfrac` family (`\dfrac`, `\tfrac`, `\binom`, ...):
+            // a Rule 15e fraction with its delimiters, in a group (Ord),
+            // under the explicit style when one is given.
+            #[cfg(feature = "amsmath-inline")]
+            N::GenFraction { numerator, denominator, thickness_pt, left, right, style } => {
+                let one = |s: &str| {
+                    let mut it = s.chars();
+                    match (it.next(), it.next()) {
+                        (Some(c), None) => Some(c),
+                        _ => None,
+                    }
+                };
+                let frac = ml::Atom::genfrac(sub(numerator, sink), sub(denominator, sink), *thickness_pt, one(left), one(right));
+                match style {
+                    Some(s) => vec![ml::Atom::styled(ml_style(*s), ml::MathList::new(vec![frac]))],
+                    None => vec![frac],
+                }
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::Phantom { body, horizontal, vertical } => vec![ml::Atom::phantom(sub(body, sink), *horizontal, *vertical)],
+            // amsopn `\qopname`: `\mathop{\operator@font ...}\limits` or `\nolimits`.
+            #[cfg(feature = "amsmath-inline")]
+            N::Operator { body, limits } => vec![ml::Atom::new(ml::AtomClass::Op, ml::Nucleus::List(sub(body, sink))).with_limits(if *limits { ml::Limits::Limits } else { ml::Limits::NoLimits })],
+            #[cfg(feature = "amsmath-inline")]
+            N::SubArray { rows, align } => vec![ml::Atom::subarray(rows.iter().map(|r| sub(r, sink)).collect(), *align)],
             // `\quad`/`\qquad` (compiler `Space { em }`): TeX glue in the
             // math list. math-layout has no kern/glue atom, so the glue is
             // dropped (inter-atom spacing across it is what TeX's mlist_to_hlist
@@ -2560,6 +2809,19 @@ pub fn convert_math_classed(
             N::SizedDelimiter { glyph, role: DelimiterRole::Right, .. } if !stack.is_empty() => {
                 let (left, body) = stack.pop().expect("checked non-empty");
                 vec![ml::Atom::left_right(left, glyph.chars().next(), ml::MathList::new(body))]
+            }
+            // amsmath `\big(`..`\Bigg]` (`\bBigg@`): math-layout's
+            // `BigDelimiter` at 1/1.5/2/2.5 `\big@size` (compiler scale
+            // 1.2/1.8/2.4/3.0), in the command's class.
+            #[cfg(feature = "amsmath-inline")]
+            N::SizedDelimiter { glyph, role, scale } if !matches!(role, DelimiterRole::Left | DelimiterRole::Right) => {
+                let class = match role {
+                    DelimiterRole::Open => ml::AtomClass::Open,
+                    DelimiterRole::Close => ml::AtomClass::Close,
+                    DelimiterRole::Rel => ml::AtomClass::Rel,
+                    _ => ml::AtomClass::Ord,
+                };
+                vec![ml::Atom::big_delimiter(class, glyph.chars().next(), scale / 1.2)]
             }
             // `\big(`..`\Bigg]` (and an unmatched `\right`): math-layout has
             // no fixed-step delimiter atom, so the glyph is set at text size
@@ -2608,7 +2870,7 @@ pub fn convert_math_classed(
                             // `\bot` (Ord, same glyph as `\perp`) and
                             // `\bigtriangleup` (Bin, same glyph as `\triangle`).
                             Some(forced) => vec![ml::Atom::new(forced, ml::Nucleus::Symbol(c))],
-                            None => symbol_atoms(c),
+                            None => symbol_atoms(c, a.width_em),
                         },
                         Some(None) => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)],
                         None => {
@@ -2699,11 +2961,23 @@ pub fn convert_math_classed(
     // plain symbol it would have been without the fence.
     for (left, body) in stack {
         if let Some(c) = left {
-            atoms.extend(symbol_atoms(c));
+            atoms.extend(symbol_atoms(c, None));
         }
         atoms.extend(body);
     }
     ml::MathList::new(atoms)
+}
+
+/// math-layout's style for a compiler `\genfrac` style argument.
+#[cfg(feature = "amsmath-inline")]
+fn ml_style(s: flashtex_compiler::math::MathStyle) -> ml::Style {
+    use flashtex_compiler::math::MathStyle as S;
+    match s {
+        S::Display => ml::Style::DISPLAY,
+        S::Text => ml::Style::TEXT,
+        S::Script => ml::Style::SCRIPT,
+        S::ScriptScript => ml::Style::SCRIPT_SCRIPT,
+    }
 }
 
 /// Lays out the kern-split runs of one formula (`runs[i]` is followed by
@@ -2896,6 +3170,15 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
                 }
             }
             N::Symbol(_) | N::Text(_) | N::Space { .. } | N::Bold(_) | N::SizedDelimiter { .. } => {}
+            #[cfg(feature = "amsmath-inline")]
+            N::GenFraction { numerator, denominator, .. } => {
+                math_grids(numerator, out);
+                math_grids(denominator, out);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_grids(r, out),
+            #[cfg(feature = "amsmath-inline")]
+            N::SubArray { rows, .. } => rows.iter().for_each(|r| math_grids(r, out)),
         }
         if let Some(s) = &a.superscript {
             math_grids(s, out);
@@ -2922,6 +3205,12 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                 }
                 N::Matrix { rows, .. } => rows.iter().flatten().map(math_glue_em).sum(),
                 N::Symbol(_) | N::Text(_) | N::Bold(_) | N::SizedDelimiter { .. } => 0.0,
+                #[cfg(feature = "amsmath-inline")]
+                N::GenFraction { numerator, denominator, .. } => math_glue_em(numerator) + math_glue_em(denominator),
+                #[cfg(feature = "amsmath-inline")]
+                N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_glue_em(r),
+                #[cfg(feature = "amsmath-inline")]
+                N::SubArray { rows, .. } => rows.iter().map(math_glue_em).sum(),
             };
             own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
         })
@@ -2982,11 +3271,20 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
             // stretched by math-layout's own Rule 19, so they are exact.
             N::SizedDelimiter { glyph, scale, role } => {
                 use flashtex_compiler::math::DelimiterRole;
-                if !matches!(role, DelimiterRole::Left | DelimiterRole::Right) && *scale != 1.0 {
+                if !matches!(role, DelimiterRole::Left | DelimiterRole::Right) && *scale != 1.0 && cfg!(not(feature = "amsmath-inline")) {
                     out.push(format!("\\big-family delimiter {glyph:?} (scale {scale}) set at text size: math-layout has no fixed-step delimiter atom"));
                 }
             }
             N::Symbol(_) | N::Text(_) | N::Space { .. } => {}
+            #[cfg(feature = "amsmath-inline")]
+            N::GenFraction { numerator, denominator, .. } => {
+                math_approximations(numerator, out);
+                math_approximations(denominator, out);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_approximations(r, out),
+            #[cfg(feature = "amsmath-inline")]
+            N::SubArray { rows, .. } => rows.iter().for_each(|r| math_approximations(r, out)),
         }
         for part in [&a.superscript, &a.subscript].into_iter().flatten() {
             math_approximations(part, out);
@@ -2998,13 +3296,24 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
 /// default classification, with the compiler's spellings that TeX sets as
 /// composites expanded (`fontmath.ltx`: `\neq` is `\not=`, `\notin` is
 /// `\not\in`, the zero-width relation slash before the relation).
-fn symbol_atoms(c: char) -> Vec<ml::Atom> {
+///
+/// `width_em` is the originating `MathAtom.width_em` (compiler pin
+/// `c583d6d4`: `pub` now, `Some(0.777781)` for `\varnothing`, `None`
+/// otherwise, including for plain `\emptyset`'s identical U+2205); read here
+/// instead of re-scanning the source at the atom's span for the control
+/// word, like [`class_override_of`].
+fn symbol_atoms(c: char, width_em: Option<f64>) -> Vec<ml::Atom> {
     match c {
         // The compiler spells \cdot as U+00B7; the Bin class and cmsy slot
         // are those of U+22C5.
         '\u{00B7}' => vec![ml::Atom::symbol('\u{22C5}')],
         '\u{2260}' => vec![ml::Atom::rel(crate::mathtex::NOT_SLASH), ml::Atom::symbol('=')],
         '\u{2209}' => vec![ml::Atom::rel(crate::mathtex::NOT_SLASH), ml::Atom::symbol('\u{2208}')],
+        // `\varnothing`: same U+2205 as `\emptyset`, but forced to msbm10's
+        // width. A sentinel keeps the two apart for the metrics providers
+        // (`TexMathMetrics`/`MathFonts`), which paint both from cmsy10's
+        // `\emptyset` slot but only force this one's advance and outline.
+        '\u{2205}' if width_em.is_some() => vec![ml::Atom::symbol(crate::mathfont::VARNOTHING_SENTINEL)],
         _ => vec![ml::Atom::symbol(c)],
     }
 }
@@ -3035,7 +3344,23 @@ fn add_vspace(v: &mut pagebuild::VBlock, pt: f64) {
 /// items, flags and style match an earlier build are reused (see
 /// `incremental`); the result is identical either way.
 pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid {
+    build_with_floats(ctx, doc, cache, &[])
+}
+
+/// [`build`] with `figure`/`table` floats placed by LaTeX's algorithm
+/// ([`floatpage`]); without floats the page builder is unchanged.
+pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>, floats: &[floatpage::FloatSpec]) -> Laid {
     let mut blocks: Vec<BuiltBlock> = Vec::new();
+    let style: &Stylesheet = ctx.style;
+    let geo = style.class_geometry.as_deref();
+    // `(index of the block that follows, event, source)`: page-style and
+    // mark commands; a heading's mark sits on the heading's own block.
+    let mut events: Vec<(usize, adapter::ChromeEvent, Span)> = Vec::new();
+    // First block of every `\chapter` (its `\cleardoublepage`).
+    let mut chapter_starts: Vec<usize> = Vec::new();
+    // `\sectionmark`/`\chaptermark` as defined by the last `\ps@headings` or
+    // `\ps@myheadings` (`\ps@plain`/`\ps@empty` leave them alone).
+    let mut mark_rules: Vec<flashtex_class_geometry::MarkRule> = geo.map(|g| g.mark_rules.clone()).unwrap_or_default();
     let mut after_heading = false;
     // Whether the open paragraph-shape environment began in vertical mode
     // (`\@topsepadd` keeps `\partopsep` for the closing skip too).
@@ -3065,6 +3390,9 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                 items,
                 eject_before,
                 vspace_before,
+                number,
+                title,
+                span,
             } => {
                 let (key, origin) = key_for(b'H', items, &[u64::from(*level)]);
                 if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.heading_block(*level, items)) {
@@ -3088,9 +3416,44 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                         }
                     }
                     add_vspace(&mut b.vertical, *vspace_before);
+                    // `\@sect` issues `\sectionmark` after the heading box
+                    // (starred headings issue none).
+                    let command = match level {
+                        1 => "section",
+                        2 => "subsection",
+                        _ => "subsubsection",
+                    };
+                    if let Some(rule) = mark_rules.iter().find(|r| r.command == command).filter(|_| !number.is_empty()) {
+                        events.push((blocks.len(), mark_event(rule, number, title, doc.secnumdepth), *span));
+                    }
                     blocks.push(b);
                     after_heading = true;
                 }
+            }
+            Block::Chapter { number, items, title, span } => {
+                let Some((g, spec)) = geo.and_then(|g| g.chapter.as_ref().map(|c| (g, c))) else { continue };
+                // `\chapter`: `\clearpage`, `\thispagestyle{plain}`, then
+                // `\@chapter`'s `\chaptermark` before `\@makechapterhead`.
+                events.push((blocks.len(), adapter::ChromeEvent::ThisPageStyle(spec.page_style), *span));
+                if let (Some(n), Some(rule)) = (number, mark_rules.iter().find(|r| r.command == "chapter")) {
+                    events.push((blocks.len(), mark_event(rule, n, title, doc.secnumdepth), *span));
+                }
+                let built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size);
+                if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
+                    chapter_starts.push(blocks.len());
+                }
+                blocks.extend(built);
+                after_heading = true;
+            }
+            Block::Chrome { event, span } => {
+                if let (adapter::ChromeEvent::PageStyle(ps), Some(g)) = (event, geo) {
+                    match ps {
+                        flashtex_class_geometry::PageStyle::Headings => mark_rules = flashtex_class_geometry::pagestyle::mark_rules(g.options.kind, *ps, g.options.twoside),
+                        flashtex_class_geometry::PageStyle::MyHeadings => mark_rules.clear(),
+                        _ => {}
+                    }
+                }
+                events.push((blocks.len(), event.clone(), *span));
             }
             Block::Paragraph {
                 parts,
@@ -3298,7 +3661,7 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
             }
         }
     }
-    let s = ctx.style;
+    let s = style;
     let params = pagebuild::PageParams {
         vsize: s.text_height_pt,
         topskip: s.topskip_pt,
@@ -3306,24 +3669,54 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
         baselineskip: s.baselineskip_pt,
         lineskip: s.lineskip_pt,
         lineskiplimit: s.lineskiplimit_pt,
+        flushbottom: !s.raggedbottom,
     };
     let vblocks: Vec<VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
     let list = pagebuild::vlist(&params, &vblocks);
-    let built = pagebuild::break_pages(&params, &list);
+    let (mut built, images, float_labels) = if floats.is_empty() {
+        (pagebuild::break_pages(&params, &list), Vec::new(), Vec::new())
+    } else {
+        floatpage::paginate(ctx, &mut blocks, &params, &list, floats)
+    };
+    // Two-column documents: the page builder fills columns of `\textheight`
+    // (`\@colht`); `\@outputdblcol` ships the first column and the second
+    // side by side, the second `\columnwidth + \columnsep` to the right.
+    let columns = geo.map_or(1, |g| g.frame.columns.len().max(1));
+    // `\c@page` and `\thepage` of every page; `\cleardoublepage`'s empty
+    // page (`\hbox{}\newpage`) before an `openright` chapter that would
+    // start on an even page of a two-sided document.
+    let mut blank_pages: Vec<usize> = Vec::new();
+    let counters = geo.map_or_else(Vec::new, |g| {
+        if columns == 1 && g.flags.twoside && !chapter_starts.is_empty() {
+            blank_pages = open_right(&mut built, &chapter_starts, blocks.len(), &events, g.numbering);
+        }
+        page_counters(&built, columns, blocks.len(), &events, g.numbering)
+    });
     let mut pages = pl::Pages {
-        pages: Vec::with_capacity(built.len()),
+        pages: Vec::with_capacity(built.len().div_ceil(columns)),
         overflow: Vec::new(),
         text_height: s.text_height_pt,
     };
-    for (pi, bp) in built.iter().enumerate() {
+    let mut line_dx: Vec<Vec<f64>> = Vec::with_capacity(pages.pages.capacity());
+    for (ci, bp) in built.iter().enumerate() {
+        let (pi, col) = (ci / columns, ci % columns);
         let number = pi as u32 + 1;
-        let mut page = pl::Page {
-            number,
-            width: s.page_width_pt,
-            height: s.page_height_pt,
-            lines: Vec::with_capacity(bp.lines.len()),
-            runs: Vec::new(),
-        };
+        if col == 0 {
+            pages.pages.push(pl::Page {
+                number,
+                width: s.page_width_pt,
+                height: s.page_height_pt,
+                lines: Vec::with_capacity(bp.lines.len()),
+                runs: Vec::new(),
+            });
+            line_dx.push(Vec::with_capacity(bp.lines.len()));
+        }
+        // `\@themargin` of this page (0 on odd and one-sided pages: the
+        // blocks are assembled at `\oddsidemargin`) plus the column offset.
+        let counter = counters.get(pi).map_or(i64::from(number), |c| c.0);
+        let dx = geo.map_or(0.0, |g| crate::style::frame_pt(g.frame.text_left(counter)) - s.text_x_pt + crate::style::frame_pt(g.frame.columns[col].offset));
+        let page = pages.pages.last_mut().expect("pushed above");
+        let dxs = line_dx.last_mut().expect("pushed above");
         for placed in &bp.lines {
             let (bi, li) = placed.payload;
             let line = &blocks[bi].block.lines.lines[li];
@@ -3335,9 +3728,10 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                 height: line.height,
                 depth: line.depth,
             });
+            dxs.push(dx);
             for r in &line.runs {
                 let mut r = r.clone();
-                r.x += s.text_x_pt;
+                r.x += s.text_x_pt + dx;
                 r.baseline_y = y;
                 page.runs.push(r);
             }
@@ -3354,8 +3748,38 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                 });
             }
         }
-        pages.pages.push(page);
     }
+    if let Some(g) = geo {
+        page_chrome(ctx, g, &mut blocks, &mut pages, &mut line_dx, &events, &counters);
+    }
+    // Float image items and labels are numbered by page-builder column
+    // (before `\cleardoublepage`'s empty pages): map them to their page and
+    // give them the page's margin and column offset (an even twoside page's
+    // `\evensidemargin`, the second column).
+    let column_page = |n: u32| -> (u32, usize) {
+        let mut ci = n.saturating_sub(1) as usize;
+        for &b in &blank_pages {
+            if b <= ci {
+                ci += 1;
+            }
+        }
+        ((ci / columns) as u32 + 1, ci % columns)
+    };
+    let images: Vec<(u32, display::Item)> = images
+        .into_iter()
+        .map(|(n, mut it)| {
+            let (number, col) = column_page(n);
+            if let Some(g) = geo {
+                let counter = counters.get(number as usize - 1).map_or(i64::from(number), |c| c.0);
+                let dx = crate::style::frame_pt(g.frame.text_left(counter)) - s.text_x_pt + crate::style::frame_pt(g.frame.columns[col].offset);
+                if dx != 0.0 {
+                    display::shift_x(&mut it, Tick::from_tex_pt(dx));
+                }
+            }
+            (number, it)
+        })
+        .collect();
+    let float_labels: Vec<(String, u32)> = float_labels.into_iter().map(|(k, n)| (k, column_page(n).0)).collect();
     for o in &pages.overflow {
         let span = blocks
             .get(o.paragraph)
@@ -3378,6 +3802,260 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
         pages,
         recs: std::mem::take(&mut ctx.recs),
         maths: std::mem::take(&mut ctx.maths),
+        images,
+        float_labels,
+        line_dx,
+    }
+}
+
+/// The text of a `\sectionmark`/`\chaptermark` under `rule` (article.cls,
+/// report.cls, book.cls `\ps@headings`).
+fn mark_event(rule: &flashtex_class_geometry::MarkRule, number: &str, title: &str, secnumdepth: u8) -> adapter::ChromeEvent {
+    use flashtex_class_geometry::pagestyle::{MarkNumber, MarkTarget};
+    let mut text = String::new();
+    if i32::from(secnumdepth) > rule.number_if_depth_above {
+        match rule.number {
+            // `\thesection\quad`.
+            MarkNumber::Quad => {
+                text.push_str(number);
+                text.push(QUAD_MARK);
+            }
+            // `\@chapapp\ \thechapter. \ `: after the period a space token
+            // (space factor 3000) and then a control space.
+            MarkNumber::ChapterDot => text.push_str(&format!("Chapter {number}.{SENTENCE_SPACE_MARK} ")),
+            // `\thesection. \ `.
+            MarkNumber::Dot => text.push_str(&format!("{number}.{SENTENCE_SPACE_MARK} ")),
+        }
+    }
+    text.push_str(title);
+    if rule.uppercase {
+        text = text.to_uppercase();
+    }
+    match rule.target {
+        MarkTarget::Both => adapter::ChromeEvent::MarkBoth(text, String::new()),
+        MarkTarget::Right => adapter::ChromeEvent::MarkRight(text),
+    }
+}
+
+/// `\quad` inside mark text.
+const QUAD_MARK: char = '\u{2003}';
+/// An interword space at space factor 3000 (after a period) inside mark text.
+const SENTENCE_SPACE_MARK: char = '\u{2002}';
+
+/// `(\c@page, \thepage style)` of every shipped page: 1 and the class
+/// numbering at the start, `\pagenumbering` resets to 1, `\setcounter{page}`
+/// sets, each shipout steps. Events belong to the page holding the next
+/// block (as in [`page_chrome`]).
+fn page_counters(built: &[pagebuild::BuiltPage], columns: usize, n_blocks: usize, events: &[(usize, adapter::ChromeEvent, Span)], numbering: flashtex_class_geometry::Numbering) -> Vec<(i64, flashtex_class_geometry::Numbering)> {
+    let n_pages = built.len().div_ceil(columns.max(1));
+    if n_pages == 0 {
+        return Vec::new();
+    }
+    let mut first_page: Vec<Option<usize>> = vec![None; n_blocks];
+    for (ci, bp) in built.iter().enumerate() {
+        for l in &bp.lines {
+            if let Some(slot) = first_page.get_mut(l.payload.0) {
+                slot.get_or_insert(ci / columns.max(1));
+            }
+        }
+    }
+    let mut per: Vec<Vec<&adapter::ChromeEvent>> = vec![Vec::new(); n_pages];
+    for (b, e, _) in events {
+        let page = (*b..n_blocks).find_map(|i| first_page[i]).unwrap_or(n_pages - 1);
+        per[page].push(e);
+    }
+    let (mut counter, mut style) = (1i64, numbering);
+    let mut out = Vec::with_capacity(n_pages);
+    for events in per {
+        for e in events {
+            match e {
+                adapter::ChromeEvent::PageNumbering(n) => {
+                    style = *n;
+                    counter = 1;
+                }
+                adapter::ChromeEvent::SetPage(n) => counter = *n,
+                _ => {}
+            }
+        }
+        out.push((counter, style));
+        counter += 1;
+    }
+    out
+}
+
+/// `\cleardoublepage` before an `openright` chapter (one-column,
+/// two-sided): an empty page (`\hbox{}\newpage`, the page style in force)
+/// when the chapter's page would be even.
+fn open_right(built: &mut Vec<pagebuild::BuiltPage>, chapter_starts: &[usize], n_blocks: usize, events: &[(usize, adapter::ChromeEvent, Span)], numbering: flashtex_class_geometry::Numbering) -> Vec<usize> {
+    // Indices (in the final list, ascending) of the inserted empty pages.
+    let mut inserted = Vec::new();
+    let mut k = 0;
+    while k < built.len() {
+        let starts = built[k].lines.first().is_some_and(|l| chapter_starts.contains(&l.payload.0));
+        if starts && page_counters(built, 1, n_blocks, events, numbering)[k].0 % 2 == 0 {
+            built.insert(k, pagebuild::BuiltPage::default());
+            inserted.push(k);
+            k += 1;
+        }
+        k += 1;
+    }
+    inserted
+}
+
+/// Header, footer and `\columnseprule` of every page (`\@outputpage`,
+/// `\@outputdblcol`): the page style in force when the page ships
+/// (`\pagestyle` changes before its last material count; `\thispagestyle`
+/// only for its page), `\leftmark` from the page's last mark and
+/// `\rightmark` from its first (`\botmark`/`\firstmark`, the previous
+/// page's last mark when the page has none).
+fn page_chrome(ctx: &mut Context, g: &flashtex_class_geometry::ResolvedDocument, blocks: &mut Vec<BuiltBlock>, pages: &mut pl::Pages, line_dx: &mut [Vec<f64>], events: &[(usize, adapter::ChromeEvent, Span)], counters: &[(i64, flashtex_class_geometry::Numbering)]) {
+    use crate::style::frame_pt;
+    use adapter::ChromeEvent;
+    use flashtex_class_geometry::Field;
+    let n_pages = pages.pages.len();
+    if n_pages == 0 {
+        return;
+    }
+    let mut first_page: Vec<Option<usize>> = vec![None; blocks.len()];
+    for (pi, page) in pages.pages.iter().enumerate() {
+        for l in &page.lines {
+            if let Some(slot) = first_page.get_mut(l.paragraph) {
+                slot.get_or_insert(pi);
+            }
+        }
+    }
+    let page_of = |b: usize| (b..first_page.len()).find_map(|i| first_page[i]).unwrap_or(n_pages - 1);
+    let mut by_page: Vec<Vec<&ChromeEvent>> = vec![Vec::new(); n_pages];
+    for (b, e, _) in events {
+        by_page[page_of(*b)].push(e);
+    }
+    // Page numbers and rules have no source of their own.
+    let span = Span::in_document(DocumentId(0), 0, 0);
+    let frame = &g.frame;
+    let width = frame_pt(frame.text_width);
+    let text_x = ctx.style.text_x_pt;
+    let mut macros = g.style_macros;
+    let mut top = (String::new(), String::new());
+    let mut current = top.clone();
+    for pi in 0..n_pages {
+        let (number, numbering) = counters.get(pi).copied().unwrap_or((pi as i64 + 1, g.numbering));
+        let mut this = None;
+        let mut first: Option<(String, String)> = None;
+        for e in &by_page[pi] {
+            match e {
+                ChromeEvent::PageStyle(ps) => macros = macros.apply(*ps, g.options.twoside),
+                ChromeEvent::ThisPageStyle(ps) => this = Some(*ps),
+                ChromeEvent::MarkBoth(l, r) => {
+                    current = (l.clone(), r.clone());
+                    first.get_or_insert_with(|| current.clone());
+                }
+                ChromeEvent::MarkRight(r) => {
+                    current.1 = r.clone();
+                    first.get_or_insert_with(|| current.clone());
+                }
+                ChromeEvent::PageNumbering(_) | ChromeEvent::SetPage(_) => {}
+            }
+        }
+        let first = first.unwrap_or_else(|| top.clone());
+        let bot = current.clone();
+        let m = this.map_or(macros, |ps| macros.apply(ps, g.options.twoside));
+        let (head, foot) = m.for_page(g.flags.twoside, number);
+        let page_no = numbering.format(number);
+        let dx = frame_pt(frame.text_left(number)) - text_x;
+        if frame.twocolumn && frame.columns.len() > 1 && ctx.style.columnseprule_pt > 0.0 {
+            // `\hb@xt@\columnwidth{..}\hfil\vrule\@width\columnseprule\hfil`:
+            // centred in `\columnsep`, as tall as the column boxes.
+            let cw = frame_pt(frame.columns[0].width);
+            let sep = frame_pt(frame.columns[1].offset) - cw;
+            let rw = ctx.style.columnseprule_pt;
+            let h = frame_pt(frame.text_height);
+            let rule = ctx.rule_block_sized(span, rw, h, cw + (sep - rw) / 2.0);
+            pages.pages[pi].lines.push(pl::PlacedLine {
+                paragraph: blocks.len(),
+                line: 0,
+                baseline_y: frame_pt(frame.text_top) + h,
+                height: h,
+                depth: 0.0,
+            });
+            line_dx[pi].push(dx);
+            blocks.push(rule);
+        }
+        let slot = |f: Field| -> Option<(&str, bool)> {
+            match f {
+                Field::Empty => None,
+                Field::PageNumber => Some((page_no.as_str(), false)),
+                Field::LeftMark => Some((bot.0.as_str(), true)),
+                Field::RightMark => Some((first.1.as_str(), true)),
+            }
+        };
+        for (line, baseline, at_top) in [(head, frame.head_baseline, true), (foot, frame.foot_baseline, false)] {
+            if line.is_empty() {
+                continue;
+            }
+            let Some(b) = ctx.chrome_line([slot(line.left), slot(line.center), slot(line.right)], width, span) else { continue };
+            let l = &b.block.lines.lines[0];
+            let placed = pl::PlacedLine {
+                paragraph: blocks.len(),
+                line: 0,
+                baseline_y: frame_pt(baseline),
+                height: l.height,
+                depth: l.depth,
+            };
+            blocks.push(b);
+            if at_top {
+                pages.pages[pi].lines.insert(0, placed);
+                line_dx[pi].insert(0, dx);
+            } else {
+                pages.pages[pi].lines.push(placed);
+                line_dx[pi].push(dx);
+            }
+        }
+        top = bot;
+    }
+}
+
+/// A word of a header/footer line, or the glue between words (`Space`
+/// carries TeX's space factor).
+enum ChromeTok {
+    Word(String),
+    Space(u32),
+    Quad,
+}
+
+fn chrome_tokens(text: &str) -> Vec<ChromeTok> {
+    let mut out = Vec::new();
+    let mut word = String::new();
+    for c in text.trim().chars() {
+        match c {
+            ' ' | QUAD_MARK | SENTENCE_SPACE_MARK => {
+                if !word.is_empty() {
+                    out.push(ChromeTok::Word(std::mem::take(&mut word)));
+                }
+                out.push(match c {
+                    ' ' => ChromeTok::Space(1000),
+                    SENTENCE_SPACE_MARK => ChromeTok::Space(3000),
+                    _ => ChromeTok::Quad,
+                });
+            }
+            _ => word.push(c),
+        }
+    }
+    if !word.is_empty() {
+        out.push(ChromeTok::Word(word));
+    }
+    out
+}
+
+fn one_line_stats() -> pl::Stats {
+    pl::Stats {
+        algorithm: pl::Algorithm::TotalFit,
+        lines: 1,
+        pass: 1,
+        total_demerits: 0.0,
+        overfull: Vec::new(),
+        underfull: Vec::new(),
+        hyphenated_lines: 0,
+        emergency_pass_used: false,
     }
 }
 
@@ -3401,6 +4079,9 @@ pub fn label_pages(laid: &Laid) -> BTreeMap<String, u32> {
                 .unwrap_or(1);
             out.insert(key.clone(), page);
         }
+    }
+    for (key, page) in &laid.float_labels {
+        out.insert(key.clone(), *page);
     }
     out
 }
@@ -3450,18 +4131,24 @@ pub fn assemble(
         assembled.push(Some(a));
     }
     let mut pages = Vec::new();
-    for page in &laid.pages.pages {
+    for (pi, page) in laid.pages.pages.iter().enumerate() {
         let mut items: Vec<display::Item> = Vec::new();
-        for placed in &page.lines {
+        for (li, placed) in page.lines.iter().enumerate() {
             let block = &laid.blocks[placed.paragraph];
             let Some(a) = assembled[placed.paragraph].as_ref() else { continue };
             let Some(line_items) = a.lines.get(placed.line) else { continue };
             let dy = Tick::from_tex_pt(placed.baseline_y);
+            let dx = laid.line_dx.get(pi).and_then(|d| d.get(li)).map_or(Tick(0), |d| Tick::from_tex_pt(*d));
             let delta = block.cache_key.map_or(0, |(_, _, b)| b as isize - a.base as isize);
             for it in line_items {
-                items.push(incremental::place_item(it, dy, &a.path, delta));
+                let mut item = incremental::place_item(it, dy, &a.path, delta);
+                if dx.0 != 0 {
+                    display::shift_x(&mut item, dx);
+                }
+                items.push(item);
             }
         }
+        items.extend(laid.images.iter().filter(|(n, _)| *n == page.number).map(|(_, it)| it.clone()));
         pages.push(display::Page {
             number: page.number,
             width: Tick::from_tex_pt(page.width),
@@ -3870,6 +4557,13 @@ fn join_runs(prev: &mut GlyphRun, next: GlyphRun) {
     prev.clusters.extend(next.clusters.into_iter().map(|mut c| {
         c.text_start_byte += offset;
         c.text_end_byte += offset;
+        // Carets are byte offsets into the same run text: re-base them too
+        // (a caret outside its cluster is refused by rendering-core and the
+        // Mac consumer, which then shows no frame at all).
+        c.carets.first.text_byte += offset;
+        if let Some(last) = c.carets.last.as_mut() {
+            last.text_byte += offset;
+        }
         c
     }));
 }
@@ -4012,6 +4706,11 @@ fn math_items(
             role: display::RunRole::Math,
         });
         let b = face.bounds(crate::ids::GlyphId(gid), Some(g.ch));
+        // The advance TeX used: the laid-out glyph box's width (the TFM
+        // width, pdfTeX's `/Widths`), not the painted OpenType glyph's own.
+        #[cfg(feature = "amsmath-inline")]
+        let adv = g.width;
+        #[cfg(not(feature = "amsmath-inline"))]
         let adv = face.pt(i64::from(face.face().advance(crate::ids::GlyphId(gid)).unwrap_or(0)), g.size);
         let (h, d) = if b.empty {
             (0.0, 0.0)
@@ -4030,6 +4729,10 @@ fn math_items(
         match m.run_glyph(g) {
             // A `\text` cluster keeps its whole source text (`ffi`).
             Some(rg) => r.text.push_str(&rg.text),
+            // `VARNOTHING_SENTINEL` (`\varnothing`) is never real text: it
+            // stands for U+2205 everywhere outside the metrics/painting
+            // lookup that needs to tell it apart from plain `\emptyset`.
+            None if g.ch == crate::mathfont::VARNOTHING_SENTINEL => r.text.push('\u{2205}'),
             None => r.text.push(g.ch),
         }
         let ci = r.clusters.len() as u32;

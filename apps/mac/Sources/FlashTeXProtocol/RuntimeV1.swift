@@ -39,6 +39,10 @@ public enum RuntimeV1 {
         /// (`display_list_base`; proposal r5 §3). Isolated feature: sent only
         /// when the delta capability is requested; omitted from the wire when nil.
         public var displayListBase: DisplayListBase?
+        /// Absolute directory `\includegraphics` files are read from by the
+        /// producer (`project_root`, display-list-v2-images proposal §2).
+        /// Optional; omitted from the wire when nil. Old producers ignore it.
+        public var projectRoot: String?
 
         public struct DisplayListBase: Codable, Equatable {
             public var requestId: String
@@ -58,13 +62,15 @@ public enum RuntimeV1 {
             case projectId = "project_id", revision, entryPath = "entry_path", documents
             case layoutCapabilities = "layout_capabilities"
             case displayListBase = "display_list_base"
+            case projectRoot = "project_root"
         }
         public init(projectId: String, revision: Int, entryPath: String, documents: [Document],
-                    layoutCapabilities: [String]? = nil, displayListBase: DisplayListBase? = nil) {
+                    layoutCapabilities: [String]? = nil, displayListBase: DisplayListBase? = nil, projectRoot: String? = nil) {
             self.projectId = projectId; self.revision = revision
             self.entryPath = entryPath; self.documents = documents
             self.layoutCapabilities = layoutCapabilities
             self.displayListBase = displayListBase
+            self.projectRoot = projectRoot
         }
 
         public init(from decoder: Decoder) throws {
@@ -76,6 +82,7 @@ public enum RuntimeV1 {
             layoutCapabilities = try c.decodeIfPresent([String].self, forKey: .layoutCapabilities)
             if let caps = layoutCapabilities { try LayoutCapabilities.validate(caps) }
             displayListBase = try c.decodeIfPresent(DisplayListBase.self, forKey: .displayListBase)
+            projectRoot = try c.decodeIfPresent(String.self, forKey: .projectRoot)
         }
 
         public func encode(to encoder: Encoder) throws {
@@ -89,6 +96,7 @@ public enum RuntimeV1 {
                 try c.encode(caps, forKey: .layoutCapabilities)
             }
             if let base = displayListBase { try c.encode(base, forKey: .displayListBase) }
+            if let root = projectRoot { try c.encode(root, forKey: .projectRoot) }
         }
     }
 

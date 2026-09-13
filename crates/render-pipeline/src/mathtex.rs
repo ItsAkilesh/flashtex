@@ -161,6 +161,21 @@ impl TexMathMetrics {
                 }
             }
         }
+        // `\varnothing` (`VARNOTHING_SENTINEL`): the box is cmsy10's
+        // `\emptyset` slot, but the outline is msbm10's design (New Computer
+        // Modern Math's secondary face reproduces it, like `\mathbb`), drawn
+        // at the real U+2205 the sentinel stands for.
+        if name.starts_with("cmsy") && ch == crate::mathfont::VARNOTHING_SENTINEL {
+            if let Some(bb) = self.otf.bb_face() {
+                if let Some(gid) = bb.face().glyph_id('\u{2205}') {
+                    self.resources
+                        .borrow_mut()
+                        .entry(format!("{} \\varnothing", lm_name(&name)))
+                        .or_insert((bb.name.clone(), false));
+                    return Some((bb.clone(), gid.0));
+                }
+            }
+        }
         let gid = self.otf_gid(font, code, ch)?;
         self.resources
             .borrow_mut()
@@ -263,12 +278,18 @@ impl TexMathMetrics {
         let font = self.cm.families[2][i];
         let c = font.char(code)?;
         let at = self.cm.sizes[i];
+        // `\varnothing` (`crate::mathfont::VARNOTHING_SENTINEL`): the box is
+        // cmsy10's `\emptyset` (0x3B), but `MathAtom.width_em` (compiler pin
+        // `c583d6d4`, now `pub`) forces the advance to msbm10's char "3F,
+        // 0.777781em, read at `typeset::symbol_atoms` rather than re-scanning
+        // the source for the control word.
+        let width = if ch == crate::mathfont::VARNOTHING_SENTINEL { VARNOTHING_MSBM_EM * at } else { mtfm::scale(c.width, at) };
         Some(Glyph {
             font_id,
             gid: u16::from(code),
             ch,
             size: at,
-            width: mtfm::scale(c.width, at),
+            width,
             height: mtfm::scale(c.height, at),
             depth: mtfm::scale(c.depth, at),
             italic: mtfm::scale(c.italic, at),
@@ -434,10 +455,22 @@ impl MathFontMetrics for TexMathMetrics {
 /// U+0338 and no compiler symbol uses it.
 pub const NOT_SLASH: char = '\u{0338}';
 
+/// `\varnothing`'s advance in ems (msbm10.tfm char "3F, `CHARWD R 0.777781`):
+/// the same physical constant the compiler's `math::VARNOTHING_MSBM_EM`
+/// carries (crate-private there), read from the now-`pub` `MathAtom.width_em`
+/// at the atom in `typeset::symbol_atoms` and applied here to the sentinel's
+/// forced advance.
+const VARNOTHING_MSBM_EM: f64 = 0.777781;
+
 fn extra_symbol_slot(ch: char) -> Option<u8> {
     match ch {
         NOT_SLASH => Some(0x36),
         '\u{22A5}' => Some(0x3F),
+        // `\varnothing`'s box is still cmsy10's `\emptyset` slot 0x3B (the
+        // compiler forces only the advance, `MathAtom.width_em`; see
+        // `symbol_family_glyph`); the outline is painted from New Computer
+        // Modern Math via `TexMathMetrics::otf_glyph`'s cmsy branch.
+        crate::mathfont::VARNOTHING_SENTINEL => Some(0x3B),
         _ => script_capital_slot(ch),
     }
 }

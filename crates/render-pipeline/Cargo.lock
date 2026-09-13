@@ -47,6 +47,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "flashtex-class-geometry"
+version = "0.1.0"
+
+[[package]]
 name = "flashtex-compiler"
 version = "0.1.0"
 dependencies = [
@@ -100,6 +104,7 @@ version = "0.1.0"
 name = "flashtex-render-pipeline"
 version = "0.1.0"
 dependencies = [
+ "flashtex-class-geometry",
  "flashtex-compiler",
  "flashtex-document-style",
  "flashtex-font-engine",

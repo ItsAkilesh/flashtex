@@ -178,7 +178,7 @@ final class RenderingV2Tests: XCTestCase {
     }
 
     func testUnknownItemKindIsRefusedNotSkipped() {
-        XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["kind"] = "image" } }, "unknown_item_kind")
+        XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["kind"] = "shading" } }, "unknown_item_kind") // `image` is a known kind since display-list-v2-images (V2ImageTests)
         XCTAssertEqual(Self.code { Self.setItem(&$0, 1) { $0["kind"] = nil } }, "malformed_payload")
     }
 
@@ -333,7 +333,7 @@ final class RenderingV2Tests: XCTestCase {
         // Not accepted by the fast reader → JSONDecoder decides (same public errors as before).
         XCTAssertThrowsError(try RenderingV2Fast.envelope(Data("{\"protocol_version\": 2.0}".utf8))) { XCTAssertTrue($0 is RenderingV2Fast.Error) }
         XCTAssertThrowsError(try RenderingV2Fast.envelope(Data("[1]".utf8))) { XCTAssertTrue($0 is RenderingV2Fast.Error) }
-        XCTAssertEqual(Self.code { Self.setItem(&$0, 0) { $0["kind"] = "image" } }, "unknown_item_kind")
+        XCTAssertEqual(Self.code { Self.setItem(&$0, 0) { $0["kind"] = "shading" } }, "unknown_item_kind")
         XCTAssertEqual(Self.code { Self.setPayload(&$0, "revision", 1.5) }, "malformed_payload")
         // Exponent form: not an integer literal for the fast reader (falls back);
         // the Codable path decides, and `decode` returns whatever it returns.

@@ -40,7 +40,7 @@ impl Outputs {
             eprintln!("flashtex-render: {id} rendered in {:.2} ms", r.elapsed_ms);
         }
         if let Some(p) = &self.v2 {
-            let text = json::write(&r.v2.to_json(id));
+            let text = r.v2.write_json(id);
             if let Err(e) = std::fs::write(p, text) {
                 eprintln!("flashtex-render: cannot write {}: {e}", p.display());
             }
@@ -90,6 +90,11 @@ fn main() {
                 if let Some(n) = args.next().and_then(|n| n.parse::<u8>().ok()) {
                     options.default_secnumdepth = n;
                 }
+            }
+            "--project-root" => {
+                // FT-063: default directory `\includegraphics` files are read
+                // from when a request carries no `project_root`.
+                options.project_root = args.next().map(PathBuf::from);
             }
             "--timing" => outputs.timing = true,
             "-h" | "--help" => {

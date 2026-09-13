@@ -124,10 +124,27 @@ quotes, `\'e`-style accents composed to precomposed characters), `\textbf`,
 (`secnumdepth`), `\label`/`\ref`/`\pageref` (bounded 3-pass convergence),
 inline and display math (`$`, `\[`, `$$`, `equation` with `(n)` flush right,
 `\frac`, `\sqrt`, scripts, operators with display limits), `\newpage`/
-`\clearpage`/`\pagebreak`, page breaking with TeX's cost model, US Letter
-`article` at 10/11/12pt with `geometry` margins. Diagnostics carry source
+`\clearpage`/`\pagebreak`, page breaking with TeX's cost model, the
+`article`/`report`/`book` page frame at 10/11/12pt on every class paper
+with the complete `geometry` algorithm (see "Page frame" below). Diagnostics carry source
 ranges and codes (`font_unavailable`, `missing_glyph`, `overfull_hbox`,
 `overfull_vbox`, `unsupported_script`, `math_limitation`, `labels_unstable`).
+
+Floats and images (FT-063; `src/floats.rs`, `src/graphics.rs`,
+`src/typeset/floatpage.rs`, `tests/floats_oracle.rs`,
+`docs/evidence/floats/`): `figure`/`table` environments are found in the
+source and blanked (same byte length) before the compiler parse, then set as
+float boxes (`\includegraphics` lines, `\@makecaption` with `Figure~N:`/
+`Table~N:`, `\label`/`\ref`) and placed with LaTeX's `\@addtocurcol`/
+`\@addtonextcol`/`\@tryfcolumn` rules (`[htbp!]`, top/bottom/here, float
+pages, `\end{document}` flush). `\includegraphics` sizes PNG/JPEG/PDF from
+their headers like pdfTeX and applies graphicx's `width`/`height`/
+`totalheight`/`scale`/`angle`/`keepaspectratio`/`page`. Image files are read
+from `RenderOptions::project_root` (request `project_root`, or
+`--project-root DIR`). Image items reach the `display_list` line only when
+`display-list-v2-images` is negotiated
+(`protocol/proposals/display-list-v2-image.md`); runtime-v1 has none.
+10 fixtures match pdfLaTeX within 0.05 bp.
 
 `\text{...}` in math (`src/mathtext.rs`, `tests/math_text.rs`,
 `docs/evidence/hw1-text/`): the argument is an `\hbox` in the text face at the
@@ -175,8 +192,95 @@ Not implemented (reported, not approximated silently): hyphenation, lists
 paragraphs), `\angle`, `\bigl`/`\bigr`, `\mathbb`, `\mid`, `\setminus`,
 `\quad`/`\qquad` and `array` in math (the compiler's math parser rejects
 them; see `coordination/mac-math-symbols.md`), tables, footnotes,
-two-column, page numbers/headers (`\pagestyle{empty}` behaviour only),
 non-Latin scripts (`unsupported_script`), RTL.
+
+## Page frame (`flashtex-class-geometry`)
+
+`adapter::document_setup` reads the preamble with
+`DocumentSetup::from_preamble` (`\documentclass` options, every
+`\usepackage[..]{geometry}` option, `\geometry{..}` calls, `\pagestyle`) and
+`Stylesheet::from_resolved` takes the MediaBox, text block, `\textheight`,
+`\topskip`, `\maxdepth` and `\parindent` from the resolved frame (exact to
+the sp against pdflatex in that crate's 96 fixtures). Body-only input keeps
+the compiler's implicit preamble: article, `--class-options` (default
+`12pt`), `\usepackage[margin=1in]{geometry}`. A non-standard class
+(`amsart`, ...) is laid out as article with its options and geometry.
+Heading skips, display skips, `\parskip` and list glue still come from
+document-style (class-geometry CONTRACT step 6). Frame lengths enter the f64
+layout as the nearest 0.001 pt decimal when that is within 2 sp of the exact
+value (`1in` = 4736286 sp as 72.27 pt), so pre-adoption display lists stay
+byte-identical (HW1/HW2 verified) and every length stays within 2 sp.
+
+**`a4paper` without `geometry` is a US Letter page.** pdfTeX only changes
+`\pdfpagewidth`/`\pdfpageheight` when a package (geometry's pdftex driver)
+sets them; the class option alone changes `\paperwidth`/`\textwidth`/
+`\textheight`, not the MediaBox, which stays MacTeX's `pdftexconfig.tex`
+default of 8.5in x 11in. The pipeline reproduces that: the page is 612 x
+792 bp and the A4 text block (345 pt x 598 pt at 10pt) is placed from the
+top-left corner (`tests/class_geometry_frame.rs`, pdflatex `\pdfsavepos`
+readings). With geometry the page is the paper (`595.276 x 841.89` bp).
+
+### Two-sided pages, two columns, headers and footers (CONTRACT steps 4–5)
+
+- **Left edge per page.** Blocks are assembled at `\oddsidemargin`; every
+  placed line carries an x offset (`Laid::line_dx`: `frame.text_left(page)`
+  minus that edge, plus the column offset), applied in `assemble`.
+- **Two columns.** The page builder fills columns of `\textheight`; pairs
+  become one page, the second column `\columnwidth + \columnsep` to the right
+  (LaTeX's order, no balancing). `\columnseprule` (class default or a
+  preamble `\setlength`) is a rule centred in `\columnsep`, as tall as the
+  column boxes, on every page. Two-column documents get `\parindent 1em` and
+  `\sloppy` (`\tolerance 9999`, `\emergencystretch 3em`).
+- **`\flushbottom`.** The standard classes keep the kernel's `\flushbottom`
+  for two-sided or two-column documents: a page ended at an ordinary break
+  is `\vbox to\textheight` with its glue stretched/shrunk (`pagebuild`);
+  `\newpage`/`\clearpage` pages and the last page stay natural.
+- **Page styles.** `\@oddhead`/`\@evenhead`/`\@oddfoot`/`\@evenfoot` from
+  class-geometry's `StyleMacros` (class default, preamble `\pagestyle`),
+  changed by body `\pagestyle` (in force when the page ships) and
+  `\thispagestyle` (that page only). Each line is `\hb@xt@\textwidth{L\hfil
+  C\hfil R}` in the `\normalsize` body face at `head_baseline`/
+  `foot_baseline`; `\thepage` upright, marks in `\slshape`
+  (`lmromanslant*`, `ec-lmro*` metrics).
+- **Marks.** `\sectionmark`/`\subsectionmark`/`\chaptermark` per the class's
+  `\ps@headings` (number + `\quad`, or `Chapter n.` and `n.` followed by a
+  space-factor-3000 space and `\ `; uppercased where the class does);
+  `\markboth`/`\markright` in the body (their arguments, which the compiler
+  sets as text, are dropped). `\leftmark` is the page's last mark,
+  `\rightmark` its first, the previous page's last when it has none.
+- **`\chapter` (report/book).** `\clearpage`, `\thispagestyle{plain}`,
+  `\vspace*{50pt}` (a zero-height box at `\topskip`), `\huge` bold
+  `Chapter n`, 20pt, `\Huge` bold title (`\raggedright`), 40pt, first
+  paragraph unindented. Sections number `chapter.section`.
+- **`\noindent`** directly before a paragraph's first material removes its
+  indent (the compiler treats the command as a no-op).
+- Body-only input and non-standard classes keep `\pagestyle{empty}`.
+
+Oracle: `tests/page_frame.rs` over 22 fixtures in `fixtures/page-frame/`
+(article/report/book; oneside, twoside, twocolumn with and without rule,
+plain/empty/headings/myheadings, `\thispagestyle`, body `\pagestyle`,
+geometry, 10/11/12pt, `\noindent`). Expected word origins and baselines come
+from pdflatex's content streams (`tools/page-frame-oracle/generate.py`); the
+test gates header/footer words, rules and per-page/per-column left edges
+within 0.1pt, and every matched line start's x and baseline within 0.1pt
+(line starts whose first words differ, i.e. a different line break, are
+counted, not failed).
+
+Implemented and gated against pdflatex (`tests/page_frame.rs`, 32
+fixtures): `\pagenumbering{arabic|roman|Roman|alph|Alph}` (resets
+`\c@page` to 1), `\setcounter{page}{n}` (page parity follows the counter
+for margins and heads), `\cleardoublepage`'s empty page (current page
+style) before an `openright` chapter on an even page, article
+`\maketitle`'s `\thispagestyle{plain}`.
+
+Not implemented: `\@maketitle`'s vertical skips and tabular author block
+(body baselines under a title are reported, not gated), report/book
+`titlepage` (`\maketitle` on its own empty-style page, `\c@page` reset),
+`\frontmatter`/`\mainmatter`, `\cleardoublepage` in two-column documents
+and explicit `\cleardoublepage` commands, two-column `\chapter`
+(`\@topnewpage`), float and footnote placement, commands and marks inside
+`\input` files, macros inside mark/chapter titles (their source text is
+used).
 
 ## Sibling pins and requested API changes
 

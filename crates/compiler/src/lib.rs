@@ -22,6 +22,7 @@ pub mod math;
 pub mod newcm_math;
 pub mod parser;
 pub mod protocol;
+pub mod supported;
 pub mod tabular;
 pub mod theorems;
 pub mod vocabulary;
