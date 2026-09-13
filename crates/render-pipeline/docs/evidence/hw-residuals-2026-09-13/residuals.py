@@ -1,6 +1,7 @@
 """Per-word residuals of flashtex-render vs pdflatex for HW1/HW2.
 
-usage: residuals.py <repo-root> <out-dir>   (reads <out-dir>/{ours,ref}/HWn.pdf)
+usage: residuals.py <repo-root> <out-dir>   (reads <out-dir>/ours/HWn.json, <out-dir>/ref/HWn.pdf)
+       residuals.py <repo-root> - <name>=<ours.json>=<ref.pdf> ...  (any documents)
 
 Words come from tools/visual-oracle/pdftext.py (content-stream glyphs, bp).
 Lines are matched per page by order of distinct baselines; words on a line are
@@ -56,14 +57,14 @@ def lines(words):
     return [(y, sorted(ws, key=lambda w: w["x"])) for y, ws in sorted(by.items())]
 
 
-def main():
+def main(docs):
     out = []
     summary = []
     allrows = []
     linedy = {}
-    for n in ("HW1", "HW2"):
-        ours = [lines(p) for p in ours_pages(f"{O}/ours/{n}.json")]
-        ref = [lines(p) for p in ref_pages(f"{O}/ref/{n}.pdf")]
+    for n, ours_json, ref_pdf in docs:
+        ours = [lines(p) for p in ours_pages(ours_json)]
+        ref = [lines(p) for p in ref_pages(ref_pdf)]
         out.append(f"\n## {n}: pages ours {len(ours)} ref {len(ref)}\n")
         for pi in range(min(len(ours), len(ref))):
             used = set()
@@ -125,4 +126,8 @@ def main():
     print("\n".join(out))
 
 
-main()
+if __name__ == "__main__":
+    if O == "-":
+        main([tuple(a.split("=", 2)) for a in sys.argv[3:]])
+    else:
+        main([(n, f"{O}/ours/{n}.json", f"{O}/ref/{n}.pdf") for n in ("HW1", "HW2")])
