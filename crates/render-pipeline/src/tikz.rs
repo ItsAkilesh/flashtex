@@ -22,11 +22,23 @@ use crate::tfm::Tfm;
 
 const BP_PER_PT: f64 = 72.0 / 72.27;
 
-/// One shaped line of node text, TeX points from the start of the baseline.
+/// One positioned glyph of node text.
+#[derive(Clone, Debug)]
+pub struct ShapedGlyph {
+    pub gid: u16,
+    /// Origin, TeX points from the start of the baseline.
+    pub x_pt: f64,
+    /// Advance in TeX points (kerning included).
+    pub advance_pt: f64,
+    /// Bytes of the text this glyph shows.
+    pub text_range: std::ops::Range<usize>,
+}
+
+/// One shaped line of node text.
+#[derive(Clone)]
 pub struct ShapedText {
     pub face: Rc<LoadedFace>,
-    /// `(glyph id, x in points)`.
-    pub glyphs: Vec<(u16, f64)>,
+    pub glyphs: Vec<ShapedGlyph>,
     pub metrics: TextMetrics,
 }
 
@@ -49,10 +61,13 @@ pub fn shape_text(fonts: &FontSet, text: &str, style: &TextStyle) -> ShapedText 
     let mut x = 0.0;
     let mut height: f64 = 0.0;
     let mut depth: f64 = 0.0;
+    let mut word_start = 0usize;
     for (i, word) in text.split(' ').enumerate() {
         if i > 0 {
             x += space;
         }
+        let this_start = word_start;
+        word_start += word.len() + 1;
         if word.is_empty() {
             continue;
         }
@@ -60,11 +75,17 @@ pub fn shape_text(fonts: &FontSet, text: &str, style: &TextStyle) -> ShapedText 
         let upem = shaped.units_per_em as f64;
         for cluster in &shaped.clusters {
             for g in &cluster.glyphs {
+                let advance_pt = f64::from(g.advance) * size / upem;
                 if !g.empty && g.gid.0 != 0 {
                     let dx = face.pt(i64::from(g.x_offset), size);
-                    glyphs.push((g.gid.0, x + dx));
+                    glyphs.push(ShapedGlyph {
+                        gid: g.gid.0,
+                        x_pt: x + dx,
+                        advance_pt,
+                        text_range: this_start + cluster.text_range.start..this_start + cluster.text_range.end,
+                    });
                 }
-                x += f64::from(g.advance) * size / upem;
+                x += advance_pt;
             }
         }
         height = height.max(shaped.height_pt(size));
@@ -178,7 +199,8 @@ pub fn standalone_pdf(fonts: &FontSet, doc: &str, border_pt: f64, font_size_pt: 
             let _ = writeln!(content, "/{name} gs");
         }
         let _ = writeln!(content, "BT\n/{fname} {} Tf", num(size_bp));
-        for (gid, x_pt) in &shaped.glyphs {
+        for g in &shaped.glyphs {
+            let (gid, x_pt) = (g.gid, g.x_pt);
             let m = Transform::new(1.0, 0.0, 0.0, -1.0, x_pt * BP_PER_PT, 0.0).then(&t.transform).then(&place).then(&flip);
             let c = m.coefficients();
             // Tm takes the text matrix scaled by Tf: normalise by nothing,

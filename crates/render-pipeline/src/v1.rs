@@ -185,6 +185,9 @@ pub fn fallback(v2: &DisplayList, caps: Capabilities, accepted: Option<Vec<Strin
                         }
                     }
                 }
+                // Runtime-v1 has no vector items: TikZ paths exist only in the
+                // display list v2 (the typesetter warns when it emits them).
+                display::Item::Path(_) => {}
                 display::Item::Rule(rule) => {
                     let Some(source) = union(rule.provenance.sources()) else { continue };
                     let (x, top, w, h) = (rule.x.to_bp(), rule.top.to_bp(), rule.width.to_bp(), rule.height.to_bp());

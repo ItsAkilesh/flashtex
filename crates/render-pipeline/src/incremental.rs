@@ -432,6 +432,19 @@ pub fn place_item(item: &crate::display::Item, dy: crate::display::Tick, path: &
             }
             Item::GlyphRun(r)
         }
+        Item::Path(p) => {
+            let mut p = p.clone();
+            for c in &mut p.commands {
+                *c = c.map_y(&add);
+            }
+            for clip in &mut p.clips {
+                for c in &mut clip.commands {
+                    *c = c.map_y(&add);
+                }
+            }
+            p.provenance = shift_prov(&p.provenance);
+            Item::Path(p)
+        }
         Item::Rule(rule) => {
             let mut rule = rule.clone();
             rule.top = add(rule.top);
