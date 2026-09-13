@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlashTeX</title>
+<meta name="description" content="A native Mac LaTeX editor built on a from-scratch Rust compiler. Live preview on every keystroke, and handwriting that becomes editable LaTeX.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap">
+<link rel="stylesheet" href="site.css">
+<style>
+  .hero { padding-block: 88px 48px; }
+  .hero h1 { font-size: clamp(2.5rem, 6vw, 4.2rem); line-height: 1.02; max-width: 15ch; }
+  .hero h1 em { font-family: "Spectral", ui-serif, Georgia, serif; font-weight: 400; font-style: italic; letter-spacing: -0.01em; }
+  .hero .lede { margin-top: 22px; font-size: 1.1rem; color: var(--text-2); max-width: 54ch; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px; align-items: center; }
+  .hero-actions .fine { color: var(--text-3); font-size: 0.82rem; margin-left: 6px; }
+
+  .shot { margin-top: 12px; border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden; background: var(--code-bg); }
+  .shot-bar { display: flex; align-items: center; gap: 12px; height: 38px; padding-inline: 14px; background: var(--code-bar); border-bottom: 1px solid var(--code-line); }
+  .lights { display: flex; gap: 7px; }
+  .lights i { width: 10px; height: 10px; border-radius: 50%; background: #34373e; display: block; }
+  .shot-title { font: 0.74rem "IBM Plex Mono", monospace; color: var(--code-text-2); }
+  .shot-status { margin-left: auto; font: 0.72rem "IBM Plex Mono", monospace; color: var(--code-text-2); display: flex; align-items: center; gap: 7px; }
+  .shot-status .dot { width: 6px; height: 6px; border-radius: 50%; background: #7bc78f; }
+  .shot-split { display: grid; grid-template-columns: 1fr 1fr; }
+  .shot-pane { padding: 22px 24px 26px; min-width: 0; }
+  .shot-pane + .shot-pane { border-left: 1px solid var(--code-line); }
+  .pane-label { font: 0.66rem "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: 0.1em; color: var(--code-text-2); margin-bottom: 14px; }
+  .src { margin: 0; font: 0.8rem/1.75 "IBM Plex Mono", monospace; color: var(--code-text); white-space: pre; overflow-x: auto; }
+  .src .ln { color: #4a4d54; user-select: none; display: inline-block; width: 2.2em; }
+  .src .c { color: var(--code-cmd); }
+  .src .s { color: var(--code-sym); }
+  .page { background: #faf8f2; color: #1c1a16; border-radius: 3px; padding: 26px 26px 30px; font-family: "Spectral", ui-serif, Georgia, serif; font-size: 0.98rem; line-height: 1.7; box-shadow: 0 10px 30px -12px rgba(0,0,0,0.6); }
+  .page .it { font-style: italic; }
+  .page .lbl { font-weight: 600; margin-right: 6px; }
+  .page .disp { text-align: center; margin: 14px 0; font-size: 1.02rem; white-space: nowrap; overflow-x: auto; }
+
+  .section { padding-block: 88px 0; }
+  .section-head { display: grid; gap: 12px; max-width: 58ch; }
+  .section-head h2 { font-size: clamp(1.7rem, 3.4vw, 2.4rem); line-height: 1.1; }
+  .section-head p { color: var(--text-2); font-size: 1rem; }
+
+  .features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 44px; border-top: 1px solid var(--line); }
+  .feature { padding: 30px 32px 34px 0; border-bottom: 1px solid var(--line); }
+  .feature:nth-child(even) { padding-left: 32px; padding-right: 0; border-left: 1px solid var(--line); }
+  .feature .eyebrow { display: block; margin-bottom: 12px; }
+  .feature h3 { font-size: 1.12rem; letter-spacing: -0.01em; }
+  .feature p { color: var(--text-2); margin-top: 8px; font-size: 0.93rem; max-width: 46ch; }
+  .feature code { font-size: 0.85em; color: var(--text); }
+
+  .diag { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 56px; align-items: center; }
+  .editor { border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; background: var(--code-bg); }
+  .editor-body { padding: 14px 0 16px; }
+  .eline { display: flex; font: 0.8rem/1.9 "IBM Plex Mono", monospace; color: var(--code-text); padding-right: 16px; }
+  .eline .ln { width: 3.2em; text-align: right; padding-right: 16px; color: #4a4d54; flex-shrink: 0; user-select: none; }
+  .eline .code { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  .eline.err { background: color-mix(in srgb, var(--code-err) 12%, transparent); }
+  .squig { text-decoration: underline wavy var(--code-err); text-underline-offset: 4px; }
+  .popover { margin: 4px 16px 10px 3.2em; border: 1px solid #3a2a26; background: #1a1311; border-radius: 7px; padding: 11px 13px; font-size: 0.82rem; color: #d8d3c8; }
+  .popover b { display: block; font: 500 0.7rem "IBM Plex Mono", monospace; letter-spacing: 0.06em; text-transform: uppercase; color: var(--code-err); margin-bottom: 4px; }
+  .popover code { color: #f0ede4; font-size: 0.78rem; }
+
+  .cta { margin-top: 96px; border: 1px solid var(--line); border-radius: 12px; padding: 44px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; background: var(--bg-2); }
+  .cta h2 { font-size: clamp(1.5rem, 3vw, 2rem); }
+  .cta p { color: var(--text-2); margin-top: 6px; font-size: 0.92rem; }
+  .cta .snippet { margin-top: 18px; max-width: 560px; }
+
+  @media (max-width: 860px) {
+    .shot-split, .diag { grid-template-columns: 1fr; }
+    .shot-pane + .shot-pane { border-left: 0; border-top: 1px solid var(--code-line); }
+    .features { grid-template-columns: 1fr; }
+    .feature, .feature:nth-child(even) { padding: 26px 0; border-left: 0; }
+    .hero { padding-block: 56px 36px; }
+    .cta { padding: 28px; }
+  }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="wordmark" href="./">flash<span class="tex">T<span class="e">E</span>X</span></a>
+    <nav class="nav" aria-label="Primary">
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="https://github.com/flash-tex/flashtex/releases">Releases</a>
+      <a href="https://github.com/flash-tex/flashtex">GitHub</a>
+      <a class="nav-btn" href="download/">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <h1>LaTeX that typesets <em>as fast as you think.</em></h1>
+    <p class="lede">FlashTeX is a native Mac editor built on a LaTeX compiler written from scratch in Rust. The preview updates on every keystroke, and a proof you sketch on iPad lands in your source as LaTeX you can edit.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="download/">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+        Download for Mac
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/flash-tex/flashtex">View on GitHub</a>
+      <span class="fine">{{TAG}} · macOS 14+ · MIT</span>
+    </div>
+  </section>
+
+  <div class="shot" aria-label="FlashTeX editor with source on the left and the live preview on the right">
+    <div class="shot-bar">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <span class="shot-title">problem-sheet-1.tex</span>
+      <span class="shot-status"><span class="dot"></span>compiled in 14 ms</span>
+    </div>
+    <div class="shot-split">
+      <div class="shot-pane">
+        <div class="pane-label">Source</div>
+<pre class="src"><span class="ln">93</span>  <span class="c">\item</span> Let <span class="s">$P$</span> and <span class="s">$Q$</span> be predicates
+<span class="ln">94</span>  on a set <span class="s">$S$</span>. Prove that
+<span class="ln">95</span>  <span class="c">\[</span>
+<span class="ln">96</span>    <span class="c">\bigl(\forall</span> x<span class="c">\in</span> S<span class="c">\;</span>P(x)<span class="c">\bigr)</span>
+<span class="ln">97</span>    <span class="c">\vee</span>
+<span class="ln">98</span>    <span class="c">\bigl(\forall</span> x<span class="c">\in</span> S<span class="c">\;</span>Q(x)<span class="c">\bigr)</span>
+<span class="ln">99</span>    <span class="c">\quad\Longrightarrow\quad</span>
+<span class="ln">100</span>   <span class="c">\forall</span> x<span class="c">\in</span> S<span class="c">\;\bigl(</span>P(x)<span class="c">\vee</span> Q(x)<span class="c">\bigr)</span>.
+<span class="ln">101</span>  <span class="c">\]</span></pre>
+      </div>
+      <div class="shot-pane">
+        <div class="pane-label">Preview</div>
+        <div class="page">
+          <span class="lbl">(b)</span>Let <span class="it">P</span> and <span class="it">Q</span> be predicates on a set <span class="it">S</span>. Prove that
+          <div class="disp">(∀<span class="it">x</span>∈<span class="it">S</span> <span class="it">P</span>(<span class="it">x</span>)) ∨ (∀<span class="it">x</span>∈<span class="it">S</span> <span class="it">Q</span>(<span class="it">x</span>)) ⟹ ∀<span class="it">x</span>∈<span class="it">S</span> (<span class="it">P</span>(<span class="it">x</span>) ∨ <span class="it">Q</span>(<span class="it">x</span>)).</div>
+          Then give explicit choices of <span class="it">S</span>, <span class="it">P</span>, and <span class="it">Q</span> showing that the converse implication is false.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="section" id="features">
+    <div class="section-head">
+      <span class="eyebrow">What's different</span>
+      <h2>An engine, not a wrapper around one.</h2>
+      <p>No TeX distribution runs behind the scenes. FlashTeX tokenizes, expands macros and lays out boxes and glue itself, which is why it can be fast and precise at the same time.</p>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <span class="eyebrow">Preview</span>
+        <h3>Every keystroke, not every save</h3>
+        <p>Edits reuse the previous layout instead of recompiling the whole document, so a typical change renders in milliseconds.</p>
+      </div>
+      <div class="feature">
+        <span class="eyebrow">Navigation</span>
+        <h3>Click the page, land in the source</h3>
+        <p>Every glyph in the preview knows the exact bytes it came from. Click a word or a symbol and the cursor goes straight there.</p>
+      </div>
+      <div class="feature">
+        <span class="eyebrow">Capture</span>
+        <h3>Handwriting becomes LaTeX</h3>
+        <p>Draw with Pencil on iPad or photograph a page of notes. Grok converts it, and you review the result before it's inserted where you pinned it.</p>
+      </div>
+      <div class="feature">
+        <span class="eyebrow">Recovery</span>
+        <h3>One typo doesn't blank the page</h3>
+        <p>A missing <code>}</code> or an unknown command produces a precise diagnostic, and the rest of the document keeps rendering around it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="diag">
+      <div class="section-head">
+        <span class="eyebrow">Diagnostics</span>
+        <h2>Errors that point at the exact character.</h2>
+        <p>Each diagnostic carries its source range and says how the compiler recovered, so you fix the problem in place instead of hunting through a log.</p>
+      </div>
+      <div class="editor" aria-label="Editor showing an inline diagnostic">
+        <div class="shot-bar">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <span class="shot-title">problem-sheet-1.tex</span>
+          <span class="shot-status">1 problem</span>
+        </div>
+        <div class="editor-body">
+          <div class="eline"><span class="ln">45</span><span class="code">Let $a,b\in\Z_{&gt;0}$.</span></div>
+          <div class="eline"><span class="ln">46</span><span class="code">\begin{enumerate}[(a)]</span></div>
+          <div class="eline err"><span class="ln">47</span><span class="code">  \item Suppose that $a\mid b<span class="squig">\bigl</span>$. Prove that</span></div>
+          <div class="popover"><b>Unmatched delimiter</b><code>\bigl</code> has no matching <code>\bigr</code>. Set it at normal size and continued; the rest of the item still renders.</div>
+          <div class="eline"><span class="ln">48</span><span class="code">  \[ a\mid a^2+b^2. \]</span></div>
+          <div class="eline"><span class="ln">49</span><span class="code">\end{enumerate}</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta">
+    <div>
+      <h2>Try FlashTeX</h2>
+      <p>Free and open source. Apple Silicon, macOS 14 or later.</p>
+      <div class="snippet">
+        <code><span class="p">$ </span>curl -fsSL https://flash-tex.github.io/flashtex/install.sh | sh</code>
+        <button class="copy" data-copy="curl -fsSL https://flash-tex.github.io/flashtex/install.sh | sh">Copy</button>
+      </div>
+    </div>
+    <a class="btn btn-primary" href="download/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+      Download for Mac
+    </a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="wordmark" href="./">flash<span class="tex">T<span class="e">E</span>X</span></a>
+      <p class="footer-note">An original LaTeX engine and native Mac editor. MIT licensed.</p>
+    </div>
+    <div>
+      <h4>Product</h4>
+      <ul>
+        <li><a href="download/">Download</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="https://github.com/flash-tex/flashtex/releases">Releases</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Source</h4>
+      <ul>
+        <li><a href="https://github.com/flash-tex/flashtex">GitHub</a></li>
+        <li><a href="https://github.com/flash-tex/flashtex/issues">Issues</a></li>
+        <li><a href="https://github.com/flash-tex/flashtex/blob/main/LICENSE">License</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Install</h4>
+      <ul>
+        <li><a href="https://github.com/flash-tex/flashtex/releases/download/{{TAG}}/FlashTeX.dmg">FlashTeX.dmg</a></li>
+        <li><a href="install.sh">install.sh</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-copy');
+      var done = function (label) { btn.textContent = label; setTimeout(function () { btn.textContent = 'Copy'; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done('Copied'); }, function () { done('Press ⌘C'); });
+      } else {
+        done('Press ⌘C');
+      }
+    });
+  });
+</script>
+</body>
+</html>
