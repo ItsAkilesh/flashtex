@@ -414,6 +414,19 @@ pub fn symbol_slot(ch: char) -> Option<(Family, u8)> {
         '\u{2228}' => (Symbol, 0x5F),
         '\u{2229}' => (Symbol, 0x5C),
         '\u{222A}' => (Symbol, 0x5B),
+        // The square relations, cmsy "74-"77. These are base LaTeX2e kernel
+        // symbols, not amssymb: `fontmath.ltx` 279/278 declare `\sqcup`/
+        // `\sqcap` `\mathbin` at symbols "74/"75 and 301/302 `\sqsubseteq`/
+        // `\sqsupseteq` `\mathrel` at "76/"77. Confirmed with pdfTeX
+        // 3.141592653 (TeX Live 2025), where `\show` gives \mathchar"2274,
+        // "2275, "3276 and "3277 with and without amssymb loaded; at 10pt the
+        // glyphs measure 6.66669pt (cmsy10 "74/"75) and 7.7778pt ("76/"77).
+        // (amsfonts' strict `\sqsubset`/`\sqsupset` are msam, not cmsy, and
+        // are not reachable through this table.)
+        '\u{2294}' => (Symbol, 0x74),
+        '\u{2293}' => (Symbol, 0x75),
+        '\u{2291}' => (Symbol, 0x76),
+        '\u{2292}' => (Symbol, 0x77),
         '\u{2295}' => (Symbol, 0x08),
         '\u{2297}' => (Symbol, 0x0A),
         '\u{2216}' => (Symbol, 0x6E),
@@ -661,6 +674,27 @@ pub fn size_pt(m: &CmMathMetrics, size: SizeClass) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `fontmath.ltx` 278-279 and 301-302 put the square relations in the
+    /// `symbols` (cmsy) family, so they box from the cmsy TFM exactly as
+    /// pdfLaTeX sets them. pdfTeX 3.141592653 (TeX Live 2025) `\show` gives
+    /// \mathchar"2274, "2275, "3276 and "3277 -- family 2, slots "74-"77 --
+    /// both with and without amssymb loaded, and the glyphs measure 6.66669pt
+    /// ("74/"75) and 7.7778pt ("76/"77) at 10pt.
+    #[test]
+    fn square_relations_are_cmsy_74_through_77() {
+        assert_eq!(symbol_slot('\u{2294}'), Some((Family::Symbol, 0x74))); // \sqcup
+        assert_eq!(symbol_slot('\u{2293}'), Some((Family::Symbol, 0x75))); // \sqcap
+        assert_eq!(symbol_slot('\u{2291}'), Some((Family::Symbol, 0x76))); // \sqsubseteq
+        assert_eq!(symbol_slot('\u{2292}'), Some((Family::Symbol, 0x77))); // \sqsupseteq
+        // The widths the cmsy TFM actually carries at the 10pt text size.
+        let m = CmMathMetrics::latex_10pt();
+        let five = |c: char| format!("{:.5}", m.glyph(c, SizeClass::Text).expect("glyph").width);
+        assert_eq!(five('\u{2294}'), "6.66669");
+        assert_eq!(five('\u{2293}'), "6.66669");
+        assert_eq!(five('\u{2291}'), "7.77780");
+        assert_eq!(five('\u{2292}'), "7.77780");
+    }
 
     #[test]
     fn parameters_match_plain_tex_fontdimens() {
