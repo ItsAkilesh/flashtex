@@ -408,18 +408,30 @@ impl ResolvedRegion {
 /// index (longtable.sty 229: `\LT@start` subtracts `\ht\LT@foot` from
 /// `\pagegoal` itself, and 274-275 gives it back at `\endlongtable`), and
 /// the `\LT@foot`/`\LT@head` boxes a break inside one needs.
+///
+/// Every page-building path shares it: [`break_pages_regions`],
+/// [`break_pages_inserts_regions`] and `typeset::floatpage::paginate`.
 #[derive(Clone, Copy)]
-struct Regions<'a>(&'a [ResolvedRegion]);
+pub(crate) struct Regions<'a>(&'a [ResolvedRegion]);
 
 impl<'a> Regions<'a> {
+    pub(crate) fn new(regions: &'a [ResolvedRegion]) -> Regions<'a> {
+        Regions(regions)
+    }
+
     fn at(&self, i: usize) -> Option<&'a VRegion> {
         self.0.iter().map(|r| &r.0).find(|r| r.range.contains(&i))
     }
 
     /// `\ht\LT@foot` reserved from `\pagegoal` at vertical-list index `i`,
     /// or `\ht\LT@lastfoot` once the closing foot's rows are reached.
-    fn reserved(&self, i: usize) -> f64 {
+    pub(crate) fn reserved(&self, i: usize) -> f64 {
         self.at(i).map_or(0.0, |r| if i >= r.tail { r.tail_foot_height } else { r.foot_height })
+    }
+
+    /// Whether vertical-list index `i` is inside some region.
+    pub(crate) fn contains(&self, i: usize) -> bool {
+        self.at(i).is_some()
     }
 
     /// longtable.sty 223: unless the table cannot start on this page at all,
@@ -428,7 +440,7 @@ impl<'a> Regions<'a> {
     /// `minus 4pt`, `\skip\footins`) may no longer be shrunk to buy the
     /// table another row. Without it the builder squeezes one row too many
     /// onto the page the table starts on.
-    fn starts_at(&self, i: usize) -> bool {
+    pub(crate) fn starts_at(&self, i: usize) -> bool {
         self.0.iter().any(|r| r.0.range.start == i)
     }
 
@@ -436,14 +448,14 @@ impl<'a> Regions<'a> {
     /// that ended at `end`: the foot to append to it and the head to open
     /// the next one with, when the break fell inside a region and the
     /// region continues past it.
-    fn at_break(&self, end: usize) -> Option<(Option<Placed3>, Option<Placed3>)> {
+    pub(crate) fn at_break(&self, end: usize) -> Option<(Option<Placed3>, Option<Placed3>)> {
         let r = self.at(end.saturating_sub(1)).filter(|r| end < r.range.end)?;
         Some((r.foot, r.head))
     }
 }
 
 /// `(height, depth, payload)` of a head or foot box.
-type Placed3 = (f64, f64, (usize, usize));
+pub(crate) type Placed3 = (f64, f64, (usize, usize));
 
 /// The head or foot box as a vertical-list item, so a page's material can
 /// carry it through the same natural-size and glue-setting passes as the
