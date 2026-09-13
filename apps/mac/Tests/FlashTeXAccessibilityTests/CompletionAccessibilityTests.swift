@@ -61,6 +61,7 @@ final class CompletionAccessibilityTests: XCTestCase {
         table.setAccessibilityLabel(CA.listLabel)
         table.setAccessibilityHelp(CA.listHelp)
         let scroll = NSScrollView(frame: table.frame); scroll.documentView = table
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 88), styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView?.addSubview(scroll)
         window.orderFrontRegardless() // never key

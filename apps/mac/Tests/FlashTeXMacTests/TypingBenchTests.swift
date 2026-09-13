@@ -146,6 +146,7 @@ final class TypingBenchTests: XCTestCase {
     }
 
     private func makeWindow(_ model: ShellModel) -> NSWindow {
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 600), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: BenchHost(model: model))

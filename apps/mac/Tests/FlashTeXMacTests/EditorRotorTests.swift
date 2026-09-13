@@ -36,6 +36,7 @@ final class EditorRotorTests: XCTestCase {
     /// A hosted editor text view (never key) sized so that only the first
     /// few lines are visible; everything below is off-screen.
     private func hostedTextView(_ text: String, height: CGFloat = 60) -> (NSWindow, CompletingTextView) {
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: height), styleMask: [.titled],
                               backing: .buffered, defer: false)
         let scroll = CompletingTextView.scrollable()
