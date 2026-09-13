@@ -21,6 +21,7 @@ because the siblings depend on each other by `../<name>` path.
 | `math-layout` | `agent/mac-math-layout/math-boxes` | `db90047` | mac-math-layout |
 | `pdf` | `agent/mac-pdf/pdf-output` | `4bd8c2e` | mac-pdf |
 | `document-style` | `agent/mac-document-style/style-model` (= main) | `bfc980d` | mac-document-style |
+| `vector-graphics` | `agent/kabir-claude/tikz-min` | `3593209b` (FT-062: the `tikz` module — TikZ reader, xcolor, PGF bounding-box/arc/grid/to-path rules — on top of main's display primitives; dependency-free) | kabir-claude (FT-062) |
 
 `font-engine` enables its `paragraph`/`math`/`pdf` adapter features by
 default, which is why those three siblings must be present under their plain
