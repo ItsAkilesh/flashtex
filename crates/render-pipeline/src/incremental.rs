@@ -310,6 +310,10 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 accent.command().hash(h);
                 hash_math(body, h);
             }
+            Nucleus::Group(body) => {
+                10u8.hash(h);
+                hash_math(body, h);
+            }
         }
         match &a.superscript {
             Some(s) => {
@@ -457,7 +461,7 @@ fn shift_math(list: &mut MathList, delta: isize) {
                 shift_math(numerator, delta);
                 shift_math(denominator, delta);
             }
-            Nucleus::Radical(r) | Nucleus::Framed { body: r, .. } | Nucleus::Accent { body: r, .. } => shift_math(r, delta),
+            Nucleus::Radical(r) | Nucleus::Framed { body: r, .. } | Nucleus::Accent { body: r, .. } | Nucleus::Group(r) => shift_math(r, delta),
             Nucleus::Stacked { base, over, under } => {
                 shift_math(base, delta);
                 for part in [over, under].into_iter().flatten() {

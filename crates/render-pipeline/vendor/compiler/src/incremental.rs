@@ -572,7 +572,12 @@ fn shift_math_list(
                             accent: *accent,
                             body: shift_math_list(body, changes, deltas)?,
                         },
+                        Nucleus::Group(inner) => {
+                            Nucleus::Group(shift_math_list(inner, changes, deltas)?)
+                        }
                     },
+                    class_override: atom.class_override,
+                    width_em: atom.width_em,
                     span: mapped_span(atom.span, changes, deltas)?,
                     // An absent script stays absent; a present one that cannot be
                     // shifted fails the whole mapping, so the caller falls back to a

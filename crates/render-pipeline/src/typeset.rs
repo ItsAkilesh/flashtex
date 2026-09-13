@@ -1802,6 +1802,11 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
             }
             N::Fraction { numerator, denominator } => vec![ml::Atom::frac(sub(numerator, sink), sub(denominator, sink))],
             N::Radical(r) => vec![ml::Atom::sqrt(sub(r, sink))],
+            // `\mathbin{...}` and the rest of the `\math*` family: the
+            // argument boxed as one atom. The forced class lives in the
+            // compiler's crate-private `class_override`, so the group is
+            // set as Ord here (spacing around `\mathrel{..}` etc. differs).
+            N::Group(body) => vec![ml::Atom::group(sub(body, sink))],
             // `\mathbf{...}`: set like `\text` in the roman face (the text
             // sink has no bold role); `math_box` reports it once per formula.
             N::Bold(text) => vec![sink.atom(text)],
@@ -2033,7 +2038,7 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
                 math_grids(numerator, out);
                 math_grids(denominator, out);
             }
-            N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } => math_grids(r, out),
+            N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } | N::Group(r) => math_grids(r, out),
             N::Stacked { base, over, under } => {
                 math_grids(base, out);
                 for part in [over, under].into_iter().flatten() {
@@ -2061,7 +2066,7 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
             let own = match &a.nucleus {
                 N::Space { em } => *em,
                 N::Fraction { numerator, denominator } => math_glue_em(numerator) + math_glue_em(denominator),
-                N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } => math_glue_em(r),
+                N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } | N::Group(r) => math_glue_em(r),
                 N::Stacked { base, over, under } => {
                     math_glue_em(base) + [over, under].into_iter().flatten().map(math_glue_em).sum::<f64>()
                 }
@@ -2110,7 +2115,7 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
                 math_approximations(numerator, out);
                 math_approximations(denominator, out);
             }
-            N::Radical(r) | N::Accent { body: r, .. } => math_approximations(r, out),
+            N::Radical(r) | N::Accent { body: r, .. } | N::Group(r) => math_approximations(r, out),
             N::Stacked { base, over, under } => {
                 math_approximations(base, out);
                 for part in [over, under].into_iter().flatten() {

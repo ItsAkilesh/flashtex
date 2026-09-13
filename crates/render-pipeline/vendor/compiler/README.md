@@ -302,6 +302,12 @@ export mapping, except blackboard bold, `\setminus` and `\Longrightarrow`:
 those are drawn from the pinned Latin Modern Math resource (`lm.math`, see
 `src/lm_math.rs`). Its Unicode-math designs and widths differ from pdfLaTeX's
 msbm10/cmsy10, and the base-14 PDF export reports that it cannot embed them.
+`\mathcal{A-Z}` emits Unicode script capitals bound to New Computer Modern Math
+(`newcm.math`, `src/newcm_math.rs`; the Mac app bundles
+`apps/mac/Fonts/NewCMMath-Regular.otf`). Its default script design is not
+cmsy10's calligraphic one: against a pdfLaTeX oracle
+(`docs/evidence/ft060-oracle/`) only E G I N P R T U V W X are within 0.5pt at
+10pt. `\varnothing` keeps the Symbol glyph with msbm10's 0.777781em advance.
 Ordinary math letters and digits use Times-Roman. Unknown math
 commands produce an explicit diagnostic naming the command and are rendered
 literally, never silently dropped.

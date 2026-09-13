@@ -378,6 +378,8 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
                     out.push_str(",\"font\":");
                     out.push_str(if crate::lm_math::covers(&it.text) {
                         LM_MATH_FONT_JSON
+                    } else if crate::newcm_math::covers(&it.text) {
+                        NEWCM_MATH_FONT_JSON
                     } else {
                         font_json_literal(it.font)
                     });
@@ -406,6 +408,10 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
 /// `font-hints-v1` family for glyphs bound to `crate::lm_math`.
 const LM_MATH_FONT_JSON: &str =
     r#"{"family":"Latin Modern Math","style":"normal","weight":"normal"}"#;
+
+/// `font-hints-v1` family for glyphs bound to `crate::newcm_math`.
+const NEWCM_MATH_FONT_JSON: &str =
+    r#"{"family":"New Computer Modern Math","style":"normal","weight":"normal"}"#;
 
 fn font_json_literal(font: Font) -> &'static str {
     match font {
@@ -653,10 +659,19 @@ fn compile(id: &str, payload: &Value) -> Value {
     // mark in the exported file. Silently substituting is what rev 4 forbids.
     let mut offenders: Vec<char> = Vec::new();
     let mut first_span = None;
+    let mut first_lm_math_span = None;
     for page in &pages {
         for item in &page.items {
             if capabilities.enabled.rules_v1 && item.rule.is_some() {
                 continue;
+            }
+            if first_lm_math_span.is_none()
+                && item
+                    .text
+                    .chars()
+                    .any(|c| crate::lm_math::advance(c).is_some())
+            {
+                first_lm_math_span = Some(item.span);
             }
             for c in crate::export::unrepresentable(&item.text) {
                 if !offenders.contains(&c) {
@@ -679,14 +694,12 @@ fn compile(id: &str, payload: &Value) -> Value {
             Some("the preview shows it correctly; the exported PDF will not".into()),
         ));
     }
-    if offenders
-        .iter()
-        .any(|c| crate::lm_math::advance(*c).is_some())
-    {
+    if let Some(span) = first_lm_math_span {
         diags.push(Diagnostic::warning(
-            "blackboard bold, \\setminus and \\Longrightarrow use Latin Modern Math glyphs \
-             (unicode-math design); their widths differ from pdfLaTeX's msbm10/cmsy10",
-            first_span,
+            "blackboard bold, \\setminus, \\Longrightarrow and other amssymb/latexsym symbols \
+             with no base-14 glyph use Latin Modern Math glyphs (unicode-math design); their \
+             widths differ from pdfLaTeX's msbm10/cmsy10",
+            Some(span),
             Some("drew the real glyphs; this is not pixel parity with pdfLaTeX".into()),
         ));
     }
@@ -738,5 +751,7 @@ mod font_literal_tests {
         value.set("weight", str_("normal"));
         value.set("style", str_("normal"));
         assert_eq!(LM_MATH_FONT_JSON, json::write(&value));
+        value.set("family", str_(crate::newcm_math::FAMILY));
+        assert_eq!(NEWCM_MATH_FONT_JSON, json::write(&value));
     }
 }

@@ -40,3 +40,7 @@ pub const BP_PER_TEX_PT: f64 = 72.0 / 72.27;
 pub fn tex_pt_to_bp(pt: f64) -> f64 {
     pt * BP_PER_TEX_PT
 }
+
+/// FT-064 full-pattern Liang hyphenator (Knuth hyphen.tex), carried additively
+/// into this pinned mirror by the kabir-claude integration; see vendor/VENDORING.md.
+pub mod liang_tex;

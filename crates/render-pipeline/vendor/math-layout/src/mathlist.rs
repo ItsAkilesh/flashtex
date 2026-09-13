@@ -259,7 +259,10 @@ pub fn default_class(ch: char) -> (AtomClass, Limits) {
         '=' | '<' | '>' | ':' | '\u{2264}' | '\u{2265}' | '\u{2261}' | '\u{2248}' | '\u{2260}'
         | '\u{223C}' | '\u{2282}' | '\u{2283}' | '\u{2286}' | '\u{2287}' | '\u{2208}'
         | '\u{220B}' | '\u{2190}' | '\u{2192}' | '\u{2194}' | '\u{21D0}' | '\u{21D2}'
-        | '\u{21D4}' | '\u{2225}' | '\u{22A5}' | '\u{2223}' => Rel,
+        | '\u{21D4}' | '\u{2225}' | '\u{22A5}' | '\u{2223}'
+        // amsmath/plain long arrows (\Longrightarrow etc.) are \mathrel.
+        | '\u{27F5}' | '\u{27F6}' | '\u{27F7}' | '\u{27F8}' | '\u{27F9}' | '\u{27FA}'
+        | '\u{27FC}' => Rel,
         '(' | '[' | '{' | '\u{27E8}' | '\u{2308}' | '\u{230A}' => Open,
         ')' | ']' | '}' | '\u{27E9}' | '\u{2309}' | '\u{230B}' => Close,
         ',' | ';' => Punct,
@@ -273,4 +276,20 @@ pub fn default_class(ch: char) -> (AtomClass, Limits) {
         _ => Limits::DisplayLimits,
     };
     (class, limits)
+}
+
+#[cfg(test)]
+mod long_arrow_tests {
+    use super::*;
+
+    #[test]
+    fn long_arrows_are_relations() {
+        // \Longrightarrow, \Longleftarrow, \Longleftrightarrow, \longrightarrow,
+        // \longleftarrow, \longleftrightarrow, \longmapsto.
+        for ch in [
+            '\u{27F9}', '\u{27F8}', '\u{27FA}', '\u{27F6}', '\u{27F5}', '\u{27F7}', '\u{27FC}',
+        ] {
+            assert_eq!(default_class(ch).0, AtomClass::Rel, "U+{:04X}", ch as u32);
+        }
+    }
 }
