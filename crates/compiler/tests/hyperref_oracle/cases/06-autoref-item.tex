@@ -1,0 +1,13 @@
+\documentclass{article}
+\usepackage{hyperref}
+\begin{document}
+\begin{enumerate}
+\item First step.\label{it:first}
+\item Second step.\label{it:second}
+\end{enumerate}
+Then \autoref{it:first} and \ref{it:second}.
+\begin{enumerate}
+\item Again.\label{it:again}
+\end{enumerate}
+Finally \autoref{it:again}.
+\end{document}

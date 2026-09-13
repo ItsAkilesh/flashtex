@@ -60,7 +60,7 @@ impl Bibliography {
         self.items.get(index).map(|item| item.label.as_str())
     }
 
-    fn resolve(&self, key: &str) -> Option<&str> {
+    pub(crate) fn resolve(&self, key: &str) -> Option<&str> {
         self.keys
             .get(key)
             .and_then(|&index| self.items.get(index))

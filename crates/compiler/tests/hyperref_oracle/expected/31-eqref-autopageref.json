@@ -1,0 +1,242 @@
+{
+ "case": "31-eqref-autopageref.tex",
+ "source_sha256": "b39468ad2a8c2cd7a1bbeba2a00bfb0bad7f54dd00b9abd9d2ca5c68b52ad4ff",
+ "oracle": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "hyperref": "\\ProvidesPackage{hyperref}",
+ "warnings": [],
+ "pages": [
+  {
+   "number": 1,
+   "size": [
+    "612",
+    "792"
+   ],
+   "annotations": [
+    {
+     "rect": [
+      "155.797",
+      "613.995",
+      "162.771",
+      "625.95"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "equation.1",
+     "text": "(1)"
+    },
+    {
+     "rect": [
+      "198.692",
+      "613.995",
+      "228.912",
+      "625.95"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "section.1",
+     "text": "page 1."
+    }
+   ],
+   "fill_colors": [],
+   "words": [
+    {
+     "text": "1",
+     "box": [
+      133.768,
+      654.452,
+      141.838,
+      667.191
+     ]
+    },
+    {
+     "text": "Math",
+     "box": [
+      157.977,
+      654.452,
+      196.375,
+      667.191
+     ]
+    },
+    {
+     "text": "e",
+     "box": [
+      287.899,
+      633.481,
+      292.538,
+      642.328
+     ]
+    },
+    {
+     "text": "=",
+     "box": [
+      295.307,
+      633.481,
+      303.056,
+      642.328
+     ]
+    },
+    {
+     "text": "mc",
+     "box": [
+      305.826,
+      633.481,
+      318.885,
+      642.328
+     ]
+    },
+    {
+     "text": "2",
+     "box": [
+      318.88,
+      638.175,
+      322.852,
+      644.368
+     ]
+    },
+    {
+     "text": "Use",
+     "box": [
+      133.768,
+      615.549,
+      149.597,
+      624.396
+     ]
+    },
+    {
+     "text": "(1),",
+     "box": [
+      152.914,
+      615.549,
+      168.412,
+      624.396
+     ]
+    },
+    {
+     "text": "found",
+     "box": [
+      171.739,
+      615.549,
+      196.371,
+      624.396
+     ]
+    },
+    {
+     "text": "page",
+     "box": [
+      199.689,
+      615.549,
+      219.614,
+      624.396
+     ]
+    },
+    {
+     "text": "1.",
+     "box": [
+      222.931,
+      615.549,
+      230.68,
+      624.396
+     ]
+    },
+    {
+     "text": "1",
+     "box": [
+      303.133,
+      87.432,
+      308.114,
+      96.279
+     ]
+    },
+    {
+     "text": "(1)",
+     "box": [
+      464.749,
+      633.481,
+      477.479,
+      642.328
+     ]
+    }
+   ]
+  }
+ ],
+ "destinations": {
+  "Doc-Start": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "equation.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "287.899",
+    "647.37",
+    null
+   ]
+  },
+  "page.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "132.768",
+    "705.06",
+    null
+   ]
+  },
+  "section.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  }
+ },
+ "outlines": [
+  {
+   "title": "Math",
+   "level": 1,
+   "destination": "section.1",
+   "count": null
+  }
+ ],
+ "info": {
+  "Title": "",
+  "Author": "",
+  "Subject": "",
+  "Keywords": "",
+  "Creator": "LaTeX with hyperref"
+ },
+ "catalog": {
+  "page_mode": "UseOutlines",
+  "open_action": [
+   1,
+   "Fit"
+  ]
+ }
+}

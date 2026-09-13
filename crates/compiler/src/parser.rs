@@ -14,6 +14,7 @@ use crate::math::{self, MathList};
 use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
 
+mod hyperlinks;
 mod tabular;
 
 /// Maximum number of nested user-macro expansions at one use site.
@@ -86,6 +87,13 @@ pub enum Inline {
         key: String,
         value: String,
         span: Span,
+        /// hyperref's destination for this label (`\@currentHref`:
+        /// `section.1`, `equation.2`, `Item.3`, `section*.4`, ...). Empty
+        /// when nothing numbered precedes the label.
+        anchor: String,
+        /// nameref's `\@currentlabelname`: the title of the most recent
+        /// sectioning command or caption, as typeset.
+        title: String,
     },
     Reference {
         key: String,
@@ -95,6 +103,11 @@ pub enum Inline {
         span: Span,
         /// See `Inline::Text::space_before`.
         space_before: bool,
+        /// `\ref` (number), `\autoref` (name + number) or `\nameref` (title).
+        form: ReferenceForm,
+        /// False for the starred forms (`\ref*`, `\autoref*`, ...) and inside
+        /// `NoHyper`: hyperref typesets them without a link.
+        linked: bool,
     },
     /// `\hfill`/`\hfil`: infinite horizontal stretch. Multiple fills on one
     /// line share the line's leftover width equally, as real TeX glue does;
@@ -139,6 +152,21 @@ pub enum Inline {
         /// See `Inline::Text::space_before`.
         space_before: bool,
     },
+}
+
+/// What an `Inline::Reference` typesets from its label.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ReferenceForm {
+    /// `\ref`, `\pageref`, `\eqref`: the number (or page).
+    #[default]
+    Number,
+    /// hyperref `\autoref`/`\autopageref`: `\HyRef@testreftype`'s name for
+    /// the label's destination type, a tie, then the number or page.
+    /// `names` are the `\...autorefname`/`\...name` macros the document
+    /// had (re)defined at the reference, as `(macro, expansion)`.
+    Auto { names: Vec<(String, String)> },
+    /// nameref `\nameref`: the label's title.
+    Name,
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -463,6 +491,9 @@ pub struct Parsed {
     pub incremental_safe: bool,
     /// True when counters or the label table make layout document-global.
     pub document_global_state: bool,
+    /// hyperref options, links, destinations and bookmarks (see
+    /// `crate::hyperref`). Empty unless `\usepackage{hyperref}` was seen.
+    pub hyperref: crate::hyperref::Hyperref,
 }
 
 impl Parsed {
@@ -516,6 +547,39 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "url",
     "href",
     "nolinkurl",
+    "hypersetup",
+    "pdfstringdefDisableCommands",
+    "hyperbaseurl",
+    "setpdflinkmargin",
+    "autoref",
+    "autopageref",
+    "nameref",
+    "hyperlink",
+    "hypertarget",
+    "hyperdef",
+    "hyperref",
+    "texorpdfstring",
+    "phantomsection",
+    "pdfbookmark",
+    "AMSautorefname",
+    "FancyVerbLineautorefname",
+    "Hfootnoteautorefname",
+    "Itemautorefname",
+    "appendixautorefname",
+    "chapterautorefname",
+    "equationautorefname",
+    "figureautorefname",
+    "footnoteautorefname",
+    "itemautorefname",
+    "pageautorefname",
+    "paragraphautorefname",
+    "partautorefname",
+    "sectionautorefname",
+    "subparagraphautorefname",
+    "subsectionautorefname",
+    "subsubsectionautorefname",
+    "tableautorefname",
+    "theoremautorefname",
     "hfill",
     "hfil",
     "hspace",
@@ -793,6 +857,15 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         author: None,
         date: None,
         titlepage_option: false,
+        hyperref: crate::hyperref::Hyperref::default(),
+        current_anchor: String::new(),
+        current_label_name: String::new(),
+        link_counter: 0,
+        item_anchor_counter: 0,
+        table_counter: 0,
+        no_hyper_depth: 0,
+        bookmark_level: None,
+        list_label_state: Vec::new(),
     };
     p.diags.extend(bibliography_diags);
     // The kernel's `\def\arraystretch{1}`, so `\renewcommand` can change it.
@@ -835,6 +908,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         preamble_source: preamble_source(entry_document.text, has_document),
         incremental_safe,
         document_global_state: p.document_global_state,
+        hyperref: p.hyperref,
     }
 }
 
@@ -936,6 +1010,27 @@ struct P<'a> {
     /// primitive, so `P::maketitle` renders the ordinary compact block and
     /// says so once, rather than silently ignoring the option.
     titlepage_option: bool,
+    /// Everything hyperref records (see `crate::hyperref`).
+    hyperref: crate::hyperref::Hyperref,
+    /// hyperref's `\@currentHref` for the next `\label`.
+    current_anchor: String,
+    /// nameref's `\@currentlabelname` for the next `\label`.
+    current_label_name: String,
+    /// `\Hy@linkcounter`: `section*.<n>` anchors of starred sections,
+    /// `\phantomsection`, the bibliography and contents headings.
+    link_counter: u32,
+    /// hyperref's `Item` counter: one per enumerate `\item`, document-wide.
+    item_anchor_counter: u32,
+    /// `table` captions (article's `table` counter).
+    table_counter: u32,
+    /// Open `NoHyper` environments: links are typeset without recording.
+    no_hyper_depth: usize,
+    /// `\Hy@currentbookmarklevel` for hyperref's level check, once set.
+    bookmark_level: Option<i32>,
+    /// `(current_counter, current_anchor)` saved at each `itemize`/
+    /// `enumerate` `\begin`: the list is a TeX group, so an item's
+    /// `\@currentlabel` does not outlive `\end`.
+    list_label_state: Vec<(Option<String>, String)>,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -1157,6 +1252,11 @@ impl P<'_> {
                 self.date = Some((tokens, span.merge(argument_span)));
             }
             "maketitle" => self.maketitle(span, blocks, para),
+            // hyperref configuration, valid in the preamble and the body.
+            "hypersetup" => self.hypersetup(span),
+            "pdfstringdefDisableCommands" | "hyperbaseurl" | "setpdflinkmargin" => {
+                let _ = self.required_group(name, span);
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
@@ -1178,7 +1278,9 @@ impl P<'_> {
                 if !starred {
                     self.current_counter = Some(number.clone());
                 }
+                let title_tokens = tokens.clone();
                 let content = self.inlines_from_tokens(tokens, TextStyle::BOLD);
+                self.heading_hyperref(name, level, &number, &title_tokens, &content, span);
                 if content.is_empty() {
                     // A missing/empty heading is already diagnosed where
                     // applicable and has nothing to position. Do not create an
@@ -1212,29 +1314,44 @@ impl P<'_> {
                             Some("replaced the earlier label definition".into()),
                         ));
                     }
-                    para.push(Inline::Label {
-                        key,
-                        value: self.current_counter.clone().unwrap_or_default(),
-                        span,
-                    });
+                    let value = self.current_counter.clone().unwrap_or_default();
+                    para.push(self.label_inline(key, value, span));
                 }
             }
-            "ref" | "pageref" | "eqref" => {
-                let space_before = self.space_precedes(self.i - 1);
-                let (tokens, argument_span) = self.required_group(name, span);
-                let key = token_text(&tokens).trim().to_string();
-                self.document_global_state = true;
-                para.push(Inline::Reference {
-                    key,
-                    page: name == "pageref",
-                    equation: name == "eqref",
-                    span: span.merge(argument_span),
-                    space_before,
-                });
+            "ref" | "pageref" | "eqref" | "autoref" | "autopageref" | "nameref" => {
+                self.reference(name, span, para)
             }
+            // hyperref (see `parser/hyperlinks.rs`).
+            "hyperlink" | "hypertarget" => self.hyperlink(name, span),
+            "hyperdef" => self.hyperdef(span),
+            "hyperref" => self.hyperref_command(span),
+            "texorpdfstring" => self.texorpdfstring(span),
+            "phantomsection" => self.anonymous_anchor(span),
+            "pdfbookmark" => self.pdfbookmark(span),
+            "AMSautorefname"
+            | "FancyVerbLineautorefname"
+            | "Hfootnoteautorefname"
+            | "Itemautorefname"
+            | "appendixautorefname"
+            | "chapterautorefname"
+            | "equationautorefname"
+            | "figureautorefname"
+            | "footnoteautorefname"
+            | "itemautorefname"
+            | "pageautorefname"
+            | "paragraphautorefname"
+            | "partautorefname"
+            | "sectionautorefname"
+            | "subparagraphautorefname"
+            | "subsectionautorefname"
+            | "subsubsectionautorefname"
+            | "tableautorefname"
+            | "theoremautorefname" => self.autoref_name_command(name, span, para),
             "tableofcontents" => {
                 self.flush_paragraph(blocks, para);
                 self.document_global_state = true;
+                // `\section*{\contentsname}`.
+                self.anonymous_anchor(span);
                 blocks.push(Block::TableOfContents { span });
                 self.finish_block_dependencies();
             }
@@ -1256,6 +1373,16 @@ impl P<'_> {
                         Some("rendered nothing for the empty citation".into()),
                     ));
                 } else {
+                    // hyperref links each defined key to `cite.<key>`.
+                    for key in &keys {
+                        if self.bibliography.resolve(key).is_some() {
+                            self.record_link(
+                                full_span,
+                                crate::hyperref::LinkKind::Cite,
+                                crate::hyperref::LinkTarget::Destination(format!("cite.{key}")),
+                            );
+                        }
+                    }
                     para.extend(bib::cite_inlines(
                         &keys,
                         note,
@@ -1291,9 +1418,14 @@ impl P<'_> {
             }
             "caption" => {
                 let (tokens, _) = self.required_group(name, span);
-                if self.env_stack.last().map(|(name, _)| name.as_str()) != Some("figure") {
+                let float = self
+                    .env_stack
+                    .last()
+                    .map(|(name, _)| name.clone())
+                    .unwrap_or_default();
+                if float != "figure" && float != "table" {
                     self.diags.push(Diagnostic::error(
-                        "\\caption is only supported inside a figure environment",
+                        "\\caption is only supported inside a figure or table environment",
                         Some(span),
                         Some("typeset the caption text as an ordinary paragraph".into()),
                     ));
@@ -1301,15 +1433,23 @@ impl P<'_> {
                     para.extend(self.inlines_from_tokens(tokens, style));
                 } else {
                     self.flush_paragraph(blocks, para);
-                    self.figure_counter += 1;
-                    self.current_counter = Some(self.figure_counter.to_string());
+                    let (counter, number, caption_name) = if float == "table" {
+                        self.table_counter += 1;
+                        ("table", self.table_counter, "Table")
+                    } else {
+                        self.figure_counter += 1;
+                        ("figure", self.figure_counter, "Figure")
+                    };
+                    self.current_counter = Some(number.to_string());
+                    let caption = self.inlines_from_tokens(tokens, TextStyle::default());
+                    self.caption_hyperref(counter, number, &caption, span);
                     let mut content = vec![Inline::Text {
-                        text: format!("Figure {}:", self.figure_counter),
+                        text: format!("{caption_name} {number}:"),
                         span,
                         style: TextStyle::default(),
                         space_before: true,
                     }];
-                    content.extend(self.inlines_from_tokens(tokens, TextStyle::default()));
+                    content.extend(caption);
                     blocks.push(Block::FigureCaption { content });
                     self.finish_block_dependencies();
                 }
@@ -1330,7 +1470,9 @@ impl P<'_> {
                 match self.list_stack.last_mut() {
                     Some((kind, count, template, _, _)) => {
                         *count += 1;
-                        let marker = if kind == "enumerate" {
+                        let enumerate = kind == "enumerate";
+                        let templated = template.is_some();
+                        let marker = if enumerate {
                             match template {
                                 Some(template) => enumitem_label(template, *count),
                                 None => format!("{}.", count),
@@ -1338,6 +1480,9 @@ impl P<'_> {
                         } else {
                             "•".to_string()
                         };
+                        if enumerate {
+                            self.enumerate_item_hyperref(templated.then(|| marker.clone()), span);
+                        }
                         self.pending_item_label = Some((marker, span));
                     }
                     None => self.diags.push(Diagnostic::error(
@@ -1377,7 +1522,8 @@ impl P<'_> {
                     // before this parse began; only the token positions need
                     // consuming here.
                     let _ = self.optional_bracket_argument();
-                    let _ = self.required_group(name, span);
+                    let (key, _) = self.required_group(name, span);
+                    self.record_anchor(format!("cite.{}", token_text(&key).trim()), span);
                     self.document_global_state = true;
                     let label = self
                         .bibliography
@@ -1414,6 +1560,11 @@ impl P<'_> {
                 let (text, arg_span) = self.url_argument(name, span);
                 let full_span = span.merge(arg_span);
                 self.note_links_unclickable(full_span);
+                self.record_link(
+                    full_span,
+                    crate::hyperref::LinkKind::Url,
+                    crate::hyperref::LinkTarget::Uri(text.clone()),
+                );
                 self.push_url_text(&text, full_span, space_before, para);
             }
             // `\nolinkurl`: url.sty-style literal, monospaced text with no
@@ -1425,9 +1576,22 @@ impl P<'_> {
                 self.push_url_text(&text, span.merge(arg_span), space_before, para);
             }
             "href" => {
-                let (_url, url_span) = self.url_argument(name, span);
+                let (url, url_span) = self.url_argument(name, span);
                 let (text_tokens, text_span) = self.required_group(name, span.merge(url_span));
                 self.note_links_unclickable(span.merge(text_span));
+                // hyperref's `\href{#name}` is an internal `\hyperlink`.
+                match url.strip_prefix('#') {
+                    Some(destination) => self.record_link(
+                        text_span,
+                        crate::hyperref::LinkKind::Link,
+                        crate::hyperref::LinkTarget::Destination(destination.to_string()),
+                    ),
+                    None => self.record_link(
+                        text_span,
+                        crate::hyperref::LinkKind::Url,
+                        crate::hyperref::LinkTarget::Uri(url),
+                    ),
+                }
                 let style = self.style;
                 para.extend(self.inlines_from_tokens(text_tokens, style));
             }
@@ -1886,9 +2050,9 @@ impl P<'_> {
     }
 
     fn use_package(&mut self, span: Span) {
-        let options = self
+        let (options, options_span) = self
             .optional_bracket_argument()
-            .map(|(options, _)| options)
+            .map(|(options, options_span)| (options, Some(options_span)))
             .unwrap_or_default();
         let (tokens, argument_span) = self.required_group("usepackage", span);
         let packages: Vec<String> = token_text(&tokens)
@@ -1906,6 +2070,13 @@ impl P<'_> {
             return;
         }
         self.packages.extend(packages.iter().cloned());
+        if packages.iter().any(|package| package == "hyperref") {
+            self.hyperref.loaded = true;
+            if let Some(options_span) = options_span {
+                let list = self.raw_inside(options_span);
+                self.apply_hyperref_options(&list, options_span);
+            }
+        }
         let packages: Vec<String> = packages
             .into_iter()
             .filter(|package| !package_matches_layout(package, &options))
@@ -2392,8 +2563,10 @@ impl P<'_> {
             self.env_alignments.push(self.declared_alignment);
             if environment == "document" && self.has_document {
                 self.in_body = true;
-            } else if environment == "figure" && self.in_body {
+            } else if (environment == "figure" || environment == "table") && self.in_body {
                 self.flush_paragraph(blocks, para);
+            } else if environment == "NoHyper" {
+                self.no_hyper_depth += 1;
             } else if let (Some(style), true) = (paragraph_style(&environment), self.in_body) {
                 self.flush_paragraph(blocks, para);
                 self.paragraph_styles.push(style);
@@ -2411,6 +2584,8 @@ impl P<'_> {
                     .unwrap_or_default();
                 self.list_stack
                     .push((environment.clone(), 0, template, spacing, blocks.len()));
+                self.list_label_state
+                    .push((self.current_counter.clone(), self.current_anchor.clone()));
             } else if self.in_body
                 && (self.theorems.contains_key(&environment) || environment == "proof")
             {
@@ -2425,6 +2600,8 @@ impl P<'_> {
                 let widest_label = token_text(&widest_tokens).trim().to_string();
                 self.document_global_state = true;
                 let heading_span = span.merge(argument_span).merge(widest_span);
+                // `\section*{\refname}`.
+                self.anonymous_anchor(heading_span);
                 blocks.push(Block::Heading {
                     level: 1,
                     number: String::new(),
@@ -2496,6 +2673,15 @@ impl P<'_> {
                 Some("ignored the stray \\end".into()),
             )),
         }
+        if environment == "NoHyper" {
+            self.no_hyper_depth = self.no_hyper_depth.saturating_sub(1);
+        }
+        if (environment == "itemize" || environment == "enumerate") && self.in_body {
+            if let Some((counter, anchor)) = self.list_label_state.pop() {
+                self.current_counter = counter;
+                self.current_anchor = anchor;
+            }
+        }
         if paragraph_style(&environment).is_some() && self.in_body {
             self.flush_paragraph(blocks, para);
             self.paragraph_styles.pop();
@@ -2552,7 +2738,10 @@ impl P<'_> {
                     }
                 }
             }
-        } else if environment == "figure" || self.theorems.contains_key(&environment) {
+        } else if environment == "figure"
+            || environment == "table"
+            || self.theorems.contains_key(&environment)
+        {
             self.flush_paragraph(blocks, para);
         } else if environment == "proof" {
             para.push(Inline::HFill { span });
@@ -2687,6 +2876,9 @@ impl P<'_> {
                 n.to_string()
             };
             self.current_counter = Some(number.clone());
+            // hyperref `\theH<counter>` is `\theHsection.\arabic{..}` when
+            // numbered within sections, which is `number` itself.
+            self.set_current_anchor(format!("{}.{number}", def.counter), span);
             head.push(' ');
             head.push_str(&number);
         }
@@ -2831,6 +3023,7 @@ impl P<'_> {
         if numbered {
             self.equation_counter += 1;
             self.current_counter = Some(self.equation_counter.to_string());
+            self.set_current_anchor(format!("equation.{}", self.equation_counter), open);
         }
         let number = self.equation_counter.to_string();
         let mut raw = Vec::new();
@@ -2865,11 +3058,7 @@ impl P<'_> {
                             Some("replaced the earlier label definition".into()),
                         ));
                     }
-                    labels.push(Inline::Label {
-                        key,
-                        value: number.clone(),
-                        span: label_span,
-                    });
+                    labels.push(self.label_inline(key, number.clone(), label_span));
                 }
                 continue;
             }
@@ -3092,6 +3281,7 @@ impl P<'_> {
                 self.equation_counter += 1;
                 let number = self.equation_counter.to_string();
                 self.current_counter = Some(number.clone());
+                self.set_current_anchor(format!("equation.{number}"), open);
                 number
             });
             for (key, label_span) in row_labels {
@@ -3103,13 +3293,10 @@ impl P<'_> {
                         Some("replaced the earlier label definition".into()),
                     ));
                 }
-                labels.push(Inline::Label {
-                    key,
-                    value: number
-                        .clone()
-                        .unwrap_or_else(|| self.equation_counter.to_string()),
-                    span: label_span,
-                });
+                let value = number
+                    .clone()
+                    .unwrap_or_else(|| self.equation_counter.to_string());
+                labels.push(self.label_inline(key, value, label_span));
             }
             let cells = cells
                 .iter()
@@ -3675,6 +3862,7 @@ impl P<'_> {
         }
         self.t = outer_tokens;
         self.i = outer_index;
+        let expanded = hyperlinks::tex_alternatives(expanded);
 
         let mut content = Vec::new();
         let mut style = base;
@@ -4177,6 +4365,9 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // \newtheorem/\theoremstyle/proof are implemented (see theorems.rs);
         // amsthm takes no package options of its own.
         "amsthm" => options.is_empty(),
+        // Links, destinations and bookmarks are recorded (crate::hyperref);
+        // its options are checked key by key where the package is loaded.
+        "hyperref" => true,
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep

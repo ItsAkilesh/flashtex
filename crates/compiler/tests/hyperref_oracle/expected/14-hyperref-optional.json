@@ -1,0 +1,193 @@
+{
+ "case": "14-hyperref-optional.tex",
+ "source_sha256": "60e7a3b04a7417cb4a391e0c515563240f96fb017a810ae2962fe6125d4aef96",
+ "oracle": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "hyperref": "\\ProvidesPackage{hyperref}",
+ "warnings": [],
+ "pages": [
+  {
+   "number": 1,
+   "size": [
+    "612",
+    "792"
+   ],
+   "annotations": [
+    {
+     "rect": [
+      "172.761",
+      "632.481",
+      "251.217",
+      "643.329"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "section.1",
+     "text": "the target section"
+    }
+   ],
+   "fill_colors": [],
+   "words": [
+    {
+     "text": "1",
+     "box": [
+      133.768,
+      654.452,
+      141.838,
+      667.191
+     ]
+    },
+    {
+     "text": "Target",
+     "box": [
+      157.977,
+      654.452,
+      204.001,
+      667.191
+     ]
+    },
+    {
+     "text": "Section",
+     "box": [
+      209.381,
+      654.452,
+      260.68,
+      667.191
+     ]
+    },
+    {
+     "text": "Jump",
+     "box": [
+      133.768,
+      633.481,
+      158.26,
+      642.328
+     ]
+    },
+    {
+     "text": "to",
+     "box": [
+      161.578,
+      633.481,
+      170.433,
+      642.328
+     ]
+    },
+    {
+     "text": "the",
+     "box": [
+      173.761,
+      633.481,
+      187.598,
+      642.328
+     ]
+    },
+    {
+     "text": "target",
+     "box": [
+      190.915,
+      633.481,
+      216.957,
+      642.328
+     ]
+    },
+    {
+     "text": "section",
+     "box": [
+      220.274,
+      633.481,
+      250.217,
+      642.328
+     ]
+    },
+    {
+     "text": "from",
+     "box": [
+      253.544,
+      633.481,
+      273.774,
+      642.328
+     ]
+    },
+    {
+     "text": "here.",
+     "box": [
+      277.092,
+      633.481,
+      298.152,
+      642.328
+     ]
+    },
+    {
+     "text": "1",
+     "box": [
+      303.133,
+      87.432,
+      308.114,
+      96.279
+     ]
+    }
+   ]
+  }
+ ],
+ "destinations": {
+  "Doc-Start": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "page.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "132.768",
+    "705.06",
+    null
+   ]
+  },
+  "section.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  }
+ },
+ "outlines": [
+  {
+   "title": "Target Section",
+   "level": 1,
+   "destination": "section.1",
+   "count": null
+  }
+ ],
+ "info": {
+  "Title": "",
+  "Author": "",
+  "Subject": "",
+  "Keywords": "",
+  "Creator": "LaTeX with hyperref"
+ },
+ "catalog": {
+  "page_mode": "UseOutlines",
+  "open_action": [
+   1,
+   "Fit"
+  ]
+ }
+}

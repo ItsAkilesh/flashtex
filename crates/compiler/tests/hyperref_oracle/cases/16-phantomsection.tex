@@ -1,0 +1,9 @@
+\documentclass{article}
+\usepackage{hyperref}
+\begin{document}
+\section{Numbered}
+\phantomsection\label{ph:one}
+An anchored paragraph.
+\section*{Unnumbered}\label{sec:star}
+Refer to \ref{ph:one}, \autoref{ph:one} and \nameref{sec:star}.
+\end{document}

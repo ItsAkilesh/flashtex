@@ -1,0 +1,11 @@
+\documentclass{article}
+\usepackage{hyperref}
+\begin{document}
+\begin{enumerate}
+\item Outer.\label{it:outer}
+\begin{enumerate}
+\item Inner.\label{it:inner}
+\end{enumerate}
+\end{enumerate}
+See \ref{it:outer}, \ref{it:inner} and \autoref{it:inner}.
+\end{document}

@@ -1,0 +1,215 @@
+{
+ "case": "26-texorpdfstring.tex",
+ "source_sha256": "3ee88d5fb0b04afadf562594baa4277ad7d63ad818f4710a5bfe2513cc240954",
+ "oracle": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "hyperref": "\\ProvidesPackage{hyperref}",
+ "warnings": [],
+ "pages": [
+  {
+   "number": 1,
+   "size": [
+    "612",
+    "792"
+   ],
+   "annotations": [
+    {
+     "rect": [
+      "186.515",
+      "634.418",
+      "234.004",
+      "643.329"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "section.1",
+     "text": "Fast Links"
+    },
+    {
+     "rect": [
+      "245.35",
+      "634.418",
+      "285.588",
+      "643.329"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "section.1",
+     "text": "section 1."
+    }
+   ],
+   "fill_colors": [],
+   "words": [
+    {
+     "text": "1",
+     "box": [
+      133.768,
+      654.452,
+      141.838,
+      667.191
+     ]
+    },
+    {
+     "text": "Fast",
+     "box": [
+      157.977,
+      654.452,
+      187.264,
+      667.191
+     ]
+    },
+    {
+     "text": "Links",
+     "box": [
+      192.643,
+      654.452,
+      230.674,
+      667.191
+     ]
+    },
+    {
+     "text": "The",
+     "box": [
+      133.768,
+      633.481,
+      150.926,
+      642.328
+     ]
+    },
+    {
+     "text": "section",
+     "box": [
+      154.243,
+      633.481,
+      184.196,
+      642.328
+     ]
+    },
+    {
+     "text": "Fast",
+     "box": [
+      187.513,
+      633.481,
+      205.965,
+      642.328
+     ]
+    },
+    {
+     "text": "Links",
+     "box": [
+      209.292,
+      633.481,
+      233.009,
+      642.328
+     ]
+    },
+    {
+     "text": "is",
+     "box": [
+      236.327,
+      633.481,
+      243.024,
+      642.328
+     ]
+    },
+    {
+     "text": "section",
+     "box": [
+      246.341,
+      633.481,
+      276.294,
+      642.328
+     ]
+    },
+    {
+     "text": "1.",
+     "box": [
+      279.611,
+      633.481,
+      287.36,
+      642.328
+     ]
+    },
+    {
+     "text": "1",
+     "box": [
+      303.133,
+      87.432,
+      308.114,
+      96.279
+     ]
+    }
+   ]
+  }
+ ],
+ "destinations": {
+  "Doc-Start": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "page.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "132.768",
+    "705.06",
+    null
+   ]
+  },
+  "section.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  }
+ },
+ "outlines": [
+  {
+   "title": "Fast links (PDF)",
+   "level": 1,
+   "destination": "section.1",
+   "count": null
+  }
+ ],
+ "info": {
+  "Title": "",
+  "Author": "",
+  "Subject": "",
+  "Keywords": "",
+  "Creator": "LaTeX with hyperref"
+ },
+ "catalog": {
+  "page_mode": "UseOutlines",
+  "open_action": [
+   1,
+   "Fit"
+  ]
+ }
+}
