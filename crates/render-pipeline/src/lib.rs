@@ -144,8 +144,12 @@ pub fn render_cached(
     labels.floats = toc::float_entries(&float_envs, &documents.iter().map(|d| d.text).collect::<Vec<_>>());
     // Entry titles from source bytes (`\addcontentsline`, `\chapter`,
     // `\part`, captions) are set as body text: one parse per document.
-    if has_lists {
-        let spans = toc::entry_spans(entry_text, flashtex_compiler::DocumentId(entry_index), &labels.floats);
+    // Sectioning titles holding math (the compiler sets `$x^2$` in a
+    // `\section` argument as plain text) are re-read the same way.
+    let heading_math = adapter::math_title_spans(entry_text, flashtex_compiler::DocumentId(entry_index));
+    if has_lists || !heading_math.is_empty() {
+        let mut spans = if has_lists { toc::entry_spans(entry_text, flashtex_compiler::DocumentId(entry_index), &labels.floats) } else { Vec::new() };
+        spans.extend(heading_math);
         labels.entry_items = toc::entry_items(documents, entry_index, &texts, options, &labels, &spans);
     }
     // The compiler reports the list commands, `\addcontentsline` and

@@ -742,6 +742,7 @@ pub fn adapt_cached(
     // article's `\maketitle` (no `titlepage`) issues `\thispagestyle{plain}`.
     let maketitle_plain = style.class_geometry.as_ref().is_some_and(|d| !d.options.titlepage);
     let commands = body_commands(source, has_chapters, book);
+    let heading_math_spans = math_title_spans(source, entry_doc);
     // Every compiler `TitleBlock` is laid out at its `\maketitle` command
     // (the entry document's, in order) when the two correspond one to one;
     // otherwise (a `\maketitle` the compiler rejected, or one in an
@@ -759,6 +760,26 @@ pub fn adapt_cached(
     };
     // book.cls `\if@mainmatter` (true until `\frontmatter`).
     let mut mainmatter = true;
+    // Run-in heading titles as the compiler parsed them (it sets the
+    // argument of `\paragraph`/`\subparagraph` as body text, math included).
+    let run_in_titles: std::collections::HashMap<usize, Vec<Item>> = commands
+        .iter()
+        .filter_map(|c| match c.kind {
+            BodyKind::RunIn { title, .. } => {
+                let inlines: Vec<Inline> = lowered
+                    .iter()
+                    .flat_map(|b| inlines_of(b).iter())
+                    .filter(|i| {
+                        let s = inline_span(i);
+                        s.document == entry_doc && s.start >= title.0 && s.start < title.1
+                    })
+                    .cloned()
+                    .collect();
+                Some((c.start, items_for(&inlines, false)))
+            }
+            _ => None,
+        })
+        .collect();
     strip_command_text(&mut lowered, entry_doc, &commands);
     let mut next_command = 0usize;
     let mut noindent_at: Option<usize> = None;
@@ -955,7 +976,14 @@ pub fn adapt_cached(
                             push_segment(&mut items, number.clone(), chars, TextStyle::default());
                             items.push(Item::Quad { em: 1.0 });
                         }
-                        items.extend(labels.entry_items.get(entry_doc, title.0, title.1).unwrap_or_else(|| words_from_source(source, entry_doc, title.0, title.1)));
+                        // A title holding math is re-read as body text
+                        // (`math_title_spans`): the compiler sets the math of
+                        // an unsupported command's argument as plain text.
+                        let reread = labels.entry_items.get(entry_doc, title.0, title.1);
+                        match reread.or_else(|| run_in_titles.get(&cmd.start).filter(|t| !t.is_empty()).cloned()) {
+                            Some(title_items) => items.extend(title_items),
+                            None => items.extend(words_from_source(source, entry_doc, title.0, title.1)),
+                        }
                         if toc_active {
                             items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
                         }
@@ -1072,7 +1100,14 @@ pub fn adapt_cached(
                     push_segment(&mut items, number.to_string(), chars, TextStyle::default());
                     items.push(Item::Quad { em: 1.0 });
                 }
-                let content_items = items_for(content, true);
+                // A title holding math: the compiler's text-only content is
+                // replaced by the argument re-read as body text.
+                let math_title = content
+                    .first()
+                    .map(inline_span)
+                    .and_then(|f| heading_math_spans.iter().find(|s| s.document == f.document && s.start <= f.start && f.start < s.end))
+                    .and_then(|s| labels.entry_items.get(s.document, s.start, s.end));
+                let content_items = math_title.unwrap_or_else(|| items_for(content, true));
                 if toc_active {
                     // `\@sect`: `\addcontentsline{toc}{<level>}{\numberline{<number>}<title>}`
                     // for an unstarred heading (no `\numberline` past `secnumdepth`).
@@ -3052,6 +3087,53 @@ pub enum Matter {
 /// `\maketitle`, (when the class has chapters) `\chapter` and (book)
 /// `\frontmatter`/`\mainmatter`/`\backmatter` after `\begin{document}`,
 /// in source order, skipping comments.
+/// The argument ranges of `\section`/`\subsection`/`\subsubsection` (starred
+/// or with an optional argument) after `\begin{document}` that hold inline
+/// math: the compiler sets such a title's math as plain text, so the
+/// pipeline re-reads the argument as body text (`toc::entry_items`).
+pub fn math_title_spans(source: &str, document: DocumentId) -> Vec<Span> {
+    let bytes = source.as_bytes();
+    let begin = source.find("\\begin{document}").map_or(0, |b| b + "\\begin{document}".len());
+    let mut out = Vec::new();
+    for name in ["\\section", "\\subsection", "\\subsubsection", "\\paragraph", "\\subparagraph"] {
+        let mut from = begin;
+        while let Some(at) = source[from..].find(name) {
+            let mut k = from + at + name.len();
+            from = k;
+            if bytes.get(k).is_some_and(|b| b.is_ascii_alphabetic()) {
+                continue;
+            }
+            let line_start = source[..k].rfind('\n').map_or(0, |n| n + 1);
+            if source[line_start..k].contains('%') {
+                continue;
+            }
+            if bytes.get(k) == Some(&b'*') {
+                k += 1;
+            }
+            let rest = &source[k..];
+            let trimmed = rest.trim_start();
+            if trimmed.starts_with('[') {
+                match trimmed.find(']') {
+                    Some(close) => k += rest.len() - trimmed.len() + close + 1,
+                    None => continue,
+                }
+            }
+            let rest = &source[k..];
+            let open = k + rest.len() - rest.trim_start().len();
+            if bytes.get(open) != Some(&b'{') {
+                continue;
+            }
+            let Some(close) = matching_brace(bytes, open) else { continue };
+            let inner = &source[open + 1..close];
+            if inner.contains('$') || inner.contains("\\(") {
+                out.push(Span::in_document(document, open + 1, close));
+            }
+        }
+    }
+    out.sort_by_key(|s| s.start);
+    out
+}
+
 pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyCommand> {
     let bytes = source.as_bytes();
     let begin = source.find("\\begin{document}").map_or(0, |b| b + "\\begin{document}".len());

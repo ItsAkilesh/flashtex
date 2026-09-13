@@ -208,7 +208,8 @@ fn headings_against_pdflatex() {
             if full { "  EXACT" } else { "" }
         );
         if !verbose.is_empty() && (verbose == "all" || verbose == *name) {
-            for m in rep.misses.iter().take(40) {
+            let cap = std::env::var("HEADINGS_VERBOSE_MAX").ok().and_then(|v| v.parse().ok()).unwrap_or(40);
+            for m in rep.misses.iter().take(cap) {
                 eprintln!("    {m}");
             }
         }

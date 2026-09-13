@@ -322,6 +322,10 @@ pub struct Context<'a> {
     recs: Vec<BoxRec>,
     maths: Vec<MathRec>,
     math_fonts: Option<MathProvider>,
+    /// Math providers for text sizes other than the body's (math in a
+    /// heading), keyed by the size's bits; `None` when that size falls back
+    /// to the body provider.
+    math_fonts_sized: std::collections::HashMap<u64, Option<MathProvider>>,
     math_unavailable: bool,
     reported: BTreeSet<String>,
     /// Diagnostics emitted while a cacheable block is being built (with
@@ -350,6 +354,7 @@ impl<'a> Context<'a> {
             recs: Vec::new(),
             maths: Vec::new(),
             math_fonts: None,
+            math_fonts_sized: std::collections::HashMap::new(),
             math_unavailable: false,
             reported: BTreeSet::new(),
             capture: None,
@@ -734,13 +739,50 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// The math provider for formulas set at text size `size`: the body's,
+    /// or (math in a `\Large` heading, ...) the metrics LaTeX selects for
+    /// that size (`\DeclareMathSizes` and the lmodern designs), falling back
+    /// to the body's with a note when those are not available.
+    fn math_fonts_at(&mut self, span: Span, size: f64) -> Option<MathProvider> {
+        let base = self.math_fonts(span)?;
+        if (size - self.style.body_size_pt).abs() < 1e-9 {
+            return Some(base);
+        }
+        let key = size.to_bits();
+        if let Some(p) = self.math_fonts_sized.get(&key) {
+            return Some(p.clone().unwrap_or(base));
+        }
+        let built = match &base {
+            MathProvider::Tex(_) => crate::mathtex::declare_math_sizes(size).and_then(|[text, script, script_script]| {
+                let r = self.fonts.resolve(self.style.family, Role::Math, size);
+                let m = MathFonts::new(r.face, MathSizes { text, script, script_script })?;
+                let m = Rc::new(m.with_double_struck(self.fonts.otf(crate::mathfont::BB_FONT_FILE)));
+                TexMathMetrics::for_text_size(size, m, self.fonts).filter(TexMathMetrics::roman_available).map(|t| MathProvider::Tex(Rc::new(t)))
+            }),
+            MathProvider::Otf(_) => None,
+        };
+        if built.is_none() {
+            let src = self.source(span);
+            let msg = format!("math in {size}pt text laid out with the {}pt body math fonts: no TeX math metrics for that size", self.style.body_size_pt);
+            self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
+        }
+        self.math_fonts_sized.insert(key, built.clone());
+        Some(built.unwrap_or(base))
+    }
+
     fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool) -> Option<usize> {
-        let fonts = self.math_fonts(span)?;
+        let size = self.style.body_size_pt;
+        self.math_box_sized(list, span, display, size)
+    }
+
+    /// [`Context::math_box`] at text size `size`.
+    fn math_box_sized(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool, size: f64) -> Option<usize> {
+        let fonts = self.math_fonts_at(span, size)?;
         let mut sink = crate::mathtext::TextSink::default();
         // `\quad` in math is `\hskip1em` of the text font (`\fontdimen6`),
         // not 18 mu of the math symbol font.
         let fam2_quad = ml::MathFontMetrics::params(fonts.metrics(), ml::Style::TEXT.size_class()).quad;
-        let text_quad = self.text_params(TextStyle::default(), self.style.body_size_pt).quad;
+        let text_quad = self.text_params(TextStyle::default(), size).quad;
         if fam2_quad > 0.0 && text_quad > 0.0 {
             sink.text_quad = Some((text_quad, text_quad / fam2_quad));
         }
@@ -1423,7 +1465,7 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::Glue(glue), None);
                 }
                 AItem::Math { list, span } => {
-                    if let Some(rec) = self.math_box(list, *span, false) {
+                    if let Some(rec) = self.math_box_sized(list, *span, false, size) {
                         let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
                         let root = &self.maths[*mi].root;
                         let run = math_run(root, size, *span);
