@@ -797,18 +797,26 @@ the scan is bounded to the caret's line and skips commented text). The
 inserted `\frac{|}{}` snippet opens it too. Off when the completion-list
 preference is off.
 
-**Editor niceties** (`SourceEditorView.swift`, `EditorIntelligence.swift`):
-`{`, `[` and `$` are auto-closed and the closer typed over (Backspace between
-an empty pair removes both); `\(` and `\[` auto-close with `\)` / `\]`, both
-halves typed over (`ShellModel.autoClosePairs`, default `{ [ $ (`; the
-Preferences "auto-close braces" switch gates all of them). Return keeps the
-line's indentation, indents once more after `\begin{env}` and adds the
-matching `\end{env}`; Return at the end of a `\item …` line continues the
-list with a new `\item ` (`\item[] ` for a description entry; a bare `\item`
-line just breaks). ⌘/ toggles `% ` on every line the selection touches (all
-commented → uncomment, `%` with or without a space; otherwise comment the
-non-blank lines; one undo step "Toggle Comment"). The delimiter pair around
-the caret is highlighted (`BraceMatcher`).
+**Editor niceties** (`SourceEditorView.swift`, `EditorIntelligence.swift`,
+`EditorKeyHandling.swift`): `{`, `[` and `$` are auto-closed and the closer
+typed over (Backspace between an empty pair removes both); `\(` and `\[`
+auto-close with `\)` / `\]`, both halves typed over (`ShellModel.autoClosePairs`,
+default `{ [ $ (`; the Preferences "auto-close brackets & math" switch gates
+all of them). A completion snippet's own placeholder closer (`\section{}`'s
+`}`) is tracked the same way, so typing over it overtypes instead of doubling
+it. Tab indents: a multi-line selection gets the indent unit (spaces × width,
+or a tab, per the Preferences "Indent with" setting) prefixed to every line
+it touches, and a caret or single-line selection just inserts it; Shift-Tab
+always outdents the touched line(s) by up to one unit, selection or not.
+While a completion list or an inserted snippet's placeholders are active, Tab
+still means those instead (below). Return keeps the line's indentation,
+indents once more after `\begin{env}` and adds the matching `\end{env}`;
+Return at the end of a `\item …` line continues the list with a new `\item `
+(`\item[] ` for a description entry; a bare `\item` line just breaks). ⌘/
+toggles `% ` on every line the selection touches (all commented → uncomment,
+`%` with or without a space; otherwise comment the non-blank lines; one undo
+step "Toggle Comment"). The delimiter pair around the caret is highlighted
+(`BraceMatcher`).
 
 Commands trigger on `\` (empty prefix lists everything supported). Invalid
 carets (negative, past the end, inside a surrogate pair) and malformed input
@@ -843,7 +851,7 @@ explain that nothing is loaded.
 
 | Shortcut | Action |
 |---|---|
-| ⌘, | Settings window (editor preferences: font, wrapping, tab width, indent, appearance, auto-close braces, completion list; Tab walks the controls top to bottom) |
+| ⌘, | Settings window (editor preferences: font, wrapping, tab width, indent, appearance, auto-close brackets & math, completion list; Tab walks the controls top to bottom) |
 | ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
 | Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
@@ -884,6 +892,7 @@ explain that nothing is loaded.
 | Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, citation keys, document words; never takes the keyboard from the editor) |
 | ↑ / ↓ / Tab / ⇧Tab / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
 | Tab / ⇧Tab / Esc | While an inserted snippet is active (no list open): next / previous placeholder (`\frac{|}{}`, environment templates), Esc leaves the snippet |
+| Tab / ⇧Tab | Otherwise (no list, no active snippet): Tab indents (a multi-line selection: every touched line; a caret or single-line selection: inserts the indent unit at it); ⇧Tab always outdents the touched line(s) by up to one unit |
 | ⌘⇧Space | Signature help for the command whose argument the caret is in (also opens on `{`/`[` typed after a command name; `}`, Esc or leaving the argument closes it) |
 | ⌘/ | Toggle `% ` line comment on the selection's lines |
 | Return | Auto-indent; after `\begin{env}` indent and add `\end{env}`; at the end of a `\item …` line continue the list |
