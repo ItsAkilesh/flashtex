@@ -2141,6 +2141,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 number_span,
                 span,
                 space_before,
+                ..
             } => {
                 let b = if *display {
                     math::layout_display(list, size, &mut c.diagnostics)
@@ -2221,6 +2222,8 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 span,
                 space_before,
             } => c.place(text.clone(), size, *span, Font::Courier, *space_before),
+            // The Core 14 layout has no box model: the content is set inline.
+            Inline::ColorBox(b) => emit(c, &b.content, size, font),
             Inline::Logo {
                 logo,
                 span,
