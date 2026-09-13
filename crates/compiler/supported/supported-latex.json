@@ -361,7 +361,7 @@
     {"name": "sigma", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol σ", "renders": true, "glyph": "σ"},
     {"name": "phi", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol φ", "renders": true, "glyph": "φ"},
     {"name": "omega", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ω", "renders": true, "glyph": "ω"},
-    {"name": "epsilon", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ε", "renders": true, "glyph": "ε"},
+    {"name": "epsilon", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ϵ", "renders": true, "glyph": "ϵ"},
     {"name": "varepsilon", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ε", "renders": true, "glyph": "ε"},
     {"name": "zeta", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ζ", "renders": true, "glyph": "ζ"},
     {"name": "eta", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol η", "renders": true, "glyph": "η"},

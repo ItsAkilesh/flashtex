@@ -254,6 +254,15 @@ pub(crate) fn shaped_width(
     span: Span,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> (f64, Span) {
+    // Symbol has no lunate epsilon (`\epsilon`, U+03F5): it is drawn with the
+    // open form, as `export::map_char` encodes it (same advance).
+    let substituted;
+    let text = if font == Font::Symbol && text.contains('\u{03F5}') {
+        substituted = text.replace('\u{03F5}', "\u{03B5}");
+        substituted.as_str()
+    } else {
+        text
+    };
     match shape_text(font, text) {
         Ok(shaped) => {
             for missing in &shaped.missing {
