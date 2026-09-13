@@ -257,9 +257,12 @@ struct CapturesList: View {
                                     Text("sent for destination \(d) base_revision \(rev)").font(.caption2.monospaced()).foregroundStyle(.secondary)
                                 }
                                 if c.outcome?.state == "inserted" {
-                                    Label("Inserted on Mac ✓", systemImage: "checkmark.circle.fill").font(.footnote.bold()).foregroundStyle(.green)
-                                        .transition(.scale.combined(with: .opacity))
-                                        .accessibilityIdentifier("capture.inserted.\(c.id)")
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                        Text("Inserted on Mac ✓").accessibilityIdentifier("capture.inserted.\(c.id)")
+                                    }
+                                    .font(.footnote.bold()).foregroundStyle(.green)
+                                    .transition(.scale.combined(with: .opacity))
                                 }
                                 if let label = c.outcomeLabel {
                                     Text("Mac: \(label)").font(.footnote).foregroundStyle(c.outcomeIsFinal ? .primary : .secondary)

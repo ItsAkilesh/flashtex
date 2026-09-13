@@ -125,7 +125,7 @@ final class CaptureFlowUITests: XCTestCase {
         let cap = try XCTUnwrap(mac.captures.first)
         mac.setStatus(cap.captureId, state: "inserted", latex: "\\alpha", newRevision: 7)
         XCTAssertTrue(text(app, startingWith: "Mac: inserted on the Mac (revision 7)").waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertTrue(el(app, "capture.inserted.\(cap.captureId)").exists, "Inserted on Mac ✓")
+        XCTAssertTrue(text(app, startingWith: "Inserted on Mac").waitForExistence(timeout: 5), "Inserted on Mac ✓")
         app.terminate()
 
         // Relaunch without -flashtexpad-fresh and without the pairing argument.
