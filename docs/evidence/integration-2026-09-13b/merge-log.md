@@ -263,6 +263,22 @@ Merged on nixos-pc-kabir (Linux, TeX Live 2025) after the session handoff.
   from the render-pipeline side, and are owned by the Mac lanes. Expect an
   interaction when main is merged in; do not resolve it unilaterally.
 
+### #161 math-glyph-spans (math-layout) @ 093d9c71
+
+- Textual conflicts, both against #148 (merged just before):
+  - `src/boxes.rs` `MathBox::glue_flex`: #148 gave `BoxKind::Glue` its
+    `stretch`/`shrink` fields while #161 added the `tag: SourceTag::NONE`
+    field to every `MathBox` literal. Combined: the tag plus the three-field
+    `Glue`.
+  - `src/mathlist.rs` header: #148's `use crate::boxes::{Flex, GlueOrder}`
+    and #148's new `MathFlex` type against #161's `use crate::source::SourceTag`.
+    Both imports kept together above `MathFlex`.
+- Checks: `cargo test --release --no-fail-fast` in crates/math-layout: 54 pass,
+  0 fail (43 before this merge, plus #161's 11). `crates/compiler`: all pass
+  except `supported_latex::generated_artifacts_are_current`.
+
+## Stage 1 close-out
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.

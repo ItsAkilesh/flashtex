@@ -1,6 +1,7 @@
 //! The math list model: atoms with a class, a nucleus, and optional scripts.
 
 use crate::boxes::{Flex, GlueOrder};
+use crate::source::SourceTag;
 
 /// A `plus`/`minus` component of explicit math glue before the style's math
 /// unit is known: `mu` math units plus `pt` points for a finite order; for
@@ -237,6 +238,13 @@ pub struct Atom {
     pub superscript: Option<MathList>,
     pub subscript: Option<MathList>,
     pub limits: Limits,
+    /// Source provenance copied onto every glyph and rule leaf this atom
+    /// produces that no inner atom already tagged (see [`crate::source`]).
+    pub tag: SourceTag,
+    /// Provenance of the delimiters of a [`Nucleus::Delimited`] (`\left`,
+    /// `\right`) or of a delimited [`Nucleus::Fraction`], when they came
+    /// from their own commands; an unset field inherits [`Atom::tag`].
+    pub delimiter_tags: [SourceTag; 2],
 }
 
 impl Atom {
@@ -247,7 +255,21 @@ impl Atom {
             superscript: None,
             subscript: None,
             limits: Limits::default(),
+            tag: SourceTag::NONE,
+            delimiter_tags: [SourceTag::NONE; 2],
         }
+    }
+
+    /// This atom with source provenance `tag`.
+    pub fn with_tag(mut self, tag: SourceTag) -> Atom {
+        self.tag = tag;
+        self
+    }
+
+    /// This atom with the provenance of its left and right delimiters.
+    pub fn with_delimiter_tags(mut self, left: SourceTag, right: SourceTag) -> Atom {
+        self.delimiter_tags = [left, right];
+        self
     }
 
     /// A symbol atom whose class comes from the default classification table.
