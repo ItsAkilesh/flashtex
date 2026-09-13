@@ -755,11 +755,23 @@ impl Engine<'_> {
         } else {
             [0x7A, 0x7D, 0x7C, 0x7B]
         };
+        // `\downbracefill`/`\upbracefill` set `\braceld`..`\braceru` inside
+        // their own `$...$` (plain.tex 352-360), so the pieces come from
+        // `\textfont3` of the current math size however deeply the brace is
+        // nested in scripts — never `\scriptfont3`. pdfTeX `\showbox` of an
+        // 11 pt article loading amsmath (where the two differ: `\textfont3`
+        // is `cmex10 at 10.95pt`, `\scriptfont3` is `cmex8`) gives the same
+        // 1.31396 pt piece from cmex10 at 10.95 pt for `\overbrace{a+b}`,
+        // `x^{\overbrace{a+b}}`, `x^{y^{\overbrace{a+b}}}` and an
+        // `\underbrace` in a fraction numerator; in `\footnotesize` all of
+        // them come from cmex9 instead. Hence [`SizeClass::Text`], not the
+        // style's own size class.
+        let at = crate::metrics::SizeClass::Text;
         let pieces: Option<Vec<Glyph>> = codes
             .iter()
-            .map(|c| self.m.extension_glyph(*c, ch))
+            .map(|c| self.m.extension_glyph(*c, ch, at))
             .collect();
-        let (Some(pieces), Some(ld)) = (pieces, self.m.extension_glyph(0x7A, ch)) else {
+        let (Some(pieces), Some(ld)) = (pieces, self.m.extension_glyph(0x7A, ch, at)) else {
             self.limitations.push(Limitation::MissingGlyph(ch));
             return x;
         };
