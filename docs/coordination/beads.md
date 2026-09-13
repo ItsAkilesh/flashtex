@@ -272,7 +272,7 @@ Tool: `scripts/beads/authority show | heartbeat | handoff | claim`. The wrapper 
 | Messaging A→B→A with threads; low-usage signal and cross-machine reassignment | VERIFIED (§7, §8) |
 | Commander failover drill, wrapper permission moving with the claim | VERIFIED (§9) |
 | Sync loop status/staleness, backoff, HOLD on refusal, single instance | VERIFIED |
-| **Soak (16 + 8 agents, 32 min, 7 collisions, 2 outages, loop kill -9)** | **FAILED run 3** (see soak report below) |
+| **Soak (16 + 8 agents, 32 min, 7 collisions, 2 outages, loop kill -9)** | **PASSED run 4** on the ledger-mutex fix (run 3 failed; see soak report) |
 | Sync on Daniel's / Jaysen's machines | BELIEVED (runbook) |
 
 ### Soak report (trial repo, 2026-09-13)
@@ -296,5 +296,17 @@ Tool: `scripts/beads/authority show | heartbeat | handoff | claim`. The wrapper 
   - Deterministic reproduction with test-only delays, same ordering as run 3:
     - without the mutex: `FINAL Z: None open None   X: None open None` (close reverted)
     - with it: `FINAL Z: agent-X closed done by agent-X   X: agent-X closed done by agent-X`
-  - **Not yet re-soaked.** Per the task rule (two serious attempts), the Phase B gate did not pass; a run 4 needs an owner decision.
+- **Run 4** (07:48Z, same load as run 3; fresh clones; `--max-backoff 60`, 120 s transport timeout; owner-approved), **PASSED**:
+  - **Load:** 24 agents; 87 counted claims, 87 closes; 31 follow-ups created, 0 missing.
+  - **Ledgers identical:** 403 beads each, same dolt HEAD `nl43jlcadej3iciuh3fhdqjkjce1718e`.
+  - **Double claims/closes:** 0 tasks claimed by two agents, 0 closed by two agents, 0 log-vs-ledger disagreements.
+  - **Collisions:** 7/7 deliberate collisions had exactly one winner.
+  - **Recoveries:** A 10/10 `recovered`, B 4/4 `recovered`. No HOLD, no refusal, no error.
+  - **Faults, all injected OK:** 2 B outages (3 min, 2 min), `kill -9` of B's loop plus restart.
+  - **Lag** (10 s samples):
+    - A: max 381 s, p50 98 s, p95 290 s
+    - B: max 258 s, p50 32 s, p95 157 s
+    - The lag comes from sustained cross-machine write load and push-race retries at these simulated rates. FlashTeX task-boundary rates are far lower.
+  - **Storage:** `.beads` A 50→129 MB, B 76→129 MB. `refs/dolt/data` pack 14.78→22.88 MiB over run 4; the trial repo carries all 4 runs.
+  - Evidence: `scripts/beads/tests/soak_verify.py` output `"PASS": true`.
 - **Throughput finding:** at 60–150 s cycles (about 0.3 claims/s over 24 agents) the slower pusher (Mac 7.7 s vs PC 5.5 s per push) starves. FlashTeX task-boundary rates are far lower, but this is the measured ceiling.

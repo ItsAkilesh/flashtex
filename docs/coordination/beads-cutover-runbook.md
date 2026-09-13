@@ -15,7 +15,7 @@
 
 Nothing here was run on the real repo. The steps were exercised on `GoKubar/flashtex-beads-trial` (2026-09-13).
 
-> **Status: NOT cleared for cutover.** Soak run 3 double-closed one task; the fix (ledger mutex) is verified by a deterministic reproduction but has not been re-soaked. See beads.md §10. Do not run this runbook on flash-tex/flashtex until the owner approves after a passing soak.
+> **Status: cleared on the trial repo** by soak run 4 (2026-09-13, PASS; beads.md §10). The owner authorized initial creation of the real ledger from mac-m5pro-kabir via a branch/PR plus `refs/dolt/data` (never a direct main write). The Commander still announces cutover; until then issue #2 stays the protocol.
 
 ## Part A: Commander machine
 
@@ -36,7 +36,7 @@ Nothing here was run on the real repo. The steps were exercised on `GoKubar/flas
    scripts/beads/bd dolt remote list          # expect origin git+ssh://git@github.com/flash-tex/flashtex.git
    scripts/beads/bd config set types.custom message   # optional; messages still use -t task (beads.md §7)
    ```
-   - The wrapper permits `init` in flash-tex/flashtex only on the authority machine.
+   - The wrapper permits `init` in flash-tex/flashtex only on the authority machine, **or** once, when `FLASHTEX_BEADS_OWNER_AUTHORIZED_INIT` is set to a non-empty authorization note and origin has no `refs/dolt/data` yet. The owner used this on 2026-09-13 from mac-m5pro-kabir.
    - VERIFIED on a fresh repo: `--skip-agents --skip-hooks` leaves AGENTS.md and CLAUDE.md byte-identical and `core.hooksPath` unset. Without `--skip-hooks`, `core.hooksPath` becomes `.beads/hooks`. The init commit contains only `.beads/{.gitignore,README.md,config.yaml,interactions.jsonl,metadata.json}` plus root `.gitignore` lines.
    - bd commits with the clone's git identity. Set the required local `user.name`/`user.email` first, then amend to add trailers **before** pushing.
    - If the branch already has a committed `.beads/config.yaml` with `sync.remote`, `bd init` bootstraps from that remote and ignores `--prefix` (VERIFIED). Init must run on a tree without `.beads/`.

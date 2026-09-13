@@ -84,6 +84,17 @@ if [ -n "${BD_ALLOW_REMOTE_MIGRATE:-}" ] && [ -z "$privileged" ]; then
   privileged="BD_ALLOW_REMOTE_MIGRATE set"
 fi
 
+# Owner-authorized one-time initial creation of the real ledger (2026-09-13).
+# Needs an explicit authorization note in FLASHTEX_BEADS_OWNER_AUTHORIZED_INIT, and
+# refuses if origin already has refs/dolt/data. It applies to `init` only, never
+# to migrate/upgrade.
+if [ "$privileged" = "bd init on flash-tex/flashtex" ] && [ -n "${FLASHTEX_BEADS_OWNER_AUTHORIZED_INIT:-}" ]; then
+  existing="$(git ls-remote origin 'refs/dolt/*' 2>/dev/null)" || die "bd init: cannot reach origin to check for an existing ledger"
+  [ -z "$existing" ] || die "bd init refused: origin already has a ledger ($existing). Use bd bootstrap."
+  echo "flashtex-bd: owner-authorized one-time init ($FLASHTEX_BEADS_OWNER_AUTHORIZED_INIT)" >&2
+  privileged=""
+fi
+
 if [ -n "$privileged" ]; then
   me="${FLASHTEX_MACHINE:-$(cat "$HOME/.config/flashtex/machine" 2>/dev/null || true)}"
   [ -n "$me" ] || die "$privileged requires a machine identity (FLASHTEX_MACHINE or ~/.config/flashtex/machine)"
