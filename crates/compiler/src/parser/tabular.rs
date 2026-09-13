@@ -511,7 +511,7 @@ impl P<'_> {
     /// The optional `*` and `[<dimen>]` after a row's `\\`.
     fn row_end_argument(&mut self, body: f64) -> Option<f64> {
         self.skip_spaces();
-        if let Some(input) = std::rc::Rc::make_mut(&mut self.t).get_mut(self.i) {
+        if let Some(input) = self.token_mut(self.i) {
             if let TokenKind::Word(word) = &input.token.kind {
                 if let Some(rest) = word.strip_prefix('*') {
                     if rest.is_empty() {
@@ -549,7 +549,8 @@ impl P<'_> {
                 if rest.is_empty() {
                     self.i += 1;
                 } else {
-                    let input = &mut std::rc::Rc::make_mut(&mut self.t)[self.i];
+                    let index = self.i;
+                    let input = self.token_mut(index).expect("glued word is at the cursor");
                     if span.end - span.start == len {
                         input.token.span = Span::in_document(
                             span.document,
@@ -653,7 +654,7 @@ impl P<'_> {
         let (trim, rest) = (inner.0.to_string(), inner.1.to_string());
         if rest.is_empty() {
             self.i += 1;
-        } else if let Some(input) = std::rc::Rc::make_mut(&mut self.t).get_mut(self.i) {
+        } else if let Some(input) = self.token_mut(self.i) {
             let span = input.token.span;
             if span.end - span.start == word.len() {
                 let consumed = word.len() - rest.len();

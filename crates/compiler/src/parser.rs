@@ -727,7 +727,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         path: entry_path,
         text: "",
     });
-    let expanded = if documents.is_empty() {
+    let mut expanded = if documents.is_empty() {
         expansion::Expansion {
             tokens: Rc::new(Vec::new()),
             diagnostics: Vec::new(),
@@ -761,7 +761,10 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         }
     }
     let mut p = P {
-        t: expanded.tokens.clone(),
+        t: std::mem::replace(&mut expanded.tokens, Rc::new(Vec::new())),
+        entry_path: entry_document.path,
+        lent_from_cache: false,
+        undo: Vec::new(),
         i: 0,
         diags: Vec::new(),
         brace_stack: Vec::new(),
@@ -831,6 +834,11 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
     }
 
     let incremental_safe = p.diags.is_empty();
+    let tokens = p.restore_tokens();
+    let preamble_source = preamble_source(entry_document.text, has_document, &tokens);
+    if p.lent_from_cache {
+        expansion::return_cached_tokens(entry_document.path, tokens);
+    }
     Parsed {
         blocks,
         diagnostics: p.diags,
@@ -839,7 +847,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         parskip_pt: p.parskip_pt,
         packages: p.packages,
         block_dependencies: p.block_dependencies,
-        preamble_source: preamble_source(entry_document.text, has_document, &expanded.tokens),
+        preamble_source,
         incremental_safe,
         document_global_state: p.document_global_state,
         expansions,
@@ -856,8 +864,15 @@ fn gap_is_blank(documents: &[SourceDocument<'_>], a: Span, b: Span) -> bool {
 }
 
 struct P<'a> {
-    /// Shared with the expansion cache; never mutated in place.
+    /// The expanded stream. Edits go through [`P::token_mut`]: when the
+    /// expansion cache holds the stream, it is lent to the parser (no copy)
+    /// and every edit is undone before it goes back.
     t: Rc<Vec<InputToken>>,
+    entry_path: &'a str,
+    /// `t` was lent by the expansion cache and must be restored and returned.
+    lent_from_cache: bool,
+    /// Original tokens of in-place edits, in edit order.
+    undo: Vec<(usize, InputToken)>,
     i: usize,
     diags: Vec<Diagnostic>,
     brace_stack: Vec<Span>,
@@ -3631,10 +3646,39 @@ impl P<'_> {
         self.finish_block_dependencies();
     }
 
+    /// Mutable access to token `index` of the stream, without copying the
+    /// stream: a stream still held by the expansion cache is borrowed from it
+    /// (see [`expansion::lend_cached_tokens`]) and the edit is logged so
+    /// [`P::restore_tokens`] can undo it.
+    pub(crate) fn token_mut(&mut self, index: usize) -> Option<&mut InputToken> {
+        if index >= self.t.len() {
+            return None;
+        }
+        if !self.lent_from_cache && Rc::get_mut(&mut self.t).is_none() {
+            self.lent_from_cache = expansion::lend_cached_tokens(self.entry_path, &self.t);
+        }
+        if self.lent_from_cache {
+            self.undo.push((index, self.t[index].clone()));
+        }
+        Rc::make_mut(&mut self.t).get_mut(index)
+    }
+
+    /// The stream with every logged edit undone (the stream as expanded).
+    fn restore_tokens(&mut self) -> Rc<Vec<InputToken>> {
+        let mut tokens = std::mem::replace(&mut self.t, Rc::new(Vec::new()));
+        if !self.undo.is_empty() {
+            let stream = Rc::make_mut(&mut tokens);
+            for (index, original) in self.undo.drain(..).rev() {
+                stream[index] = original;
+            }
+        }
+        tokens
+    }
+
     /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued
     /// to it (`\\[3pt]Next`) as the remainder of the word.
     fn skip_line_break_length(&mut self) {
-        let Some(input) = std::rc::Rc::make_mut(&mut self.t).get_mut(self.i) else {
+        let Some(input) = self.token_mut(self.i) else {
             return;
         };
         let TokenKind::Word(word) = &input.token.kind else {

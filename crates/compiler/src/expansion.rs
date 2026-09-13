@@ -913,6 +913,9 @@ pub struct ExpansionCache {
     /// until it no longer does (an incremental run would hit the same limit
     /// and still need the full run for its recovery).
     halted: bool,
+    /// `out` is lent to a parser ([`lend_cached_tokens`]). A cache whose
+    /// stream never came back is rebuilt instead of reused.
+    lent: bool,
 }
 
 thread_local! {
@@ -954,6 +957,35 @@ pub fn expand_project_cached(documents: &[SourceDocument<'_>], entry: usize) -> 
     })
 }
 
+/// Let the parser edit `tokens` in place: when this thread's cache for
+/// `entry_path` holds the same stream, it gives up its reference until
+/// [`return_cached_tokens`], so the parser's edit does not copy the stream.
+/// The parser must undo its edits before returning it.
+pub(crate) fn lend_cached_tokens(entry_path: &str, tokens: &Rc<Vec<ExpandedToken>>) -> bool {
+    CACHES.with(|caches| {
+        let mut caches = caches.borrow_mut();
+        match caches.iter_mut().find(|c| c.entry_path == entry_path && !c.lent && Rc::ptr_eq(&c.out, tokens)) {
+            Some(cache) => {
+                cache.out = Rc::new(Vec::new());
+                cache.lent = true;
+                true
+            }
+            None => false,
+        }
+    })
+}
+
+/// Give a lent stream, with every parser edit undone, back to the cache.
+pub(crate) fn return_cached_tokens(entry_path: &str, tokens: Rc<Vec<ExpandedToken>>) {
+    CACHES.with(|caches| {
+        let mut caches = caches.borrow_mut();
+        if let Some(cache) = caches.iter_mut().find(|c| c.entry_path == entry_path && c.lent) {
+            cache.out = tokens;
+            cache.lent = false;
+        }
+    })
+}
+
 /// [`expand_project`] through a caller-held cache, with no size threshold.
 pub fn expand_project_with_cache(
     documents: &[SourceDocument<'_>],
@@ -982,7 +1014,7 @@ pub fn expand_project_with_cache(
     }
     let masked: &str = prepared[entry].text.as_ref();
     let reusable = cache.as_ref().is_some_and(|c| {
-        c.entry_path == document.path && masked.len() <= 2 * c.created_bytes.max(INCREMENTAL_MIN_BYTES)
+        !c.lent && c.entry_path == document.path && masked.len() <= 2 * c.created_bytes.max(INCREMENTAL_MIN_BYTES)
     });
     let expansion = if reusable {
         update_cache(cache.as_mut().expect("checked"), documents, entry, &prepared)
@@ -1023,6 +1055,7 @@ fn build_cache(documents: &[SourceDocument<'_>], entry: usize, prepared: &[Prepa
         last_span: conv.last_span,
         old_engine_tokens: 0,
         halted: false,
+        lent: false,
     };
     let expansion = finish(&mut cache, conv);
     (cache, expansion)
