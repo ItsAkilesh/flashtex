@@ -22,6 +22,10 @@ pub const CAP_FONT_HINTS: &str = "font-hints-v1";
 /// ACKed by this lane): the rendering-v2 `display_list` envelope follows
 /// the `compile_result` as one sibling line.
 pub const CAP_DISPLAY_LIST: &str = "display-list-v2";
+/// PROPOSAL (FT-063, `protocol/proposals/display-list-v2-image.md`): image
+/// items on the `display_list` line. Accepted only together with
+/// `display-list-v2`; without it image items are never serialised.
+pub const CAP_IMAGES: &str = "display-list-v2-images";
 
 /// Capabilities the producer accepted for one request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -29,6 +33,7 @@ pub struct Capabilities {
     pub rules: bool,
     pub font_hints: bool,
     pub display_list: bool,
+    pub images: bool,
 }
 
 impl Capabilities {
@@ -50,6 +55,10 @@ impl Capabilities {
                 }
                 CAP_DISPLAY_LIST if !caps.display_list => {
                     caps.display_list = true;
+                    accepted.push(r.clone());
+                }
+                CAP_IMAGES if !caps.images && requested.iter().any(|c| c == CAP_DISPLAY_LIST) => {
+                    caps.images = true;
                     accepted.push(r.clone());
                 }
                 _ => {}
@@ -185,6 +194,8 @@ pub fn fallback(v2: &DisplayList, caps: Capabilities, accepted: Option<Vec<Strin
                         }
                     }
                 }
+                // runtime-v1 has no image item; the v2 image proposal carries them.
+                display::Item::Image(_) => {}
                 display::Item::Rule(rule) => {
                     let Some(source) = union(rule.provenance.sources()) else { continue };
                     let (x, top, w, h) = (rule.x.to_bp(), rule.top.to_bp(), rule.width.to_bp(), rule.height.to_bp());
