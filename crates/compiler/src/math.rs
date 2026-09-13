@@ -582,6 +582,35 @@ impl MathParser<'_> {
                         Some("ignored the stray alignment tab and continued".into()),
                     ));
                 }
+                // latex.ltx 15683-15697: a math `'` is `^\bgroup\prim@s`, which
+                // collects every following `'` as another `\prime` and a
+                // directly following `^{...}` into the same superscript.
+                TokenKind::Word(ref word) if word == "'" => {
+                    let mut script = MathList { atoms: Vec::new() };
+                    while let Some(t) = self.tokens.get(self.i) {
+                        if !matches!(&t.kind, TokenKind::Word(w) if w == "'") {
+                            break;
+                        }
+                        script.atoms.push(symbol("\u{2032}".into(), t.span));
+                        self.i += 1;
+                    }
+                    if matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Superscript)) {
+                        let marker = self.tokens[self.i].span;
+                        self.i += 1;
+                        script.atoms.extend(self.script_argument(marker).atoms);
+                    }
+                    if atoms.is_empty() {
+                        atoms.push(symbol(String::new(), token.span));
+                    }
+                    let atom = atoms.last_mut().expect("an atom to carry the primes");
+                    if atom.superscript.replace(script).is_some() {
+                        self.diagnostics.push(Diagnostic::error(
+                            "duplicate script on a math atom",
+                            Some(token.span),
+                            Some("used the last script and continued".into()),
+                        ));
+                    }
+                }
                 TokenKind::Superscript | TokenKind::Subscript => {
                     self.i += 1;
                     let script = self.script_argument(token.span);
@@ -918,7 +947,19 @@ impl MathParser<'_> {
                 // as Unicode mathematical alphanumerics in one atom, like
                 // `\mathbb`. Any other argument keeps the surrounding math
                 // letters.
-                if matches!(&*name, "mathit" | "mathsf" | "mathtt") && self.plain_text_argument() {
+                if name == "mathrm" && self.plain_text_argument() {
+                    // fontmath.ltx: `\mathrm` is the `operators` font (OT1
+                    // cmr/m/n), the upright roman `Text` sets, so `\mathrm{K}`
+                    // is upright; math ignores the spaces in the argument.
+                    let (text, argument_span) = self.required_text_group(&name, span);
+                    let span = span.merge(argument_span);
+                    let letters: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+                    if letters.is_empty() {
+                        space(0.0, span)
+                    } else {
+                        text_atom(letters, span)
+                    }
+                } else if matches!(&*name, "mathit" | "mathsf" | "mathtt") && self.plain_text_argument() {
                     let (text, argument_span) = self.required_text_group(&name, span);
                     let span = span.merge(argument_span);
                     let glyphs: String = text
@@ -2205,10 +2246,12 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("phi", "φ"),
     ("omega", "ω"),
     // Handwritten-homework coverage (Adobe Symbol encodes every glyph below).
-    // Symbol has only the open-form epsilon (0x65), no lunate U+03F5, so
-    // `\epsilon` shares `\varepsilon`'s glyph; the README states this.
-    ("epsilon", "ε"),
-    ("varepsilon", "ε"),
+    // fontmath.ltx: `\epsilon` is cmmi "0F (the lunate ϵ, U+03F5) and
+    // `\varepsilon` cmmi "22 (the open ε, U+03B5); TFM-driven layouts box
+    // them from those slots. The base-14 Symbol export has only the open
+    // form (0x65) and draws both with it (`export.rs`).
+    ("epsilon", "\u{03F5}"),
+    ("varepsilon", "\u{03B5}"),
     ("zeta", "ζ"),
     ("eta", "η"),
     ("vartheta", "ϑ"),
@@ -3613,6 +3656,38 @@ fn shift(span: Span, delta: isize) -> Span {
 #[cfg(test)]
 mod parse_tests {
     use super::*;
+
+    #[test]
+    fn primes_mathrm_and_epsilons_follow_latex() {
+        let parse = |src: &str| {
+            let mut diagnostics = Vec::new();
+            let list = parse_tokens(&crate::lexer::tokenize(src), &mut diagnostics);
+            assert!(diagnostics.is_empty(), "{src}: {diagnostics:?}");
+            list
+        };
+        let symbols = |list: &MathList| -> Vec<String> {
+            list.atoms
+                .iter()
+                .map(|a| match &a.nucleus {
+                    Nucleus::Symbol(s) => s.clone(),
+                    Nucleus::Text(t) => format!("text:{t}"),
+                    other => format!("{other:?}"),
+                })
+                .collect()
+        };
+        // latex.ltx `\active@math@prime`: `f''` is `f^{\prime\prime}` and a
+        // following `^` joins the same superscript.
+        let list = parse(r"f''(x) g'^2");
+        assert_eq!(symbols(&list), ["f", "(", "x", ")", "g"]);
+        assert_eq!(symbols(list.atoms[0].superscript.as_ref().unwrap()), ["\u{2032}", "\u{2032}"]);
+        assert_eq!(symbols(list.atoms[4].superscript.as_ref().unwrap()), ["\u{2032}", "2"]);
+        // `\mathrm` sets its letters upright (fontmath.ltx `operators`).
+        let list = parse(r"\mathrm{K}^{-1} \mathrm{k g}");
+        assert_eq!(symbols(&list), ["text:K", "text:kg"]);
+        assert!(list.atoms[0].superscript.is_some());
+        // cmmi "0F is `\epsilon` (lunate), "22 `\varepsilon`.
+        assert_eq!(symbols(&parse(r"\epsilon\varepsilon")), ["\u{03F5}", "\u{03B5}"]);
+    }
 
     #[test]
     fn grid_position_argument_is_not_a_cell() {
