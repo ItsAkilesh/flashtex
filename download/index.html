@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download FlashTeX</title>
+<meta name="description" content="Download FlashTeX for macOS: a native LaTeX editor with a from-scratch Rust compiler.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:wght@600&display=swap">
+<link rel="stylesheet" href="../site.css">
+<style>
+  .dl-head { padding-block: 72px 36px; }
+  .dl-head h1 { font-size: clamp(2.2rem, 5vw, 3.2rem); line-height: 1.05; }
+  .dl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 18px; font-size: 0.88rem; color: var(--text-2); }
+  .dl-meta .ver { font-family: "IBM Plex Mono", monospace; font-size: 0.8rem; color: var(--text); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 10px; }
+  .dl-meta a { color: var(--accent); text-decoration: none; }
+  .dl-meta a:hover { text-decoration: underline; }
+  .sep { width: 3px; height: 3px; border-radius: 50%; background: var(--text-3); }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-top: 8px; }
+  .tab {
+    font: 500 0.88rem/1 "IBM Plex Sans", sans-serif; color: var(--text-3); background: none; border: 0;
+    padding: 12px 14px; margin-bottom: -1px; border-bottom: 2px solid transparent; cursor: pointer;
+  }
+  .tab:hover { color: var(--text-2); }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); }
+  .tab .hint { font-family: "IBM Plex Mono", monospace; font-size: 0.7rem; color: var(--text-3); margin-left: 6px; font-weight: 400; }
+
+  .rows { list-style: none; margin: 0; padding: 0; }
+  .row {
+    display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px 40px; align-items: start;
+    padding-block: 30px; border-bottom: 1px solid var(--line);
+  }
+  .row-name { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 1rem; }
+  .row-name svg { width: 18px; height: 18px; color: var(--text-2); }
+  .row-sub { color: var(--text-3); font-size: 0.84rem; margin-top: 4px; }
+  .row-body { display: grid; gap: 12px; min-width: 0; }
+  .row-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .row-body p { color: var(--text-2); font-size: 0.88rem; max-width: 60ch; }
+  .row-body p code { font-size: 0.82rem; color: var(--text); }
+  .hash { font-size: 0.78rem; color: var(--text-2); word-break: break-all; }
+
+  .note {
+    border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; background: var(--bg-2);
+    display: grid; gap: 8px; margin-top: 28px;
+  }
+  .note h3 { font-size: 0.9rem; letter-spacing: 0; }
+  .note p { font-size: 0.86rem; color: var(--text-2); }
+  .note ol { margin: 0; padding-left: 1.2em; color: var(--text-2); font-size: 0.86rem; display: grid; gap: 4px; }
+  .note code { font-size: 0.8rem; color: var(--text); }
+
+  .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; display: grid; gap: 22px; }
+  .steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px 14px; counter-increment: step; }
+  .steps li::before {
+    content: counter(step); grid-row: span 2; width: 24px; height: 24px; border-radius: 50%;
+    border: 1px solid var(--line-strong); color: var(--text-2); font: 500 0.74rem/22px "IBM Plex Mono", monospace; text-align: center;
+  }
+  .steps .step-title { font-weight: 500; font-size: 0.92rem; }
+  .steps .snippet { margin-top: 6px; }
+  .snippet.multi { align-items: flex-start; }
+  .snippet.multi code { white-space: pre; line-height: 1.75; }
+
+  .reqs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .reqs li { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 0.86rem; }
+  .reqs li span:first-child { color: var(--text-3); }
+  .reqs li span:last-child { color: var(--text); text-align: right; }
+
+  [role="tabpanel"][hidden] { display: none; }
+
+  @media (max-width: 760px) {
+    .row { grid-template-columns: 1fr; gap: 14px; padding-block: 24px; }
+    .dl-head { padding-block: 48px 28px; }
+  }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="wordmark" href="../">flash<span class="tex">T<span class="e">E</span>X</span></a>
+    <nav class="nav" aria-label="Primary">
+      <a class="hide-sm" href="../#features">Features</a>
+      <a class="hide-sm" href="https://github.com/flash-tex/flashtex/releases">Releases</a>
+      <a href="https://github.com/flash-tex/flashtex">GitHub</a>
+      <a class="nav-btn" href="./" aria-current="page">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap-narrow">
+  <div class="dl-head">
+    <h1>Download FlashTeX</h1>
+    <div class="dl-meta">
+      <span class="ver">v0.1.1</span>
+      <span>September 12, 2026</span>
+      <span class="sep" aria-hidden="true"></span>
+      <a href="https://github.com/flash-tex/flashtex/releases/tag/v0.1.1">Release notes</a>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="Release channel">
+    <button class="tab" role="tab" id="tab-stable" aria-controls="panel-stable" aria-selected="true">Stable</button>
+    <button class="tab" role="tab" id="tab-source" aria-controls="panel-source" aria-selected="false" tabindex="-1">From source<span class="hint">main</span></button>
+  </div>
+
+  <section id="panel-stable" role="tabpanel" aria-labelledby="tab-stable">
+    <ul class="rows">
+      <li class="row">
+        <div>
+          <div class="row-name">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 12.62c-.02-2.33 1.9-3.45 1.99-3.5-1.08-1.59-2.77-1.8-3.37-1.83-1.43-.15-2.8.85-3.53.85-.74 0-1.86-.83-3.06-.81-1.57.02-3.02.92-3.83 2.33-1.64 2.84-.42 7.04 1.17 9.35.78 1.13 1.7 2.39 2.92 2.35 1.18-.05 1.62-.76 3.04-.76 1.42 0 1.82.76 3.06.73 1.27-.02 2.07-1.14 2.84-2.28.9-1.31 1.26-2.59 1.28-2.66-.03-.01-2.46-.94-2.51-3.77zM14.04 5.78c.64-.79 1.08-1.87.96-2.96-.93.04-2.06.62-2.72 1.4-.6.69-1.12 1.8-.98 2.86 1.04.08 2.1-.53 2.74-1.3z"/></svg>
+            macOS
+          </div>
+          <div class="row-sub">Requires macOS 14 Sonoma or later</div>
+        </div>
+        <div class="row-body">
+          <div class="row-actions">
+            <a class="btn btn-primary" href="https://github.com/flash-tex/flashtex/releases/download/v0.1.1/FlashTeX.dmg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 21h16"/></svg>
+              Apple Silicon <span class="btn-meta">13.0 MB</span>
+            </a>
+            <span class="btn" aria-disabled="true">Intel <span class="btn-meta">not yet available</span></span>
+          </div>
+          <p>A disk image containing <code>FlashTeX.app</code>, with the Rust compiler, PDF writer and capture bridge bundled inside. No TeX distribution required.</p>
+        </div>
+      </li>
+
+      <li class="row">
+        <div>
+          <div class="row-name">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg>
+            Command line
+          </div>
+          <div class="row-sub">macOS · Apple Silicon</div>
+        </div>
+        <div class="row-body">
+          <div class="snippet">
+            <code><span class="p">$ </span>curl -fsSL https://flash-tex.github.io/flashtex/install.sh | sh</code>
+            <button class="copy" data-copy="curl -fsSL https://flash-tex.github.io/flashtex/install.sh | sh">Copy</button>
+          </div>
+          <p>Downloads the release, checks its SHA-256, and copies <code>FlashTeX.app</code> into <code>/Applications</code>. Because it doesn't go through a browser, macOS won't ask you to approve the app on first launch. <a href="../install.sh" style="color: var(--accent); text-decoration: none;">Read the script</a>.</p>
+        </div>
+      </li>
+
+      <li class="row">
+        <div>
+          <div class="row-name">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            Checksum
+          </div>
+          <div class="row-sub">FlashTeX.dmg · SHA-256</div>
+        </div>
+        <div class="row-body">
+          <div class="snippet">
+            <code class="hash">3f9af6c8be5fca008fe191e9cfb012e31fa47e775cf3ab813af3d7974f026c94</code>
+            <button class="copy" data-copy="3f9af6c8be5fca008fe191e9cfb012e31fa47e775cf3ab813af3d7974f026c94">Copy</button>
+          </div>
+          <p>Compare against <code>shasum -a 256 ~/Downloads/FlashTeX.dmg</code>.</p>
+        </div>
+      </li>
+
+      <li class="row">
+        <div>
+          <div class="row-name">Windows &amp; Linux</div>
+          <div class="row-sub">Not available</div>
+        </div>
+        <div class="row-body">
+          <p>FlashTeX is a native Mac app, written in Swift on top of a Rust engine. Other platforms aren't on the roadmap.</p>
+        </div>
+      </li>
+    </ul>
+
+    <div class="note">
+      <h3>Opening the app the first time</h3>
+      <p>This build is ad-hoc signed but not yet notarized by Apple, so a browser download is quarantined and macOS asks you to approve it once.</p>
+      <ol>
+        <li>Open <code>FlashTeX.dmg</code> and drag FlashTeX into Applications.</li>
+        <li>Right-click FlashTeX in Applications, choose <strong>Open</strong>, then confirm.</li>
+        <li>If macOS says the app is damaged, run <code>xattr -dr com.apple.quarantine /Applications/FlashTeX.app</code> and open it again.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="panel-source" role="tabpanel" aria-labelledby="tab-source" hidden>
+    <ul class="rows">
+      <li class="row">
+        <div>
+          <div class="row-name">Build it yourself</div>
+          <div class="row-sub">Latest <code>main</code>, same bundle as the release</div>
+        </div>
+        <div class="row-body">
+          <ol class="steps">
+            <li>
+              <span class="step-title">Clone the repository</span>
+              <div class="snippet multi">
+                <code><span class="p">$ </span>git clone https://github.com/flash-tex/flashtex.git
+<span class="p">$ </span>cd flashtex</code>
+                <button class="copy" data-copy="git clone https://github.com/flash-tex/flashtex.git && cd flashtex">Copy</button>
+              </div>
+            </li>
+            <li>
+              <span class="step-title">Build the Rust engine and helpers</span>
+              <div class="snippet multi">
+                <code><span class="p">$ </span>for c in compiler pdf bridge render-pipeline; do
+    cargo build --release --manifest-path crates/$c/Cargo.toml
+  done</code>
+                <button class="copy" data-copy="for c in compiler pdf bridge render-pipeline; do cargo build --release --manifest-path crates/$c/Cargo.toml; done">Copy</button>
+              </div>
+            </li>
+            <li>
+              <span class="step-title">Package, install and open</span>
+              <div class="snippet">
+                <code><span class="p">$ </span>./apps/mac/scripts/make-app.sh --install --open</code>
+                <button class="copy" data-copy="./apps/mac/scripts/make-app.sh --install --open">Copy</button>
+              </div>
+            </li>
+          </ol>
+          <p>A locally built app isn't quarantined, so it opens without the approval step. <code>--install</code> copies it to <code>~/Applications</code>; add <code>--dmg</code> to produce a disk image too.</p>
+        </div>
+      </li>
+
+      <li class="row">
+        <div>
+          <div class="row-name">Requirements</div>
+          <div class="row-sub">To build from source</div>
+        </div>
+        <div class="row-body">
+          <ul class="reqs">
+            <li><span>macOS</span><span>14 Sonoma or later, Apple Silicon</span></li>
+            <li><span>Swift</span><span>Xcode Command Line Tools (Swift 6)</span></li>
+            <li><span>Rust</span><span>stable toolchain via rustup</span></li>
+            <li><span>Handwriting capture</span><span>xAI (Grok) API key — optional</span></li>
+          </ul>
+        </div>
+      </li>
+    </ul>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="wordmark" href="../">flash<span class="tex">T<span class="e">E</span>X</span></a>
+      <p class="footer-note">An original LaTeX engine and native Mac editor. MIT licensed.</p>
+    </div>
+    <div>
+      <h4>Product</h4>
+      <ul>
+        <li><a href="./">Download</a></li>
+        <li><a href="../#features">Features</a></li>
+        <li><a href="https://github.com/flash-tex/flashtex/releases">Releases</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Source</h4>
+      <ul>
+        <li><a href="https://github.com/flash-tex/flashtex">GitHub</a></li>
+        <li><a href="https://github.com/flash-tex/flashtex/issues">Issues</a></li>
+        <li><a href="https://github.com/flash-tex/flashtex/blob/main/LICENSE">License</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Install</h4>
+      <ul>
+        <li><a href="https://github.com/flash-tex/flashtex/releases/download/v0.1.1/FlashTeX.dmg">FlashTeX.dmg</a></li>
+        <li><a href="../install.sh">install.sh</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+    function select(tab, focus) {
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+      });
+      if (focus) tab.focus();
+    }
+    tabs.forEach(function (tab, i) {
+      tab.addEventListener('click', function () { select(tab, false); });
+      tab.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+          select(next, true);
+        }
+      });
+    });
+    if (location.hash === '#source') select(document.getElementById('tab-source'), false);
+
+    document.querySelectorAll('.copy').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var text = btn.getAttribute('data-copy');
+        var done = function (label) { btn.textContent = label; setTimeout(function () { btn.textContent = 'Copy'; }, 1400); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { done('Copied'); }, function () { done('Press ⌘C'); });
+        } else {
+          done('Press ⌘C');
+        }
+      });
+    });
+  })();
+</script>
+</body>
+</html>
