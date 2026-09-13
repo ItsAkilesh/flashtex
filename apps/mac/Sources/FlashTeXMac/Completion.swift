@@ -2370,10 +2370,73 @@ final class CompletingTextView: NSTextView {
         }
     }
 
+    // MARK: Vim keybindings (VimMode.swift)
+
+    /// The modal state machine; consulted only while `isVimEnabled`.
+    private(set) lazy var vim: VimMode = {
+        let v = VimMode(textView: self)
+        v.onStateChange = { [weak self] in self?.vimStateChanged() }
+        return v
+    }()
+    /// Tests pin the preference per view; nil follows `EditorPreferences.shared.vimKeybindings`.
+    var vimEnabledOverride: Bool? { didSet { applyVimPreference(isVimEnabled) } }
+    var isVimEnabled: Bool { vimEnabledOverride ?? EditorPreferences.shared.vimKeybindings }
+    private var vimActive = false
+
+    /// The preference changed (EditorPreferences.apply): enter normal mode, or drop back to plain editing.
+    func applyVimPreference(_ on: Bool) {
+        guard on != vimActive else { return }
+        vimActive = on
+        if on { vim.activate() } else { vim.deactivate() }
+        vimStateChanged()
+    }
+
+    private func vimStateChanged() {
+        insertionPointColor = NSColor.textColor
+        setNeedsDisplay(bounds)
+    }
+
+    /// Esc in insert mode closes what the editor's Esc would have (the list, a snippet, signature help).
+    func dismissCompletionForVim() {
+        if session != nil { scheduler.cancel(); close(.escape) }
+        endSnippet()
+        hideSignatureHelp()
+    }
+
+    /// Normal/visual mode: a block over the character under the caret.
+    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
+        guard vimActive, vim.wantsBlockCaret else { super.drawInsertionPoint(in: rect, color: color, turnedOn: flag); return }
+        var r = rect
+        r.size.width = vimBlockWidth()
+        if flag {
+            color.withAlphaComponent(0.45).setFill()
+            r.fill()
+        } else {
+            setNeedsDisplay(r.insetBy(dx: -1, dy: -1), avoidAdditionalLayout: true)
+        }
+    }
+
+    override func setNeedsDisplay(_ rect: NSRect, avoidAdditionalLayout flag: Bool) {
+        var r = rect
+        if vimActive, vim.wantsBlockCaret { r.size.width += vimBlockWidth() }
+        super.setNeedsDisplay(r, avoidAdditionalLayout: flag)
+    }
+
+    private func vimBlockWidth() -> CGFloat {
+        let f = font ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let caret = selectedRange().location
+        let s = string as NSString
+        if caret < s.length, s.character(at: caret) != 0x0A {
+            return max(2, (s.substring(with: NSRange(location: caret, length: 1)) as NSString).size(withAttributes: [.font: f]).width)
+        }
+        return max(2, (" " as NSString).size(withAttributes: [.font: f]).width)
+    }
+
     // MARK: events
 
     override func keyDown(with event: NSEvent) {
         if hasMarkedText() { super.keyDown(with: event); return } // IME composition owns the keys (mac-editor-accessibility)
+        if vimActive, let key = VimMode.Key(event: event), vim.handle(key) { return } // VimMode.swift: normal/visual keys, Esc in insert
         if event.modifierFlags.contains(.control), event.charactersIgnoringModifiers == " " {
             requestCompletion()
             return
@@ -2435,6 +2498,7 @@ final class CompletingTextView: NSTextView {
 
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting stillSelectingFlag: Bool) {
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelectingFlag)
+        if vimActive, !stillSelectingFlag { vim.selectionDidChange(selectedRange()) } // a mouse selection enters visual mode
         guard !typingThroughSession, !applyingCompletion else { return }
         let caret = selectedRange()
         if isSnippetActive, caret.length != 0 || caret.location < snippetStart || caret.location > (snippetStops.last ?? 0) { endSnippet() }

@@ -161,6 +161,8 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("m", modifiers: [.command, .shift])
                 Button("Toggle Captures") { model.captureInboxVisible.toggle() } // CaptureInbox.swift
                     .keyboardShortcut("i", modifiers: [.command, .shift])
+                Button("Toggle Vim Keybindings") { EditorPreferences.shared.vimKeybindings.toggle() } // VimMode.swift: modal editing in the source editor
+                    .keyboardShortcut("v", modifiers: [.control, .command])
                 Divider()
                 // Preview zoom (PreviewZoom.swift): multiplier over fit-to-width.
                 Button("Zoom In") { model.previewZoomIn() }

@@ -433,6 +433,7 @@ you trust.
 | Editor appearance: System / Light / Dark (also seeds the dark-preview switch) | System |
 | Auto-close brackets & math | on |
 | Show completion list (off disables ⌃Space / Esc completion) | on |
+| Vim keybindings (also View › Toggle Vim Keybindings, ⌃⌘V) | off |
 | Capture conversion: provider (None / xAI), key in Keychain, model | None |
 | Restore Defaults | |
 
@@ -495,6 +496,40 @@ you trust.
 Everything in this table is also reachable from the command palette (⌘⇧P) and
 is read by VoiceOver; *Help › FlashTeX Accessibility Help* documents the focus
 order of each pane.
+
+## Vim mode
+
+Settings › Typing › *Vim keybindings* (or View › Toggle Vim Keybindings, ⌃⌘V)
+turns the source editor modal. The status bar shows `-- NORMAL --`,
+`-- INSERT --`, `-- VISUAL --` / `-- VISUAL LINE --`, and the `:` or `/` line
+as you type it; the caret is a block outside insert mode.
+
+**Supported**
+
+- Modes: normal, insert (`i a I A o O s S c C`), visual (`v`), visual line (`V`),
+  `r{char}`. Esc or ⌃[ returns to normal. Selecting with the mouse enters
+  visual mode.
+- Insert mode is the ordinary editor: input methods, dead keys, completion,
+  snippets and signature help work as usual; only Esc is taken (and not while
+  a composition is in progress). ⌘-shortcuts always work.
+- Counts; motions `h j k l w b e W B E 0 ^ $ gg G { } ( ) f F t T ; , % H M L`,
+  ⌃D ⌃U ⌃F ⌃B (`%` also jumps between `\begin` and `\end`).
+- Operators `d c y > <` with motions, `dd cc yy >> <<`, and text objects
+  `iw aw i( a( i[ a[ i{ a{ i" a" i$ a$` (inline math) and `ie ae` (LaTeX environment).
+- `x X D C Y p P J u ⌃R . ~`, marks `m a` / `'a` / `` `a ``, registers `"a`–`"z`
+  and `"+` / `"*` (system clipboard).
+- `/` `?` search with incremental preview, `n N *` (smart-case; the term is
+  shared with the find bar, so ⌘G continues it).
+- `:w :q :q! :wq :x :e file :%s/a/b/g :s/a/b/ :noh :set nu :set nonu`.
+- `u` / ⌃R are the editor's normal undo: one step per insert session, one per operator.
+
+**Not yet**
+
+- `.` does not repeat visual-mode changes; `o`/`cw` followed by typing are two undo steps.
+- No `gu gU gq =`, no `ip ap it at iS aS` objects, no regular expressions in
+  `/` and `:s` (literal text), no `:g`, macros (`q`), jump list (⌃O / ⌃I),
+  block mode (⌃V), replace mode (`R`), or key mappings / `.vimrc`.
+- Marks do not move with edits above them.
 
 ## Not yet supported
 
