@@ -4,6 +4,10 @@
   "compiler_version": "0.1.0",
   "unsupported_behaviour": "any other command produces an explicit 'not supported' diagnostic naming it",
   "commands": [
+    {"name": "lstset", "mode": "text", "origin": "text_dispatch", "arguments": "{keys}", "description": "listings keys for the listings that follow; keys the render pipeline does not lay out warn", "renders": true},
+    {"name": "lstdefinestyle", "mode": "text", "origin": "text_dispatch", "arguments": "{name}{keys}", "description": "named listings key set for style=; keys the render pipeline does not lay out warn", "renders": true},
+    {"name": "lstloadlanguages", "mode": "text", "origin": "text_dispatch", "arguments": "{languages}", "description": "accepted no-op; the C, C++, Java and Python keyword lists are built in", "renders": true},
+    {"name": "lstinputlisting", "mode": "text", "origin": "text_dispatch", "arguments": "[keys]{file}", "description": "listing of a project document's lines", "renders": true},
     {"name": "section", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "numbered section heading; starred form unnumbered", "renders": true},
     {"name": "subsection", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "numbered subsection heading; starred form unnumbered", "renders": true},
     {"name": "subsubsection", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "numbered subsubsection heading; starred form unnumbered", "renders": true},
@@ -446,9 +450,9 @@
     {"name": "enumerate", "mode": "text", "description": "numbered list; enumitem [label] templates a, A, i, I, 1"},
     {"name": "tabular", "mode": "text", "description": "table with l/c/r/p columns, rules and multicolumn; with array also >{} <{} !{} m b w and \\extrarowheight"},
     {"name": "tabular*", "mode": "text", "description": "table of a given width"},
-    {"name": "verbatim", "mode": "text", "description": "literal monospaced lines"},
-    {"name": "verbatim*", "mode": "text", "description": "literal monospaced lines with visible spaces"},
-    {"name": "lstlisting", "mode": "text", "description": "literal monospaced lines (basic listings)"},
+    {"name": "verbatim", "mode": "text", "description": "literal typewriter lines; a tab is one space (latex.ltx \\@verbatim)"},
+    {"name": "verbatim*", "mode": "text", "description": "literal typewriter lines with visible spaces and tabs"},
+    {"name": "lstlisting", "mode": "text", "description": "listings code; columns, numbers, frames and keywords laid out by the render pipeline"},
     {"name": "proof", "mode": "text", "description": "amsthm proof with a closing square"},
     {"name": "thebibliography", "mode": "text", "description": "References section with numbered \\bibitem entries"},
     {"name": "array", "mode": "math", "description": "math grid, centred cells"},
@@ -472,6 +476,7 @@
     {"name": "amsthm", "silent_options": "", "description": "\\newtheorem, \\theoremstyle and the proof environment"},
     {"name": "array", "silent_options": "", "description": "tabular >{} <{} !{} m b w columns, \\newcolumntype and \\extrarowheight"},
     {"name": "enumitem", "silent_options": "shortlabels", "description": "enumerate label templates; \\setlist itemsep/topsep"},
+    {"name": "listings", "silent_options": "", "description": "lstlisting, \\lstinline, \\lstset and \\lstinputlisting"},
     {"name": "geometry", "silent_options": "letterpaper, margin=1in", "description": "matches the fixed US Letter page with 1in margins"}
   ],
   "coverage": {

@@ -183,7 +183,7 @@ same data is available as JSON from `flashtex-compiler --supported`.
 <!-- BEGIN GENERATED supported-latex: `flashtex-compiler --supported markdown`; do not edit by hand -->
 ## Supported LaTeX
 
-This compiler implements a finite LaTeX subset: 108 text-mode and 308 math-mode command entries, 43 environments and 6 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
+This compiler implements a finite LaTeX subset: 112 text-mode and 308 math-mode command entries, 43 environments and 7 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
 
 Regenerate with `crates/compiler/scripts/render_supported_latex.sh`; `cargo test --test supported_latex` fails when this section is stale.
 
@@ -219,6 +219,10 @@ Canonical sources:
 
 | Command | Arguments | Behaviour |
 | --- | --- | --- |
+| `\lstset` | `{keys}` | listings keys for the listings that follow; keys the render pipeline does not lay out warn |
+| `\lstdefinestyle` | `{name}{keys}` | named listings key set for style=; keys the render pipeline does not lay out warn |
+| `\lstloadlanguages` | `{languages}` | accepted no-op; the C, C++, Java and Python keyword lists are built in |
+| `\lstinputlisting` | `[keys]{file}` | listing of a project document's lines |
 | `\section` | `{...}` | numbered section heading; starred form unnumbered |
 | `\subsection` | `{...}` | numbered subsection heading; starred form unnumbered |
 | `\subsubsection` | `{...}` | numbered subsubsection heading; starred form unnumbered |
@@ -490,9 +494,9 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `enumerate` | text | numbered list; enumitem [label] templates a, A, i, I, 1 |
 | `tabular` | text | table with l/c/r/p columns, rules and multicolumn; with array also >{} <{} !{} m b w and \extrarowheight |
 | `tabular*` | text | table of a given width |
-| `verbatim` | text | literal monospaced lines |
-| `verbatim*` | text | literal monospaced lines with visible spaces |
-| `lstlisting` | text | literal monospaced lines (basic listings) |
+| `verbatim` | text | literal typewriter lines; a tab is one space (latex.ltx \@verbatim) |
+| `verbatim*` | text | literal typewriter lines with visible spaces and tabs |
+| `lstlisting` | text | listings code; columns, numbers, frames and keywords laid out by the render pipeline |
 | `proof` | text | amsthm proof with a closing square |
 | `thebibliography` | text | References section with numbered \bibitem entries |
 | `array` | math | math grid, centred cells |
@@ -519,6 +523,7 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `amsthm` | `` | \newtheorem, \theoremstyle and the proof environment |
 | `array` | `` | tabular >{} <{} !{} m b w columns, \newcolumntype and \extrarowheight |
 | `enumitem` | `shortlabels` | enumerate label templates; \setlist itemsep/topsep |
+| `listings` | `` | lstlisting, \lstinline, \lstset and \lstinputlisting |
 | `geometry` | `letterpaper, margin=1in` | matches the fixed US Letter page with 1in margins |
 
 Any other package, or these packages with other options, is recorded and reported as recognised but not implemented.

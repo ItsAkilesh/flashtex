@@ -197,6 +197,105 @@ pub fn tokenize_document(text: &str, document: DocumentId) -> Vec<Token> {
                             end = j + ch.len_utf8();
                             it.next();
                         }
+                        if name == "lstinline" {
+                            // listings.sty `\lstinline[<options>]<c>...<c>`
+                            // or `{...}` (`\lstinline@`, `\lst@InlineG`): the
+                            // options and the code are raw text, so the whole
+                            // invocation is one `Verb` token (the render
+                            // pipeline re-reads the options at its span).
+                            let skip_blanks = |it: &mut std::iter::Peekable<std::str::CharIndices<'_>>| {
+                                while matches!(it.peek(), Some(&(_, ' ' | '\t'))) {
+                                    it.next();
+                                }
+                            };
+                            let mut look = it.clone();
+                            skip_blanks(&mut look);
+                            if matches!(look.peek(), Some(&(_, '['))) {
+                                let mut scan = look.clone();
+                                scan.next();
+                                let mut closed = false;
+                                while let Some(&(_, ch)) = scan.peek() {
+                                    scan.next();
+                                    if ch == ']' {
+                                        closed = true;
+                                        break;
+                                    }
+                                    if ch == '\n' {
+                                        break;
+                                    }
+                                }
+                                if closed {
+                                    look = scan;
+                                    skip_blanks(&mut look);
+                                }
+                            }
+                            let (code, code_end, terminated) = match look.peek().copied() {
+                                Some((open, '{')) => {
+                                    look.next();
+                                    let mut depth = 1usize;
+                                    let mut close = None;
+                                    while let Some(&(j, ch)) = look.peek() {
+                                        if ch == '\n' {
+                                            break;
+                                        }
+                                        look.next();
+                                        match ch {
+                                            '{' => depth += 1,
+                                            '}' => {
+                                                depth -= 1;
+                                                if depth == 0 {
+                                                    close = Some(j);
+                                                    break;
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    match close {
+                                        Some(j) => (text[open + 1..j].to_string(), j + 1, true),
+                                        None => {
+                                            let stop = look.peek().map_or(text.len(), |&(j, _)| j);
+                                            (text[open + 1..stop].to_string(), stop, false)
+                                        }
+                                    }
+                                }
+                                Some((open, delim)) if delim != '\n' => {
+                                    look.next();
+                                    let content_start = open + delim.len_utf8();
+                                    let mut close = None;
+                                    while let Some(&(j, ch)) = look.peek() {
+                                        if ch == '\n' {
+                                            break;
+                                        }
+                                        look.next();
+                                        if ch == delim {
+                                            close = Some(j);
+                                            break;
+                                        }
+                                    }
+                                    match close {
+                                        Some(j) => (text[content_start..j].to_string(), j + delim.len_utf8(), true),
+                                        None => {
+                                            let stop = look.peek().map_or(text.len(), |&(j, _)| j);
+                                            (text[content_start..stop].to_string(), stop, false)
+                                        }
+                                    }
+                                }
+                                _ => (String::new(), end, false),
+                            };
+                            if code_end > end {
+                                it = look;
+                            }
+                            tokens.push(Token {
+                                kind: TokenKind::Verb {
+                                    text: code,
+                                    starred: false,
+                                    terminated,
+                                },
+                                span: Span::in_document(document, start, code_end.max(end)),
+                            });
+                            continue;
+                        }
                         if name == "verb" {
                             // `\verb`/`\verb*` reads its own raw argument
                             // directly off the character stream: no blank-
@@ -447,6 +546,42 @@ mod tests {
         // The delimiter itself is excluded from the span but the rest of the
         // token stream resumes right after it, as ordinary text.
         assert_eq!(toks[1].kind, TokenKind::Word("done".into()));
+    }
+
+    #[test]
+    fn lstinline_reads_options_and_a_delimited_or_braced_body() {
+        let toks = tokenize(r"\lstinline[language=C]|x = {1};| and \lstinline {a {b} c}.");
+        assert_eq!(
+            toks[0].kind,
+            TokenKind::Verb {
+                text: "x = {1};".into(),
+                starred: false,
+                terminated: true,
+            }
+        );
+        assert_eq!((toks[0].span.start, toks[0].span.end), (0, 32));
+        let braced = toks
+            .iter()
+            .find_map(|t| match &t.kind {
+                TokenKind::Verb { text, .. } if text.starts_with('a') => Some(text.clone()),
+                _ => None,
+            })
+            .expect("second \\lstinline");
+        assert_eq!(braced, "a {b} c");
+        assert_eq!(toks.last().map(|t| t.kind.clone()), Some(TokenKind::Word(".".into())));
+    }
+
+    #[test]
+    fn unterminated_lstinline_stops_at_end_of_line() {
+        let toks = tokenize("\\lstinline|open\nnext");
+        assert_eq!(
+            toks[0].kind,
+            TokenKind::Verb {
+                text: "open".into(),
+                starred: false,
+                terminated: false,
+            }
+        );
     }
 
     #[test]

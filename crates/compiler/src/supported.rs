@@ -225,6 +225,10 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("maketitle", "", "article.cls title block"),
     ("newtheorem", "{env}[counter]{name}", "defines a numbered theorem-like environment (amsthm)"),
     ("theoremstyle", "{style}", "selects the amsthm style for following \\newtheorem"),
+    ("lstset", "{keys}", "listings keys for the listings that follow; keys the render pipeline does not lay out warn"),
+    ("lstdefinestyle", "{name}{keys}", "named listings key set for style=; keys the render pipeline does not lay out warn"),
+    ("lstloadlanguages", "{languages}", "accepted no-op; the C, C++, Java and Python keyword lists are built in"),
+    ("lstinputlisting", "[keys]{file}", "listing of a project document's lines"),
 ];
 
 const SIZE_DECLARATIONS: &[&str] = &[
@@ -521,9 +525,9 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
     ),
     ("tabular", "table with l/c/r/p columns, rules and multicolumn; with array also >{} <{} !{} m b w and \\extrarowheight"),
     ("tabular*", "table of a given width"),
-    ("verbatim", "literal monospaced lines"),
-    ("verbatim*", "literal monospaced lines with visible spaces"),
-    ("lstlisting", "literal monospaced lines (basic listings)"),
+    ("verbatim", "literal typewriter lines; a tab is one space (latex.ltx \\@verbatim)"),
+    ("verbatim*", "literal typewriter lines with visible spaces and tabs"),
+    ("lstlisting", "listings code; columns, numbers, frames and keywords laid out by the render pipeline"),
     ("proof", "amsthm proof with a closing square"),
     ("thebibliography", "References section with numbered \\bibitem entries"),
 ];
@@ -550,6 +554,11 @@ const PACKAGES: &[(&str, &str, &str)] = &[
         "enumitem",
         "shortlabels",
         "enumerate label templates; \\setlist itemsep/topsep",
+    ),
+    (
+        "listings",
+        "",
+        "lstlisting, \\lstinline, \\lstset and \\lstinputlisting",
     ),
     (
         "geometry",
