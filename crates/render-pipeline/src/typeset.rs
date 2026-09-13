@@ -299,6 +299,7 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
 }
 
 pub mod floatpage;
+pub mod footnotes;
 
 pub struct Laid {
     pub blocks: Vec<BuiltBlock>,
@@ -335,6 +336,11 @@ pub struct Context<'a> {
     path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
     /// microtype's per-font pdfTeX parameters by (metrics identity, size).
     microtype_fonts: BTreeMap<(Rc<str>, u64), Option<Rc<flashtex_microtype::FontParams>>>,
+    /// Footnote texts met while building horizontal lists, and for each
+    /// the box record its `\insert` follows (the mark, or the box before
+    /// `\footnotetext`): see [`footnotes`].
+    notes: Vec<footnotes::NoteSrc>,
+    note_anchors: Vec<(usize, usize)>,
 }
 
 impl<'a> Context<'a> {
@@ -360,6 +366,8 @@ impl<'a> Context<'a> {
             capture: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
             microtype_fonts: BTreeMap::new(),
+            notes: Vec::new(),
+            note_anchors: Vec::new(),
         }
     }
 
@@ -1566,8 +1574,28 @@ impl<'a> Context<'a> {
             out.push(item);
             recs.push(rec);
         };
+        // Notes of this list: (item index, mark record, note).
+        let mut notes: Vec<(usize, Option<usize>, usize)> = Vec::new();
         for (idx, item) in items.iter().enumerate() {
             match item {
+                AItem::Footnote { number, mark, span, text } => {
+                    let note = text.as_ref().map(|t| {
+                        self.notes.push(footnotes::NoteSrc { number: number.clone(), span: *span, items: t.clone() });
+                        self.notes.len() - 1
+                    });
+                    let mut anchor = None;
+                    if *mark {
+                        // `\@footnotemark`: `\nobreak\@makefnmark`.
+                        push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
+                        if let Some((run, rec)) = self.footnote_mark(number, *span, size) {
+                            push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                            anchor = Some(rec);
+                        }
+                    }
+                    if let Some(n) = note {
+                        notes.push((out.len(), anchor, n));
+                    }
+                }
                 AItem::Word(w) => {
                     // TeX hyphenates a word only when it directly follows
                     // glue (§894: never the first word of a paragraph, which
@@ -1691,6 +1719,14 @@ impl<'a> Context<'a> {
         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
         push(&mut out, &mut recs, pl::Item::Glue(if fills { pl::Glue::fil() } else { pl::Glue::fixed(0.0) }), None);
         push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
+        // A `\footnotetext` insert follows the line of the box before it
+        // (the first box of the list when there is none).
+        for (at, anchor, n) in notes {
+            let rec = anchor.or_else(|| recs[..at.min(recs.len())].iter().rev().find_map(|r| *r)).or_else(|| recs.iter().find_map(|r| *r));
+            if let Some(rec) = rec {
+                self.note_anchors.push((rec, n));
+            }
+        }
         (out, recs, labels, skips)
     }
 
@@ -4731,6 +4767,10 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         if cache.is_none() {
             return (None, None);
         }
+        // A footnote's record indices and note table are per build.
+        if items.iter().any(|i| matches!(i, AItem::Footnote { .. })) {
+            return (None, None);
+        }
         let Some((document, base)) = incremental::block_origin(items) else {
             return (None, None);
         };
@@ -5080,13 +5120,22 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     let params = page_params(s);
     let vblocks: Vec<VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
     let list = pagebuild::vlist(&params, &vblocks);
+    // Footnote blocks are appended after the body's (not in `vblocks`).
+    let insertions = footnotes::prepare(ctx, &mut blocks, &params, !floats.is_empty());
     // Two-column documents: the page builder fills columns of `\textheight`
     // (`\@colht`); `\@outputdblcol` ships the first column and the second
     // side by side, the second `\columnwidth + \columnsep` to the right.
     let columns = n_columns;
     let (mut built, images, float_labels) = if floats.is_empty() {
         let (short_pages, short) = top_title.as_ref().map_or((0, 0.0), |t| (columns, t.2));
-        (pagebuild::break_pages_shortened(&params, &list, short_pages, short), Vec::new(), Vec::new())
+        match &insertions {
+            Some(ins) => {
+                let (mut pages, areas) = pagebuild::break_pages_inserts(&params, &list, short_pages, short, ins);
+                footnotes::place(ctx, &mut blocks, &mut pages, areas);
+                (pages, Vec::new(), Vec::new())
+            }
+            None => (pagebuild::break_pages_shortened(&params, &list, short_pages, short), Vec::new(), Vec::new()),
+        }
     } else {
         if let Some((first, ..)) = &top_title {
             let span = blocks.get(*first).and_then(|b| b.recs.iter().flatten().next().copied()).and_then(|r| match &ctx.recs[r] {
