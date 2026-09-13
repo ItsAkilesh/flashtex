@@ -1268,6 +1268,47 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     // Latin Modern Math resource (`crate::lm_math`), not approximated.
     ("setminus", "∖"),
     ("Longrightarrow", "⟹"),
+    // amssymb/latexsym symbols below have no base-14 Symbol glyph either;
+    // all are drawn from the pinned Latin Modern Math resource (see issue #62).
+    ("mp", "∓"),
+    ("ll", "≪"),
+    ("gg", "≫"),
+    ("simeq", "≃"),
+    ("vdots", "⋮"),
+    ("ddots", "⋱"),
+    ("lfloor", "⌊"),
+    ("rfloor", "⌋"),
+    ("lceil", "⌈"),
+    ("rceil", "⌉"),
+    ("oint", "∮"),
+    ("mapsto", "↦"),
+    ("ell", "ℓ"),
+    ("hbar", "ℏ"),
+    ("circ", "∘"),
+    ("parallel", "∥"),
+    ("nmid", "∤"),
+    ("nleq", "≰"),
+    ("ngeq", "≱"),
+    ("subsetneq", "⊊"),
+    ("supsetneq", "⊋"),
+    ("lesssim", "≲"),
+    ("gtrsim", "≳"),
+    ("triangleq", "≜"),
+    ("coloneqq", "≔"),
+    ("nexists", "∄"),
+    ("complement", "∁"),
+    ("rightsquigarrow", "⇝"),
+    ("hookrightarrow", "↪"),
+    ("leftrightarrows", "⇆"),
+    ("models", "⊨"),
+    ("vdash", "⊢"),
+    ("dashv", "⊣"),
+    ("top", "⊤"),
+    ("measuredangle", "∡"),
+    ("square", "□"),
+    ("blacksquare", "■"),
+    ("lozenge", "◊"),
+    ("checkmark", "✓"),
 ];
 
 /// Named operators typeset as upright roman words (`\sin x`, `\lim_{x\to 0}`).
@@ -1291,6 +1332,10 @@ const DELIMITER_COMMANDS: &[&str] = &[
     "downarrow",
     "Uparrow",
     "Downarrow",
+    "lfloor",
+    "rfloor",
+    "lceil",
+    "rceil",
 ];
 
 fn text_atom(text: String, span: Span) -> MathAtom {
@@ -1388,13 +1433,17 @@ fn symbol_class(glyph: &str) -> AtomClass {
     match glyph {
         "=" | "<" | ">" | ":" | "≤" | "≥" | "≠" | "≈" | "≡" | "∼" | "≅" | "∝" | "⊥" | "∈" | "∉"
         | "∋" | "⊂" | "⊆" | "⊃" | "⊇" | "∣" | "→" | "←" | "↔" | "⇒" | "⇐" | "⇔" | "⟹" | "↑"
-        | "↓" | "⇑" | "⇓" | "∴" => Rel,
+        | "↓" | "⇑" | "⇓" | "∴"
+        // amssymb/latexsym relations, all drawn from the pinned Latin Modern
+        // Math resource (`crate::lm_math`).
+        | "≪" | "≫" | "≃" | "↦" | "∥" | "∤" | "≰" | "≱" | "⊊" | "⊋" | "≲" | "≳" | "≜" | "≔"
+        | "⇝" | "↪" | "⇆" | "⊨" | "⊢" | "⊣" => Rel,
         "+" | "-" | "−" | "*" | "±" | "×" | "÷" | "⋅" | "·" | "∗" | "∪" | "∩" | "∨" | "∧" | "⊕"
-        | "⊗" | "∖" => Bin,
-        "(" | "[" | "{" | "〈" | "⟨" => Open,
-        ")" | "]" | "}" | "〉" | "⟩" | "!" | "?" => Close,
+        | "⊗" | "∖" | "∓" | "∘" => Bin,
+        "(" | "[" | "{" | "〈" | "⟨" | "⌊" | "⌈" => Open,
+        ")" | "]" | "}" | "〉" | "⟩" | "!" | "?" | "⌋" | "⌉" => Close,
         "," | ";" => Punct,
-        "∑" | "∏" | "∫" | "∫∫" | "∫∫∫" => Op,
+        "∑" | "∏" | "∫" | "∫∫" | "∫∫∫" | "∮" => Op,
         "⋅⋅⋅" => Inner,
         _ => Ord,
     }
@@ -2609,6 +2658,124 @@ mod spacing_tests {
             width(r"\sin x", SIZE),
             width(r"\sin", SIZE) + width("x", SIZE) + 3.0,
         );
+    }
+
+    #[test]
+    fn new_relations_get_thick_space_like_other_relations() {
+        for command in [
+            "ll",
+            "gg",
+            "simeq",
+            "mapsto",
+            "parallel",
+            "nmid",
+            "nleq",
+            "ngeq",
+            "subsetneq",
+            "supsetneq",
+            "lesssim",
+            "gtrsim",
+            "triangleq",
+            "coloneqq",
+            "rightsquigarrow",
+            "hookrightarrow",
+            "leftrightarrows",
+            "models",
+            "vdash",
+            "dashv",
+        ] {
+            let glyph = command_glyph(command).unwrap();
+            // A space after a control word is swallowed by the lexer (like
+            // real TeX), so it safely separates the command from `b`.
+            let b = laid_out(&format!(r"a\{command} b"), SIZE);
+            close(x(&b, glyph), width("a", SIZE) + 5.0);
+            close(x(&b, "b"), x(&b, glyph) + width(glyph, SIZE) + 5.0);
+        }
+    }
+
+    #[test]
+    fn mp_and_circ_get_medium_space_like_other_binary_operators() {
+        for command in ["mp", "circ"] {
+            let glyph = command_glyph(command).unwrap();
+            let b = laid_out(&format!(r"a\{command} b"), SIZE);
+            close(x(&b, glyph), width("a", SIZE) + 4.0);
+            close(x(&b, "b"), x(&b, glyph) + width(glyph, SIZE) + 4.0);
+        }
+    }
+
+    #[test]
+    fn floor_and_ceiling_are_open_and_close_fences() {
+        // Open fences get no leading space; close fences get no trailing space.
+        let b = laid_out(r"a=\lfloor x\rfloor", SIZE);
+        close(x(&b, "⌊"), x(&b, "=") + width("=", SIZE) + 5.0);
+        close(x(&b, "x"), x(&b, "⌊") + width("⌊", SIZE));
+        close(b.width, x(&b, "⌋") + width("⌋", SIZE));
+
+        let b = laid_out(r"a=\lceil x\rceil", SIZE);
+        close(x(&b, "⌈"), x(&b, "=") + width("=", SIZE) + 5.0);
+        close(x(&b, "x"), x(&b, "⌈") + width("⌈", SIZE));
+        close(b.width, x(&b, "⌉") + width("⌉", SIZE));
+    }
+
+    #[test]
+    fn left_right_floor_and_ceiling_are_accepted_as_delimiters() {
+        laid_out(r"\left\lfloor x \right\rfloor", SIZE);
+        laid_out(r"\left\lceil x \right\rceil", SIZE);
+    }
+
+    #[test]
+    fn oint_is_an_op_like_int_and_oint() {
+        let b = laid_out(r"\oint_C f", SIZE);
+        // Op class before an ordinary atom gets a thin space (3mu), same as \int.
+        let int = laid_out(r"\int_C f", SIZE);
+        close(b.width - width("∮", SIZE), int.width - width("∫", SIZE));
+    }
+
+    #[test]
+    fn every_new_amssymb_command_renders_with_no_diagnostics() {
+        for command in [
+            "mp",
+            "ll",
+            "gg",
+            "simeq",
+            "vdots",
+            "ddots",
+            "lfloor",
+            "rfloor",
+            "lceil",
+            "rceil",
+            "oint",
+            "mapsto",
+            "ell",
+            "hbar",
+            "circ",
+            "parallel",
+            "nmid",
+            "nleq",
+            "ngeq",
+            "subsetneq",
+            "supsetneq",
+            "lesssim",
+            "gtrsim",
+            "triangleq",
+            "coloneqq",
+            "nexists",
+            "complement",
+            "rightsquigarrow",
+            "hookrightarrow",
+            "leftrightarrows",
+            "models",
+            "vdash",
+            "dashv",
+            "top",
+            "measuredangle",
+            "square",
+            "blacksquare",
+            "lozenge",
+            "checkmark",
+        ] {
+            laid_out(&format!(r"\{command}"), SIZE);
+        }
     }
 }
 

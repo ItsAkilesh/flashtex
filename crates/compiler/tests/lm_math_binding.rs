@@ -153,6 +153,100 @@ fn real_glyphs_are_emitted_with_the_latin_modern_math_hint() {
     assert_eq!(fidelity.len(), 1, "{messages:#?}");
 }
 
+/// Issue #62: amssymb/latexsym symbols with no base-14 Symbol glyph also draw
+/// from the pinned Latin Modern Math resource, exactly like `\mathbb`.
+#[test]
+fn amssymb_symbols_are_emitted_with_the_latin_modern_math_hint() {
+    let reply = compile(
+        r"$a \mp b$ $a \ll b$ $a \gg b$ $a \simeq b$ $\vdots$ $\ddots$
+          $\lfloor x \rfloor$ $\lceil x \rceil$ $\oint_C f$ $a \mapsto b$
+          $\ell$ $\hbar$ $a \circ b$ $a \parallel b$ $a \nmid b$
+          $a \nleq b$ $a \ngeq b$ $a \subsetneq b$ $a \supsetneq b$
+          $a \lesssim b$ $a \gtrsim b$ $a \triangleq b$ $a \coloneqq b$
+          $\nexists x$ $\complement A$ $a \rightsquigarrow b$
+          $a \hookrightarrow b$ $a \leftrightarrows b$ $a \models b$
+          $a \vdash b$ $a \dashv b$ $\top$ $\measuredangle$ $\square$
+          $\blacksquare$ $\lozenge$ $\checkmark$
+",
+    );
+    let items = items(&reply);
+    let glyphs = [
+        "∓", "≪", "≫", "≃", "⋮", "⋱", "⌊", "⌋", "⌈", "⌉", "∮", "↦", "ℓ", "ℏ", "∘", "∥", "∤", "≰",
+        "≱", "⊊", "⊋", "≲", "≳", "≜", "≔", "∄", "∁", "⇝", "↪", "⇆", "⊨", "⊢", "⊣", "⊤", "∡", "□",
+        "■", "◊", "✓",
+    ];
+    for glyph in glyphs {
+        let (_, family) = items
+            .iter()
+            .find(|(text, _)| text == glyph)
+            .unwrap_or_else(|| panic!("{glyph} not emitted: {items:?}"));
+        assert_eq!(family, lm_math::FAMILY, "{glyph}");
+    }
+
+    let messages = messages(&reply);
+    let commands = [
+        "mp",
+        "ll",
+        "gg",
+        "simeq",
+        "vdots",
+        "ddots",
+        "lfloor",
+        "rfloor",
+        "lceil",
+        "rceil",
+        "oint",
+        "mapsto",
+        "ell",
+        "hbar",
+        "circ",
+        "parallel",
+        "nmid",
+        "nleq",
+        "ngeq",
+        "subsetneq",
+        "supsetneq",
+        "lesssim",
+        "gtrsim",
+        "triangleq",
+        "coloneqq",
+        "nexists",
+        "complement",
+        "rightsquigarrow",
+        "hookrightarrow",
+        "leftrightarrows",
+        "models",
+        "vdash",
+        "dashv",
+        "top",
+        "measuredangle",
+        "square",
+        "blacksquare",
+        "lozenge",
+        "checkmark",
+    ];
+    for command in commands {
+        assert!(
+            !messages
+                .iter()
+                .any(|m| m.contains(&format!("\\{command} is not supported"))),
+            "{messages:#?}"
+        );
+    }
+    // No base-14 "no glyph" width fallback, and no false export-loss warning,
+    // for any of these glyphs (same guarantee as `\mathbb`/`\setminus`).
+    assert!(
+        !messages.iter().any(|m| m.contains("has no glyph")),
+        "{messages:#?}"
+    );
+    assert!(
+        !messages
+            .iter()
+            .any(|m| m.contains("will not survive PDF export")),
+        "{messages:#?}"
+    );
+}
+
 #[test]
 fn mathbb_rejects_what_amsfonts_does_not_provide() {
     let reply = compile("$\\mathbb{1}$ $\\mathbb{x}$\n");
