@@ -410,6 +410,12 @@ const BUILT_INS: &[&str] = &[
     "newpage",
     "pagestyle",
     "listfiles",
+    "centering",
+    "Centering",
+    "raggedright",
+    "RaggedRight",
+    "raggedleft",
+    "RaggedLeft",
     "noindent",
     "tiny",
     "scriptsize",
@@ -584,6 +590,9 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         style: TextStyle::default(),
         style_stack: Vec::new(),
         env_styles: Vec::new(),
+        declared_alignment: None,
+        alignment_stack: Vec::new(),
+        env_alignments: Vec::new(),
         list_spacing: HashMap::new(),
     };
     let blocks = p.document();
@@ -660,6 +669,12 @@ struct P<'a> {
     style: TextStyle,
     style_stack: Vec<TextStyle>,
     env_styles: Vec<TextStyle>,
+    /// `\centering`/`\raggedright`/`\raggedleft` in force. Like TeX's
+    /// paragraph parameters it is read when a paragraph ends, and it is
+    /// saved on `{`/`\begin` and restored on the matching `}`/`\end`.
+    declared_alignment: Option<ParagraphStyle>,
+    alignment_stack: Vec<Option<ParagraphStyle>>,
+    env_alignments: Vec<Option<ParagraphStyle>>,
     /// `\setlist` overrides, keyed by environment name ("itemize" /
     /// "enumerate"). A list resolves its spacing from here when `\begin`
     /// runs, so a later `\setlist` does not retroactively change an
@@ -749,6 +764,9 @@ impl P<'_> {
                         if let Some(style) = self.style_stack.pop() {
                             self.style = style;
                         }
+                        if let Some(alignment) = self.alignment_stack.pop() {
+                            self.declared_alignment = alignment;
+                        }
                     }
                 }
                 TokenKind::MathShift if render => self.dollar_math(tok.span, para),
@@ -816,6 +834,17 @@ impl P<'_> {
             // behaviour is a documented no-op rather than an "unsupported"
             // diagnostic for a command every corpus fixture's preamble carries.
             "listfiles" => {}
+            // Alignment declarations (ragged2e's capitalised forms differ only
+            // in hyphenation, which this compiler does not do). Handled before
+            // the preamble guard because a global `\raggedright` there is
+            // ordinary LaTeX.
+            "centering" | "Centering" => self.declared_alignment = Some(ParagraphStyle::Center),
+            "raggedright" | "RaggedRight" => {
+                self.declared_alignment = Some(ParagraphStyle::FlushLeft)
+            }
+            "raggedleft" | "RaggedLeft" => {
+                self.declared_alignment = Some(ParagraphStyle::FlushRight)
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
@@ -1571,6 +1600,7 @@ impl P<'_> {
                 self.multirow_environment(span, &environment, blocks, para);
                 return;
             }
+            self.env_alignments.push(self.declared_alignment);
             if environment == "document" && self.has_document {
                 self.in_body = true;
             } else if environment == "figure" && self.in_body {
@@ -1578,6 +1608,10 @@ impl P<'_> {
             } else if let (Some(style), true) = (paragraph_style(&environment), self.in_body) {
                 self.flush_paragraph(blocks, para);
                 self.paragraph_styles.push(style);
+                // An inner alignment environment overrides an outer declaration.
+                if style != ParagraphStyle::Quote {
+                    self.declared_alignment = None;
+                }
             } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
                 self.flush_paragraph(blocks, para);
                 let template = self.optional_bracket_argument().map(|(options, _)| options);
@@ -1605,6 +1639,7 @@ impl P<'_> {
         }
 
         let popped = self.env_stack.pop();
+        let had_open_environment = popped.is_some();
         if popped.is_some() {
             if let Some(style) = self.env_styles.pop() {
                 self.style = style;
@@ -1650,6 +1685,13 @@ impl P<'_> {
             self.flush_paragraph(blocks, para);
             self.in_body = false;
             self.document_ended = true;
+        }
+        // Restored only after the flushes above: environments that end their
+        // paragraph do so while their own declarations are still in force.
+        if had_open_environment {
+            if let Some(alignment) = self.env_alignments.pop() {
+                self.declared_alignment = alignment;
+            }
         }
     }
 
@@ -2209,6 +2251,7 @@ impl P<'_> {
         self.brace_stack.push(span);
         self.macro_scopes.push(HashMap::new());
         self.style_stack.push(self.style);
+        self.alignment_stack.push(self.declared_alignment);
     }
 
     fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>, base: TextStyle) -> Vec<Inline> {
@@ -2372,9 +2415,14 @@ impl P<'_> {
                 extra_gap_before_pt,
                 extra_gap_after_pt,
             },
-            None => match self.paragraph_styles.last() {
-                Some(&style) => Block::Styled { style, content },
-                None => Block::Paragraph(content),
+            None => match (self.paragraph_styles.last(), self.declared_alignment) {
+                // A declaration inside `quote` would otherwise drop its indent.
+                (Some(&ParagraphStyle::Quote), _) => Block::Styled {
+                    style: ParagraphStyle::Quote,
+                    content,
+                },
+                (_, Some(style)) | (Some(&style), None) => Block::Styled { style, content },
+                (None, None) => Block::Paragraph(content),
             },
         });
         self.finish_block_dependencies();
@@ -3254,6 +3302,78 @@ mod tests {
         let cs: Vec<_> = items.iter().filter(|i| i.text == "c").collect();
         assert!(a.x_pt > cs[0].x_pt, "right-aligned column");
         assert_eq!(at("b").x_pt, at("d").x_pt);
+    }
+
+    #[test]
+    fn alignment_declarations_are_group_scoped_and_read_at_paragraph_end() {
+        let styles = |source: &str| {
+            let parsed = parse(source);
+            assert!(
+                !parsed
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.message.contains("not supported")
+                        || d.message.contains("ragged")
+                        || d.message.contains("centering")),
+                "{:?}",
+                parsed.diagnostics
+            );
+            parsed
+                .blocks
+                .iter()
+                .map(|block| match block {
+                    Block::Styled { style, .. } => Some(*style),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        use ParagraphStyle::{Center, FlushLeft, FlushRight, Quote};
+        assert_eq!(
+            styles("{\\centering Title\\par} After."),
+            [Some(Center), None]
+        );
+        assert_eq!(
+            styles("{\\raggedright Ragged\\par}\n\n{\\raggedleft Left\\par}\n\nPlain."),
+            [Some(FlushLeft), Some(FlushRight), None]
+        );
+        // The group closed before the paragraph ended, so (as in TeX) the
+        // declaration no longer applies to it.
+        assert_eq!(styles("{\\centering Early} close.\n\nNext."), [None, None]);
+        // Scope ends at `\end`; environments that end their paragraph do so
+        // with their own declaration still in force.
+        assert_eq!(
+            styles("\\begin{figure}\\centering Body\\end{figure}\nAfter."),
+            [Some(Center), None]
+        );
+        assert_eq!(
+            styles("\\raggedleft\\begin{center}\\RaggedRight Inner\\end{center}\nOuter."),
+            [Some(FlushLeft), Some(FlushRight)]
+        );
+        assert_eq!(
+            styles("\\centering\\begin{center}Env\\end{center}\n\\begin{quote}Q\\end{quote}"),
+            [Some(Center), Some(Quote)]
+        );
+        assert_eq!(
+            styles("\\documentclass{article}\n\\raggedright\n\\begin{document}\nText.\n\\end{document}"),
+            [Some(FlushLeft)]
+        );
+
+        // A declared paragraph lays out exactly like its environment form,
+        // i.e. it is not justified.
+        let words = "Ragged text keeps its natural spaces here. ".repeat(6);
+        let positions = |source: String| {
+            items(&source)
+                .1
+                .iter()
+                .map(|item| item.x_pt)
+                .collect::<Vec<_>>()
+        };
+        let declared = positions(format!("{{\\raggedright {words}\\par}}"));
+        assert_eq!(
+            declared,
+            positions(format!("\\begin{{flushleft}}{words}\\end{{flushleft}}"))
+        );
+        assert_ne!(declared, positions(words.clone()));
     }
 
     #[test]
