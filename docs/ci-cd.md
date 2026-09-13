@@ -7,8 +7,8 @@ scripts in `scripts/ci/` that also run locally.
 |---|---|
 | `ci.yml` | On push to `main`, pull requests and manual runs: builds and tests every helper crate on Linux and macOS, builds and tests the Mac app against freshly built helpers, builds and unit-tests the iPad companion in the simulator. |
 | `release.yml` | On a `v*` tag or a manual run with a version: builds the helpers, packages `FlashTeX.app` into `FlashTeX.dmg` (signed + notarized when the secrets exist), tars the CLI tools for macOS arm64 and Linux x86_64, publishes the GitHub release with `SHA256SUMS`, then points the website at it. |
-| `scripts/ci/build-helpers.sh` | Builds every helper `apps/mac/scripts/make-app.sh` bundles in release mode and prints `FLASHTEX_<NAME>=<path>` lines (the variables the app and its tests read). |
-| `scripts/ci/package-cli.sh` | Stages `flashtex-render`, `flashtex-compiler`, `flashtex-pdf`, `flashtex-pdf-exact` plus the pinned Latin Modern faces and TFM metrics into `flashtex-cli-<version>-<platform>.tar.gz` with a README. |
+| `scripts/ci/build-helpers.sh` | Builds the `flashtex` CLI and every helper `apps/mac/scripts/make-app.sh` bundles in release mode and prints `FLASHTEX_<NAME>=<path>` lines (the variables the app and its tests read; `FLASHTEX_CLI` is the CLI). |
+| `scripts/ci/package-cli.sh` | Stages `flashtex` (the CLI), `flashtex-render`, `flashtex-compiler`, `flashtex-pdf`, `flashtex-pdf-exact` plus the pinned Latin Modern faces and TFM metrics into `flashtex-cli-<version>-<platform>.tar.gz` with a README (layout below). |
 | `scripts/ci/update-site.sh` | Rewrites `install.sh`, `download/index.html` and `index.html` on the `gh-pages` branch for a new release and pushes. |
 
 ## `ci.yml`
@@ -47,10 +47,11 @@ Every job has a `timeout-minutes`; pull-request runs cancel superseded runs.
    then produces `FlashTeX.dmg`, `FlashTeX-<ver>-macos-arm64.dmg` (the same
    file under a versioned name) and `flashtex-cli-<ver>-macos-arm64.tar.gz`
    (using the hash-verified fonts/metrics staged inside the app bundle), and
-   smoke-tests the extracted CLI with `flashtex-render --tex`. The temporary
-   keychain is deleted afterwards.
-3. **`linux`** (`ubuntu-latest`) builds `render-pipeline`, `compiler` and
-   `pdf` individually; whatever builds is packaged as
+   smoke-tests the extracted CLI with `bin/flashtex build` (no `FLASHTEX_*`
+   in the environment, so the fonts must come from `share/flashtex`) and
+   `flashtex-render --tex`. The temporary keychain is deleted afterwards.
+3. **`linux`** (`ubuntu-latest`) builds `flashtex-cli`, `render-pipeline`,
+   `compiler` and `pdf` individually; whatever builds is packaged as
    `flashtex-cli-<ver>-linux-x86_64.tar.gz` and the README inside lists any
    crate that did not build on Linux. A Linux failure does not block the
    release.
@@ -59,6 +60,29 @@ Every job has a `timeout-minutes`; pull-request runs cancel superseded runs.
    describing the assets and the signing status; re-runs upload with
    `--clobber` instead), then runs `scripts/ci/update-site.sh <tag> <dmg-sha256>`
    which commits to `gh-pages` as `github-actions[bot]` and pushes.
+
+### CLI tarball layout
+
+```
+flashtex-cli-<version>-<platform>/
+  README.md
+  bin/flashtex                the CLI: build / check / watch / supported / worker / fonts
+  bin/flashtex-render         runtime-v1 worker (+ flashtex-compiler, flashtex-pdf,
+                              flashtex-pdf-exact when built for the platform)
+  share/flashtex/Fonts/       pinned Latin Modern OpenType faces + GUST licence
+  share/flashtex/texmf/       rooted Latin Modern 2.004 TFM metrics + licence
+  bin/Fonts -> ../share/flashtex/Fonts     relative links for the helpers'
+  bin/texmf -> ../share/flashtex/texmf     older `<exe>/Fonts` discovery
+```
+
+`bin/flashtex` finds `share/flashtex/{Fonts,texmf}` relative to its own
+location (`crates/render-pipeline/src/fonts.rs`, `Discovery`: after the
+app-bundle `../Resources` and sibling `<exe>/Fonts` layouts, before the host
+TeX Live directories), so the extracted directory works anywhere with no
+environment and no TeX installation; `flashtex install-cli` symlinks the
+binary into `/usr/local/bin` without breaking that. The Mac app also ships
+the same binary as `Contents/MacOS/flashtex` (it resolves
+`Contents/Resources/{Fonts,texmf}`).
 
 ### Secrets (all optional)
 

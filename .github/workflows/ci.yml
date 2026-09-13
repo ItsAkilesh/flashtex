@@ -43,6 +43,7 @@ jobs:
           - bridge
           - edit-ledger
           - render-pipeline
+          - flashtex-cli
           - preview-controller
           - project-files
           - assistant-context
@@ -90,6 +91,7 @@ jobs:
             crates/bridge
             crates/edit-ledger
             crates/render-pipeline
+            crates/flashtex-cli
             crates/preview-controller
             crates/project-files
             crates/assistant-context
