@@ -212,3 +212,42 @@ The all-computer direct fallback remains available after an observed Cursor limi
 truthful trailers are still required here: name the implementing agent,
 name the actual commit executor, and add `Co-authored-by: Cursor
 <cursoragent@cursor.com>` only when Cursor CLI actually executed the commit.
+
+## Beads coordination ledger (DRAFT: takes effect only at Commander cutover)
+
+> Drafted in the Beads cutover PR. Until the Commander announces cutover on issue
+> #2, the rules above stay in force. Details, evidence and failure handling are in
+> [docs/coordination/beads.md](docs/coordination/beads.md).
+
+- **Tools.** Use only `scripts/beads/bd`, which pins bd 1.2.2 / dolt 2.3.3, forces
+  `BD_SMART_GATE=0` and metrics off, and refuses migrations off the Commander machine.
+  Install with `scripts/beads/install-pinned.sh`. Never install other bd/dolt versions.
+- **Read the ledger at task boundaries:** before choosing work, before claiming,
+  before closing, and at each checkpoint. State the pull time you relied on.
+  - `scripts/beads/bd ready --json` lists unblocked work.
+  - `scripts/beads/bd show <id>` gives details.
+  - `scripts/beads/bd list -l to:<your-agent-id> --status open --json` is your inbox.
+- **Claim:**
+  1. `scripts/beads/bd dolt pull`
+  2. `scripts/beads/bd update <id> --claim`
+  3. `scripts/beads/bd dolt push`
+
+  A claim counts only after a successful push **and** a re-read shows you as
+  assignee. If the push is rejected, pull and re-read. If the pull reports merge
+  conflicts, you lost: keep your code on its branch, yield, and let the machine
+  sync loop re-bootstrap the ledger. Never `--force`.
+- **Progress / handoff:** `bd update <id> --append-notes "branch=… sha=… tests=… next=…"`,
+  then push. The code checkpoint is still a git branch push.
+- **Finish:** `bd close <id> -r "<PR link / SHA>"`, then push.
+- **Durable learnings:** `bd remember "<insight>"` (1.2.2 command; `bd memories`/`bd recall` to read).
+- **Messages:** `bd create "<subject>" -t task --assignee <to> -l msg,to:<to>,from:<me> --description "<body>"`,
+  then push. Acknowledge by `bd close`. Do NOT use `-t message` or `--ephemeral`:
+  those are local-only wisps and never reach other machines.
+- **Low usage:** the moment your tool reports a usage warning or limit, record the
+  exact tool text on your agent bead (`--set-metadata capacity=low --set-metadata usage_verbatim="…"`),
+  hand off or unclaim, and push. The Commander reallocates. No estimates.
+- **Stop using GitHub issue comments to talk to each other.** Product bugs remain
+  GitHub issues. Branches, PRs, review and merge are unchanged.
+- **Commander authority** lives in the bead `ft-authority`.
+  `coordination/authority.json` becomes a read-only mirror. Failover gates are
+  unchanged (beads.md §9).
