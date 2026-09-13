@@ -42,7 +42,34 @@
     "math": [
       "latinmodern-math.otf"
     ],
-    "not_requested": "lmsans*, lmmono*, caps, slanted, dunhill (no request site in render-pipeline, pdf or document-style at 9aaec57a)"
+    "not_requested": "lmsans*, lmromanslant*, lmromancaps*, lmromandemi*, lmromanunsl*, lmsansdemicond*, dunhill (no FamilyKind::Sf or non-upright roman request reaches a vendored file yet; those shapes still fall back with a font_outline_substituted note). Typewriter is covered as of the mono tier.",
+    "mono": {
+      "source": "crates/render-pipeline/src/fonts.rs latin_modern_outline, FamilyKind::Tt arms",
+      "regular": [
+        8,
+        9,
+        10,
+        12
+      ],
+      "italic": [
+        10
+      ],
+      "slant": [
+        10
+      ],
+      "caps": [
+        10
+      ],
+      "capsoblique": [
+        10
+      ],
+      "ltbold": [
+        10
+      ],
+      "ltboldoblique": [
+        10
+      ]
+    }
   },
   "entries": [
     {
@@ -171,6 +198,72 @@
       "copied_from": "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/newcomputermodern/NewCMMath-Regular.otf (byte-for-byte; sha256 verified before and after the copy)",
       "license": "GUST Font License v1.0 or later (name table nameID 0: 'This work is released under the GUST Font License'; package README: 'GustFLv1 or later'); GUST-FONT-LICENSE.TXT in this directory (sha256 49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050) covers it",
       "role": "secondary math face: flashtex-render (crates/render-pipeline mathfont::BB_FONT) draws every double-struck code point (\\mathbb, U+2102/210D/2115/2119/211A/211D/2124, U+1D538-1D56B) from this face because its design and advances follow AMS msbm10, which pdfLaTeX uses for \\mathbb; Latin Modern Math's double-struck block is the sans-like open face"
+    },
+    {
+      "path": "lmmono8-regular.otf",
+      "sha256": "17319490d20f24e192bd7e7999484b95111a4654ac2620e7aa215591142ae997",
+      "byte_length": 66268,
+      "source_member": "fonts/opentype/public/lm/lmmono8-regular.otf"
+    },
+    {
+      "path": "lmmono9-regular.otf",
+      "sha256": "cdd53c7dc01a1d25f21eaf7cae44bfb8a9665e4cbd60e5f8da14287aca819bb9",
+      "byte_length": 63076,
+      "source_member": "fonts/opentype/public/lm/lmmono9-regular.otf"
+    },
+    {
+      "path": "lmmono10-regular.otf",
+      "sha256": "22deb6d3be3ffcb40b33f0e010afb256c677d97c2a2bdee1f5740cdc97751558",
+      "byte_length": 64684,
+      "source_member": "fonts/opentype/public/lm/lmmono10-regular.otf"
+    },
+    {
+      "path": "lmmono12-regular.otf",
+      "sha256": "b826e490fa671f254840abe88afea0975b606f57fb4a8b93f53787c26d8ac319",
+      "byte_length": 63012,
+      "source_member": "fonts/opentype/public/lm/lmmono12-regular.otf"
+    },
+    {
+      "path": "lmmono10-italic.otf",
+      "sha256": "14e6328a5383d2b927c47051093ce0aff60deea07e6df71b8b99ee8d9c2ff8f2",
+      "byte_length": 63584,
+      "source_member": "fonts/opentype/public/lm/lmmono10-italic.otf"
+    },
+    {
+      "path": "lmmonoslant10-regular.otf",
+      "sha256": "4b4a3e600db7f6ec434f8b48b31f22e12faced90e1681c93eeba5e23a6e55fde",
+      "byte_length": 72212,
+      "source_member": "fonts/opentype/public/lm/lmmonoslant10-regular.otf"
+    },
+    {
+      "path": "lmmonocaps10-regular.otf",
+      "sha256": "9fb93a8f39f8e55682d09edb93c4c07d976c13bb92253b875b5b6a19e9af9e0a",
+      "byte_length": 63228,
+      "source_member": "fonts/opentype/public/lm/lmmonocaps10-regular.otf"
+    },
+    {
+      "path": "lmmonocaps10-oblique.otf",
+      "sha256": "6bb7315ab000361195457b6c5efc75ed4bc24d278c6026d0aa8e0e4847394384",
+      "byte_length": 71232,
+      "source_member": "fonts/opentype/public/lm/lmmonocaps10-oblique.otf"
+    },
+    {
+      "path": "lmmonolt10-bold.otf",
+      "sha256": "2f4ae1bd30d4203a1c74c61d61dddbd5e2c2d5a7001d456b1b98e08b7c47ffb9",
+      "byte_length": 66332,
+      "source_member": "fonts/opentype/public/lm/lmmonolt10-bold.otf"
+    },
+    {
+      "path": "lmmonolt10-boldoblique.otf",
+      "sha256": "a739b6deaafe0b9e8ae1eec9db1f425c52e1f6f483ca8e07e359bdd118310bba",
+      "byte_length": 75300,
+      "source_member": "fonts/opentype/public/lm/lmmonolt10-boldoblique.otf"
     }
-  ]
+  ],
+  "mono_provenance": {
+    "purpose": "the ten Latin Modern OTFs latin_modern_outline returns for FamilyKind::Tt (lmmono8/9/10/12-regular per t1lmtt.fd's <-8.5><8.5-9.5><9.5-11><11-> boundaries, lmmono10-italic, lmmonoslant10-regular, lmmonocaps10-regular/-oblique, lmmonolt10-bold/-boldoblique for b/bx). Without them every \\texttt run drew substituted roman outlines and warned font_outline_substituted.",
+    "copied_from": "/nix/store/l7fr37hc3k7wgpavm25lcyndwwghwb9x-texlive-2025-r78234-final-env-texmfdist (TeX Live 2025 r78234 on linux-primary; packages jknappen and lm)",
+    "cross_checked": "this source is not the MacTeX 2026 tree the earlier tiers were copied from, so the release identity was established by byte-comparison instead: every file already pinned from those two packages is byte-identical between the two distributions - all 70 vendored jknappen/ec TFMs, all 28 vendored public/lm TFMs, all 21 vendored Latin Modern OTFs and all 6 amsfonts/symbols TFMs compare equal (cmp) to their namesakes under this root. The typewriter members below were copied from the same directories in the same run, hashed before and after the copy.",
+    "license": "GUST Font License v1.0 (GUST-FONT-LICENSE.TXT in this directory, sha256 49ea6cb9...) - the same Latin Modern release as the 21 lmroman*/latinmodern-math faces already pinned here, so no new license applies."
+  }
 }

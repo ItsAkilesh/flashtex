@@ -51,6 +51,8 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+sys.path.insert(0, os.path.join(REPO, "tools", "visual-oracle"))
+import fontenv  # noqa: E402
 DEFAULT_FIXTURES = os.path.join(REPO, "fixtures", "real-world")
 DEFAULT_TEXBIN = "/usr/local/texlive/2026/bin/universal-darwin"
 DPI = 144
@@ -724,6 +726,18 @@ def build_report(args, meta, fixtures_out, producers, rasterizer_note):
             maxd = max((p["max_delta"] for p in compared), default="—")
             L(f"| {fx['id']} | {ref_pages} | {pr['producer']} | {pr['status']} | {pr['pages']} | {errs}/{warns} | {pr['seconds']} | {pdf_cell} | {len(compared)}/{len(cmp_pages)} | {diff_cell} | {maxd} |")
     L("")
+    font_failures = [(fx["id"], pr) for fx in fixtures_out for pr in fx["producers"] if pr.get("font_diagnostics")]
+    if font_failures:
+        L("## Font environment failures — these runs are not measurements")
+        L("")
+        L("The renderer substituted metrics, so the geometry is not the reference's.")
+        L("A `recovered` status alongside one of these means the document compiled,")
+        L("not that it compiled correctly; page comparisons here are void.")
+        L("")
+        for fid, pr in font_failures:
+            for d in pr["font_diagnostics"]:
+                L(f"- `{fid}` / `{pr['producer']}`: `{d['code']}` — {md_escape(d['message'])}")
+        L("")
     failures = [(fx["id"], pr) for fx in fixtures_out for pr in fx["producers"] if pr["status"] in ("no_reply", "error", "failed") or pr.get("timed_out")]
     if failures:
         L("## Producer failures (exact non-secret reproduction; owners patch, this lane does not)")
@@ -967,7 +981,14 @@ def main():
             else:
                 pr["compare"] = {"pages": []}
             rec["producers"].append(pr)
+            font_bad = fontenv.font_diagnostics(pr["diagnostics"])
+            pr["font_diagnostics"] = [{"code": d.get("code"), "message": (d.get("message") or "")[:200]} for d in font_bad]
             print(f"   {p['name']}: {pr['status']} pages={pr['pages']} diags={len(pr['diagnostics'])} {pr['seconds']}s pdf={'ok' if pdf.get('ok') else pdf.get('note', 'none')[:40]}", file=sys.stderr)
+            if font_bad:
+                # "recovered" here would be a lie: the renderer substituted
+                # metrics, so the page geometry is not the reference's and
+                # nothing measured against it means anything.
+                fontenv.report_font_failure(f"{fx['id']}/{p['name']}", font_bad, env)
         fixtures_out.append(rec)
 
     # corpus-wide constructs per producer
@@ -1027,6 +1048,17 @@ def main():
         f.write(build_report(args, meta, fixtures_out, producers, rasterizer_note))
     print(f"wrote {rel(out_dir)}/report.md and report.json; scratch in {rel(work)}", file=sys.stderr)
 
+    # A run whose renderer substituted metrics is not a measurement, so it
+    # must not exit 0 -- otherwise a caller (or CI) reads "recovered" and
+    # records geometry that was never compared against the real fonts.
+    n = sum(len(pr.get("font_diagnostics") or []) for fx in fixtures_out for pr in fx["producers"])
+    if n:
+        print(f"FONT-ENV FAILURE: {n} font diagnostic(s) across the corpus; "
+              "these runs used substituted metrics and are not comparable to the "
+              "references. See the report's font-environment section.", file=sys.stderr)
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

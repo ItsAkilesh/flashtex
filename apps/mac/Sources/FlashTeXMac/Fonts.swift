@@ -48,16 +48,30 @@ enum PreviewFonts {
     /// (`flashtex-render` `FontSet::latin_modern_file`, t1lmr.fd boundaries):
     /// regular 5–17, bold 5–12, italic 7–12, bold-italic 10, LM Math, and the
     /// secondary double-struck math face `NewCMMath-Regular.otf` (New Computer
-    /// Modern Math, msbm's `\mathbb` design; `mathfont::BB_FONT_FILE`). The
-    /// vendored `apps/mac/Fonts` (pinned by `SUPPLEMENTARY-FACES.json` plus the
-    /// Commander manifest) holds all of them; when the registered directory
-    /// lacks any, the gap is recorded in `latinModernMissingFaces` so a
-    /// CoreText fallback for that master is never silent.
+    /// Modern Math, msbm's `\mathbb` design; `mathfont::BB_FONT_FILE`), plus
+    /// the typewriter designs `latin_modern_outline` returns for
+    /// `FamilyKind::Tt` (t1lmtt.fd boundaries: `m/n` 8, 9, 10, `<11->` 12;
+    /// one 10 pt design for italic, slanted, caps and the bold `lmmonolt`).
+    /// The vendored `apps/mac/Fonts` (pinned by `SUPPLEMENTARY-FACES.json`
+    /// plus the Commander manifest) holds all of them; when the registered
+    /// directory lacks any, the gap is recorded in `latinModernMissingFaces`
+    /// so a CoreText fallback for that master is never silent.
     static let latinModernFaceFiles: [String] =
         [5, 6, 7, 8, 9, 10, 12, 17].map { "lmroman\($0)-regular.otf" }
         + [5, 6, 7, 8, 9, 10, 12].map { "lmroman\($0)-bold.otf" }
         + [7, 8, 9, 10, 12].map { "lmroman\($0)-italic.otf" }
         + ["lmroman10-bolditalic.otf", "latinmodern-math.otf", newComputerModernMathFile]
+        + latinModernMonoFaceFiles
+
+    /// The typewriter faces, kept separate so a caller can tell a
+    /// `\texttt` gap from a body-text gap. Without these the producer draws
+    /// `\texttt` from a substituted roman outline and warns
+    /// `font_outline_substituted`.
+    static let latinModernMonoFaceFiles: [String] =
+        [8, 9, 10, 12].map { "lmmono\($0)-regular.otf" }
+        + ["lmmono10-italic.otf", "lmmonoslant10-regular.otf",
+           "lmmonocaps10-regular.otf", "lmmonocaps10-oblique.otf",
+           "lmmonolt10-bold.otf", "lmmonolt10-boldoblique.otf"]
 
     /// The secondary math face the producer draws `\mathbb` from when it is
     /// bundled: New Computer Modern Math, whose double-struck letters follow

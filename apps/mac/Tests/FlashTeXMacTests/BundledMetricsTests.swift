@@ -47,9 +47,13 @@ final class BundledMetricsTests: XCTestCase {
         let doc = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: pinURL)) as? [String: Any])
         XCTAssertEqual(doc["schema_version"] as? Int, 1)
         let entries = try XCTUnwrap(doc["entries"] as? [[String: Any]])
-        // 23 Latin Modern + 70 EC (5 families x 14 t1cmr.fd sizes) + 6 AMS
-        // symbols (msbm/msam at 5/7/10 pt) + 2 license files (ec, amsfonts).
-        XCTAssertEqual(entries.count, 101)
+        // 23 Latin Modern roman + 10 Latin Modern typewriter (ec-lmtt8/9/10/12
+        // plus one 10 pt design each for tti/tto/tcsc/tcso/tk/tko) + 70 EC roman
+        // (5 families x 14 t1cmr.fd sizes) + 44 EC typewriter (ectt/ecst/ecit/ectc
+        // at the 11 distinct t1cmtt.fd sizes: it declares <5><6><7><8>#50800, so
+        // 5/6/7 pt share 0800) + 6 AMS symbols (msbm/msam at 5/7/10 pt)
+        // + 2 license files (ec, amsfonts).
+        XCTAssertEqual(entries.count, 155)
         let pinnedPaths = Set(Self.pinned.map(\.path))
         var listed = Set<String>()
         for e in entries {

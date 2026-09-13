@@ -80,15 +80,84 @@ EC, AMS symbols) is accounted for by exactly one tier.
 All **22 producer-requestable faces** are now vendored: eight Roman regular
 masters (5/6/7/8/9/10/12/17), seven bold (5/6/7/8/9/10/12), five italic
 (7/8/9/10/12), Roman10 bold-italic and Latin Modern Math. These are the files
-`FontSet::latin_modern_file` requests in producer `9aaec57a`; sans/mono/slanted
-families are not requested by that pinned producer and are not included here.
-`SUPPLEMENTARY-FACES.json` pins the 19 faces outside the Commander's three-OTF
-manifest. Each is byte-identical to its member in the local CTAN `lm.zip`
+`FontSet::latin_modern_file` requests in producer `9aaec57a`; sans and the roman
+slanted/caps/demi designs are still not vendored (see the typewriter section for
+what a missing design costs).
+`SUPPLEMENTARY-FACES.json` pins the 27 roman/math/typewriter faces outside the
+Commander's three-OTF manifest. Each is byte-identical to its member in the local CTAN `lm.zip`
 (SHA-256 `71c48809cb50fbfe09c8eddaa251398957c7b243acdf69f7f807268f0d42c939`,
 LM 2.004) and the installed MacTeX copy; overlapping Commander-pinned face/license
 hashes agree. This archive is distinct from the Commander's pinned baseline ZIP;
 its hash equivalence is not claimed. See the sidecar's provenance and
 `docs/evidence/opus-fonts-takeover-20260912T1800Z/archive-verification.json`.
+
+## Typewriter: `\texttt`, `\ttfamily`, `verbatim` (added by GH2 / `bundle-typewriter-fonts`)
+
+Until this change the tree carried **no typewriter design at all**: no
+`ectt`/`ecst`/`ecit`/`ectc` under `jknappen/ec`, no `ec-lmtt*` under
+`public/lm`, and no `lmmono*.otf`. The font tables in
+`crates/render-pipeline/src/fonts.rs` ask for those files
+(`ec_tfm_file` → `ectt`/`ecst`/`ecit`/`ectc`, `latin_modern_outline` →
+`lmmono*`, `latin_modern_tfm` → `ec-lmtt*`), so every `\texttt` run against
+this bundle fell back: `ec_metrics_unavailable` (roman `ec-lmr*` widths used
+for typewriter text, which changes the line breaks) plus
+`font_outline_substituted` (roman outlines drawn). The fallback is reported,
+but it is easy to miss, and two lanes measured `\texttt` geometry on it
+before anyone noticed. On the real-world corpus it was **six diagnostics**
+(`article-twocolumn` 4, `input-bibliography` 2); after this change it is
+**zero**, with no verdict, status or page count changed.
+
+**64 files added**, all from the same two upstream packages already vendored
+here, so no new license applies:
+
+* `texmf/fonts/tfm/jknappen/ec/{ectt,ecst,ecit,ectc}{0800…3583}.tfm` — 44
+  files, the 4 shapes `t1cmtt.fd` declares (`m/n` `ectt`, `m/sl` `ecst`,
+  `m/it` `ecit`, `m/sc` `ectc`) at its 11 distinct sizes. `t1cmtt.fd` writes
+  `<5><6><7><8>#50800`, so 5/6/7 pt load the 8 pt file, and `bx/n`/`bx/it`
+  are `ssub*cmtt/m/n`/`m/it` — there is no bold EC typewriter file to add.
+  Covered by the `doc/fonts/ec/copyrite.txt` already in this tree.
+* `texmf/fonts/tfm/public/lm/ec-lm{tt8,tt9,tt10,tt12,tti10,tto10,tcsc10,tcso10,tk10,tko10}.tfm`
+  — 10 files, the metrics `t1lmtt.fd` loads. Covered by the GUST Font
+  License already in this tree.
+* `lmmono{8,9,10,12}-regular.otf`, `lmmono10-italic.otf`,
+  `lmmonoslant10-regular.otf`, `lmmonocaps10-{regular,oblique}.otf`,
+  `lmmonolt10-{bold,boldoblique}.otf` — 10 outlines, 669 KB, the files
+  `latin_modern_outline` returns for `FamilyKind::Tt`. GUST Font License,
+  the same Latin Modern release as the 21 `lmroman*` faces above.
+
+Both in-repo pins were extended (`SUPPLEMENTARY-METRICS.json` 101 → 155
+entries with a `tt_provenance` block, `SUPPLEMENTARY-FACES.json` 20 → 30 with
+a `mono_provenance` block), so `bundle-texmf.py check` and `make-app.sh`
+verify and refuse drift exactly as they do for the roman files.
+
+### Provenance and why it is the same release
+
+The earlier tiers were copied from MacTeX 2026 on `mac-m1max-a`. These files
+were copied on `linux-primary`, which has **TeX Live 2025 r78234** and no
+MacTeX, so release identity was established by byte-comparison rather than
+asserted: every file already vendored from these two packages is
+byte-identical (`cmp`) between the two distributions — all **70** vendored
+`jknappen/ec` TFMs, all **28** vendored `public/lm` TFMs, all **21** vendored
+Latin Modern OTFs and all **6** `amsfonts/symbols` TFMs. The typewriter
+members were then copied out of the same two directories in the same run and
+hashed before and after the copy. No CTAN archive is present on this host, so
+no archive hash is claimed; the sidecar `limitation` fields say so.
+
+### What is still not vendored
+
+Sans (`ecss`/`ecsi`/`ecsx`/`ecso`, `lmsans*`, `lmsansdemicond*`) and the
+roman caps/slanted/demi/unslanted designs (`eccc`/`ecui`/`ecsc`/`ecrb`/
+`ecxc`/`ecoc`, `lmromanslant*`, `lmromancaps*`, `lmromandemi*`,
+`lmromanunsl*`) are still absent, so `\textsf`/`\textsc`/`\textsl` on this
+bundle still substitute and warn. That is the same silent-substitution shape
+this change removed for typewriter; it is a known gap, not a decision.
+
+`crates/render-pipeline/tests/bundled_typewriter.rs` is the guard: it walks
+every `\ttfamily` shape through `nfss::select`/`nfss::terminal` in all four
+schemes (OT1/T1 × cm/lm), asserts every file the tables can then name is on
+disk and pinned, and renders four `\texttt` documents asserting **zero**
+`font_unavailable` / `required_metrics_unavailable` / `ec_metrics_unavailable`
+/ `font_outline_substituted` diagnostics. It reads no `FLASHTEX_*` variable.
 
 ## Secondary math face: New Computer Modern Math (`NewCMMath-Regular.otf`)
 
