@@ -1,0 +1,83 @@
+{
+ "fixture": "23-minipage-footnote.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "a",
+    "x": 160.749,
+    "y_top": 75.897
+   },
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 80.236
+   },
+   {
+    "text": "with",
+    "x": 100.286,
+    "y_top": 80.236
+   },
+   {
+    "text": "a",
+    "x": 127.9145,
+    "y_top": 80.236
+   },
+   {
+    "text": "note",
+    "x": 138.6335,
+    "y_top": 80.236
+   },
+   {
+    "text": "inside",
+    "x": 170.49,
+    "y_top": 80.236
+   },
+   {
+    "text": "a",
+    "x": 204.6867,
+    "y_top": 80.236
+   },
+   {
+    "text": "mini-",
+    "x": 215.4176,
+    "y_top": 80.236
+   },
+   {
+    "text": "page.",
+    "x": 72.0,
+    "y_top": 94.681
+   },
+   {
+    "text": "a",
+    "x": 85.228,
+    "y_top": 112.519
+   },
+   {
+    "text": "The",
+    "x": 89.933,
+    "y_top": 116.134
+   },
+   {
+    "text": "note.",
+    "x": 110.4091,
+    "y_top": 116.134
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  [
+   [
+    72.0,
+    104.777,
+    68.03,
+    0.398
+   ]
+  ]
+ ]
+}

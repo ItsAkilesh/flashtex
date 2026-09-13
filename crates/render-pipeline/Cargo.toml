@@ -63,3 +63,10 @@ flashtex-vector-graphics = { path = "vendor/vector-graphics" }
 # not a vendor mirror: a `git archive` of this directory alone must also
 # archive `crates/class-geometry` (zero dependencies) next to it.
 flashtex-class-geometry = { path = "../class-geometry" }
+# TeX's box arithmetic and latex.ltx's box commands (`\fbox`, `\parbox`,
+# `minipage`, `\raisebox`, ...), exact sp. A path to the sibling like
+# class-geometry (zero dependencies).
+# The same vendored copy the vendored compiler resolves through
+# `../tex-boxes`; two different paths to one package name collide in the
+# lockfile, and render-pipeline must build from `vendor/` alone.
+flashtex-tex-boxes = { path = "vendor/tex-boxes" }

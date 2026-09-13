@@ -1,0 +1,56 @@
+{
+ "fixture": "35-parbox-center-env.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Centred",
+    "x": 215.977,
+    "y_top": 83.955
+   },
+   {
+    "text": "a",
+    "x": 260.5245,
+    "y_top": 83.955
+   },
+   {
+    "text": "parbox",
+    "x": 272.7738,
+    "y_top": 83.955
+   },
+   {
+    "text": "in",
+    "x": 314.6146,
+    "y_top": 83.955
+   },
+   {
+    "text": "a",
+    "x": 330.766,
+    "y_top": 83.955
+   },
+   {
+    "text": "centre",
+    "x": 343.0153,
+    "y_top": 83.955
+   },
+   {
+    "text": "line",
+    "x": 377.813,
+    "y_top": 83.955
+   },
+   {
+    "text": "environment",
+    "x": 260.525,
+    "y_top": 98.401
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

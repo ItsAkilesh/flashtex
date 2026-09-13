@@ -178,6 +178,9 @@ pub fn block_origin(items: &[Item]) -> Option<(DocumentId, usize)> {
             // A table's cell blocks hold absolute record indices and
             // spans: blocks containing one are never cached.
             Item::Table(_) => return None,
+            // Box records, like tables, hold absolute indices; length
+            // assignments and length glue depend on document state.
+            Item::TextBox(_) | Item::SetLength { .. } | Item::LengthGlue { .. } => return None,
             Item::Math { span, .. } => {
                 if !note(&CharSrc {
                     document: span.document,
@@ -279,6 +282,19 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                     hash_items(t, base, h);
                 }
             }
+            Item::TextBox(b) => {
+                12u8.hash(h);
+                format!("{b:?}").hash(h);
+            }
+            Item::SetLength { name, value } => {
+                13u8.hash(h);
+                format!("{name}{value:?}").hash(h);
+            }
+            Item::LengthGlue { dimen } => {
+                14u8.hash(h);
+                format!("{dimen:?}").hash(h);
+            }
+            Item::HSs => 15u8.hash(h),
         }
     }
 }

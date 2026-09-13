@@ -1,0 +1,61 @@
+{
+ "fixture": "08-fbox.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Alpha",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "framed",
+    "x": 110.176,
+    "y_top": 83.955
+   },
+   {
+    "text": "words",
+    "x": 149.5182,
+    "y_top": 83.955
+   },
+   {
+    "text": "Beta",
+    "x": 186.467,
+    "y_top": 83.955
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  [
+   [
+    106.789,
+    72.333,
+    75.776,
+    0.398
+   ],
+   [
+    106.789,
+    72.731,
+    0.398,
+    14.213
+   ],
+   [
+    182.166,
+    72.731,
+    0.398,
+    14.213
+   ],
+   [
+    106.789,
+    86.944,
+    75.776,
+    0.398
+   ]
+  ]
+ ]
+}

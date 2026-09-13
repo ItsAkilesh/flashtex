@@ -1,0 +1,81 @@
+{
+ "fixture": "36-11pt-fbox-parbox.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "eleven",
+    "x": 132.108,
+    "y_top": 79.515
+   },
+   {
+    "text": "point",
+    "x": 167.0346,
+    "y_top": 79.515
+   },
+   {
+    "text": "par-",
+    "x": 197.7186,
+    "y_top": 79.515
+   },
+   {
+    "text": "Alpha",
+    "x": 72.0,
+    "y_top": 85.259
+   },
+   {
+    "text": "box",
+    "x": 107.811,
+    "y_top": 85.259
+   },
+   {
+    "text": "Beta",
+    "x": 220.784,
+    "y_top": 85.259
+   },
+   {
+    "text": "box",
+    "x": 132.108,
+    "y_top": 93.064
+   },
+   {
+    "text": "text",
+    "x": 153.0131,
+    "y_top": 93.064
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  [
+   [
+    104.424,
+    74.357,
+    24.047,
+    0.398
+   ],
+   [
+    104.424,
+    74.755,
+    0.398,
+    13.493
+   ],
+   [
+    128.073,
+    74.755,
+    0.398,
+    13.493
+   ],
+   [
+    104.424,
+    88.248,
+    24.047,
+    0.398
+   ]
+  ]
+ ]
+}

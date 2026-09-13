@@ -1,0 +1,71 @@
+{
+ "fixture": "20-minipage-t.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Before",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "first",
+    "x": 108.5757,
+    "y_top": 83.955
+   },
+   {
+    "text": "line",
+    "x": 134.4564,
+    "y_top": 83.955
+   },
+   {
+    "text": "of",
+    "x": 158.3094,
+    "y_top": 83.955
+   },
+   {
+    "text": "the",
+    "x": 173.3944,
+    "y_top": 83.955
+   },
+   {
+    "text": "mini-",
+    "x": 195.2964,
+    "y_top": 83.955
+   },
+   {
+    "text": "after",
+    "x": 225.867,
+    "y_top": 83.955
+   },
+   {
+    "text": "page",
+    "x": 108.579,
+    "y_top": 98.401
+   },
+   {
+    "text": "text",
+    "x": 135.8895,
+    "y_top": 98.401
+   },
+   {
+    "text": "goes",
+    "x": 160.2852,
+    "y_top": 98.401
+   },
+   {
+    "text": "here",
+    "x": 186.032,
+    "y_top": 98.401
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

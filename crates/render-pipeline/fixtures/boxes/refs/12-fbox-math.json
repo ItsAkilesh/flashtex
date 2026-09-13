@@ -1,0 +1,96 @@
+{
+ "fixture": "12-fbox-math.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "2",
+    "x": 128.049,
+    "y_top": 80.524
+   },
+   {
+    "text": "2",
+    "x": 153.336,
+    "y_top": 80.524
+   },
+   {
+    "text": "2",
+    "x": 179.786,
+    "y_top": 80.524
+   },
+   {
+    "text": "Formula",
+    "x": 72.0,
+    "y_top": 84.862
+   },
+   {
+    "text": "x",
+    "x": 121.397,
+    "y_top": 84.862
+   },
+   {
+    "text": "+",
+    "x": 135.438,
+    "y_top": 84.862
+   },
+   {
+    "text": "y",
+    "x": 147.1971,
+    "y_top": 84.862
+   },
+   {
+    "text": "=",
+    "x": 161.389,
+    "y_top": 84.862
+   },
+   {
+    "text": "z",
+    "x": 173.8176,
+    "y_top": 84.862
+   },
+   {
+    "text": "ends",
+    "x": 191.807,
+    "y_top": 84.862
+   },
+   {
+    "text": "here.",
+    "x": 218.5317,
+    "y_top": 84.862
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  [
+   [
+    118.01,
+    72.0,
+    69.895,
+    0.398
+   ],
+   [
+    118.01,
+    72.398,
+    0.398,
+    17.777
+   ],
+   [
+    187.507,
+    72.398,
+    0.398,
+    17.777
+   ],
+   [
+    118.01,
+    90.176,
+    69.895,
+    0.398
+   ]
+  ]
+ ]
+}

@@ -1,0 +1,61 @@
+{
+ "fixture": "17-parbox-c.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "centred",
+    "x": 108.579,
+    "y_top": 80.236
+   },
+   {
+    "text": "parbox",
+    "x": 158.1716,
+    "y_top": 80.236
+   },
+   {
+    "text": "Before",
+    "x": 72.0,
+    "y_top": 93.552
+   },
+   {
+    "text": "after",
+    "x": 197.52,
+    "y_top": 93.552
+   },
+   {
+    "text": "with",
+    "x": 108.579,
+    "y_top": 94.681
+   },
+   {
+    "text": "several",
+    "x": 159.0897,
+    "y_top": 94.681
+   },
+   {
+    "text": "words",
+    "x": 108.579,
+    "y_top": 109.127
+   },
+   {
+    "text": "in",
+    "x": 142.1349,
+    "y_top": 109.127
+   },
+   {
+    "text": "it",
+    "x": 155.7996,
+    "y_top": 109.127
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

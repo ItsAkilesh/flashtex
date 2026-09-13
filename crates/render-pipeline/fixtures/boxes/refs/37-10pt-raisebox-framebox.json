@@ -1,0 +1,86 @@
+{
+ "fixture": "37-10pt-raisebox-framebox.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "up",
+    "x": 101.611,
+    "y_top": 77.961
+   },
+   {
+    "text": "Alpha",
+    "x": 72.0,
+    "y_top": 82.25
+   },
+   {
+    "text": "s",
+    "x": 118.99,
+    "y_top": 82.25
+   },
+   {
+    "text": "p",
+    "x": 133.0721,
+    "y_top": 82.25
+   },
+   {
+    "text": "r",
+    "x": 148.7592,
+    "y_top": 82.25
+   },
+   {
+    "text": "e",
+    "x": 162.8035,
+    "y_top": 82.25
+   },
+   {
+    "text": "a",
+    "x": 177.3838,
+    "y_top": 82.25
+   },
+   {
+    "text": "d",
+    "x": 192.517,
+    "y_top": 82.25
+   },
+   {
+    "text": "Beta",
+    "x": 204.362,
+    "y_top": 82.25
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  [
+   [
+    116.001,
+    72.0,
+    85.039,
+    0.398
+   ],
+   [
+    116.002,
+    72.398,
+    0.398,
+    14.778
+   ],
+   [
+    200.642,
+    72.398,
+    0.398,
+    14.778
+   ],
+   [
+    116.001,
+    87.176,
+    85.039,
+    0.398
+   ]
+  ]
+ ]
+}

@@ -1,0 +1,31 @@
+{
+ "fixture": "30-savebox-lrbox.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "A",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "svBlr",
+    "x": 155.0169,
+    "y_top": 83.955
+   },
+   {
+    "text": "textC",
+    "x": 185.8159,
+    "y_top": 83.955
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

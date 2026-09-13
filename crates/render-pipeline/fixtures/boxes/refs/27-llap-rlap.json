@@ -1,0 +1,31 @@
+{
+ "fixture": "27-llap-rlap.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "leftXright",
+    "x": 140.456,
+    "y_top": 83.955
+   },
+   {
+    "text": "next",
+    "x": 72.0,
+    "y_top": 98.401
+   },
+   {
+    "text": "line",
+    "x": 98.3349,
+    "y_top": 98.401
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

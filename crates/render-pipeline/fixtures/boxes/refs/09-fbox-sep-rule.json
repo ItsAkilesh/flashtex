@@ -1,0 +1,61 @@
+{
+ "fixture": "09-fbox-sep-rule.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Alpha",
+    "x": 72.0,
+    "y_top": 87.708
+   },
+   {
+    "text": "thick",
+    "x": 114.261,
+    "y_top": 87.708
+   },
+   {
+    "text": "frame",
+    "x": 143.5249,
+    "y_top": 87.708
+   },
+   {
+    "text": "Beta",
+    "x": 183.84,
+    "y_top": 87.708
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  [
+   [
+    106.789,
+    72.0,
+    73.149,
+    1.494
+   ],
+   [
+    106.789,
+    73.494,
+    1.494,
+    20.191
+   ],
+   [
+    178.444,
+    73.494,
+    1.494,
+    20.191
+   ],
+   [
+    106.789,
+    93.686,
+    73.149,
+    1.494
+   ]
+  ]
+ ]
+}

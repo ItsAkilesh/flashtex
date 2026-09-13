@@ -1,0 +1,61 @@
+{
+ "fixture": "26-smash.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Line",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "one",
+    "x": 98.1699,
+    "y_top": 83.955
+   },
+   {
+    "text": "tall",
+    "x": 119.6391,
+    "y_top": 83.955
+   },
+   {
+    "text": "con-",
+    "x": 154.8639,
+    "y_top": 83.955
+   },
+   {
+    "text": "Line",
+    "x": 72.0,
+    "y_top": 98.401
+   },
+   {
+    "text": "two",
+    "x": 98.1699,
+    "y_top": 98.401
+   },
+   {
+    "text": "tent",
+    "x": 119.635,
+    "y_top": 98.401
+   },
+   {
+    "text": "here",
+    "x": 154.8646,
+    "y_top": 98.401
+   },
+   {
+    "text": "now",
+    "x": 119.635,
+    "y_top": 112.847
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

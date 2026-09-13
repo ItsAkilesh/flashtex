@@ -336,6 +336,9 @@ pub struct Context<'a> {
     /// Diagnostics emitted while a cacheable block is being built (with
     /// their once-only keys, suppressed ones included).
     capture: Option<Vec<(Option<String>, Diagnostic)>>,
+    /// `\newlength` registers assigned so far (`\settowidth`, `\setlength`),
+    /// in scaled points, in document order.
+    lengths: std::collections::HashMap<String, i32>,
     path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
     /// microtype's per-font pdfTeX parameters by (metrics identity, size).
     microtype_fonts: BTreeMap<(Rc<str>, u64), Option<Rc<flashtex_microtype::FontParams>>>,
@@ -381,6 +384,7 @@ impl<'a> Context<'a> {
             sloppy: false,
             baselineskip_override: None,
             parbox: false,
+            lengths: std::collections::HashMap::new(),
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
             microtype_fonts: BTreeMap::new(),
             notes: Vec::new(),
@@ -1684,6 +1688,23 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::Glue(glue), None)
                 }
                 AItem::HSpace { pt } => push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(*pt)), None),
+                AItem::HSs => {
+                    let mut glue = pl::Glue::fil();
+                    glue.shrink = 1.0;
+                    glue.shrink_order = pl::GlueOrder::Fil;
+                    push(&mut out, &mut recs, pl::Item::Glue(glue), None)
+                }
+                AItem::LengthGlue { dimen } => {
+                    let dims = self.box_dims(size, 0);
+                    let sp = resolve_box_dimen(dimen, &dims, &self.lengths);
+                    push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(f64::from(sp) / 65536.0)), None)
+                }
+                AItem::SetLength { name, value } => self.set_box_length(name, value, size),
+                AItem::TextBox(b) => {
+                    if let Some((run, rec)) = self.latex_box(b, size) {
+                        push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                    }
+                }
                 AItem::Table(table) => {
                     if let Some((run, rec)) = self.table_box(table, size) {
                         push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
@@ -1908,6 +1929,298 @@ impl<'a> Context<'a> {
         let (first, last) = (lines.lines.first()?, lines.lines.last()?);
         let par = crate::table::ParLines { first_height: first.height, inner: last.baseline_y - first.baseline_y, last_depth: last.depth };
         Some((table_cell_block(lines, list, recs, labels), par))
+    }
+
+    /// `\baselineskip` of the size in force (`\@setfontsize`).
+    fn box_baselineskip(&self, size: f64) -> f64 {
+        let body = self.style.body_size_pt;
+        if (size - body).abs() < 1e-9 {
+            self.style.baselineskip_pt
+        } else {
+            crate::table::baselineskip_pt(adapter::class_size_of(body), (size * 100.0).round() as u16)
+        }
+    }
+
+    /// The lengths a box dimension can name, in scaled points, for text at
+    /// `size` in document `document` (whose source gives `\fboxsep` and
+    /// `\fboxrule`).
+    fn box_dims(&self, size: f64, document: usize) -> BoxDims {
+        let params = self.text_params(TextStyle::default(), size);
+        let src = self.texts.get(document).copied().unwrap_or("");
+        BoxDims {
+            quad: to_sp(params.quad),
+            x_height: to_sp(params.x_height),
+            line_width: to_sp(self.style.text_width_pt),
+            fboxsep: adapter::setlength_sp(src, "fboxsep").unwrap_or(3 * 65536),
+            fboxrule: adapter::setlength_sp(src, "fboxrule").unwrap_or(26214),
+            parindent: to_sp(self.style.parindent_pt),
+            baselineskip: to_sp(self.box_baselineskip(size)),
+            content: (0, 0, 0),
+        }
+    }
+
+    /// `\settowidth` & co. (the content's natural `\hbox`) and `\setlength`
+    /// of a `\newlength`.
+    fn set_box_length(&mut self, name: &str, value: &adapter::LengthItem, size: f64) {
+        use flashtex_compiler::boxes::MeasuredDimension as M;
+        let v = match value {
+            adapter::LengthItem::Measure { which, content } => {
+                let (_, d) = self.box_hbox(content, size, None);
+                to_sp(match which {
+                    M::Width => d.width,
+                    M::Height => d.height,
+                    M::Depth => d.depth,
+                })
+            }
+            adapter::LengthItem::Dimen(d) => {
+                let dims = self.box_dims(size, 0);
+                resolve_box_dimen(d, &dims, &self.lengths)
+            }
+        };
+        self.lengths.insert(name.to_string(), v);
+    }
+
+    /// Box content set as one unbroken line (`\hbox`), at its natural width
+    /// or, with `width`, as `\hbox to width` (no `\parfillskip`: the
+    /// content's own glue fills the line). Content without a box (only glue,
+    /// or nothing) has no block; its width is its glue's natural width.
+    fn box_hbox(&mut self, items: &[AItem], size: f64, width: Option<f64>) -> (Option<BuiltBlock>, crate::table::Dims) {
+        use crate::table::Dims;
+        // `hlist` ends a paragraph (`\unskip`s trailing glue); an `\hbox`
+        // keeps it. A 0x0x0 box after glue-final content keeps that glue.
+        let sentinel;
+        let items = match items.last() {
+            Some(AItem::Word(_) | AItem::Math { .. } | AItem::TextBox(_) | AItem::Table(_)) | None => items,
+            Some(_) => {
+                let mut with = items.to_vec();
+                with.push(AItem::TextBox(Box::new(adapter::BoxItem {
+                    kind: flashtex_compiler::boxes::TextBoxKind::Phantom { horizontal: false, vertical: false },
+                    content: Vec::new(),
+                    paragraphs: Vec::new(),
+                    span: Span::in_document(DocumentId(0), 0, 0),
+                })));
+                sentinel = with;
+                &sentinel[..]
+            }
+        };
+        let (mut list, recs, labels, _) = self.hlist(items, size, TextStyle::default(), ParaStyle::Plain);
+        if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
+            let natural: f64 = list.iter().map(|i| if let pl::Item::Glue(g) = i { g.width } else { 0.0 }).sum();
+            return (None, Dims { width: width.unwrap_or(natural), height: 0.0, depth: 0.0 });
+        }
+        let mut params = self.line_params(false, self.style.baselineskip_pt, ParaStyle::Plain, 0.0);
+        match width {
+            None => params.line_width = crate::table::MAX_DIMEN_PT,
+            Some(w) => {
+                let n = list.len();
+                if n >= 2 {
+                    if let pl::Item::Glue(g) = &mut list[n - 2] {
+                        *g = pl::Glue::fixed(0.0);
+                    }
+                }
+                params.line_width = w;
+                params.tolerance = 10000.0;
+                params.emergency_stretch = w.abs();
+            }
+        }
+        // An `\hbox` is never line-broken by pdfTeX: no protrusion/expansion.
+        let Some(mut lines) = self.break_paragraph(&list, &params, items, None) else {
+            return (None, Dims::default());
+        };
+        set_finite_glue_as_hpack(&mut lines, &list, &params);
+        let natural = lines.lines.iter().map(|l| l.natural_width).fold(0.0, f64::max);
+        let (Some(first), Some(last)) = (lines.lines.first(), lines.lines.last()) else {
+            return (None, Dims::default());
+        };
+        let dims = Dims { width: width.unwrap_or(natural), height: first.height, depth: last.baseline_y - first.baseline_y + last.depth };
+        (Some(table_cell_block(lines, list, recs, labels)), dims)
+    }
+
+    /// One `\parbox`/`minipage` paragraph at `width` under
+    /// `\@parboxrestore`: no indent, `\normalbaselineskip`, `\sloppy`.
+    fn box_paragraph(&mut self, items: &[AItem], style: ParaStyle, size: f64, width: f64) -> Option<BuiltBlock> {
+        let (list, recs, labels, _) = self.hlist(items, size, TextStyle::default(), style);
+        if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
+            return None;
+        }
+        let quad = self.text_params(TextStyle::default(), size).quad;
+        let mut params = self.line_params(false, self.box_baselineskip(size), style, 0.0);
+        params.line_width = width;
+        params.tolerance = 9999.0;
+        params.emergency_stretch = 3.0 * quad;
+        params.hfuzz = 0.5;
+        let mut lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
+        set_finite_glue_as_hpack(&mut lines, &list, &params);
+        self.report_overfull(&lines, &list, &recs);
+        Some(table_cell_block(lines, list, recs, labels))
+    }
+
+    /// A LaTeX box command set with `crates/tex-boxes`: the content is
+    /// measured here (an `\hbox` line, or `\parbox` lines broken at the box
+    /// width), each measured line enters the box engine as an opaque box
+    /// tagged with a whatsit, the `latex.ltx` macro runs on it (frames,
+    /// `\makebox` alignment, `\raisebox`, `\vcenter`/`\vtop` placement,
+    /// interline glue), and `ship_out` gives every line's position and
+    /// every frame rule to the sp. The record reuses the table's: pieces at
+    /// positions and rules.
+    fn latex_box(&mut self, b: &adapter::BoxItem, size: f64) -> Option<(pl::GlyphRun, usize)> {
+        use flashtex_compiler::boxes::TextBoxKind as K;
+        use flashtex_tex_boxes as tx;
+        let mut dims = self.box_dims(size, b.span.document.0);
+        let mut blocks: Vec<BuiltBlock> = Vec::new();
+        // (whatsit tag, width, height, depth); tag = block * 4096 + line.
+        let mut opaque: Vec<(u32, i32, i32, i32)> = Vec::new();
+        const NO_PIECE: u32 = u32::MAX;
+        let mut spread = false;
+        match &b.kind {
+            K::Strut => {}
+            K::Par { width, .. } => {
+                let w = resolve_box_dimen(width, &dims, &self.lengths);
+                for (style, items) in &b.paragraphs {
+                    if let Some(block) = self.box_paragraph(items, *style, size, from_sp(w)) {
+                        let bi = blocks.len() as u32;
+                        for (li, l) in block.block.lines.lines.iter().enumerate() {
+                            opaque.push((bi * 4096 + li as u32, w, to_sp(l.height), to_sp(l.depth)));
+                        }
+                        blocks.push(block);
+                    }
+                }
+                dims.content = (w, 0, 0);
+            }
+            kind => {
+                let (mut block, mut d) = self.box_hbox(&b.content, size, None);
+                dims.content = (to_sp(d.width), to_sp(d.height), to_sp(d.depth));
+                if let K::Make { width: Some(w), pos, frame } = kind {
+                    // `\hbox to w{\hss\unhbox\@tempboxa\hss}` (`\bm@c`;
+                    // `\bm@l`/`\bm@r` drop one side, `\bm@s` both): the
+                    // unboxed content's glue and the `\hss` share the width,
+                    // so content with `s` or infinite glue of its own is set
+                    // here as one line with that `\hss` in it.
+                    let pos = pos.unwrap_or('c');
+                    spread = pos == 's' || b.content.iter().any(|i| matches!(i, AItem::HFill { .. } | AItem::HSs));
+                    if spread {
+                        // `\framebox`'s `\hbox to\@tempdima{\kern\fboxsep
+                        // \bm@<pos>\kern\fboxsep}` leaves the content the
+                        // width less both separations.
+                        let mut wd = resolve_box_dimen(w, &dims, &self.lengths);
+                        if *frame {
+                            wd -= 2 * dims.fboxsep;
+                        }
+                        let mut line = Vec::with_capacity(b.content.len() + 2);
+                        if matches!(pos, 'c' | 'r' | 'b') || !"lcrst".contains(pos) {
+                            line.push(AItem::HSs);
+                        }
+                        line.extend(b.content.iter().cloned());
+                        if matches!(pos, 'c' | 'l' | 't') || !"lcrst".contains(pos) {
+                            line.push(AItem::HSs);
+                        }
+                        (block, d) = self.box_hbox(&line, size, Some(from_sp(wd)));
+                    }
+                }
+                let tag = if block.is_some() { 0 } else { NO_PIECE };
+                opaque.push((tag, to_sp(d.width), to_sp(d.height), to_sp(d.depth)));
+                blocks.extend(block);
+            }
+        }
+        // A spread `\makebox`/`\framebox` was set above with `\bm@<pos>`'s
+        // `\hss` glue already in the line, so the engine places it as `s`.
+        let spread_kind;
+        let kind = match (&b.kind, spread) {
+            (K::Make { width, frame, .. }, true) => {
+                spread_kind = K::Make { width: width.clone(), pos: Some('s'), frame: *frame };
+                &spread_kind
+            }
+            (kind, _) => kind,
+        };
+
+        let mut e = tx::BoxEngine::new(Box::new(tx::NoChars));
+        tx::latex::setup_article_10pt(&mut e);
+        let bskip = tx::GlueSpec::fixed(dims.baselineskip);
+        let lineskip = tx::GlueSpec::fixed(to_sp(self.style.lineskip_pt));
+        e.set_skip("baselineskip", bskip, true);
+        e.set_skip("normalbaselineskip", bskip, true);
+        e.set_skip("lineskip", lineskip, true);
+        e.set_skip("normallineskip", lineskip, true);
+        e.set_dimen("lineskiplimit", to_sp(self.style.lineskiplimit_pt), true);
+        e.set_dimen("normallineskiplimit", to_sp(self.style.lineskiplimit_pt), true);
+        for name in ["hsize", "textwidth", "linewidth", "columnwidth"] {
+            e.set_dimen(name, dims.line_width, true);
+        }
+        e.set_dimen("parindent", dims.parindent, true);
+        e.set_dimen("fboxsep", dims.fboxsep, true);
+        e.set_dimen("fboxrule", dims.fboxrule, true);
+        // `\fontdimen22` of `\textfont2` (cmsy/lmsy: 0.25 of the size).
+        e.axis_height = to_sp(size) / 4;
+        tx::latex::size_update_strut(&mut e, true);
+        let mut append = |e: &mut tx::BoxEngine| -> Result<(), tx::BoxError> {
+            for &(tag, width, height, depth) in &opaque {
+                let node = tx::BoxNode {
+                    kind: tx::ListKind::H,
+                    width,
+                    height,
+                    depth,
+                    shift: 0,
+                    list: vec![tx::Node::Whatsit(tx::node::Whatsit { tag, display: String::new() })],
+                    glue_set: 0.0,
+                    glue_sign: tx::GlueSign::Normal,
+                    glue_order: tx::GlueOrder::Normal,
+                };
+                e.box_end(Some(node), tx::BoxContext::APPEND, Vec::new())?;
+            }
+            Ok(())
+        };
+        let lengths = self.lengths.clone();
+        let resolve = |d: &flashtex_compiler::boxes::BoxDimen| resolve_box_dimen(d, &dims, &lengths);
+        if let Err(err) = run_box_command(&mut e, kind, &resolve, &mut append) {
+            self.report_once(
+                format!("box:{}:{}", b.span.document.0, b.span.start),
+                Diagnostic::warning("box_limitation", format!("box command could not be set: {err}"), Vec::new()),
+            );
+            return None;
+        }
+        let outer = e.box_register(BOX_OUT)?.clone();
+        let events = tx::ship_out(&outer, 0, 0, &tx::NoChars);
+        let mut at: std::collections::HashMap<u32, (i32, i32)> = std::collections::HashMap::new();
+        let mut rules = Vec::new();
+        for ev in &events {
+            match *ev {
+                tx::ShipEvent::Whatsit { tag, h, v, .. } => {
+                    at.entry(tag).or_insert((h, v));
+                }
+                tx::ShipEvent::Rule { h, v, width, height } if width > 0 && height > 0 => rules.push(crate::table::PlacedRule {
+                    x: from_sp(h),
+                    top: from_sp(v - height),
+                    width: from_sp(width),
+                    height: from_sp(height),
+                    span: b.span,
+                }),
+                _ => {}
+            }
+        }
+        let mut pieces = Vec::new();
+        for (bi, mut block) in blocks.into_iter().enumerate() {
+            let bi = bi as u32;
+            let Some(&(h0, v0)) = at.get(&(bi * 4096)) else { continue };
+            let lines = &mut block.block.lines.lines;
+            let first = lines.first().map_or(0.0, |l| l.baseline_y);
+            for (li, line) in lines.iter_mut().enumerate() {
+                if let Some(&(_, v)) = at.get(&(bi * 4096 + li as u32)) {
+                    line.baseline_y = first + from_sp(v - v0);
+                }
+            }
+            pieces.push(TablePiece { x: from_sp(h0), baseline: from_sp(v0), block });
+        }
+        self.recs.push(BoxRec::Table(Rc::new(TableRec { pieces, rules, span: b.span })));
+        let run = pl::GlyphRun {
+            font: MATH_SENTINEL,
+            size,
+            glyphs: Vec::new(),
+            width: from_sp(outer.width),
+            height: from_sp(outer.height),
+            depth: from_sp(outer.depth),
+            source: b.span.start..b.span.end,
+        };
+        Some((run, self.recs.len() - 1))
     }
 
     fn line_params(&self, indent: bool, baselineskip: f64, style: ParaStyle, hang_pt: f64) -> pl::LineBreakParams {
@@ -3654,6 +3967,165 @@ fn skip_tuple(s: crate::style::Skip) -> (f64, f64, f64) {
 }
 
 /// A table entry's lines as a block assembled like a paragraph's.
+/// The box register `run_box_command` sets its result in.
+const BOX_OUT: u32 = 250;
+
+/// Re-sets each stretched line's finite glue the way `hpack` does (§658:
+/// `glue_set = shortfall / total stretch`). paragraph-layout adds
+/// `\emergencystretch` to the stretch it sets a line with, while TeX uses it
+/// only for the badness of the final pass, so a loose line under `\sloppy`
+/// comes out short of the measure. Each run moves by the change of ratio
+/// times the finite stretch before it; lines with infinite stretch, shrunk
+/// or exactly set lines are unchanged.
+fn set_finite_glue_as_hpack(lines: &mut pl::Lines, list: &[pl::Item], params: &pl::LineBreakParams) {
+    let left = &params.left_skip;
+    // paragraph-layout's (private) `effective_right_skip`.
+    let right = match params.mode {
+        pl::BreakMode::RaggedRight => pl::Glue::fil(),
+        _ => params.right_skip.clone(),
+    };
+    let finite = |g: &pl::Glue| if g.stretch_order == pl::GlueOrder::Finite { g.stretch } else { 0.0 };
+    let infinite = |g: &pl::Glue| g.stretch_order != pl::GlueOrder::Finite && g.stretch > 0.0;
+    for line in &mut lines.lines {
+        let range = line.items.clone();
+        let Some(slice) = list.get(range) else { continue };
+        let glues = || slice.iter().filter_map(|i| if let pl::Item::Glue(g) = i { Some(g) } else { None });
+        if infinite(left) || infinite(&right) || glues().any(|g| infinite(g)) {
+            continue;
+        }
+        let short = params.line_width - line.natural_width;
+        let total = finite(left) + finite(&right) + glues().map(|g| finite(g)).sum::<f64>();
+        if short <= 0.0 || total <= 0.0 || !line.ratio.is_finite() || line.ratio <= 0.0 {
+            continue;
+        }
+        let delta = short / total - line.ratio;
+        if delta.abs() < 1e-12 {
+            continue;
+        }
+        let boxes = slice.iter().filter(|i| matches!(i, pl::Item::Box(_))).count();
+        let hyphen = usize::from(line.runs.last().is_some_and(|r| r.is_hyphen));
+        let post = line.runs.len().saturating_sub(boxes + hyphen);
+        let mut shifts = Vec::with_capacity(line.runs.len());
+        let mut stretch = finite(left);
+        shifts.extend(std::iter::repeat_n(stretch, post));
+        for item in slice {
+            match item {
+                pl::Item::Box(_) => shifts.push(stretch),
+                pl::Item::Glue(g) => stretch += finite(g),
+                _ => {}
+            }
+        }
+        shifts.extend(std::iter::repeat_n(stretch, hyphen));
+        for (run, s) in line.runs.iter_mut().zip(shifts) {
+            run.x += delta * s;
+        }
+        line.ratio = short / total;
+    }
+}
+
+fn to_sp(pt: f64) -> i32 {
+    (pt * 65536.0).round() as i32
+}
+
+fn from_sp(sp: i32) -> f64 {
+    f64::from(sp) / 65536.0
+}
+
+/// The lengths a box dimension can name, in scaled points; `content` is the
+/// measured `(\width, \height, \depth)` of `\@tempboxa`.
+#[derive(Debug, Clone, Copy)]
+struct BoxDims {
+    quad: i32,
+    x_height: i32,
+    line_width: i32,
+    fboxsep: i32,
+    fboxrule: i32,
+    parindent: i32,
+    baselineskip: i32,
+    content: (i32, i32, i32),
+}
+
+/// A box dimension in scaled points, exactly as `scan_dimen` reads it
+/// (§§448–458: physical units through `dimen_from_parts`, `<factor>` times
+/// an internal dimension through `scale_internal`). Undeclared lengths are
+/// 0 (the compiler diagnoses them).
+fn resolve_box_dimen(d: &flashtex_compiler::boxes::BoxDimen, c: &BoxDims, lengths: &std::collections::HashMap<String, i32>) -> i32 {
+    use flashtex_compiler::boxes::BoxUnit as U;
+    use flashtex_tex_boxes::scaled::{dimen_from_parts, scale_internal, Unit};
+    let internal = |v: i32| scale_internal(d.negative, d.integer, &d.frac, v).unwrap_or(0);
+    match &d.unit {
+        U::Physical(unit) => Unit::parse(unit).and_then(|u| dimen_from_parts(d.negative, d.integer, &d.frac, u).ok()).unwrap_or(0),
+        U::Em => internal(c.quad),
+        U::Ex => internal(c.x_height),
+        U::Width => internal(c.content.0),
+        U::Height => internal(c.content.1),
+        U::Depth => internal(c.content.2),
+        U::TotalHeight => internal(c.content.1 + c.content.2),
+        U::Length(name) => internal(match name.as_str() {
+            "textwidth" | "linewidth" | "columnwidth" | "hsize" => c.line_width,
+            "fboxsep" => c.fboxsep,
+            "fboxrule" => c.fboxrule,
+            "parindent" => c.parindent,
+            "baselineskip" => c.baselineskip,
+            other => lengths.get(other).copied().unwrap_or(0),
+        }),
+    }
+}
+
+/// Runs one box command's `latex.ltx` macro in `e`, leaving the result in
+/// register [`BOX_OUT`]. `content` appends the measured content.
+fn run_box_command(
+    e: &mut flashtex_tex_boxes::BoxEngine,
+    kind: &flashtex_compiler::boxes::TextBoxKind,
+    resolve: &dyn Fn(&flashtex_compiler::boxes::BoxDimen) -> i32,
+    content: flashtex_tex_boxes::latex::Content,
+) -> Result<(), flashtex_tex_boxes::BoxError> {
+    use flashtex_compiler::boxes::TextBoxKind as K;
+    use flashtex_tex_boxes::{self as tx, latex, latex::LenArg};
+    e.begin_box(tx::BoxKind::HBox, tx::PackSpec::NATURAL, tx::BoxContext::SetBox { register: BOX_OUT, global: false })?;
+    match kind {
+        K::Make { width: None, frame, .. } => {
+            if *frame {
+                latex::fbox(e, content)?
+            } else {
+                latex::mbox(e, content)?
+            }
+        }
+        K::Make { width: Some(w), pos, frame } => {
+            let wv = resolve(w);
+            let wf = move |_: &tx::BoxEngine| wv;
+            if *frame {
+                latex::framebox(e, Some(&wf), *pos, content)?
+            } else {
+                latex::makebox(e, Some(&wf), *pos, content)?
+            }
+        }
+        K::Raise { lift, height, depth } => {
+            let l = resolve(lift);
+            let lf = move |_: &tx::BoxEngine| l;
+            let hf = height.as_ref().map(resolve).map(|h| move |_: &tx::BoxEngine| h);
+            let df = depth.as_ref().map(resolve).map(|d| move |_: &tx::BoxEngine| d);
+            latex::raisebox(e, &lf, hf.as_ref().map(|f| f as LenArg), df.as_ref().map(|f| f as LenArg), content)?
+        }
+        K::Phantom { horizontal, vertical } => latex::phantom(e, *vertical, *horizontal, content)?,
+        K::Smash => latex::smash(e, content)?,
+        K::Lap { left } => latex::lap(e, *left, !*left, content)?,
+        K::Strut => latex::strut(e)?,
+        K::Par { pos, height, inner, width, minipage } => {
+            let w = resolve(width);
+            let wf = move |_: &tx::BoxEngine| w;
+            let hf = height.as_ref().map(resolve).map(|h| move |_: &tx::BoxEngine| h);
+            let hr = hf.as_ref().map(|f| f as LenArg);
+            if *minipage {
+                latex::minipage(e, *pos, hr, *inner, &wf, content, None)?
+            } else {
+                latex::parbox(e, *pos, hr, *inner, &wf, content)?
+            }
+        }
+    }
+    e.end_box()
+}
+
 fn table_cell_block(lines: pl::Lines, items: Vec<pl::Item>, recs: Vec<Option<usize>>, labels: Vec<(String, usize)>) -> BuiltBlock {
     let vertical = VBlock {
         lines: line_extents(&lines),

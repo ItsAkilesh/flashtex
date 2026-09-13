@@ -1,0 +1,36 @@
+{
+ "fixture": "06-makebox-width-factor.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Alpha",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "wide",
+    "x": 118.5009,
+    "y_top": 83.955
+   },
+   {
+    "text": "Beta",
+    "x": 157.5155,
+    "y_top": 83.955
+   },
+   {
+    "text": "narroGwamma",
+    "x": 185.3114,
+    "y_top": 83.955
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

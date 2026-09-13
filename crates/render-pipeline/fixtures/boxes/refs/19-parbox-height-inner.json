@@ -1,0 +1,51 @@
+{
+ "fixture": "19-parbox-height-inner.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "top",
+    "x": 186.295,
+    "y_top": 80.236
+   },
+   {
+    "text": "inside",
+    "x": 207.1018,
+    "y_top": 80.236
+   },
+   {
+    "text": "X",
+    "x": 72.0,
+    "y_top": 128.693
+   },
+   {
+    "text": "Y",
+    "x": 173.618,
+    "y_top": 128.693
+   },
+   {
+    "text": "Z",
+    "x": 246.89,
+    "y_top": 128.693
+   },
+   {
+    "text": "bottom",
+    "x": 84.677,
+    "y_top": 213.732
+   },
+   {
+    "text": "inside",
+    "x": 125.9679,
+    "y_top": 213.732
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

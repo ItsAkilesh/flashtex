@@ -1,0 +1,116 @@
+{
+ "fixture": "21-minipage-side-by-side.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Left",
+    "x": 72.0,
+    "y_top": 80.236
+   },
+   {
+    "text": "column",
+    "x": 97.895,
+    "y_top": 80.236
+   },
+   {
+    "text": "text",
+    "x": 140.214,
+    "y_top": 80.236
+   },
+   {
+    "text": "that",
+    "x": 165.9487,
+    "y_top": 80.236
+   },
+   {
+    "text": "wraps",
+    "x": 192.6471,
+    "y_top": 80.236
+   },
+   {
+    "text": "over",
+    "x": 227.8767,
+    "y_top": 80.236
+   },
+   {
+    "text": "a",
+    "x": 254.2666,
+    "y_top": 80.236
+   },
+   {
+    "text": "few",
+    "x": 265.3682,
+    "y_top": 80.236
+   },
+   {
+    "text": "Right",
+    "x": 329.401,
+    "y_top": 81.398
+   },
+   {
+    "text": "column",
+    "x": 364.358,
+    "y_top": 81.398
+   },
+   {
+    "text": "text,",
+    "x": 407.9204,
+    "y_top": 81.398
+   },
+   {
+    "text": "also",
+    "x": 438.8078,
+    "y_top": 81.398
+   },
+   {
+    "text": "wrapping",
+    "x": 464.8869,
+    "y_top": 81.398
+   },
+   {
+    "text": "over",
+    "x": 518.867,
+    "y_top": 81.398
+   },
+   {
+    "text": "lines",
+    "x": 72.0,
+    "y_top": 94.681
+   },
+   {
+    "text": "inside",
+    "x": 98.7247,
+    "y_top": 94.681
+   },
+   {
+    "text": "the",
+    "x": 131.9649,
+    "y_top": 94.681
+   },
+   {
+    "text": "first",
+    "x": 152.1214,
+    "y_top": 94.681
+   },
+   {
+    "text": "minipage.",
+    "x": 176.2446,
+    "y_top": 94.681
+   },
+   {
+    "text": "lines.",
+    "x": 329.401,
+    "y_top": 95.844
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

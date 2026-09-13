@@ -357,6 +357,36 @@ error is a stage 3 PR's job, which is the expected order:
 - Checks: the three integration errors this merge introduced are gone; the
   remaining build errors are the pending stage 3 PRs listed above.
 
+### #138 box-commands-pipeline (render-pipeline) @ a2ec2428
+
+- Textual conflicts:
+  - `src/adapter.rs` `Item` enum: git shared one brace between the end of the
+    enum and the end of #138's `LengthItem`, so main's `Logo`/`Rule`/`Kern`/
+    `Footnote` variants were kept first and #138's `TextBox`/`SetLength`/
+    `LengthGlue`/`HSs` after them; the shared brace then closes `LengthItem`.
+  - `src/adapter.rs` `span_of` or-pattern: main's `Logo`/`Rule`/`Kern` and
+    #138's `LengthGlue` arms both ended in `=> *span,`; joined into one
+    or-pattern rather than two.
+  - `src/typeset.rs` `Context::new`: main's float-box fields (from #135) plus
+    #138's `lengths` map; both.
+- `src/incremental.rs` `hash_items` — **discriminant collision**: #138 numbered
+  its four new items 10..13, but main already uses 10 (`Footnote`) and 11
+  (`Kern`). They were renumbered 12..15. These tags are incremental-cache keys,
+  so a duplicate would let a cached block be reused for a different item.
+  - Pre-existing on main and deliberately *not* changed here: `Item::Table`
+    also hashes as 9 (same as `Item::Logo`) and `Item::Footnote` as 10 (same as
+    `Item::Rule`). Reported rather than fixed — it is main's bug, not this
+    merge's, and the payload hashed after the tag differs in each case.
+- `Cargo.toml`: #138 added `flashtex-tex-boxes = { path = "../tex-boxes" }`,
+  but the vendored compiler reaches the same crate through
+  `vendor/tex-boxes`, and cargo rejects two paths for one package name
+  ("package collision in the lockfile"). Repointed to `vendor/tex-boxes`,
+  which is also what render-pipeline needs to build standalone from `vendor/`.
+- Checks: the `Inline::Box`/`SetLength`/`LengthGlue` arms render-pipeline was
+  missing are now supplied. Remaining build errors belong to #152 (list
+  fields), #158 (`ColorBox`), #165 (`MathBox::tag`), #170 (`Graphic`/
+  `Transform`) and #151/#154 (`Piece::Caption::short`).
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.
