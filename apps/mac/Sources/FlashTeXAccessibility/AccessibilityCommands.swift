@@ -382,6 +382,7 @@ public enum PanelFocusOrder {
                 Control(name: "Editor appearance (segments)", sourceMarker: "Picker(\"Editor appearance\""),
                 Control(name: "Auto-close braces", sourceMarker: "Toggle(\"Auto-close braces\""),
                 Control(name: "Show completion list", sourceMarker: "Toggle(\"Show completion list\""),
+                Control(name: "Check spelling", sourceMarker: "Toggle(\"Check spelling\""),
                 Control(name: "Restore Defaults", sourceMarker: "Button(\"Restore Defaults\""),
               ],
               sourceFile: "EditorPreferences.swift"),
