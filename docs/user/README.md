@@ -8,7 +8,7 @@ Pencil sketches and photos into reviewed LaTeX/TikZ insertions.
 | Guide | What it covers |
 |---|---|
 | **This page** | Requirements, installing, a 5-minute first document |
-| [The Mac app](gui.md) | Workspace, projects and multi-file documents, editing and IntelliSense, compiling, the preview, the Problems panel and quick fixes, PDF export, the AI assistant, the Nearby companion, Preferences, all keyboard shortcuts |
+| [The Mac app](gui.md) | Workspace, projects and multi-file documents, editing and IntelliSense, compiling, the preview, the Problems panel and quick fixes, PDF export, capture conversion, the Nearby companion, Preferences, all keyboard shortcuts |
 | [FlashTeXPad for iPad](ipad.md) | What the capture companion does, building it on a device, pairing, sending a capture, limits |
 | [Command-line tools](compiler.md) | `flashtex-render`, `flashtex-compiler`, `flashtex-pdf`/`flashtex-pdf-exact`, fonts and metrics, building from source, **supported LaTeX**, diagnostic codes |
 
@@ -18,8 +18,8 @@ Pencil sketches and photos into reviewed LaTeX/TikZ insertions.
   no Windows or Linux — FlashTeX is a native Swift app over a Rust engine.
 - No TeX installation is needed. The app bundles the engine, Latin Modern
   fonts and the TeX font metrics it lays out with.
-- Optional: an xAI (Grok) API key for the AI assistant and for handwriting
-  conversion — see [the AI assistant](gui.md#the-ai-assistant).
+- Optional: an API key for a conversion provider (xAI today) if you want iPad
+  captures converted to LaTeX/TikZ — see [capture conversion](gui.md#capture-conversion-the-only-model-backed-feature).
 
 ## Install
 
@@ -92,7 +92,7 @@ preferences are kept.
    always black on white.
 
 Next: read [the Mac app guide](gui.md) for projects, IntelliSense, the AI
-assistant and the full shortcut table, and [Supported LaTeX](compiler.md#supported-latex)
+capture conversion and the full shortcut table, and [Supported LaTeX](compiler.md#supported-latex)
 to see what the engine implements today and what it reports as unsupported.
 
 ## Where things live

@@ -2,7 +2,7 @@
 
 FlashTeX is a source editor with a live page preview. This guide walks through
 the window, projects, editing, compiling, the preview, problems and fixes, PDF
-export, the AI assistant, the iPad companion window, Preferences, and ends with
+export, capture conversion, the iPad companion window, Preferences, and ends with
 the full keyboard-shortcut table. Everything here was checked against the app
 sources (`apps/mac`) at the time of writing; where a feature is partial, the
 text says so.
@@ -17,7 +17,7 @@ text says so.
 ├─────────────┴─────────────────────────────┴────────────────────────┤
 │ Problems panel (⌘⇧M): errors / warnings / not implemented           │
 ├──────────────────────────────────────────────────────────────────────┤
-│ status bar: r12 · durable r12 · 31 ms · worker · Grok: off · 2 ⚠     │
+│ status bar: r12 · durable r12 · 31 ms · worker · 2 ⚠                 │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -35,9 +35,9 @@ text says so.
 - **Preview** (right): the rendered pages. The preview header names the
   attached producer and holds the zoom controls; the window **toolbar** holds
   the *Auto-compile after edits*, *v2 pane* and *Dark preview* switches, the
-  Problems toggle, *Ask Grok* and *Commands*.
+  Problems toggle and *Commands*.
 - **Problems panel** (bottom, ⌘⇧M) and the **status bar** (editor revision,
-  last compile latency, route, Grok status, problem counts — click the counts
+  last compile latency, route, problem counts — click the counts
   to toggle the panel).
 - **⌘⇧P** opens the command palette: every command with its shortcut; type to
   filter, Return runs.
@@ -208,8 +208,6 @@ an "N places" menu.
   opens a *Suggested fix* sheet with Before / After; **Apply** performs one
   undoable edit, **Cancel** changes nothing. The fix is rebased byte-exactly
   onto the current text and refused if that region changed since the compile.
-- **Fix with Grok** sends the diagnostic's lines to the AI assistant with the
-  instruction "Fix this: <message>" (below).
 - **Copy Diagnostics as Text** (⌘⌥C, or ⌘C with the list focused) copies
   `path:line: error: message` lines for the selected row or all rows —
   handy for bug reports.
@@ -229,39 +227,26 @@ All exports are black on white regardless of the dark-preview switch. None of
 them is a pdfTeX PDF: only what the engine laid out is written (no
 `\includegraphics`, no hyperlinks, no metadata).
 
-## The AI assistant
+## Capture conversion (the only model-backed feature)
 
-The assistant is a reviewed-edit tool: it can *propose* changes to your
-document, and **nothing is applied unless you click Apply**. It is currently
-backed by xAI's Grok models and is being generalised to other providers.
+FlashTeX has no built-in AI assistant: the editor stays unopinionated, and
+third parties can add such features through the helper-process contract in
+[`docs/extensibility.md`](../extensibility.md). The one model-backed feature
+is **capture conversion**: a drawing or photo sent from the iPad companion is
+converted to LaTeX/TikZ by the bridge helper and comes back as a *reviewed
+proposal* — **nothing is inserted unless you approve it**.
 
-- **Ask Grok…** (⌘⌥G, *Edit* menu, toolbar button, or *Fix with Grok* on a
-  Problems row) opens a sheet. Type an instruction; it applies to the current
-  selection (or the whole document when nothing is selected). What is sent:
-  the head of the active document, up to 2 KiB of context around each
-  selected diagnostic (at most 16), the selection as the only editable region,
-  and your instruction — all bound to the **last compiled** text. If the
-  buffer differs from what was compiled the sheet asks you to wait for the
-  compile or press ⌘B.
-- **The reply** shows the model's explanation and, when it proposed an edit,
-  a before/after diff ("Proposed edit — N changes"). **Apply** inserts it as
-  one undoable edit (⌘Z reverts); **Copy** puts explanation and replacement
-  on the clipboard; **Close** discards. A request runs for at most 100 s
-  (reasoning model) or 30 s (fast model) and can be cancelled.
-- **Preferences (⌘,) › Grok (xAI)**: paste your API key and *Save to Keychain*
-  (it is stored in the login Keychain under `tech.jay3332.flashtex.xai`, never
-  in a file; *Remove* deletes it). *Use Grok for editor assistance*:
-  **Automatic** (when a key is present, the default) / Always / Never.
-  *Model*: `grok-4.20-0309-non-reasoning` (fast; default for Ask Grok and
-  captures), `grok-4.6` (reasoning) or *Other…*. *Test connection* performs a
-  single request to `api.x.ai` and reports the HTTP result.
-- **Status pill** in the status bar: "Grok: on (model)" or "Grok: off" with a
-  tooltip explaining why.
-- **Without a key** nothing leaves your Mac: the context is prepared and the
-  sheet reports "no API key is present … sent nowhere". A local provider
-  command can be substituted with `FLASHTEX_ASSISTANT_PROVIDER=<path>`.
-- The key is handed only to the assistant helper process for the duration of
-  a request; the app itself never calls the provider for assistance.
+- **Preferences (⌘,) › Capture conversion**: choose the provider (*None* —
+  captures are journaled but not converted — or *xAI*), paste the API key
+  and *Save to Keychain* (login Keychain item
+  `tech.jay3332.flashtex.ai.<provider>`, never a file; *Remove* deletes it),
+  and pick the model. Environment overrides for one launch:
+  `FLASHTEX_CONVERSION_PROVIDER`, `FLASHTEX_CONVERSION_MODEL`,
+  `FLASHTEX_AI_API_KEY`.
+- The key is handed only to the bridge helper's environment for the capture
+  it converts; the app never calls a provider itself. Without a key, captures
+  arrive, are journaled and shown as "not converted"; nothing leaves the Mac.
+- Details and the provider seam: [`apps/mac/docs/capture-conversion.md`](../../apps/mac/docs/capture-conversion.md).
 
 ## The Nearby companion (iPad)
 
@@ -297,7 +282,7 @@ you trust.
 | Editor appearance: System / Light / Dark (also seeds the dark-preview switch) | System |
 | Auto-close braces | on |
 | Show completion list (off disables ⌃Space / Esc completion) | on |
-| Grok (xAI): key in Keychain, Automatic / Always / Never, model, Test connection | Automatic, fast model |
+| Capture conversion: provider (None / xAI), key in Keychain, model | None |
 | Restore Defaults | |
 
 ## Keyboard shortcuts
@@ -316,7 +301,7 @@ you trust.
 | File › Export PDF (exact, v2)… | Exact PDF from the v2 display list |
 | ⌘⇧E | Export PDF… (CoreGraphics) |
 | ⌘⌥E | Export PDF via Rust writer… |
-| ⌘Z | Undo (including an applied fix, assistant edit or capture insertion) |
+| ⌘Z | Undo (including an applied fix or capture insertion) |
 | Esc / ⌃Space | Open the completion list |
 | ↑ ↓ / Tab ⇧Tab / Return / Esc | While the list is open: choose / insert / close |
 | ⌘-click / ⌘⇧D | Go to matching `\label`↔`\ref`, `\begin`↔`\end`, open `\input` file |
@@ -332,7 +317,6 @@ you trust.
 | ⌘⇧F / ⌘G | Find in Project… / next match |
 | Edit › Rename Citation… | Reviewed citation-key rename across the project |
 | Edit › Durable History… | Undo/redo on the durable edit ledger |
-| ⌘⌥G | Ask Grok… (AI assistant) |
 | ⌘⇧N | Nearby Companion… (pairing, captures) |
 | ⌘⌥P | Pin insertion point (capture destination) |
 | ⌘⇧I | Open capture proposal… (review sheet; Return approves) |
@@ -359,5 +343,5 @@ order of each pane.
   diagnostics, not content.
 - Notarization: the app is ad-hoc signed, hence the right-click › Open step on
   first launch of a browser download.
-- Providers other than xAI for the assistant (the local-provider hook exists
-  for developers).
+- Capture-conversion providers other than xAI (the provider seam is documented
+  in `docs/extensibility.md`; an on-device model is a later goal).

@@ -161,7 +161,7 @@ repository root — build each crate on its own:
 
 ```sh
 git clone https://github.com/flash-tex/flashtex.git && cd flashtex
-for c in compiler render-pipeline pdf bridge preview-controller edit-ledger project-files assistant-context; do
+for c in compiler render-pipeline pdf bridge preview-controller edit-ledger project-files; do
   cargo build --release --manifest-path crates/$c/Cargo.toml
 done
 ./apps/mac/scripts/make-app.sh --install --open     # packages FlashTeX.app into ~/Applications
@@ -169,8 +169,8 @@ done
 
 Binaries land in `crates/<crate>/target/release/` (`flashtex-render`,
 `flashtex-compiler`, `flashtex-pdf` + `flashtex-pdf-exact`, `flashtex-bridge`,
-`flashtex-preview-controller`, `flashtex-edit-ledger`, `flashtex-project-files`,
-`flashtex-assistant-context`). `make-app.sh` picks them up from those paths,
+`flashtex-preview-controller`, `flashtex-edit-ledger`, `flashtex-project-files`).
+`make-app.sh` picks them up from those paths,
 verifies the bundled fonts and metrics against a pinned manifest, and ad-hoc
 signs the bundle; add `--dmg` for a disk image. `cargo test` in a crate
 directory runs that crate's tests; `swift test` in `apps/mac` runs the app's.

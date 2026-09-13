@@ -191,7 +191,7 @@ are documented in [Command-line tools](docs/user/compiler.md).
    *Edit › Nearby Companion…* (⌘⇧N) → Advertise → Show Pairing Code, then scan
    the code from FlashTeXPad.
 
-Everything else — projects, IntelliSense, the AI assistant, preferences and
+Everything else — projects, IntelliSense, capture conversion, preferences and
 the full shortcut table — is in [The Mac app](docs/user/gui.md); the
 companion is in [FlashTeXPad for iPad](docs/user/ipad.md).
 
