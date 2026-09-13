@@ -24,7 +24,7 @@ scripts in `scripts/ci/` that also run locally.
   run instead of skipping; tests that need a pdfTeX oracle skip themselves.
 * **`mac-app`** — `macos-26` (Xcode 26; `maxim-lobanov/setup-xcode` selects the
   newest stable Xcode on the image). Runs `scripts/ci/build-helpers.sh` into
-  `$GITHUB_ENV`, then `swift build` and `swift test --parallel` in `apps/mac`
+  `$GITHUB_ENV`, then `swift build` and `swift test` in `apps/mac`
   with `CI=1 FLASHTEX_NO_ACTIVATE=1 FLASHTEX_KEYCHAIN_OFF=1
   FLASHTEX_REVIEW_HISTORY_DIR=off`. Tests that need a real window session are
   opt-in already (`FLASHTEX_NEARBY_APP_EVIDENCE_DIR` etc. — they `XCTSkip`

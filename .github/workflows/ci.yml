@@ -19,18 +19,19 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-  # The pinned Latin Modern faces and rooted TFM metrics vendored for the
-  # app bundle, so the render-pipeline/pdf tests that need them run instead
-  # of skipping (no TeX installation on the runners).
-  FLASHTEX_FONT_DIRS: ${{ github.workspace }}/apps/mac/Fonts
-  FLASHTEX_TFM_DIRS: ${{ github.workspace }}/apps/mac/Fonts/texmf/fonts/tfm/public/lm
-  FLASHTEX_LM_DIR: ${{ github.workspace }}/apps/mac/Fonts
 
 jobs:
   rust:
     name: rust ${{ matrix.crate }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
+    env:
+      # The pinned Latin Modern faces and rooted TFM metrics vendored for the
+      # app bundle, so the render-pipeline/pdf tests that need them run
+      # instead of skipping (no TeX installation on the runners).
+      FLASHTEX_FONT_DIRS: ${{ github.workspace }}/apps/mac/Fonts
+      FLASHTEX_TFM_DIRS: ${{ github.workspace }}/apps/mac/Fonts/texmf/fonts/tfm/public/lm
+      FLASHTEX_LM_DIR: ${{ github.workspace }}/apps/mac/Fonts
     strategy:
       fail-fast: false
       matrix:
@@ -101,7 +102,9 @@ jobs:
         run: swift build
       - name: swift test
         working-directory: apps/mac
-        run: swift test --parallel 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
+        # Serial, as rehearsed locally (877 tests in ~5 min on an M1 Max):
+        # the Nearby tests bind loopback ports and share fixtures.
+        run: swift test 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
       - name: Upload swift test log
         if: always()
         uses: actions/upload-artifact@v4
