@@ -38,6 +38,45 @@ machine, but not verified against the pinned 2.004 archive hash; see the
 `provenance` block in that file. `make-app.sh` refuses packaging if any of them
 drifts from the pinned hash.
 
+## EC (`jknappen/ec`) and AMS symbol metrics (T1 `cmr` and `\mathbb`)
+
+`texmf/SUPPLEMENTARY-METRICS.json` also pins two further metric sets, both
+copied byte-for-byte from MacTeX 2026 (`/usr/local/texlive/2026/texmf-dist`;
+see the `ec_provenance` / `ams_symbols_provenance` blocks in that file):
+
+* **`texmf/fonts/tfm/jknappen/ec/{ecrm,ecbx,ecti,ecbi,ecsl}{0500,...,3583}.tfm`**
+  (70 files: the 5 shapes `t1cmr.fd` selects — medium/bold roman, medium/bold
+  italic, slanted — at the 14 sizes it declares) plus
+  `texmf/doc/fonts/ec/copyrite.txt` (the ec-fonts copyright notice; free
+  redistribution of the unchanged files). PR #111 (GH111): the render
+  pipeline (`crates/render-pipeline/src/fonts.rs`, `EC_TFM_DIR`/`ec_tfm_file`)
+  lays a `[T1]{fontenc}` document out with these metrics whenever `lmodern`
+  is not also loaded, instead of falling back to the Latin Modern OTF metrics
+  and warning `ec_metrics_unavailable`. `fonts.rs`'s own
+  `Discovery::bundle_texmf_roots` derives `Contents/Resources/texmf` from the
+  running executable and probes this directory automatically inside a real
+  `.app` bundle; `BundledMetrics.ecTfmDirectory`/`producerEnvironment` also
+  advertise it explicitly in `FLASHTEX_TFM_DIRS` so a bare (non-bundled)
+  producer binary gets the same metrics.
+* **`texmf/fonts/tfm/public/amsfonts/symbols/{msbm,msam}{5,7,10}.tfm`**
+  (6 files) plus `texmf/doc/fonts/amsfonts/README` (LPPL 1.3c or later,
+  American Mathematical Society). pdfLaTeX draws `\mathbb` glyph advances
+  from `msbm10.tfm`, not from an OpenType face's metrics (measured
+  ‑0.91 pt/glyph on the double-struck ℝ against pdflatex); these are bundled
+  so a producer can read the real TFM advances for `\mathbb`/`\mathfrak`-style
+  math alphabets. **Not yet consumed**: as of this change no producer reads
+  these files (`BundledMetrics.amsSymbolsDirectory` and the `FLASHTEX_TFM_DIRS`
+  entry it adds exist, ready for that follow-up); today's double-struck
+  glyphs still come from `NewCMMath-Regular.otf`, described above, whose
+  advances already track msbm's design.
+
+Both sets are supplementary (not in the Commander's pinned manifest):
+`bundle-texmf.py check`/`stage` verify them against the in-repo pin like the
+Latin Modern supplementary metrics, and `make-app.sh` refuses packaging on any
+drift. `BundledMetricsTests` checks the pin against the vendored bytes and
+that every vendored TFM under all three metric subdirectories (Latin Modern,
+EC, AMS symbols) is accounted for by exactly one tier.
+
 All **22 producer-requestable faces** are now vendored: eight Roman regular
 masters (5/6/7/8/9/10/12/17), seven bold (5/6/7/8/9/10/12), five italic
 (7/8/9/10/12), Roman10 bold-italic and Latin Modern Math. These are the files
