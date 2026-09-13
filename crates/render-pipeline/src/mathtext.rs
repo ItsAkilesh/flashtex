@@ -88,6 +88,12 @@ pub struct TextSink {
     /// [`TextSink::grid_atom`]); each reserves a handle (an empty entry of
     /// `texts`).
     pub grids: Vec<GridCells>,
+    /// The document's body font size in pt (`\f@size`), for size-dependent
+    /// kerns such as amsmath's `\ex@`; 0 when unknown.
+    pub body_size_pt: f64,
+    /// Whether `amsfonts` (or `amssymb`, which loads it) is loaded: its
+    /// `\widehat`/`\widetilde` switch to msbm's extra-wide accents past 2em.
+    pub amsfonts: bool,
 }
 
 /// An `array`/`cases`/matrix/`aligned` grid met inside a sub-formula (a
@@ -426,6 +432,10 @@ impl MathFontMetrics for TextRunMetrics<'_> {
 
     fn radical_extensible(&self, size: SizeClass) -> Option<Extensible> {
         self.inner.radical_extensible(size)
+    }
+
+    fn extension_glyph(&self, code: u8, ch: char) -> Option<Glyph> {
+        self.inner.extension_glyph(code, ch)
     }
 
     fn text_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
