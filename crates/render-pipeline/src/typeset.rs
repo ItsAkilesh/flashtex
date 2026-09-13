@@ -100,6 +100,27 @@ pub enum BoxRec {
     Rule { width: f64, height: f64, span: Span },
     /// A `tikzpicture`: its bounding box sits on the baseline (depth 0).
     Picture(Rc<PictureRec>),
+    /// A `tabular` (`table.rs`): its cell lines and rules, set as one box
+    /// whose origin is the table's reference baseline.
+    Table(Rc<TableRec>),
+}
+
+/// A laid-out table (`Context::table_box`): every entry or `@{}` box as
+/// its broken lines at their position, and the rules. y is measured down
+/// from the table's baseline.
+#[derive(Clone)]
+pub struct TableRec {
+    pub pieces: Vec<TablePiece>,
+    pub rules: Vec<crate::table::PlacedRule>,
+    pub span: Span,
+}
+
+#[derive(Clone)]
+pub struct TablePiece {
+    pub x: f64,
+    /// The first line's baseline below the table's baseline.
+    pub baseline: f64,
+    pub block: BuiltBlock,
 }
 
 /// A compiled `tikzpicture` and its node text shaped for painting
@@ -440,6 +461,13 @@ impl<'a> Context<'a> {
                     format!("Latin Modern face unavailable ({reason}); Times metrics substituted, output is not the requested document"),
                     vec![src],
                 ),
+            );
+        }
+        if let Some(note) = &r.face.metrics_fallback {
+            let src = self.source(span);
+            self.report_once(
+                format!("ecmetrics:{}", r.face.name),
+                Diagnostic::warning("ec_metrics_unavailable", format!("{}: {note}", r.face.name), vec![src]),
             );
         }
         match &r.face.tfm_status {
@@ -1247,6 +1275,11 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::Glue(glue), None)
                 }
                 AItem::HSpace { pt } => push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(*pt)), None),
+                AItem::Table(table) => {
+                    if let Some((run, rec)) = self.table_box(table, size) {
+                        push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                    }
+                }
                 AItem::Label { key } => labels.push((key.clone(), out.len())),
                 AItem::ItalicCorrection => {
                     // `\/`: a kern of the last character's TFM italic
@@ -1276,6 +1309,151 @@ impl<'a> Context<'a> {
         push(&mut out, &mut recs, pl::Item::Glue(if fills { pl::Glue::fil() } else { pl::Glue::fixed(0.0) }), None);
         push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
         (out, recs, labels, skips)
+    }
+
+    /// A `tabular` as one box (`table.rs`): every entry and `@{}` text is
+    /// set as an hbox (a `p{}` entry as its `\vtop`), then placed by the
+    /// kernel's alignment rules. The record keeps the pieces to paint.
+    fn table_box(&mut self, t: &crate::table::TableItem, outer_size: f64) -> Option<(pl::GlyphRun, usize)> {
+        use crate::table::{self as tb, Dims, MCell, Slot, TableMaterial};
+        use flashtex_compiler::tabular::Align;
+        let size = if t.size_cpt == 0 { outer_size } else { f64::from(t.size_cpt) / 100.0 };
+        let body_size = self.style.body_size_pt;
+        // `\strutbox` of the size in force (`\@setfontsize`).
+        let bskip = if (size - body_size).abs() < 1e-9 {
+            self.style.baselineskip_pt
+        } else {
+            tb::baselineskip_pt(adapter::class_size_of(body_size), (size * 100.0).round() as u16)
+        };
+        let strut_height = tb::sp(t.arraystretch * tb::sp(0.7 * bskip));
+        let strut_depth = tb::sp(t.arraystretch * tb::sp(0.3 * bskip));
+        let body = self.text_params(TextStyle::default(), body_size);
+        let quad = self.text_params(TextStyle::default(), size).quad;
+        let measure = self.style.text_width_pt;
+        let mut blocks: std::collections::HashMap<(usize, usize, Slot), BuiltBlock> = std::collections::HashMap::new();
+        let mut rows: Vec<Vec<MCell>> = Vec::new();
+        for entry in &t.entries {
+            let tb::TableEntry::Row { cells, .. } = entry else { continue };
+            let ri = rows.len();
+            let mut out = Vec::new();
+            for (ci, (cell, (column, columns, template))) in cells.iter().zip(tb::row_slots(t, cells)).enumerate() {
+                let (before_m, align, after_m): (&[TableMaterial], Align, &[TableMaterial]) = match template {
+                    Some(c) => (&c.before, c.align, &c.after),
+                    None => (&[], Align::Left, &[]),
+                };
+                let before = self.table_pieces(before_m, size, (ri, ci), true, &mut blocks);
+                let content = match align {
+                    Align::Paragraph(len) => {
+                        let width = tb::resolve(len, measure).max(0.0);
+                        match self.table_pbox(&cell.items, size, width, bskip, strut_depth, quad) {
+                            Some((block, dims)) => {
+                                blocks.insert((ri, ci, Slot::Content), block);
+                                dims
+                            }
+                            None => Dims { width, height: 0.0, depth: strut_depth },
+                        }
+                    }
+                    _ => match self.table_hbox(&cell.items, size) {
+                        Some((block, dims)) => {
+                            blocks.insert((ri, ci, Slot::Content), block);
+                            dims
+                        }
+                        None => Dims::default(),
+                    },
+                };
+                let after = self.table_pieces(after_m, size, (ri, ci), false, &mut blocks);
+                out.push(MCell { column, columns, align, before, content, after });
+            }
+            rows.push(out);
+        }
+        let metrics = tb::Metrics { strut_height, strut_depth, em: body.quad, ex: body.x_height, axis: tb::AXIS_EM * size, measure };
+        let geometry = tb::layout(t, &rows, &metrics);
+        let mut pieces = Vec::new();
+        for p in &geometry.placed {
+            if let Some(block) = blocks.remove(&(p.row, p.cell, p.slot)) {
+                pieces.push(TablePiece { x: p.x, baseline: p.baseline, block });
+            }
+        }
+        self.recs.push(BoxRec::Table(Rc::new(TableRec { pieces, rules: geometry.rules, span: t.span })));
+        let run = pl::GlyphRun {
+            font: MATH_SENTINEL,
+            size,
+            glyphs: Vec::new(),
+            width: geometry.width,
+            height: geometry.height,
+            depth: geometry.depth,
+            source: t.span.start..t.span.end,
+        };
+        Some((run, self.recs.len() - 1))
+    }
+
+    /// Measures a template's `u`/`v` material, shaping `@{}` text.
+    fn table_pieces(
+        &mut self,
+        material: &[crate::table::TableMaterial],
+        size: f64,
+        key: (usize, usize),
+        before: bool,
+        blocks: &mut std::collections::HashMap<(usize, usize, crate::table::Slot), BuiltBlock>,
+    ) -> Vec<crate::table::MPiece> {
+        use crate::table::{MPiece, Slot, TableMaterial};
+        let mut out = Vec::with_capacity(material.len());
+        for (i, m) in material.iter().enumerate() {
+            out.push(match m {
+                TableMaterial::Space(pt) => MPiece::Space(*pt),
+                TableMaterial::Rule(span) => MPiece::Rule(*span),
+                TableMaterial::Text(items) => match self.table_hbox(items, size) {
+                    Some((block, dims)) => {
+                        blocks.insert((key.0, key.1, if before { Slot::Before(i) } else { Slot::After(i) }), block);
+                        MPiece::Text(dims)
+                    }
+                    None => MPiece::Text(Default::default()),
+                },
+            });
+        }
+        out
+    }
+
+    /// An `l`/`c`/`r` entry: its material at natural width (`\hbox`), set
+    /// as one unbroken line in a `\maxdimen` measure with `\parfillskip`.
+    fn table_hbox(&mut self, items: &[AItem], size: f64) -> Option<(BuiltBlock, crate::table::Dims)> {
+        let (list, recs, labels, _) = self.hlist(items, size, TextStyle::default(), ParaStyle::Plain);
+        if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
+            return None;
+        }
+        let mut params = self.line_params(false, self.style.baselineskip_pt, ParaStyle::Plain, 0.0);
+        params.line_width = crate::table::MAX_DIMEN_PT;
+        let lines = self.break_paragraph(&list, &params, items)?;
+        let width = lines.lines.iter().map(|l| l.natural_width).fold(0.0, f64::max);
+        let (first, last) = (lines.lines.first()?, lines.lines.last()?);
+        let dims = crate::table::Dims { width, height: first.height, depth: last.baseline_y - first.baseline_y + last.depth };
+        Some((table_cell_block(lines, list, recs, labels), dims))
+    }
+
+    /// A `p{width}` entry: `\@startpbox` (`\vtop`, `\hsize` width,
+    /// `\@arrayparboxrestore`: no indent, `\normalbaselineskip`, `\sloppy`)
+    /// and `\@endpbox`'s `\@finalstrut` (the last line at least the strut's
+    /// depth). The box's height is its first line's.
+    fn table_pbox(&mut self, items: &[AItem], size: f64, width: f64, baselineskip: f64, strut_depth: f64, em: f64) -> Option<(BuiltBlock, crate::table::Dims)> {
+        let (list, recs, labels, _) = self.hlist(items, size, TextStyle::default(), ParaStyle::Plain);
+        if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
+            return None;
+        }
+        let mut params = self.line_params(false, baselineskip, ParaStyle::Plain, 0.0);
+        params.line_width = width;
+        // `\sloppy`: `\tolerance 9999 \emergencystretch 3em \hfuzz .5pt`.
+        // paragraph-layout's `badness` is infinite above a stretch ratio of
+        // 1.29 (TeX §108: above 1290/297 = 4.34), so a loose `p{}` line TeX
+        // accepts at this tolerance is infeasible there and the entry can
+        // break differently; the kernel's parameters are kept regardless.
+        params.tolerance = 9999.0;
+        params.emergency_stretch = 3.0 * em;
+        params.hfuzz = 0.5;
+        let lines = self.break_paragraph(&list, &params, items)?;
+        self.report_overfull(&lines, &list, &recs);
+        let (first, last) = (lines.lines.first()?, lines.lines.last()?);
+        let dims = crate::table::Dims { width, height: first.height, depth: last.baseline_y - first.baseline_y + last.depth.max(strut_depth) };
+        Some((table_cell_block(lines, list, recs, labels), dims))
     }
 
     fn line_params(&self, indent: bool, baselineskip: f64, style: ParaStyle, hang_pt: f64) -> pl::LineBreakParams {
@@ -2601,6 +2779,7 @@ impl<'a> Context<'a> {
                     BoxRec::Math(m) => Some(self.maths[*m].span),
                     BoxRec::Rule { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
+                    BoxRec::Table(t) => Some(t.span),
                 })
                 .next();
             let _ = list;
@@ -2629,6 +2808,26 @@ fn vskips_of(lines: &pl::Lines, skips: &[(usize, f64)]) -> Vec<f64> {
 
 fn skip_tuple(s: crate::style::Skip) -> (f64, f64, f64) {
     (s.natural, s.stretch, s.shrink)
+}
+
+/// A table entry's lines as a block assembled like a paragraph's.
+fn table_cell_block(lines: pl::Lines, items: Vec<pl::Item>, recs: Vec<Option<usize>>, labels: Vec<(String, usize)>) -> BuiltBlock {
+    let vertical = VBlock {
+        lines: line_extents(&lines),
+        penalty_before: None,
+        space_before: None,
+        parskip: None,
+        interline_penalty: 0,
+        club_penalty: 0,
+        widow_penalty: 0,
+        penalty_after: None,
+        space_after: None,
+        no_interline_first: false,
+        no_interline_after: false,
+        baselineskip: None,
+        vskip_after: Vec::new(),
+    };
+    BuiltBlock { block: pl::ParagraphBlock::body(lines), items, recs, vertical, labels, cache_key: None }
 }
 
 fn line_extents(lines: &pl::Lines) -> Vec<(f64, f64)> {
@@ -2696,7 +2895,7 @@ fn role_of(style: TextStyle) -> Role {
 pub(crate) fn design_size(family: Family, size: f64) -> u32 {
     match family {
         Family::Times => 10,
-        Family::LatinModern => {
+        Family::LatinModern | Family::ComputerModern => {
             if size < 8.5 {
                 8
             } else if size < 11.0 {
@@ -3910,6 +4109,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 BoxRec::Math(m) => Some(ctx.maths[*m].span),
                 BoxRec::Rule { span, .. } => Some(*span),
                 BoxRec::Picture(p) => Some(p.span),
+                    BoxRec::Table(t) => Some(t.span),
             });
         let src = span.map(|sp| vec![ctx.source(sp)]).unwrap_or_default();
         ctx.diagnostics.push(Diagnostic::warning(
@@ -4311,6 +4511,7 @@ pub fn assemble(
                     BoxRec::Math(mi) => Some(laid.maths[*mi].span),
                     BoxRec::Rule { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
+                    BoxRec::Table(t) => Some(t.span),
                     BoxRec::Text { .. } => None,
                 });
                 diagnostics.push(Diagnostic::warning(
@@ -4430,6 +4631,40 @@ fn assemble_block(
                     }
                 }
                 BoxRec::Picture(p) => picture_items(&local, p, source_of, &mut items, &mut used),
+                BoxRec::Table(t) => {
+                    // Each piece is assembled like a block of its own, then
+                    // moved to its place; the rules follow the text.
+                    for piece in &t.pieces {
+                        let a = assemble_block(&piece.block, recs, maths, 0.0, source_of, paths, empty);
+                        let piece_lines = &piece.block.block.lines.lines;
+                        let first = piece_lines.first().map_or(0.0, |l| l.baseline_y);
+                        let dx = Tick::from_tex_pt(local.x + piece.x);
+                        for (li, line_items) in a.lines.iter().enumerate() {
+                            let dy = piece.baseline + piece_lines.get(li).map_or(0.0, |l| l.baseline_y - first);
+                            let dy = Tick::from_tex_pt(dy);
+                            for it in line_items {
+                                let mut item = incremental::place_item(it, dy, "", 0);
+                                display::shift_x(&mut item, dx);
+                                items.push(item);
+                            }
+                        }
+                        for f in a.faces {
+                            used.entry(f.font_id.clone()).or_insert(f);
+                        }
+                        resources.extend(a.resources);
+                        unmapped.extend(a.unmapped);
+                    }
+                    for r in &t.rules {
+                        items.push(display::Item::Rule(Rule {
+                            x: Tick::from_tex_pt(local.x + r.x),
+                            top: Tick::from_tex_pt(r.top),
+                            width: Tick::from_tex_pt(r.width).max(Tick(1)),
+                            height: Tick::from_tex_pt(r.height).max(Tick(1)),
+                            paint: Paint::BLACK,
+                            provenance: Provenance::Source(source_of(r.span)),
+                        }));
+                    }
+                }
                 BoxRec::Rule { width, height, span } => {
                     // Line-local like text: the rule's bottom is the baseline.
                     items.push(display::Item::Rule(Rule {

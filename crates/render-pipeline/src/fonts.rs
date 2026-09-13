@@ -98,6 +98,11 @@ use crate::ids::GlyphId;
 pub enum Family {
     LatinModern,
     Times,
+    /// LaTeX's default `cmr` under `\usepackage[T1]{fontenc}` (no
+    /// `lmodern`): the EC metrics `t1cmr.fd` loads (`ecrm1095`, `ecbx1200`,
+    /// ...) laid out with the Latin Modern outlines, which draw the same
+    /// Computer Modern designs. Math is unchanged (Latin Modern Math).
+    ComputerModern,
 }
 
 /// Which typographic role a face plays; selects the design.
@@ -215,6 +220,18 @@ impl Discovery {
             push(PathBuf::from(d.to_string_lossy().replace("/opentype/", "/tfm/")));
             push(d.clone());
         }
+        // The EC metrics of T1 `cmr` documents (`Family::ComputerModern`):
+        // the bundled trees' and each TeX Live tree's `fonts/tfm/jknappen/ec`,
+        // after every Latin Modern candidate so their order is unchanged.
+        for root in self.bundle_texmf_roots() {
+            push(root.join(EC_TFM_DIR));
+        }
+        for d in font_dirs {
+            let d = d.to_string_lossy();
+            if let Some(at) = d.find("/fonts/opentype/public/lm") {
+                push(PathBuf::from(format!("{}/{EC_TFM_DIR}", &d[..at])));
+            }
+        }
         dirs
     }
 }
@@ -272,6 +289,49 @@ pub fn latin_modern_tfm(otf_stem: &str) -> Option<String> {
     Some(format!("ec-lm{series}{d}.tfm"))
 }
 
+/// Where TeX Live keeps the EC metrics (`jknappen/ec`), relative to a
+/// texmf root.
+pub const EC_TFM_DIR: &str = "fonts/tfm/jknappen/ec";
+
+/// The sizes `t1cmr.fd` declares for every EC shape
+/// (`<5><6><7><8><9><10><10.95><12><14.4><17.28><20.74><24.88><29.86><35.83>genb*ecrm`)
+/// and the file-name suffix `genb*` builds from each.
+const EC_SIZES: [(f64, &str); 14] = [
+    (5.0, "0500"),
+    (6.0, "0600"),
+    (7.0, "0700"),
+    (8.0, "0800"),
+    (9.0, "0900"),
+    (10.0, "1000"),
+    (10.95, "1095"),
+    (12.0, "1200"),
+    (14.4, "1440"),
+    (17.28, "1728"),
+    (20.74, "2074"),
+    (24.88, "2488"),
+    (29.86, "2986"),
+    (35.83, "3583"),
+];
+
+/// The EC metric file `t1cmr.fd` loads for a text role at `size_pt`:
+/// `m/n` `ecrm`, `bx/n` `ecbx`, `m/it` `ecti`, `bx/it` `ecbi`, `m/sl`
+/// `ecsl`, at the declared size nearest `size_pt` (an undeclared size is a
+/// LaTeX size substitution to the nearest one). `None` for math.
+pub fn ec_tfm_file(role: Role, size_pt: f64) -> Option<String> {
+    let prefix = match role {
+        Role::Math => return None,
+        Role::Text { bold: false, italic: false } => "ecrm",
+        Role::Text { bold: true, italic: false } => "ecbx",
+        Role::Text { bold: false, italic: true } => "ecti",
+        Role::Text { bold: true, italic: true } => "ecbi",
+        Role::Slanted => "ecsl",
+    };
+    let (_, suffix) = EC_SIZES
+        .iter()
+        .min_by(|a, b| (a.0 - size_pt).abs().total_cmp(&(b.0 - size_pt).abs()))?;
+    Some(format!("{prefix}{suffix}.tfm"))
+}
+
 /// Glyph extents in font units: `[x_min, y_min, x_max, y_max]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Bounds {
@@ -319,6 +379,13 @@ pub struct LoadedFace {
     /// Why no TFM is attached (reported once by the typesetter).
     pub tfm_missing: Option<String>,
     pub tfm_status: TfmStatus,
+    /// Shaping-cache identity: `font_id` for the default metrics, extended
+    /// with the TFM for a face laid out with EC metrics (the same program
+    /// then shapes differently).
+    pub shape_key: Rc<str>,
+    /// Set when EC metrics were requested but unavailable and the Latin
+    /// Modern (`ec-lm*`) TFM was attached instead (reported once).
+    pub metrics_fallback: Option<String>,
     bounds_cache: RefCell<BTreeMap<u16, Bounds>>,
 }
 
@@ -720,7 +787,11 @@ impl FontSet {
             },
             (_, _) => {
                 let file = Self::latin_modern_file(role, size_pt);
-                match self.otf(&file) {
+                let loaded = match (family, ec_tfm_file(role, size_pt)) {
+                    (Family::ComputerModern, Some(ec)) => self.otf_with_tfm(&file, Some(&ec)),
+                    _ => self.otf(&file),
+                };
+                match loaded {
                     Ok(f) => Resolved {
                         face: f,
                         substituted: None,
@@ -761,6 +832,8 @@ impl FontSet {
             tfm: None,
             tfm_missing: None,
             tfm_status: TfmStatus::Missing("Core 14 face: AFM metrics".into()),
+            shape_key: Rc::from(sha256::hex(&sha)),
+            metrics_fallback: None,
             bounds_cache: RefCell::new(BTreeMap::new()),
         };
         self.insert(name, loaded)
@@ -768,7 +841,20 @@ impl FontSet {
 
     /// Loads an explicit file name from the bounded search list.
     pub fn otf(&self, file: &str) -> Result<Rc<LoadedFace>, String> {
-        let name = file.trim_end_matches(".otf").trim_end_matches(".ttf").to_string();
+        self.otf_with_tfm(file, None)
+    }
+
+    /// [`FontSet::otf`] laid out with the EC metric file `ec_tfm` instead of
+    /// the `ec-lm*` TFM paired with the file. The face is a separate entry
+    /// named `<stem>+<tfm stem>` (same program and wire `font_id`, its own
+    /// `shape_key`). When `ec_tfm` is not found the `ec-lm*` TFM is attached
+    /// and [`LoadedFace::metrics_fallback`] says so.
+    pub fn otf_with_tfm(&self, file: &str, ec_tfm: Option<&str>) -> Result<Rc<LoadedFace>, String> {
+        let stem = file.trim_end_matches(".otf").trim_end_matches(".ttf").to_string();
+        let name = match ec_tfm {
+            Some(t) => format!("{stem}+{}", t.trim_end_matches(".tfm")),
+            None => stem.clone(),
+        };
         if let Some(existing) = self.by_name(&name) {
             return Ok(existing);
         }
@@ -813,7 +899,22 @@ impl FontSet {
         // digest rendering-core / font-resources verify.
         let sha = sha256::digest(face.program());
         let engine_id = sha256::hex(&face.id().content_sha256);
-        let (tfm, tfm_missing, tfm_status) = match latin_modern_tfm(&name) {
+        let mut metrics_fallback = None;
+        let tfm_choice = match ec_tfm {
+            Some(ec) => match self.tfm(ec) {
+                Ok(_) => Some(ec.to_string()),
+                Err(_) => {
+                    let lm = latin_modern_tfm(&stem);
+                    metrics_fallback = Some(format!(
+                        "{ec} (T1 cmr metrics) not found; {} used, so line breaks can differ from pdfLaTeX",
+                        lm.as_deref().unwrap_or("OpenType advances")
+                    ));
+                    lm
+                }
+            },
+            None => latin_modern_tfm(&stem),
+        };
+        let (tfm, tfm_missing, tfm_status) = match tfm_choice {
             Some(tfm_file) => match self.tfm(&tfm_file) {
                 Ok(t) => (Some(t), None, TfmStatus::Loaded),
                 Err(TfmStatus::RequiredUnavailable(e)) => {
@@ -840,6 +941,11 @@ impl FontSet {
             tfm,
             tfm_missing,
             tfm_status,
+            shape_key: match ec_tfm {
+                None => Rc::from(sha256::hex(&sha)),
+                Some(t) => Rc::from(format!("{}+{t}", sha256::hex(&sha))),
+            },
+            metrics_fallback,
             bounds_cache: RefCell::new(BTreeMap::new()),
         };
         Ok(self.insert(name, loaded))
@@ -928,6 +1034,84 @@ mod tests {
             describe_dirs(&[PathBuf::from("/x/bin"), PathBuf::from("/x/bin/Fonts"), PathBuf::from("/usr/share/fonts")], Some(Path::new("/x/bin"))),
             "<executable-dir>, <executable-dir>/Fonts, /usr/share/fonts"
         );
+    }
+
+    #[test]
+    fn t1_cmr_sizes_select_the_ec_metric_files_of_t1cmr_fd() {
+        let rm = Role::Text { bold: false, italic: false };
+        assert_eq!(ec_tfm_file(rm, 10.95).as_deref(), Some("ecrm1095.tfm"));
+        assert_eq!(ec_tfm_file(rm, 10.0).as_deref(), Some("ecrm1000.tfm"));
+        assert_eq!(ec_tfm_file(rm, 9.0).as_deref(), Some("ecrm0900.tfm"));
+        assert_eq!(ec_tfm_file(rm, 14.4).as_deref(), Some("ecrm1440.tfm"));
+        assert_eq!(ec_tfm_file(Role::Text { bold: true, italic: false }, 12.0).as_deref(), Some("ecbx1200.tfm"));
+        assert_eq!(ec_tfm_file(Role::Text { bold: true, italic: false }, 17.28).as_deref(), Some("ecbx1728.tfm"));
+        assert_eq!(ec_tfm_file(Role::Text { bold: false, italic: true }, 10.95).as_deref(), Some("ecti1095.tfm"));
+        assert_eq!(ec_tfm_file(Role::Text { bold: true, italic: true }, 10.95).as_deref(), Some("ecbi1095.tfm"));
+        assert_eq!(ec_tfm_file(Role::Slanted, 10.95).as_deref(), Some("ecsl1095.tfm"));
+        // An undeclared size substitutes the nearest declared one.
+        assert_eq!(ec_tfm_file(rm, 10.5).as_deref(), Some("ecrm1095.tfm"));
+        assert_eq!(ec_tfm_file(rm, 50.0).as_deref(), Some("ecrm3583.tfm"));
+        assert_eq!(ec_tfm_file(Role::Math, 10.95), None);
+    }
+
+    #[test]
+    fn computer_modern_shares_the_program_but_not_the_metrics_of_latin_modern() {
+        let set = FontSet::with_default_dirs(&[]);
+        if !set.latin_modern_available() {
+            eprintln!("skipping: Latin Modern not installed");
+            return;
+        }
+        let rm = Role::Text { bold: false, italic: false };
+        let lm = set.resolve(Family::LatinModern, rm, 10.95).face;
+        let cm = set.resolve(Family::ComputerModern, rm, 10.95).face;
+        // Same OpenType program on the wire, separate shaping identity.
+        assert_eq!(lm.font_id, cm.font_id);
+        assert_ne!(lm.shape_key, cm.shape_key);
+        assert_eq!(lm.name, "lmroman10-regular");
+        let has_ec = set.tfm_dirs().iter().any(|d| d.join("ecrm1095.tfm").is_file());
+        if has_ec {
+            assert_eq!(cm.name, "lmroman10-regular+ecrm1095");
+            assert!(cm.metrics_fallback.is_none());
+            let (l, c) = (lm.tfm.as_ref().unwrap(), cm.tfm.as_ref().unwrap());
+            assert_eq!(l.design_size_pt, 10.0);
+            assert!((c.design_size_pt - 10.95).abs() < 1e-3);
+            // Shaping goes through the face's own TFM, not a cached LM run.
+            let shaper = crate::shape::Shaper::new();
+            let (a, b) = (shaper.shape(&lm, "counterexample"), shaper.shape(&cm, "counterexample"));
+            assert!(b.width_pt(10.95) < a.width_pt(10.95), "{} vs {}", b.width_pt(10.95), a.width_pt(10.95));
+        } else {
+            // No EC metrics: Latin Modern's TFM stands in, and that is said.
+            assert!(cm.metrics_fallback.as_deref().is_some_and(|m| m.contains("ecrm1095.tfm")));
+            assert!(cm.tfm.is_some());
+        }
+    }
+
+    #[test]
+    fn missing_ec_metrics_fall_back_to_latin_modern_and_say_so() {
+        let fonts = FontSet::with_default_dirs(&[]);
+        if !fonts.latin_modern_available() {
+            eprintln!("skipping: Latin Modern not installed");
+            return;
+        }
+        // Only the Latin Modern TFM directories: no jknappen/ec.
+        let tfm_dirs: Vec<PathBuf> = fonts.tfm_dirs().iter().filter(|d| !d.ends_with(EC_TFM_DIR)).cloned().collect();
+        let set = FontSet::with_dirs(fonts.dirs().to_vec(), tfm_dirs);
+        let cm = set.resolve(Family::ComputerModern, Role::Text { bold: false, italic: false }, 10.95).face;
+        let note = cm.metrics_fallback.as_deref().expect("fallback reported");
+        assert!(note.contains("ecrm1095.tfm") && note.contains("ec-lmr10.tfm"), "{note}");
+        assert_eq!(cm.tfm_status, TfmStatus::Loaded);
+    }
+
+    #[test]
+    fn ec_metrics_are_discovered_next_to_each_tex_live_tree_after_latin_modern() {
+        let d = Discovery::default();
+        let fonts = vec![PathBuf::from("/tl/texmf-dist/fonts/opentype/public/lm"), PathBuf::from("/flat/Fonts")];
+        let dirs = d.tfm_dirs_for(&fonts);
+        let lm = dirs.iter().position(|p| p == Path::new("/tl/texmf-dist/fonts/tfm/public/lm")).unwrap();
+        let ec = dirs.iter().position(|p| p == Path::new("/tl/texmf-dist/fonts/tfm/jknappen/ec")).unwrap();
+        assert!(lm < ec);
+        assert_eq!(dirs.last().unwrap(), Path::new("/tl/texmf-dist/fonts/tfm/jknappen/ec"));
+        assert!(!dirs.iter().any(|p| p.starts_with("/flat") && p.ends_with(EC_TFM_DIR)));
     }
 
     #[test]

@@ -46,12 +46,22 @@ fn compiler_limits(config: &Value) -> Result<Limits, String> {
 // The producer counts JSON bytes; runtime framing also counts the newline.
 // Invalid inherited settings have the producer's default semantics. A stricter
 // positive setting remains authoritative even if too small for a useful reply.
-fn producer_command(path: &str, limits: &Limits) -> Command {
-    producer_command_with_limit(
+fn producer_command(path: &str, limits: &Limits, project_root: Option<&str>) -> Command {
+    let mut command = producer_command_with_limit(
         path,
         limits,
         std::env::var_os("FLASHTEX_MAX_REPLY_BYTES").as_deref(),
-    )
+    );
+    append_project_root(&mut command, project_root);
+    command
+}
+// FT-063: the producer's default image root (`flashtex-render --project-root`).
+// Every compile request also carries the same `payload.project_root`, which is
+// authoritative per request; producers that do not know the flag ignore it.
+fn append_project_root(command: &mut Command, project_root: Option<&str>) {
+    if let Some(root) = project_root {
+        command.arg("--project-root").arg(root);
+    }
 }
 fn producer_command_with_limit(
     path: &str,
@@ -165,10 +175,14 @@ fn run(config: Value) -> Result<(), String> {
     if raw_display {
         controller.select_raw_display_prototype()?;
     }
+    // File-backed projects forward their canonical root so `\includegraphics`
+    // resolves in the producer; store-backed projects send nothing new.
+    if let Some(files) = file_project.as_ref() {
+        controller.set_project_root(Some(files.root()))?;
+    }
     let compiler_error = compiler.as_ref().and_then(|path| {
-        controller
-            .restart(producer_command(path, &limits), limits.clone())
-            .err()
+        let command = producer_command(path, &limits, controller.project_root());
+        controller.restart(command, limits.clone()).err()
     });
     let (input_tx, input_rx) = mpsc::sync_channel::<Value>(16);
     let (output_tx, output_rx) = output_delivery::channel_with_diagnostics(8, diagnostic_timings);
@@ -882,10 +896,12 @@ fn handle(
             Ok(json!({"submitted":true}))
         }
         "restart" => {
-            controller.restart(
-                producer_command(compiler.ok_or("compiler not configured")?, limits),
-                limits.clone(),
-            )?;
+            let command = producer_command(
+                compiler.ok_or("compiler not configured")?,
+                limits,
+                controller.project_root(),
+            );
+            controller.restart(command, limits.clone())?;
             Ok(json!({"submitted":true}))
         }
         "close" => {
@@ -1156,6 +1172,23 @@ mod configuration_tests {
             assert!(output.status.success());
             assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
         }
+    }
+    #[test]
+    fn producer_launch_forwards_project_root_only_when_present() {
+        let limits = Limits::default();
+        let mut plain = producer_command_with_limit("unused", &limits, None);
+        append_project_root(&mut plain, None);
+        assert_eq!(plain.get_args().count(), 0);
+        let mut rooted = producer_command_with_limit("unused", &limits, None);
+        append_project_root(&mut rooted, Some("/Users/me/paper dir"));
+        let args: Vec<_> = rooted.get_args().collect();
+        assert_eq!(
+            args,
+            [
+                std::ffi::OsStr::new("--project-root"),
+                std::ffi::OsStr::new("/Users/me/paper dir")
+            ]
+        );
     }
     #[test]
     fn producer_budget_boundary_and_non_utf8_settings() {

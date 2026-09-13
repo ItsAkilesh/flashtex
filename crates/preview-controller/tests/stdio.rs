@@ -1935,3 +1935,161 @@ for line in sys.stdin:
         }
     }
 }
+
+/// Transport fixture only: records the launch argv and each request's
+/// `payload.project_root` (or `<absent>`) next to itself, replies `ok`.
+#[cfg(unix)]
+fn root_recording_producer(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let compiler = dir.join("root-recorder.py");
+    std::fs::write(&compiler, r#"#!/usr/bin/python3
+import json,sys,pathlib
+log=pathlib.Path(__file__).with_name('seen.jsonl')
+for line in sys.stdin:
+ r=json.loads(line);p=r['payload']
+ with open(log,'a') as f: f.write(json.dumps({'argv':sys.argv[1:],'project_root':p.get('project_root','<absent>')})+'\n')
+ print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[]}}),flush=True)
+"#).unwrap();
+    std::fs::set_permissions(&compiler, std::fs::Permissions::from_mode(0o700)).unwrap();
+    compiler
+}
+#[cfg(unix)]
+fn next_preview(client: &Client) -> Value {
+    loop {
+        let event = client.output.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_ne!(event["type"], "error", "{event}");
+        assert_ne!(event["payload"]["kind"], "failed", "{event}");
+        if event["payload"]["kind"] == "preview" {
+            return event;
+        }
+    }
+}
+#[cfg(unix)]
+fn recorded(dir: &std::path::Path) -> Vec<Value> {
+    std::fs::read_to_string(dir.join("seen.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+#[test]
+#[cfg(unix)]
+fn file_backed_helper_forwards_canonical_project_root_at_launch_and_per_request() {
+    let project = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    let tools = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("main.tex"), "Hello.").unwrap();
+    let compiler = root_recording_producer(tools.path());
+    // tempdir may be spelled through a symlink (macOS /var -> /private/var);
+    // the helper forwards the canonical directory FileProject opened.
+    let expected = project.path().canonicalize().unwrap();
+    let expected = expected.to_str().unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex",
+        "project_root":project.path(),"private_ledger_root":private.path(),"compiler_path":compiler});
+    let mut client = Client::configured(tools.path(), config);
+    next_preview(&client);
+    client.send("restart", "restart", json!({}));
+    assert_eq!(client.reply("restart")["payload"]["submitted"], true);
+    next_preview(&client);
+    let seen = recorded(tools.path());
+    assert!(seen.len() >= 2, "{seen:?}");
+    for record in seen {
+        assert_eq!(record["argv"], json!(["--project-root", expected]));
+        assert_eq!(record["project_root"], expected);
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn store_backed_helper_launch_and_requests_are_unchanged_without_project_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let compiler = root_recording_producer(dir.path());
+    let client = Client::with_compiler(dir.path(), Some(&compiler));
+    next_preview(&client);
+    let seen = recorded(dir.path());
+    assert!(!seen.is_empty());
+    for record in seen {
+        assert_eq!(record["argv"], json!([]));
+        assert_eq!(record["project_root"], "<absent>");
+    }
+}
+
+/// Real producer round trip: `FLASHTEX_TEST_RENDER=<path to flashtex-render>`.
+/// A file-backed `\includegraphics` document reaches the helper's display
+/// candidate as an `image` item with no `image_unavailable` diagnostic.
+#[test]
+#[cfg(unix)]
+#[ignore = "requires FLASHTEX_TEST_RENDER pointing at a built flashtex-render"]
+fn real_render_producer_resolves_includegraphics_through_helper_route() {
+    let render = std::env::var("FLASHTEX_TEST_RENDER").unwrap();
+    let fixtures = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../render-pipeline/fixtures/floats"
+    );
+    let project = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    let tools = tempfile::tempdir().unwrap();
+    let tex = std::fs::read_to_string(format!("{fixtures}/01-here.tex")).unwrap();
+    assert!(tex.contains("\\includegraphics{images/red-72.png}"));
+    std::fs::write(project.path().join("main.tex"), tex).unwrap();
+    std::fs::create_dir(project.path().join("images")).unwrap();
+    std::fs::copy(
+        format!("{fixtures}/images/red-72.png"),
+        project.path().join("images/red-72.png"),
+    )
+    .unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex",
+        "project_root":project.path(),"private_ledger_root":private.path(),"compiler_path":render});
+    let mut client = Client::configured(tools.path(), config);
+    client.send(
+        "enable",
+        "configure_display_candidates",
+        json!({"capability":"display-candidates-v1","enabled":true,"renderer_support_confirmed":true}),
+    );
+    assert_eq!(client.reply("enable")["payload"]["enabled"], true);
+    client.send(
+        "layout",
+        "configure_layout",
+        json!({"layout_capabilities":["display-list-v2","display-list-v2-images"],"renderer_support_confirmed":true}),
+    );
+    assert_eq!(client.reply("layout")["type"], "result");
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    let mut accepted_images = false;
+    loop {
+        let event = client
+            .output
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .unwrap();
+        assert_ne!(event["type"], "error", "{event}");
+        let p = &event["payload"];
+        assert_ne!(p["kind"], "failed", "{event}");
+        let text = event.to_string();
+        if p["kind"] == "preview" {
+            let result = &p["result"]["payload"];
+            if result["layout_capabilities"]
+                .as_array()
+                .is_some_and(|caps| caps.iter().any(|c| c == "display-list-v2-images"))
+            {
+                assert_ne!(result["status"], "failed", "{result}");
+                assert!(!text.contains("image_unavailable"), "{result}");
+                accepted_images = true;
+            }
+        }
+        if p["kind"] == "display_candidate" && text.contains("\"kind\":\"image\"") {
+            assert!(
+                accepted_images,
+                "image candidate before its accepted preview"
+            );
+            assert!(!text.contains("image_unavailable"));
+            assert!(text.contains("images/red-72.png"));
+            eprintln!(
+                "helper route image item: request={} revision={} bytes={}",
+                p["request_id"],
+                p["compile_revision"],
+                text.len()
+            );
+            break;
+        }
+    }
+}

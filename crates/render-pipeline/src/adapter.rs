@@ -116,6 +116,9 @@ pub enum Item {
     HFill { fill: bool },
     /// `\hspace{<dimen>}` (compiler `Inline::HSpace`): fixed glue in points.
     HSpace { pt: f64 },
+    /// `tabular`/`tabular*` (compiler `Inline::Tabular`): one box in the
+    /// paragraph, laid out by `table.rs`.
+    Table(Box<crate::table::TableItem>),
 }
 
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
@@ -601,7 +604,7 @@ pub fn adapt_cached(
     // class; body-only input keeps the compiler's implicit 0pt.
     let mut style = Stylesheet::from_resolved(
         &flashtex_class_geometry::resolve(&document_setup(source, explicit_class.is_some(), &class_options)),
-        Stylesheet::family_of(&parsed.packages),
+        Stylesheet::family_for(&parsed.packages, t1_encoding(source)),
     );
     // The class's `\parindent` (`size1x.clo`: 15pt / 17pt / 1.5em; `1em` in
     // two-column mode) comes with the resolved frame.
@@ -975,12 +978,7 @@ fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, Strin
             }
         }
         Inline::Tabular(t) => {
-            let rows = t.entries.iter().filter(|e| matches!(e, flashtex_compiler::tabular::Entry::Row(_))).count();
-            out.push((
-                "unsupported_block",
-                t.span,
-                format!("tabular ({rows} row(s), {} column(s)) set as its cells' text in reading order: the pipeline has no table layout (columns, rules and alignment omitted)", t.columns.len()),
-            ));
+            // Laid out by `table.rs`; only nested constructs are reported.
             for list in t.inline_lists() {
                 for i in list {
                     unsupported_inlines(i, out);
@@ -1039,31 +1037,6 @@ fn lower_inline<'a>(inline: &'a Inline, labels: &Labels, reference_spans: &mut V
             }
             for i in text.iter().flatten() {
                 lower_inline(i, labels, reference_spans, out);
-            }
-        }
-        Inline::Tabular(t) => {
-            use flashtex_compiler::tabular::Entry;
-            let mut prev_row: Option<Span> = None;
-            for entry in &t.entries {
-                let Entry::Row(row) = entry else { continue };
-                let first = row.cells.iter().flat_map(|c| c.content.iter().map(inline_span)).next();
-                if let (Some(prev), Some(first)) = (prev_row, first) {
-                    out.push(std::borrow::Cow::Owned(Inline::LineBreak {
-                        span: Span {
-                            document: first.document,
-                            start: prev.end.min(first.start),
-                            end: first.start,
-                        },
-                    }));
-                }
-                for cell in &row.cells {
-                    for i in &cell.content {
-                        lower_inline(i, labels, reference_spans, out);
-                    }
-                }
-                if let Some(last) = row.cells.iter().flat_map(|c| c.content.iter().map(inline_span)).last() {
-                    prev_row = Some(last);
-                }
             }
         }
         Inline::Verbatim { text, span, space_before } => {
@@ -1522,6 +1495,13 @@ fn display_number(inlines: &[Inline], span: Span) -> Option<(String, Span)> {
         } if *s == span => Some((n.clone(), number_span.unwrap_or(span))),
         _ => None,
     })
+}
+
+/// Whether `\usepackage[...]{fontenc}` makes T1 the text encoding: the last
+/// encoding option becomes `\encodingdefault` (`[OT1,T1]` → T1).
+pub fn t1_encoding(source: &str) -> bool {
+    package_options(source, "fontenc")
+        .is_some_and(|opts| opts.split(',').map(str::trim).filter(|o| !o.is_empty()).last() == Some("T1"))
 }
 
 /// Options of `\usepackage[opts]{name}`, if the package is loaded.
@@ -2868,6 +2848,10 @@ fn items_cached(
     let Some(cache) = cache else {
         return items_from_inlines(texts, inlines, styles, labels, size, heading);
     };
+    // Table items nest item lists the relocation does not walk.
+    if inlines.iter().any(|i| matches!(i, Inline::Tabular(_))) {
+        return items_from_inlines(texts, inlines, styles, labels, size, heading);
+    }
     let Some(first) = inlines.first().map(inline_span) else {
         return items_from_inlines(texts, inlines, styles, labels, size, heading);
     };
@@ -3041,7 +3025,25 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
     for inline in resolved.iter() {
         match &**inline {
             Inline::Label { key, .. } => items.push(Item::Label { key: key.clone() }),
-            Inline::Reference { .. } | Inline::Footnote { .. } | Inline::Tabular(_) | Inline::Verbatim { .. } => unreachable!("lowered by lower_inline above"),
+            Inline::Reference { .. } | Inline::Footnote { .. } | Inline::Verbatim { .. } => unreachable!("lowered by lower_inline above"),
+            Inline::Tabular(t) => {
+                // `\leavevmode\hbox{...}`: one box, with the space before it
+                // read like a formula's.
+                let span = t.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                let src = text_of(span.document);
+                let lengths = crate::table::TableLengths::read(|name| setlength(src, name, size));
+                let mut items_of = |inlines: &[Inline]| items_from_inlines(texts, inlines, styles, labels, size, false);
+                let table = crate::table::from_compiler(t, lengths, declared_size(t.style.size, size), &mut items_of);
+                items.push(Item::Table(Box::new(table)));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
+            }
             Inline::LineBreak { span } => {
                 let skip_pt = line_break_skip(text_of(span.document), span.end, size).unwrap_or(0.0);
                 items.push(Item::LineBreak { skip_pt });
