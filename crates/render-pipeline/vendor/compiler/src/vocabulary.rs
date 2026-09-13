@@ -23,6 +23,9 @@ pub(crate) const MATH_COMMANDS: &[&str] = &[
     "stackrel", "underset", "binom", "dbinom", "tbinom", "mathbf", "textbf", "boxed", "overline",
     "underline", "tag", "pmod", "text", "bigl", "bigr", "quad", "qquad", "mathbb", "hat", "bar",
     "vec", "tilde", "dot", "ddot", "check", "breve", "acute", "grave", "widehat", "widetilde",
+    "overbrace", "underbrace", "overrightarrow", "overleftarrow", "overleftrightarrow",
+    "underrightarrow", "underleftarrow", "underleftrightarrow", "Bbb", "bold", "dashrightarrow",
+    "dasharrow", "dashleftarrow",
 ];
 
 /// Real LaTeX2e, amsmath/amssymb and widely used package commands this
@@ -42,7 +45,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "vskip", "hskip", "kern", "enspace", "thinspace", "negthinspace", "hline", "cline",
     "multicolumn", "tabularnewline", "arraystretch",
     // Fonts and text symbols.
-    "textsc", "scshape", "textsuperscript", "textsubscript", "underbar", "sout", "uline", "LaTeX",
+    "textsuperscript", "textsubscript", "underbar", "sout", "uline", "LaTeX",
     "LaTeXe", "TeX", "dag", "ddag", "S", "P", "copyright", "pounds", "textbackslash",
     "textasciitilde", "textasciicircum", "textbar", "textless", "textgreater", "textendash",
     "textemdash", "textbullet", "textperiodcentered", "textquoteleft", "textquoteright",
@@ -115,6 +118,7 @@ fn implemented_commands() -> impl Iterator<Item = &'static str> {
         .copied()
         .chain(MATH_COMMANDS.iter().copied())
         .chain(COMMAND_GLYPHS.iter().map(|(name, _)| *name))
+        .chain(crate::amssymb::command_names())
         .chain(OPERATOR_NAMES.iter().copied())
         .chain(DELIMITER_COMMANDS.iter().copied())
 }

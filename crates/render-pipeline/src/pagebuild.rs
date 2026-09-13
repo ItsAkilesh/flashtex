@@ -473,6 +473,562 @@ pub fn break_pages_shortened(base: &PageParams, list: &[VItem], short_pages: usi
     pages
 }
 
+/// One insertion class (LaTeX's `\footins`) for [`break_pages_inserts`]:
+/// the notes' vertical lists and the lines their `\insert`s follow.
+#[derive(Debug, Clone, Default)]
+pub struct Insertions {
+    /// For a line box payload, the notes (indices into `notes`) whose
+    /// `\insert` migrated out of that line (TeX §655: after the line box,
+    /// before the interline penalty and glue), in order.
+    pub after: std::collections::BTreeMap<(usize, usize), Vec<usize>>,
+    /// Each note's vertical list (`\vbox` contents of its `\insert`).
+    pub notes: Vec<Vec<VItem>>,
+    /// `\skip\footins` (natural, stretch, shrink).
+    pub skip: (f64, f64, f64),
+    /// `\dimen\footins`.
+    pub max: f64,
+    /// `\splittopskip` and `\splitmaxdepth` in the notes (`\footnotesep`,
+    /// `\dp\strutbox`).
+    pub split_top_skip: f64,
+    pub split_max_depth: f64,
+    /// `\floatingpenalty` (`\@MM`).
+    pub floating_penalty: i32,
+    /// `\footnoterule`: `\kern<above> \hrule height<rule> \kern<below>`
+    /// (article: -3pt, 0.4pt, 2.6pt).
+    pub rule: (f64, f64, f64),
+}
+
+/// The footnote material of one column (`\@makecol`'s `\vskip\skip\footins
+/// \footnoterule \unvbox\footins`), in the column's coordinates.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct InsertArea {
+    /// Top edge of the `\footnoterule`.
+    pub rule_top: f64,
+    /// The note lines (payloads from [`Insertions::notes`]).
+    pub lines: Vec<Placed>,
+}
+
+/// An `\insert` on the current page: what is left of the note's list (all
+/// of it, or the remainder after a split) and its height plus depth.
+#[derive(Debug, Clone)]
+struct PageIns {
+    list: Vec<VItem>,
+    height_plus_depth: f64,
+    /// Index in the main list of the line box it follows (`None`: held
+    /// over from the previous page, ahead of the page's material).
+    at: Option<usize>,
+}
+
+/// `vert_break(p, h, d)` (§970–§976) on a note's list: the index of the best
+/// break (`list.len()` for the end), `best_height_plus_depth`, and the
+/// penalty there (`EJECT_PENALTY` at the end, 0 at glue).
+fn vert_break(list: &[VItem], h: f64, d: f64) -> (usize, f64, i32) {
+    let mut least = AWFUL_BAD;
+    let mut best = (list.len(), 0.0, EJECT_PENALTY);
+    let (mut cur, mut stretch, mut fil, mut shrink, mut prev_dp) = (0.0f64, 0.0f64, false, 0.0f64, 0.0f64);
+    let mut i = 0usize;
+    loop {
+        let pi = match list.get(i) {
+            None => Some(EJECT_PENALTY),
+            Some(VItem::Box { height, depth, .. }) => {
+                cur += prev_dp + height;
+                prev_dp = *depth;
+                None
+            }
+            Some(VItem::Glue { .. }) => (i > 0 && matches!(list[i - 1], VItem::Box { .. })).then_some(0),
+            Some(VItem::Penalty(v)) => Some(*v),
+        };
+        if let Some(pi) = pi.filter(|p| *p < INF_PENALTY) {
+            let mut b = if cur < h {
+                if fil {
+                    0
+                } else {
+                    badness(h - cur, stretch)
+                }
+            } else if cur - h > shrink {
+                AWFUL_BAD
+            } else {
+                badness(cur - h, shrink)
+            };
+            if b < AWFUL_BAD {
+                b = if pi <= EJECT_PENALTY {
+                    i64::from(pi)
+                } else if b < INF_BAD {
+                    b + i64::from(pi)
+                } else {
+                    DEPLORABLE
+                };
+            }
+            if b <= least {
+                least = b;
+                best = (i, cur + prev_dp, pi);
+            }
+            if b == AWFUL_BAD || pi <= EJECT_PENALTY {
+                return best;
+            }
+        }
+        if let Some(VItem::Glue { width, stretch: st, shrink: sh, fil: f }) = list.get(i) {
+            stretch += st;
+            fil |= *f;
+            shrink += sh;
+            cur += prev_dp + width;
+            prev_dp = 0.0;
+        }
+        if prev_dp > d {
+            cur += prev_dp - d;
+            prev_dp = d;
+        }
+        i += 1;
+    }
+}
+
+/// `prune_page_top` (§968): glue and penalties before the first box go,
+/// `\splittopskip` glue (less the box height, at least 0) comes before it.
+fn prune_page_top(list: &[VItem], split_top_skip: f64) -> Vec<VItem> {
+    let Some(first) = list.iter().position(|v| matches!(v, VItem::Box { .. })) else { return Vec::new() };
+    let VItem::Box { height, .. } = list[first] else { unreachable!() };
+    let mut out = Vec::with_capacity(list.len() - first + 1);
+    out.push(VItem::Glue {
+        width: (split_top_skip - height).max(0.0),
+        stretch: 0.0,
+        shrink: 0.0,
+        fil: false,
+    });
+    out.extend_from_slice(&list[first..]);
+    out
+}
+
+/// Height plus depth of a list packed at its natural size (`vpack`).
+fn natural_height_plus_depth(list: &[VItem]) -> f64 {
+    let (mut x, mut d) = (0.0, 0.0);
+    for v in list {
+        match v {
+            VItem::Box { height, depth, .. } => {
+                x += d + height;
+                d = *depth;
+            }
+            VItem::Glue { width, .. } => {
+                x += d + width;
+                d = 0.0;
+            }
+            VItem::Penalty(_) => {}
+        }
+    }
+    x + d
+}
+
+/// The insertion part of TeX's page builder for one class (§1008–§1010)
+/// and the state `fire_up` reads (§1018–§1021).
+struct InsertState<'a> {
+    ins: &'a Insertions,
+    /// `page_goal`.
+    goal: f64,
+    /// The class has a page-insertion record (its `\skip` is charged).
+    started: bool,
+    /// The record's `height`, `split_up`, `broken_ins`/`broken_ptr`.
+    height: f64,
+    split_up: bool,
+    broken: Option<(usize, Option<usize>)>,
+    last_ins: Option<usize>,
+    penalties: i64,
+    page: Vec<PageIns>,
+}
+
+impl<'a> InsertState<'a> {
+    fn new(ins: &'a Insertions, vsize: f64) -> InsertState<'a> {
+        InsertState { ins, goal: vsize, started: false, height: 0.0, split_up: false, broken: None, last_ins: None, penalties: 0, page: Vec::new() }
+    }
+
+    /// §1008–§1010 for an insertion arriving with the page at `total`,
+    /// `depth` and `shrink` (TeX's `page_so_far`); `stretch`/`shrink` get
+    /// `\skip\footins` when the class first appears on the page.
+    fn append(&mut self, list: Vec<VItem>, height_plus_depth: f64, at: Option<usize>, total: f64, depth: f64, stretch: &mut f64, shrink: &mut f64) {
+        let index = self.page.len();
+        if !self.started {
+            // §1009: `\box\footins` is void at the start of a page.
+            self.started = true;
+            self.goal -= self.ins.skip.0;
+            *stretch += self.ins.skip.1;
+            *shrink += self.ins.skip.2;
+        }
+        if self.split_up {
+            self.penalties += i64::from(self.ins.floating_penalty);
+            self.page.push(PageIns { list, height_plus_depth, at });
+            return;
+        }
+        self.last_ins = Some(index);
+        let delta = self.goal - total - depth + *shrink;
+        if (height_plus_depth <= 0.0 || height_plus_depth <= delta + 1e-9) && height_plus_depth + self.height <= self.ins.max + 1e-9 {
+            self.goal -= height_plus_depth;
+            self.height += height_plus_depth;
+            self.page.push(PageIns { list, height_plus_depth, at });
+            return;
+        }
+        // §1010: split the insertion.
+        let w = (self.goal - total - depth).min(self.ins.max - self.height);
+        let (at_break, best_hd, pi) = vert_break(&list, w, self.ins.split_max_depth);
+        self.height += best_hd;
+        self.goal -= best_hd;
+        self.split_up = true;
+        self.broken = Some((index, (at_break < list.len()).then_some(at_break)));
+        self.penalties += i64::from(pi);
+        self.page.push(PageIns { list, height_plus_depth, at });
+    }
+}
+
+/// [`break_pages_shortened`] with footnote insertions: TeX's page builder
+/// charges `\skip\footins` and each note against `\pagegoal`, splits a
+/// note that does not fit (`\vsplit` at `vert_break`), holds over what
+/// does not go on the page, and `\@makecol` sets the notes below the text
+/// (`\skip\footins`, `\footnoterule`) in the column box `\vbox
+/// to\@colht`. Returns the pages and each page's note area.
+pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize, short: f64, ins: &Insertions) -> (Vec<BuiltPage>, Vec<Option<InsertArea>>) {
+    let mut pages: Vec<BuiltPage> = Vec::new();
+    let mut areas: Vec<Option<InsertArea>> = Vec::new();
+    let mut start = 0usize;
+    let mut held: Vec<PageIns> = Vec::new();
+    loop {
+        let page_params = PageParams {
+            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
+            ..*base
+        };
+        let p = &page_params;
+        while start < list.len() && !matches!(list[start], VItem::Box { .. }) {
+            start += 1;
+        }
+        if start >= list.len() && held.is_empty() {
+            break;
+        }
+        let mut st = PageState::new();
+        let mut is = InsertState::new(ins, p.vsize);
+        // Held-over insertions are contributed ahead of the page's material.
+        let body_less = start >= list.len();
+        if body_less {
+            // `\clearpage` with `\footins` not void (`\@doclearpage`): the
+            // notes go on a page holding `\vbox{}` at `\topskip`.
+            st.total = p.topskip;
+            st.has_box = true;
+        }
+        for h in std::mem::take(&mut held) {
+            is.append(h.list, h.height_plus_depth, None, st.total, st.depth, &mut st.stretch, &mut st.shrink);
+        }
+        let mut best: Option<(usize, i64)> = None;
+        let mut best_ins: Option<usize> = is.last_ins;
+        let mut fired: Option<usize> = None;
+        let mut i = start;
+        let cost = |st: &PageState, is: &InsertState, pi: i32| -> i64 {
+            let b = if st.total < is.goal {
+                if st.fil {
+                    0
+                } else {
+                    badness(is.goal - st.total, st.stretch)
+                }
+            } else if st.total - is.goal > st.shrink {
+                AWFUL_BAD
+            } else {
+                badness(st.total - is.goal, st.shrink)
+            };
+            let c = if b < AWFUL_BAD {
+                if pi <= EJECT_PENALTY {
+                    i64::from(pi)
+                } else if b < INF_BAD {
+                    b + i64::from(pi) + is.penalties
+                } else {
+                    DEPLORABLE
+                }
+            } else {
+                b
+            };
+            if is.penalties >= i64::from(INF_PENALTY) {
+                AWFUL_BAD
+            } else {
+                c
+            }
+        };
+        while i < list.len() && !body_less {
+            let legal = match &list[i] {
+                VItem::Penalty(pen) => *pen < INF_PENALTY,
+                VItem::Glue { .. } => i > 0 && matches!(list[i - 1], VItem::Box { .. }),
+                VItem::Box { .. } => false,
+            };
+            let pi = match &list[i] {
+                VItem::Penalty(pen) => *pen,
+                _ => 0,
+            };
+            if legal && st.has_box {
+                let c = cost(&st, &is, pi);
+                if best.map_or(true, |(_, lc)| c <= lc) {
+                    best = Some((i, c));
+                    best_ins = is.last_ins;
+                }
+                if c == AWFUL_BAD || pi <= EJECT_PENALTY {
+                    fired = Some(best.map_or(i, |(bi, _)| bi));
+                    break;
+                }
+            }
+            match &list[i] {
+                VItem::Box { height, depth, payload } => {
+                    let baseline = if !st.has_box { (p.topskip - height).max(0.0) + height } else { st.total + st.depth + height };
+                    st.total += if st.has_box { st.depth + height } else { baseline };
+                    st.has_box = true;
+                    st.depth = *depth;
+                    if st.depth > p.maxdepth {
+                        st.total += st.depth - p.maxdepth;
+                        st.depth = p.maxdepth;
+                    }
+                    st.lines.push(Placed { payload: *payload, baseline, height: *height, depth: *depth });
+                    if st.total > is.goal + st.shrink + 1e-9 && st.lines.len() > 1 {
+                        if let Some((bi, _)) = best {
+                            fired = Some(bi);
+                            break;
+                        }
+                    }
+                    for &n in ins.after.get(payload).map(Vec::as_slice).unwrap_or(&[]) {
+                        let note = ins.notes[n].clone();
+                        let hd = natural_height_plus_depth(&note);
+                        is.append(note, hd, Some(i), st.total, st.depth, &mut st.stretch, &mut st.shrink);
+                    }
+                }
+                VItem::Glue { width, stretch, shrink, fil } => {
+                    if st.has_box {
+                        st.total += st.depth + width;
+                        st.depth = 0.0;
+                        st.stretch += stretch;
+                        st.fil |= *fil;
+                        st.shrink += shrink;
+                    }
+                }
+                VItem::Penalty(_) => {}
+            }
+            i += 1;
+        }
+        // The document's end (`\clearpage`: `\vfil\penalty-\@M`) is a
+        // breakpoint like any other once insertions are on the page.
+        if fired.is_none() && !is.page.is_empty() {
+            let c = cost(&st, &is, EJECT_PENALTY);
+            if c == AWFUL_BAD {
+                if let Some((bi, _)) = best {
+                    fired = Some(bi);
+                }
+            } else {
+                best_ins = is.last_ins;
+            }
+        }
+        let end = match fired {
+            Some(bi) => bi,
+            None => list.len(),
+        };
+        let ejected = matches!(list.get(end), Some(VItem::Penalty(pen)) if *pen <= EJECT_PENALTY);
+        // §1018–§1021: which insertions go on the page, which are split and
+        // which wait.
+        let mut placed_notes: Vec<Vec<VItem>> = Vec::new();
+        for (k, pi) in is.page.into_iter().enumerate() {
+            if pi.at.is_some_and(|a| a >= end) {
+                // Contributed after the break: back on the contribution list
+                // with its line.
+                continue;
+            }
+            match best_ins {
+                Some(b) if k < b => placed_notes.push(pi.list),
+                Some(b) if k == b => match is.broken {
+                    Some((bk, Some(bp))) if is.split_up && bk == k => {
+                        placed_notes.push(pi.list[..bp].to_vec());
+                        let rest = prune_page_top(&pi.list[bp..], ins.split_top_skip);
+                        if !rest.is_empty() {
+                            let hd = natural_height_plus_depth(&rest);
+                            held.push(PageIns { list: rest, height_plus_depth: hd, at: None });
+                        }
+                    }
+                    _ => placed_notes.push(pi.list),
+                },
+                _ => held.push(PageIns { at: None, ..pi }),
+            }
+        }
+        let has_notes = placed_notes.iter().any(|l| !l.is_empty());
+        let body = if body_less { &list[0..0] } else { &list[start..end] };
+        if !has_notes {
+            // The page as `break_pages_shortened` sets it.
+            let set = match glue_set(p, body) {
+                g if g < 0.0 => g,
+                g if p.flushbottom && fired.is_some() && !ejected => g,
+                _ => 0.0,
+            };
+            let mut page = BuiltPage::default();
+            let (mut total, mut depth, mut has_box) = (0.0, 0.0, false);
+            for v in body {
+                match v {
+                    VItem::Box { height, depth: d, payload } => {
+                        let baseline = if !has_box { (p.topskip - height).max(0.0) + height } else { total + depth + height };
+                        total = baseline;
+                        depth = *d;
+                        has_box = true;
+                        page.lines.push(Placed { payload: *payload, baseline, height: *height, depth: *d });
+                    }
+                    VItem::Glue { width, stretch, shrink, .. } => {
+                        if has_box {
+                            total += depth + width + if set > 0.0 { set * stretch } else { set * shrink };
+                            depth = 0.0;
+                        }
+                    }
+                    VItem::Penalty(_) => {}
+                }
+            }
+            if let Some(last) = page.lines.last() {
+                let bottom = last.baseline + (last.depth - p.maxdepth).max(0.0);
+                if bottom > p.vsize + 1e-6 {
+                    page.overfull_by = bottom - p.vsize;
+                }
+            }
+            if !page.lines.is_empty() {
+                pages.push(page);
+                areas.push(None);
+            }
+        } else {
+            let (page, area) = make_column(p, body, body_less, ejected || fired.is_none(), &placed_notes, ins);
+            pages.push(page);
+            areas.push(Some(area));
+        }
+        if !body_less {
+            start = end;
+        }
+        if fired.is_none() && held.is_empty() {
+            break;
+        }
+        if body_less && !has_notes {
+            // Nothing could be placed (a note taller than any page).
+            break;
+        }
+    }
+    (pages, areas)
+}
+
+/// `\@makecol` for a column with footnotes: the body list, `\vfil` when
+/// the page was ended by `\newpage`/`\clearpage`, `\skip\footins`, the
+/// `\footnoterule` and the notes, then `\vskip-\dp` and `\@textbottom`
+/// (`\vskip 0pt plus.0001fil` under `\raggedbottom`), packed `\vbox
+/// to\@colht`.
+fn make_column(p: &PageParams, body: &[VItem], body_less: bool, vfil: bool, notes: &[Vec<VItem>], ins: &Insertions) -> (BuiltPage, InsertArea) {
+    // Pass 1: natural size and glue totals.
+    let (mut x, mut d, mut has_box) = (0.0f64, 0.0f64, false);
+    let (mut stretch, mut shrink) = (0.0f64, 0.0f64);
+    let mut fil_in_body = false;
+    if body_less {
+        x = p.topskip;
+        has_box = true;
+    }
+    for v in body {
+        match v {
+            VItem::Box { height, depth, .. } => {
+                x = if has_box { x + d + height } else { (p.topskip - height).max(0.0) + height };
+                d = *depth;
+                has_box = true;
+            }
+            VItem::Glue { width, stretch: st, shrink: sh, fil } => {
+                if has_box {
+                    x += d + width;
+                    d = 0.0;
+                    if *fil {
+                        fil_in_body = true;
+                    } else {
+                        stretch += st;
+                    }
+                    shrink += sh;
+                }
+            }
+            VItem::Penalty(_) => {}
+        }
+    }
+    x += d + ins.skip.0;
+    d = 0.0;
+    stretch += ins.skip.1;
+    shrink += ins.skip.2;
+    x += ins.rule.0 + ins.rule.1 + ins.rule.2;
+    for v in notes.iter().flatten() {
+        match v {
+            VItem::Box { height, depth, .. } => {
+                x += d + height;
+                d = *depth;
+            }
+            VItem::Glue { width, stretch: st, shrink: sh, .. } => {
+                x += d + width;
+                d = 0.0;
+                stretch += st;
+                shrink += sh;
+            }
+            VItem::Penalty(_) => {}
+        }
+    }
+    // `\vskip-\dp`: the box's height ends at the last baseline.
+    let natural = x;
+    let excess = p.vsize - natural;
+    let fil_total = f64::from(u8::from(vfil)) + if p.flushbottom { 0.0 } else { 0.0001 } + f64::from(u8::from(fil_in_body));
+    // (stretch ratio for finite glue, shift given to the `\vfil`)
+    let (ratio, vfil_shift) = if excess > 0.0 {
+        if fil_total > 0.0 {
+            (0.0, if vfil { excess / fil_total } else { 0.0 })
+        } else if stretch > 0.0 {
+            (excess / stretch, 0.0)
+        } else {
+            (0.0, 0.0)
+        }
+    } else if excess < 0.0 && shrink > 0.0 {
+        (-(-excess / shrink).min(1.0), 0.0)
+    } else {
+        (0.0, 0.0)
+    };
+    let set_glue = |w: f64, st: f64, sh: f64| w + if ratio > 0.0 { ratio * st } else { ratio * sh };
+    // Pass 2: positions.
+    let mut page = BuiltPage::default();
+    let (mut y, mut d, mut has_box) = (0.0f64, 0.0f64, false);
+    if body_less {
+        y = p.topskip;
+        has_box = true;
+    }
+    for v in body {
+        match v {
+            VItem::Box { height, depth, payload } => {
+                y = if has_box { y + d + height } else { (p.topskip - height).max(0.0) + height };
+                d = *depth;
+                has_box = true;
+                page.lines.push(Placed { payload: *payload, baseline: y, height: *height, depth: *depth });
+            }
+            VItem::Glue { width, stretch: st, shrink: sh, fil } => {
+                if has_box {
+                    y += d + if *fil { *width } else { set_glue(*width, *st, *sh) };
+                    d = 0.0;
+                }
+            }
+            VItem::Penalty(_) => {}
+        }
+    }
+    y += d + vfil_shift + set_glue(ins.skip.0, ins.skip.1, ins.skip.2);
+    d = 0.0;
+    let rule_top = y + ins.rule.0;
+    y += ins.rule.0 + ins.rule.1 + ins.rule.2;
+    let mut area = InsertArea { rule_top, lines: Vec::new() };
+    for v in notes.iter().flatten() {
+        match v {
+            VItem::Box { height, depth, payload } => {
+                y += d + height;
+                d = *depth;
+                area.lines.push(Placed { payload: *payload, baseline: y, height: *height, depth: *depth });
+            }
+            VItem::Glue { width, stretch: st, shrink: sh, .. } => {
+                y += d + set_glue(*width, *st, *sh);
+                d = 0.0;
+            }
+            VItem::Penalty(_) => {}
+        }
+    }
+    if let Some(last) = page.lines.last() {
+        let bottom = last.baseline + (last.depth - p.maxdepth).max(0.0);
+        if natural > p.vsize + 1e-6 && shrink <= 0.0 {
+            page.overfull_by = (natural - p.vsize).max(bottom - p.vsize).max(0.0);
+        }
+    }
+    (page, area)
+}
+
 /// Glue set ratio of a page box `\vbox to\vsize` holding `items` (from the
 /// first box to the break): positive stretches by `ratio * stretch`,
 /// negative shrinks by `-ratio * shrink` (capped at the available shrink,
@@ -550,6 +1106,96 @@ mod tests {
             vskip_after: Vec::new(),
             pre_space_after: None,
         }
+    }
+
+    /// A note of `n` 6.65pt/2.85pt lines at a 9.5pt baselineskip with the
+    /// `\@footnotetext` penalties (100 + club/widow 150).
+    fn note(n: usize, block: usize) -> Vec<VItem> {
+        let mut v = Vec::new();
+        for li in 0..n {
+            if li > 0 {
+                let mut pen = 100;
+                if li == 1 {
+                    pen += 150;
+                }
+                if li + 1 == n {
+                    pen += 150;
+                }
+                v.push(VItem::Penalty(pen));
+                v.push(VItem::Glue { width: 9.5 - 2.85 - 6.65, stretch: 0.0, shrink: 0.0, fil: false });
+            }
+            v.push(VItem::Box { height: 6.65, depth: 2.85, payload: (block, li) });
+        }
+        v
+    }
+
+    fn insertions(notes: Vec<Vec<VItem>>, after: &[((usize, usize), usize)]) -> Insertions {
+        let mut ins = Insertions {
+            notes,
+            skip: (9.0, 4.0, 2.0),
+            max: 8.0 * 72.27,
+            split_top_skip: 6.65,
+            split_max_depth: 2.85,
+            floating_penalty: 20_000,
+            rule: (-3.0, 0.4, 2.6),
+            ..Insertions::default()
+        };
+        for (line, n) in after {
+            ins.after.entry(*line).or_default().push(*n);
+        }
+        ins
+    }
+
+    #[test]
+    fn a_note_shortens_the_page_by_its_height_and_the_skip() {
+        // 45 lines fit alone; a 3-line note (height+depth 6.65 + 2*9.5 +
+        // 2.85 = 28.5) plus \skip\footins (9) takes 37.5pt: 42 lines fit.
+        let blocks = vec![para(60)];
+        let list = vlist(&params(), &blocks);
+        let ins = insertions(vec![note(3, 1)], &[((0, 2), 0)]);
+        let (pages, areas) = break_pages_inserts(&params(), &list, 0, 0.0, &ins);
+        assert_eq!(pages[0].lines.len(), 42);
+        let area = areas[0].as_ref().expect("the note is on page 1");
+        assert_eq!(area.lines.len(), 3);
+        // \raggedbottom natural break: the skip, the rule's net 0 and the
+        // first note line below the last body line's depth.
+        let last = pages[0].lines.last().unwrap();
+        assert!((area.lines[0].baseline - (last.baseline + last.depth + 9.0 + 6.65)).abs() < 1e-9);
+        assert!((area.rule_top - (last.baseline + last.depth + 9.0 - 3.0)).abs() < 1e-9);
+        assert!(areas[1].is_none());
+    }
+
+    #[test]
+    fn a_long_note_is_split_and_its_remainder_opens_the_next_page() {
+        // A 70-line note anchored on line 30 cannot fit: it is split at the
+        // room left, the remainder is held over ahead of page 2's text.
+        let blocks = vec![para(80)];
+        let list = vlist(&params(), &blocks);
+        let ins = insertions(vec![note(70, 1)], &[((0, 29), 0)]);
+        let (pages, areas) = break_pages_inserts(&params(), &list, 0, 0.0, &ins);
+        let first = areas[0].as_ref().expect("part of the note on page 1");
+        let second = areas[1].as_ref().expect("the rest on page 2");
+        assert_eq!(first.lines.len() + second.lines.len(), 70);
+        assert!(first.lines.len() > 10);
+        // The remainder starts with \splittopskip: its first baseline is
+        // 6.65pt below the rule's net position.
+        assert!((second.lines[0].baseline - (second.rule_top + 3.0 + 6.65)).abs() < 1e-9);
+        // Page 1's text and notes fill the goal: the last note line ends
+        // within \vsize.
+        let bottom = first.lines.last().unwrap();
+        assert!(bottom.baseline <= params().vsize + 1e-6);
+    }
+
+    #[test]
+    fn a_note_after_a_split_on_the_same_page_waits() {
+        // The second note's \floatingpenalty (20000) makes every later
+        // breakpoint awful: the page ends before the line that holds it.
+        let blocks = vec![para(80)];
+        let list = vlist(&params(), &blocks);
+        let ins = insertions(vec![note(70, 1), note(2, 2)], &[((0, 29), 0), ((0, 31), 1)]);
+        let (pages, _) = break_pages_inserts(&params(), &list, 0, 0.0, &ins);
+        assert!(pages[0].lines.len() <= 31, "line 31 moves to page 2");
+        assert!(pages[1].lines.iter().any(|l| l.payload == (0, 31)));
     }
 
     #[test]

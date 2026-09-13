@@ -224,6 +224,40 @@ impl Engine<'_> {
             Nucleus::Delimited { left, right, body } => {
                 (self.make_left_right(*left, *right, body, style), 0.0, false)
             }
+            Nucleus::Brace { body, under } => (self.make_brace(body, *under), 0.0, false),
+            Nucleus::OverArrow {
+                left,
+                fill,
+                right,
+                body,
+                under,
+                gap,
+            } => (
+                self.make_over_arrow([*left, *fill, *right], body, *under, *gap, style),
+                0.0,
+                false,
+            ),
+            Nucleus::MeasuredAccent {
+                narrow,
+                wide,
+                threshold,
+                base,
+            } => {
+                // `\@mathmeasure\z@\textstyle{#1}`: a trial box whose glyph
+                // lookups are not reported a second time.
+                let reported = self.limitations.len();
+                let measured = self.clean_box(base, Style::TEXT).width;
+                self.limitations.truncate(reported);
+                let accent = if measured > *threshold { *wide } else { *narrow };
+                let inner = Atom {
+                    nucleus: Nucleus::Accent {
+                        accent,
+                        base: base.clone(),
+                    },
+                    ..atom.clone()
+                };
+                return self.atom(&inner, class, style);
+            }
             Nucleus::Text(text) => (self.make_text(text, style), 0.0, false),
             Nucleus::Overline(body) => (self.make_over(body, style), 0.0, false),
             Nucleus::Underline(body) => (self.make_under(body, style), 0.0, false),
@@ -444,8 +478,8 @@ impl Engine<'_> {
     /// One piece of an `\arrowfill@` in `\displaystyle`: the relation's
     /// character box (with its italic correction), smashed for the minus
     /// (`\relbar` = `\mathrel{\mathpalette\mathsm@sh\std@minus}`).
-    fn arrow_piece(&mut self, ch: char) -> MathBox {
-        let Some(g) = self.glyph(ch, Style::DISPLAY) else {
+    fn arrow_piece(&mut self, ch: char, style: Style) -> MathBox {
+        let Some(g) = self.glyph(ch, style) else {
             return MathBox::empty();
         };
         let mut b = if g.italic != 0.0 {
@@ -469,13 +503,7 @@ impl Engine<'_> {
         below: &MathList,
         style: Style,
     ) -> MathBox {
-        let mu = self.params(Style::DISPLAY).mu();
         let script_mu = self.params(Style::SCRIPT).mu();
-        let left = self.arrow_piece(pieces[0]);
-        let right = self.arrow_piece(pieces[2]);
-        // `\setbox\z@\hbox{#5\displaystyle}`: the fill's `\hfill` has no
-        // natural width.
-        let natural = left.width - 14.0 * mu + right.width;
         // `\hbox{$\scriptstyle\mkern#3mu{#6}\mkern#4mu$}`: `{#6}` is a
         // sub-formula, whose `clean_box` drops a lone character's italic
         // correction (tex.web §721).
@@ -498,52 +526,9 @@ impl Engine<'_> {
             let group = group.unwrap_or_else(|| this.clean_box(list, Style::SCRIPT).width);
             (kerns[2] + kerns[3]) * script_mu + group
         };
-        let width = natural.max(label(self, below)).max(label(self, above));
-        let stretch = width - natural;
-        let mut children = Vec::new();
-        let mut x = 0.0;
-        let (mut height, mut depth) = (
-            left.height.max(right.height).max(0.0),
-            left.depth.max(right.depth).max(0.0),
-        );
-        children.push(Child {
-            dx: x,
-            dy: 0.0,
-            content: left,
-        });
-        x += children[0].content.width - 7.0 * mu;
-        if stretch > 0.0 {
-            // `\cleaders`: as many whole fill boxes as fit in the glue (plus
-            // TeX's 10sp rounding allowance), centred (tex.web §626).
-            let fill = self.arrow_piece(pieces[1]);
-            let sp = |v: f64| (v * 65536.0).round() as i64;
-            let leader = sp(fill.width - 4.0 * mu);
-            let rule = sp(stretch) + 10;
-            if leader > 0 {
-                height = height.max(fill.height);
-                depth = depth.max(fill.depth);
-                let (n, lr) = (rule / leader, rule % leader);
-                for i in 0..n {
-                    children.push(Child {
-                        dx: x + (lr / 2 + i * leader) as f64 / 65536.0 - 2.0 * mu,
-                        dy: 0.0,
-                        content: fill.clone(),
-                    });
-                }
-            }
-        }
-        x += stretch - 7.0 * mu;
-        children.push(Child {
-            dx: x,
-            dy: 0.0,
-            content: right,
-        });
-        let nucleus = MathBox {
-            kind: BoxKind::HBox(children),
-            width,
-            height,
-            depth,
-        };
+        let min_width = label(self, below).max(label(self, above));
+        // `\setbox\z@\hbox{#5\displaystyle}` widened to the labels.
+        let nucleus = self.arrow_fill(pieces, min_width, Style::DISPLAY);
         // `\mathop{..}\limits^{\mkern#1mu #7\mkern#2mu}_{\mkern#1mu #6\mkern#2mu}`,
         // each script only when its label is non-empty (`\if0#1` omits a 0 kern).
         let script = |label: &MathList| -> Option<MathList> {
@@ -568,6 +553,133 @@ impl Engine<'_> {
             limits: Limits::Limits,
         };
         self.op_scripts(nucleus, 0.0, true, &op, style)
+    }
+
+    /// `\arrowfill@#1#2#3#4` (`amsmath.sty` 971-976) in `style`: `#1`,
+    /// `\mkern-7mu`, `\cleaders\hbox{$\mkern-2mu#2\mkern-2mu$}\hfill`,
+    /// `\mkern-7mu`, `#3`, every muskip zero, packed to the larger of its
+    /// natural width (the `\hfill` has none) and `min_width`.
+    fn arrow_fill(&mut self, pieces: [char; 3], min_width: f64, style: Style) -> MathBox {
+        let mu = self.params(style).mu();
+        let left = self.arrow_piece(pieces[0], style);
+        let right = self.arrow_piece(pieces[2], style);
+        let natural = left.width - 14.0 * mu + right.width;
+        let width = natural.max(min_width);
+        let stretch = width - natural;
+        let mut children = Vec::new();
+        let mut x = 0.0;
+        let (mut height, mut depth) = (
+            left.height.max(right.height).max(0.0),
+            left.depth.max(right.depth).max(0.0),
+        );
+        children.push(Child {
+            dx: x,
+            dy: 0.0,
+            content: left,
+        });
+        x += children[0].content.width - 7.0 * mu;
+        if stretch > 0.0 {
+            // `\cleaders`: as many whole fill boxes as fit in the glue (plus
+            // TeX's 10sp rounding allowance), centred (tex.web §626).
+            let fill = self.arrow_piece(pieces[1], style);
+            let sp = |v: f64| (v * 65536.0).round() as i64;
+            let leader = sp(fill.width - 4.0 * mu);
+            let rule = sp(stretch) + 10;
+            if leader > 0 {
+                height = height.max(fill.height);
+                depth = depth.max(fill.depth);
+                let (n, lr) = (rule / leader, rule % leader);
+                for i in 0..n {
+                    children.push(Child {
+                        dx: x + (lr / 2 + i * leader) as f64 / 65536.0 - 2.0 * mu,
+                        dy: 0.0,
+                        content: fill.clone(),
+                    });
+                }
+            }
+        }
+        x += stretch - 7.0 * mu;
+        children.push(Child {
+            dx: x,
+            dy: 0.0,
+            content: right,
+        });
+        MathBox {
+            kind: BoxKind::HBox(children),
+            width,
+            height,
+            depth,
+        }
+    }
+
+    /// amsmath `\overarrow@#1#2#3` = `\vbox{\ialign{##\crcr#1#2\crcr
+    /// \noalign{\nointerlineskip}$\m@th\hfil#2#3\hfil$\crcr}}` and
+    /// `\underarrow@` = `\vtop{\ialign{##\crcr$\m@th\hfil#2#3\hfil$\crcr
+    /// \noalign{\nointerlineskip\kern1.3\ex@}#1#2\crcr}}` (`amsmath.sty`
+    /// 983-1006): `#2` is the `\mathpalette` style (never cramped), the
+    /// arrow row an `\arrowfill@` as wide as the column.
+    fn make_over_arrow(
+        &mut self,
+        pieces: [char; 3],
+        body: &MathList,
+        under: bool,
+        gap: f64,
+        style: Style,
+    ) -> MathBox {
+        let style = Style {
+            cramped: false,
+            ..style
+        };
+        let x = self.clean_box(body, style);
+        let fill = self.arrow_fill(pieces, x.width, style);
+        let x = x.rebox(fill.width);
+        if under {
+            MathBox::vtop(vec![(0.0, x), (0.0, MathBox::kern(gap)), (0.0, fill)])
+        } else {
+            MathBox::vbox(vec![(0.0, fill), (0.0, x)])
+        }
+    }
+
+    /// `\overbrace` / `\underbrace` (see [`Nucleus::Brace`]): the brace row
+    /// is `\hbox to` the column width of cmex `\braceld` "7A, `\bracerd`
+    /// "7B, `\bracelu` "7C and `\braceru` "7D (`fontmath.ltx` 447-456) with
+    /// two `\leaders\vrule height \ht(\braceld) depth 0pt \hfill`.
+    fn make_brace(&mut self, body: &MathList, under: bool) -> MathBox {
+        let x = self.clean_box(body, Style::DISPLAY);
+        let ch = if under { '\u{23DF}' } else { '\u{23DE}' };
+        // `\downbracefill`: ld, fill, ru, lu, fill, rd;
+        // `\upbracefill`:   lu, fill, rd, ld, fill, ru.
+        let codes: [u8; 4] = if under {
+            [0x7C, 0x7B, 0x7A, 0x7D]
+        } else {
+            [0x7A, 0x7D, 0x7C, 0x7B]
+        };
+        let pieces: Option<Vec<Glyph>> = codes
+            .iter()
+            .map(|c| self.m.extension_glyph(*c, ch))
+            .collect();
+        let (Some(pieces), Some(ld)) = (pieces, self.m.extension_glyph(0x7A, ch)) else {
+            self.limitations.push(Limitation::MissingGlyph(ch));
+            return x;
+        };
+        let natural: f64 = pieces.iter().map(|g| g.width).sum();
+        let w = natural.max(x.width);
+        let half = (w - natural) / 2.0;
+        let mut row = Vec::with_capacity(6);
+        for (i, g) in pieces.iter().enumerate() {
+            row.push(MathBox::glyph(g));
+            if (i == 0 || i == 2) && half > 0.0 {
+                row.push(MathBox::rule(half, ld.height, 0.0));
+            }
+        }
+        let row = MathBox::hlist(row);
+        let x = x.rebox(w);
+        let kern = || MathBox::kern(3.0);
+        if under {
+            MathBox::vtop(vec![(0.0, x), (0.0, kern()), (0.0, row), (0.0, kern())])
+        } else {
+            MathBox::vbox(vec![(0.0, kern()), (0.0, row), (0.0, kern()), (0.0, x)])
+        }
     }
 
     /// Rule 18 and `make_scripts`.

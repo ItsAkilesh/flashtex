@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use flashtex_compiler::math::MathList;
 use flashtex_compiler::parser::{Block as CBlock, Inline, Parsed};
+use flashtex_compiler::text_builtins::{TextDimen, TextLogo, TextRule};
 use flashtex_compiler::{DocumentId, Span};
 
 use flashtex_class_geometry::{ClassKind, DocumentSetup, GeometryInput, PageStyle};
@@ -32,11 +33,47 @@ pub struct TextStyle {
     /// `\normalfont`/`\mdseries` in force inside a heading: the block's
     /// own weight (`\bfseries` from `\@startsection`) is not applied.
     pub medium: bool,
-    /// `\slshape` (upright medium only; running heads).
+    /// Shape `sl` (`\slshape`, running heads); `scsl` with `caps`.
     pub slanted: bool,
+    /// Small caps (`\scshape`): shape `sc`, or `scit`/`scsl` with
+    /// `italic`/`slanted`.
+    pub caps: bool,
+    /// `\rmfamily`/`\sffamily`/`\ttfamily`.
+    pub family: crate::nfss::FamilyKind,
+    /// The shape LaTeX reported undefined on the way to this style
+    /// (`\wrong@fontshape`); the typesetter reports it once.
+    pub undefined: Option<crate::nfss::FontKey>,
 }
 
 impl TextStyle {
+    /// The NFSS shape of this style: series `bx` when bold, and `italic`
+    /// wins over `slanted` when a merge with an enclosing style set both.
+    pub fn key(self) -> crate::nfss::FontKey {
+        use crate::nfss::{FontKey, Series, Shape};
+        let shape = match (self.caps, self.italic, self.slanted) {
+            (true, true, _) => Shape::Scit,
+            (true, false, true) => Shape::Scsl,
+            (true, false, false) => Shape::Sc,
+            (false, true, _) => Shape::It,
+            (false, false, true) => Shape::Sl,
+            (false, false, false) => Shape::N,
+        };
+        FontKey::new(self.family, if self.bold { Series::Bx } else { Series::M }, shape)
+    }
+
+    /// This style with its family, series and shape replaced by `key`'s.
+    pub fn with_key(self, key: crate::nfss::FontKey) -> TextStyle {
+        use crate::nfss::Shape;
+        TextStyle {
+            bold: key.bold(),
+            italic: matches!(key.shape, Shape::It | Shape::Scit),
+            slanted: matches!(key.shape, Shape::Sl | Shape::Scsl),
+            caps: matches!(key.shape, Shape::Sc | Shape::Scit | Shape::Scsl),
+            family: key.family,
+            ..self
+        }
+    }
+
     /// The size to shape at, given the paragraph's `size`.
     pub fn size_or(self, size: f64) -> f64 {
         if self.size_cpt == 0 {
@@ -119,6 +156,21 @@ pub enum Item {
     /// `tabular`/`tabular*` (compiler `Inline::Tabular`): one box in the
     /// paragraph, laid out by `table.rs`.
     Table(Box<crate::table::TableItem>),
+    /// `\TeX`/`\LaTeX`/`\LaTeXe` (compiler `Inline::Logo`): latex.ltx's
+    /// construction, set by `typeset` from the face's TFM metrics.
+    Logo { logo: TextLogo, style: TextStyle, span: Span },
+    /// `\rule[<raise>]{<width>}{<height>}` (compiler `Inline::Rule`).
+    Rule { rule: TextRule, style: TextStyle, span: Span },
+    /// A text-mode kern (`\,`, `\thinspace`, `\enspace`, ...; compiler
+    /// `Inline::Kern`), in ems of the current face.
+    Kern { amount: TextDimen, style: TextStyle },
+    /// `\footnote`, `\footnotemark` or `\footnotetext` (compiler
+    /// `Inline::Footnote`). `number` is `\@thefnmark`; `mark` sets
+    /// `\@makefnmark` here (false for `\footnotetext`); `text` is the note's
+    /// items, set in `\footnotesize` at the foot of the column by
+    /// `typeset::footnotes` (`None` for `\footnotemark`). `span` is the
+    /// command token.
+    Footnote { number: String, mark: bool, span: Span, text: Option<Vec<Item>> },
 }
 
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
@@ -283,6 +335,8 @@ pub enum Block {
     /// `number` is `None` for `\chapter*`.
     Chapter {
         number: Option<String>,
+        /// After `\appendix`: `\@chapapp` is `\appendixname`.
+        appendix: bool,
         items: Vec<Item>,
         title: String,
         span: Span,
@@ -291,6 +345,13 @@ pub enum Block {
         /// drops the `Chapter <n>.` prefix).
         mark: bool,
     },
+    /// `\part` (the compiler reports the command and sets its argument as
+    /// body text, which is dropped): article.cls lines 268-301 in the
+    /// flow, report.cls 278-328 / book.cls 299-349 on a page of its own.
+    /// `number` is `\thepart` (`None` for `\part*`).
+    /// `eject_before`: a page-break command stands right before it
+    /// (`clear_before`: `\clearpage`/`\cleardoublepage`).
+    Part { number: Option<String>, items: Vec<Item>, span: Span, eject_before: bool, clear_before: bool },
     /// `\maketitle` (article.cls lines 169-251, report.cls 175-257,
     /// book.cls 181-263): the compiler's title, the `\and`-separated
     /// authors (each a `tabular` whose rows are split at `\\`) and the date
@@ -309,6 +370,9 @@ pub enum Block {
     /// A page-style or mark command in the body, attached to the material
     /// that follows it.
     Chrome { event: ChromeEvent, span: Span },
+    /// One `\tableofcontents`/`\listoffigures`/`\listoftables` entry line
+    /// (`crate::toc`).
+    TocEntry(Box<crate::toc::TocEntry>),
     /// A `tikzpicture`, found from the source bytes (the compiler reports the
     /// environment as unknown and sets its body as text, which is dropped
     /// here): its bounding box as one box on a line of its own, flush left
@@ -403,6 +467,9 @@ pub struct Doc {
     pub limitations: Vec<(&'static str, Span, String)>,
     /// `secnumdepth` in force (numbers in running heads).
     pub secnumdepth: u8,
+    /// Indices of the blocks after a `\clearpage`/`\cleardoublepage` (see
+    /// `clear_page_blocks`).
+    pub page_starts: Vec<usize>,
 }
 
 /// Label values (`\ref`) and the pages they fell on in a previous layout
@@ -411,6 +478,13 @@ pub struct Doc {
 pub struct Labels {
     pub values: BTreeMap<String, String>,
     pub pages: BTreeMap<String, u32>,
+    /// `\thepage` of every contents entry (`toc::key`) in the previous pass;
+    /// kept apart from `pages` so the paragraph cache key is unaffected.
+    pub toc_pages: BTreeMap<String, String>,
+    /// Captioned floats: the `\listoffigures`/`\listoftables` entries.
+    pub floats: Vec<crate::toc::FloatEntry>,
+    /// Entry titles taken from source bytes, set as body text.
+    pub entry_items: crate::toc::EntryItems,
 }
 
 fn inlines_of(block: &CBlock) -> &[Inline] {
@@ -433,8 +507,7 @@ fn inlines_of(block: &CBlock) -> &[Inline] {
 ///   source line (the compiler's tab-expanded text, `Mono` family) joined
 ///   by `\\`; the pipeline sets it in the body face, justified off, so
 ///   the lines keep their order but not Courier's fixed pitch.
-/// - `\tableofcontents`: article's own `\section*{\contentsname}` heading
-///   without the entries (the page builder has no contents pass).
+/// - `\tableofcontents`: kept; `crate::toc` sets the list.
 /// - `\maketitle`: three centred paragraphs (title at `\LARGE`, authors
 ///   and date at `\large`, the sizes `\@maketitle` declares) carried by the
 ///   compiler's `TextStyle::size`, which the pipeline already reads; the
@@ -516,24 +589,9 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<C
                     content,
                 });
             }
-            CBlock::TableOfContents { span } => {
-                limitations.push((
-                    "unsupported_block",
-                    *span,
-                    "\\tableofcontents set as its `Contents` heading only: the pipeline has no contents pass (entries and page numbers omitted)".to_string(),
-                ));
-                out.push(CBlock::Heading {
-                    level: 1,
-                    number: String::new(),
-                    number_span: *span,
-                    content: vec![Inline::Text {
-                        text: "Contents".to_string(),
-                        span: *span,
-                        style: CStyle::BOLD,
-                        space_before: true,
-                    }],
-                });
-            }
+            // Set by `crate::toc` from the source command; the block stays
+            // as the position a following `\clearpage` is measured from.
+            CBlock::TableOfContents { .. } => out.push(block.clone()),
             CBlock::TitleBlock { title, authors, date } if stash_titles => titles.push((title.clone(), authors.clone(), date.clone())),
             CBlock::TitleBlock { title, authors, date } => {
                 if let Some(at) = first {
@@ -635,7 +693,7 @@ impl Labels {
         }
         Labels {
             values,
-            pages: BTreeMap::new(),
+            ..Labels::default()
         }
     }
 
@@ -704,7 +762,8 @@ pub fn adapt_cached(
         style.parskip = crate::style::Skip::fixed(pt);
     }
     let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
-    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t))).collect();
+    style.nfss = crate::nfss::Scheme::for_document(&parsed.packages, t1_encoding(source));
+    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t), style.nfss)).collect();
     let labels_fp = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -752,12 +811,33 @@ pub fn adapt_cached(
     let mut noindent_at: Option<usize> = None;
     // report/book: `\thesection` is `\thechapter.\arabic{section}`.
     let (mut chapter_no, mut section_nos) = (0u32, [0u32; 3]);
+    // `\appendix`: `\thesection` (article) or `\thechapter` (report/book)
+    // becomes `\@Alph`; `chapter_label` is `\thechapter`.
+    let mut appendix = false;
+    let mut chapter_label = String::new();
+    let mut part_no = 0u32;
+    // Contents lists (`crate::toc`): every `\contentsline` record, where
+    // each list stands, and the label keys of records whose page is that of
+    // the next block. Nothing is collected without a list.
+    let toc_active = commands.iter().any(|c| matches!(c.kind, BodyKind::ContentsList(_)));
+    let toc_settings = crate::toc::Settings::read(source, has_chapters);
+    // `\@sect` writes `\numberline` up to the class's `secnumdepth`
+    // (article.cls 3, report/book.cls 2) when the document declares one.
+    let toc_secnumdepth = counter(source, "secnumdepth").unwrap_or(match (explicit_class.is_some(), has_chapters) {
+        (true, true) => 2,
+        (true, false) => 3,
+        (false, _) => options.default_secnumdepth,
+    });
+    let mut toc_records: Vec<crate::toc::Record> = Vec::new();
+    let mut toc_lists: Vec<(usize, crate::toc::ListKind, Span, bool)> = Vec::new();
+    let mut toc_pending: Vec<String> = Vec::new();
+    let mut chapter_starts: Vec<(usize, String)> = Vec::new();
     let mut after_heading = false;
     // Last source span of the previous paragraph block (None after a
     // heading or rule), for rejoining a display with its paragraph.
     let mut prev_para_end: Option<Span> = None;
     for unit in split_at_page_breaks(texts, &lowered, size, &style) {
-        let eject_before = unit.eject_before;
+        let mut eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
         limitations.extend(unit.limitations);
         let unit_start = match &unit.kind {
@@ -781,13 +861,37 @@ pub fn adapt_cached(
                         let number = (!*starred && mainmatter).then(|| {
                             chapter_no += 1;
                             section_nos = [0; 3];
-                            chapter_no.to_string()
+                            chapter_label = if appendix {
+                                flashtex_class_geometry::Numbering::UpperAlph.format(i64::from(chapter_no))
+                            } else {
+                                chapter_no.to_string()
+                            };
+                            chapter_starts.push((cmd.start, chapter_label.clone()));
+                            chapter_label.clone()
                         });
+                        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+                        let mut items = words_from_source(source, entry_doc, title.0, title.1);
+                        if toc_active {
+                            if let Some(n) = &number {
+                                // report.cls `\@chapter`: `\addcontentsline{toc}{chapter}{\protect\numberline{\thechapter}#1}`.
+                                let key = crate::toc::key(toc_records.len());
+                                toc_records.push(crate::toc::Record {
+                                    list: crate::toc::ListKind::Toc,
+                                    level: 0,
+                                    number: Some((n.clone(), span)),
+                                    title: labels.entry_items.get(entry_doc, title.0, title.1).unwrap_or_else(|| items.clone()),
+                                    key: key.clone(),
+                                });
+                                toc_pending.push(key);
+                            }
+                            items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
+                        }
                         blocks.push(Block::Chapter {
                             number,
-                            items: words_from_source(source, entry_doc, title.0, title.1),
+                            appendix,
+                            items,
                             title: plain_text(&source[title.0..title.1]),
-                            span: Span::in_document(entry_doc, cmd.start, cmd.end),
+                            span,
                             mark: !*starred,
                         });
                         after_heading = true;
@@ -832,6 +936,82 @@ pub fn adapt_cached(
                         }
                         prev_para_end = None;
                     }
+                    BodyKind::ContentsList(kind) => {
+                        // `\newpage` (etc.) right before the command breaks
+                        // before the list's heading.
+                        let before = source[..cmd.start].trim_end();
+                        let eject = ["\\newpage", "\\clearpage", "\\cleardoublepage", "\\pagebreak"].iter().any(|c| before.ends_with(c));
+                        toc_lists.push((blocks.len(), *kind, Span::in_document(entry_doc, cmd.start, cmd.end), eject));
+                    }
+                    BodyKind::AddContentsLine { list, level, text } => {
+                        if let (true, Some(level)) = (toc_active, crate::toc::level_of(level)) {
+                            let (number, title) = crate::toc::contentsline_text(source, entry_doc, text.0, text.1, &labels.entry_items);
+                            let key = crate::toc::key(toc_records.len());
+                            toc_records.push(crate::toc::Record {
+                                list: *list,
+                                level,
+                                number,
+                                title,
+                                key: key.clone(),
+                            });
+                            // The write lands on the page of the heading just
+                            // set, or of the next block.
+                            match blocks.last_mut() {
+                                Some(Block::Heading { items, .. } | Block::Chapter { items, .. } | Block::Part { items, .. }) if after_heading => items.push(Item::Label { key }),
+                                _ => toc_pending.push(key),
+                            }
+                        }
+                    }
+                    BodyKind::Appendix => {
+                        // article.cls/report.cls `\appendix`: the section
+                        // (and chapter) counters restart.
+                        appendix = true;
+                        chapter_no = 0;
+                        section_nos = [0; 3];
+                    }
+                    BodyKind::Part { starred, short, title } => {
+                        // `\@part`: `\refstepcounter{part}` (`\thepart` is
+                        // `\@Roman\c@part`) and `\addcontentsline{toc}{part}
+                        // {\thepart\hspace{1em}#1}`; `\@spart` writes nothing.
+                        let number = (!*starred).then(|| {
+                            part_no += 1;
+                            flashtex_class_geometry::Numbering::UpperRoman.format(i64::from(part_no))
+                        });
+                        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+                        let mut items = words_from_source(source, entry_doc, title.0, title.1);
+                        if toc_active {
+                            if let Some(n) = &number {
+                                let (s, e) = short.unwrap_or(*title);
+                                let key = crate::toc::key(toc_records.len());
+                                toc_records.push(crate::toc::Record {
+                                    list: crate::toc::ListKind::Toc,
+                                    level: -1,
+                                    number: Some((n.clone(), span)),
+                                    title: labels.entry_items.get(entry_doc, s, e).unwrap_or_else(|| words_from_source(source, entry_doc, s, e)),
+                                    key: key.clone(),
+                                });
+                                toc_pending.push(key);
+                            }
+                            items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
+                        }
+                        // The compiler attaches a `\clearpage` before `\part`
+                        // to the next unit; it belongs to the part.
+                        let before = source[..cmd.start].trim_end();
+                        let clear_before = ["\\clearpage", "\\cleardoublepage"].iter().any(|c| before.ends_with(c));
+                        let part_eject = clear_before || ["\\newpage", "\\pagebreak"].iter().any(|c| before.ends_with(c));
+                        if part_eject {
+                            eject_before = false;
+                        }
+                        blocks.push(Block::Part {
+                            number,
+                            items,
+                            span,
+                            eject_before: part_eject,
+                            clear_before,
+                        });
+                        after_heading = true;
+                        prev_para_end = None;
+                    }
                 }
             }
         }
@@ -842,13 +1022,20 @@ pub fn adapt_cached(
                 number_span,
                 content,
             } => {
-                let number: String = if has_chapters && !number.is_empty() && (1..=3).contains(&level) {
+                let number: String = if (has_chapters || appendix) && !number.is_empty() && (1..=3).contains(&level) {
                     let l = usize::from(level) - 1;
                     section_nos[l] += 1;
                     for n in &mut section_nos[l + 1..] {
                         *n = 0;
                     }
-                    std::iter::once(chapter_no).chain(section_nos[..=l].iter().copied()).map(|n| n.to_string()).collect::<Vec<_>>().join(".")
+                    let mut parts: Vec<String> = section_nos[..=l].iter().map(|n| n.to_string()).collect();
+                    if has_chapters {
+                        parts.insert(0, if chapter_no == 0 { "0".to_string() } else { chapter_label.clone() });
+                    } else {
+                        // article.cls `\appendix`: `\thesection` is `\@Alph\c@section`.
+                        parts[0] = flashtex_class_geometry::Numbering::UpperAlph.format(i64::from(section_nos[0]));
+                    }
+                    parts.join(".")
                 } else {
                     number.to_string()
                 };
@@ -874,7 +1061,24 @@ pub fn adapt_cached(
                     push_segment(&mut items, number.to_string(), chars, TextStyle::default());
                     items.push(Item::Quad { em: 1.0 });
                 }
-                items.extend(items_for(content, true));
+                let content_items = items_for(content, true);
+                if toc_active {
+                    // `\@sect`: `\addcontentsline{toc}{<level>}{\numberline{<number>}<title>}`
+                    // for an unstarred heading (no `\numberline` past `secnumdepth`).
+                    if !number.is_empty() {
+                        let key = crate::toc::key(toc_records.len());
+                        toc_records.push(crate::toc::Record {
+                            list: crate::toc::ListKind::Toc,
+                            level: level as i8,
+                            number: (level <= toc_secnumdepth).then(|| (number.clone(), number_span)),
+                            title: content_items.iter().filter(|i| !matches!(i, Item::Label { .. })).cloned().collect(),
+                            key: key.clone(),
+                        });
+                        toc_pending.push(key);
+                    }
+                    items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
+                }
+                items.extend(content_items);
                 blocks.push(Block::Heading {
                     level,
                     items,
@@ -917,7 +1121,8 @@ pub fn adapt_cached(
                 for inline in inlines {
                     unsupported_inlines(inline, &mut limitations);
                 }
-                let items = items_for(inlines, false);
+                let mut items = items_for(inlines, false);
+                items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
                 for item in items {
@@ -1042,6 +1247,11 @@ pub fn adapt_cached(
             }
         }
     }
+    // The contents lists, now that every record is known.
+    for (at, kind, span, eject) in toc_lists.into_iter().rev() {
+        let list = crate::toc::list_blocks(kind, span, eject, &toc_settings, &toc_records, labels, &chapter_starts);
+        blocks.splice(at..at, list);
+    }
     // `\end{...}`: the last paragraph of a run of same-style paragraphs
     // closes the environment (two adjacent environments of one style are
     // read as one; the compiler does not mark the boundary).
@@ -1079,13 +1289,49 @@ pub fn adapt_cached(
             _ => {}
         }
     }
+    let page_starts = clear_page_blocks(texts, &blocks);
     Doc {
         style,
         blocks,
         diagnostics: Vec::new(),
         limitations,
         secnumdepth,
+        page_starts,
     }
+}
+
+/// Blocks whose `eject_before` comes from `\clearpage`/`\cleardoublepage`
+/// (the page-break command nearest before the block): in two-column mode
+/// those end the page, `\newpage`/`\pagebreak` only the column (latex.ltx
+/// `\clearpage` flushes with `\vbox{}\penalty-\@Mi`, `\@outputdblcol` ships
+/// the page).
+fn clear_page_blocks(texts: &[&str], blocks: &[Block]) -> Vec<usize> {
+    let first_span = |items: &[Item]| {
+        items.iter().find_map(|i| match i {
+            Item::Word(w) => Some(w.span()),
+            Item::Math { span, .. } => Some(*span),
+            _ => None,
+        })
+    };
+    blocks
+        .iter()
+        .enumerate()
+        .filter_map(|(i, b)| {
+            let at = match b {
+                Block::Paragraph { eject_before: true, parts, .. } => parts.iter().find_map(|p| match p {
+                    ParaPart::Lines(items) => first_span(items),
+                    _ => None,
+                }),
+                Block::Heading { eject_before: true, span, .. } | Block::Rule { eject_before: true, span, .. } => Some(*span),
+                Block::Picture { eject_before: true, document, picture, .. } => Some(Span::in_document(*document, picture.start, picture.end)),
+                _ => None,
+            }?;
+            let text = texts.get(at.document.0)?.get(..at.start)?;
+            let clear = text.rfind("\\clearpage").max(text.rfind("\\cleardoublepage"));
+            let column = text.rfind("\\newpage").max(text.rfind("\\pagebreak"));
+            (clear.is_some() && clear > column).then_some(i)
+        })
+        .collect()
 }
 
 fn inline_span(i: &Inline) -> Span {
@@ -1100,7 +1346,10 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::HSpace { span, .. }
         | Inline::Footnote { span, .. }
         | Inline::Verbatim { span, .. }
-        | Inline::TextGlue { span, .. } => *span,
+        | Inline::TextGlue { span, .. }
+        | Inline::Logo { span, .. }
+        | Inline::Rule { span, .. }
+        | Inline::Kern { span, .. } => *span,
         Inline::Tabular(t) => t.span,
     }
 }
@@ -1111,16 +1360,9 @@ fn inline_span(i: &Inline) -> Span {
 /// columns or rules) and `\verb` (body face). Footnote text is scanned too.
 fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, String)>) {
     match inline {
-        Inline::Footnote { number, span, mark, text, .. } => {
-            out.push((
-                "unsupported_block",
-                *span,
-                format!(
-                    "\\footnote {number}: {}{} set inline in the paragraph (no page-bottom footnote area yet)",
-                    if *mark { "mark as plain text" } else { "no mark" },
-                    if text.is_some() { ", note text" } else { "" }
-                ),
-            ));
+        Inline::Footnote { text, .. } => {
+            // Set by `typeset::footnotes`; contexts it does not reach
+            // (headings, captions, floats) are diagnosed there.
             for i in text.iter().flatten() {
                 unsupported_inlines(i, out);
             }
@@ -1172,20 +1414,6 @@ fn lower_inline<'a>(inline: &'a Inline, labels: &Labels, reference_spans: &mut V
                 // spans here, never from the compiler's flag.
                 space_before: true,
             }));
-        }
-        Inline::Footnote { number, span, mark, text, .. } => {
-            if *mark {
-                reference_spans.push(*span);
-                out.push(std::borrow::Cow::Owned(Inline::Text {
-                    text: number.clone(),
-                    span: *span,
-                    style: Default::default(),
-                    space_before: true,
-                }));
-            }
-            for i in text.iter().flatten() {
-                lower_inline(i, labels, reference_spans, out);
-            }
         }
         Inline::Verbatim { text, span, space_before } => {
             reference_spans.push(*span);
@@ -1289,6 +1517,11 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
             }
             CBlock::VSpace { pt } => {
                 pending_vspace += pt;
+                continue;
+            }
+            CBlock::TableOfContents { span } => {
+                prev_end = Some(*span);
+                prev_vmode = true;
                 continue;
             }
             CBlock::Rule { span } => {
@@ -2248,11 +2481,59 @@ fn has_blank_line(source: &str) -> bool {
     false
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StyleKind {
-    Bold,
-    Emph,
-    Italic,
+/// One font command's content interval: start and end byte, the NFSS
+/// command, and whether LaTeX's `\maybe@ic` italic correction can follow
+/// its end (see [`Styles::closes_at`]).
+type StyleInterval = (usize, usize, crate::nfss::Command, bool);
+
+/// The NFSS commands of a text font command with a braced argument
+/// (latex.ltx 14213-14222 `\DeclareTextFontCommand`, and `\emph`).
+fn text_font_command(name: &str) -> Option<&'static [crate::nfss::Command]> {
+    use crate::nfss::{Command as C, FamilyKind as F, Series as S, ShapeRequest as R};
+    Some(match name {
+        "textbf" => &[C::Series(S::Bx)],
+        "textmd" => &[C::Series(S::M)],
+        "textit" => &[C::Shape(R::It)],
+        "textsl" => &[C::Shape(R::Sl)],
+        "textsc" => &[C::Shape(R::Sc)],
+        "textup" => &[C::Shape(R::Up)],
+        "textrm" => &[C::Family(F::Rm)],
+        "textsf" => &[C::Family(F::Sf)],
+        "texttt" => &[C::Family(F::Tt)],
+        "textnormal" => &[C::Normal],
+        "emph" => &[C::Emph],
+        _ => return None,
+    })
+}
+
+/// The NFSS commands of a font declaration, and whether the end of its
+/// group is recorded for italic correction (the declarations the pipeline
+/// read before NFSS selection existed keep that behaviour). The LaTeX
+/// 2.09 forms reset first: `\bf` is `\normalfont\bfseries` (latex.ltx
+/// `\DeclareOldFontCommand`).
+fn font_declaration(name: &str) -> Option<(&'static [crate::nfss::Command], bool)> {
+    use crate::nfss::{Command as C, FamilyKind as F, Series as S, ShapeRequest as R};
+    Some(match name {
+        "bfseries" => (&[C::Series(S::Bx)], true),
+        "itshape" => (&[C::Shape(R::It)], true),
+        "slshape" => (&[C::Shape(R::Sl)], true),
+        "em" => (&[C::Emph], true),
+        "mdseries" => (&[C::Series(S::M)], false),
+        "scshape" => (&[C::Shape(R::Sc)], false),
+        "upshape" => (&[C::Shape(R::Up)], false),
+        "rmfamily" => (&[C::Family(F::Rm)], false),
+        "sffamily" => (&[C::Family(F::Sf)], false),
+        "ttfamily" => (&[C::Family(F::Tt)], false),
+        "normalfont" => (&[C::Normal], false),
+        "bf" => (&[C::Normal, C::Series(S::Bx)], false),
+        "it" => (&[C::Normal, C::Shape(R::It)], false),
+        "sl" => (&[C::Normal, C::Shape(R::Sl)], false),
+        "sc" => (&[C::Normal, C::Shape(R::Sc)], false),
+        "rm" => (&[C::Normal, C::Family(F::Rm)], false),
+        "sf" => (&[C::Normal, C::Family(F::Sf)], false),
+        "tt" => (&[C::Normal, C::Family(F::Tt)], false),
+        _ => return None,
+    })
 }
 
 /// The point size a `\tiny`..`\Huge` declaration selects at a class base
@@ -2297,12 +2578,13 @@ fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: 
     table[row][col]
 }
 
-/// Brace-group intervals of `\textbf{}`, `\emph{}`, `\textit{}` in source
-/// byte offsets (content only), in document order. Weight and shape only:
-/// the compiler carries no `\bfseries`/`\itshape` scoping for body text
-/// the pipeline could use, while size declarations are read from the
-/// compiler's `TextStyle::size` (see [`declared_size`]).
-fn style_intervals(source: &str) -> Vec<(usize, usize, StyleKind)> {
+/// Content intervals of the font commands in source byte offsets, in
+/// document order: text font commands (`\textsf{}`, `\emph{}`, ...) over
+/// their braced argument, declarations (`\scshape`, `\ttfamily`, `\bf`,
+/// ...) to the end of the innermost group. Family, series and shape only:
+/// size declarations are read from the compiler's `TextStyle::size` (see
+/// [`declared_size`]).
+fn style_intervals(source: &str) -> Vec<StyleInterval> {
     let mut out = Vec::new();
     let bytes = source.as_bytes();
     let mut i = 0;
@@ -2335,53 +2617,36 @@ fn style_intervals(source: &str) -> Vec<(usize, usize, StyleKind)> {
             }
             b'\\' => {
                 let rest = &source[i..];
-                let kind = if rest.starts_with("\\textbf") && !continues_word(bytes, i + 7) {
-                    Some((StyleKind::Bold, 7))
-                } else if rest.starts_with("\\emph") && !continues_word(bytes, i + 5) {
-                    Some((StyleKind::Emph, 5))
-                } else if rest.starts_with("\\textit") && !continues_word(bytes, i + 7) {
-                    Some((StyleKind::Italic, 7))
-                } else {
-                    None
-                };
-                match kind {
-                    Some((k, len)) => {
-                        let mut j = i + len;
-                        while j < bytes.len() && (bytes[j] as char).is_whitespace() {
-                            j += 1;
-                        }
-                        if j < bytes.len() && bytes[j] == b'{' {
-                            if let Some(close) = matching_brace(bytes, j) {
-                                out.push((j + 1, close, k));
-                            }
-                        }
-                        i += len;
-                        continue;
-                    }
-                    None => {}
-                }
-                // Declarations: the control word's letters.
+                // The control word's letters.
                 let word_end = i + 1 + rest[1..].bytes().take_while(u8::is_ascii_alphabetic).count();
                 let name = &source[i + 1..word_end];
-                let decl = match name {
-                    "bfseries" => Some(StyleKind::Bold),
-                    "itshape" | "slshape" => Some(StyleKind::Italic),
-                    "em" => Some(StyleKind::Emph),
-                    _ => None,
-                };
-                if let Some(k) = decl {
+                if let Some(commands) = text_font_command(name) {
+                    let mut j = word_end;
+                    while j < bytes.len() && (bytes[j] as char).is_whitespace() {
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b'{' {
+                        if let Some(close) = matching_brace(bytes, j) {
+                            out.extend(commands.iter().map(|c| (j + 1, close, *c, true)));
+                        }
+                    }
+                    i = word_end;
+                    continue;
+                }
+                if let Some((commands, correction)) = font_declaration(name) {
                     let end = match groups.last() {
                         Some(&open) => matching_brace(bytes, open).unwrap_or(bytes.len()),
                         None => find_command(&source[word_end..], "end").map_or(bytes.len(), |e| word_end + e),
                     };
-                    out.push((word_end, end, k));
+                    out.extend(commands.iter().map(|c| (word_end, end, *c, correction)));
                 }
                 i = word_end.max(i + 2);
             }
             _ => i += 1,
         }
     }
-    out.sort_by_key(|(start, _, _)| *start);
+    // Stable: the `\normalfont` of `\bf` stays before its `\bfseries`.
+    out.sort_by_key(|(start, _, _, _)| *start);
     out
 }
 
@@ -2680,6 +2945,23 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
     prev_end.zip(prev_span).and_then(|(pe, ps)| source_gap(pe, ps))
 }
 
+/// The control sequence a compiler `Inline::Kern` was read from: its own
+/// source bytes, or, inside a user macro's replacement (whose tokens carry
+/// the invocation span), the first spelling of that kern in the macro body.
+fn kern_command_text(source: &str, span: Span, amount: &TextDimen) -> Option<String> {
+    if !is_invocation_span(source, span) {
+        return source.get(span.start..span.end).map(str::to_string);
+    }
+    let name = control_word_at(source, span.start, span.end)?;
+    let body = macro_body(source, name, span.start)?;
+    const SPELLINGS: &[&str] = &[",", "!", ":", ">", ";", "thinspace", "negthinspace", "medspace", "negmedspace", "thickspace", "negthickspace", "enspace"];
+    SPELLINGS
+        .iter()
+        .filter(|s| flashtex_compiler::text_builtins::text_kern(s).as_ref() == Some(amount))
+        .map(|s| format!("\\{s}"))
+        .find(|s| body.contains(s.as_str()))
+}
+
 /// [`gap_has_space`] for the bytes after a control word: the whitespace
 /// TeX eats right after the word does not count.
 fn gap_has_space_after_control_word(rest: &str) -> bool {
@@ -2758,6 +3040,15 @@ pub enum BodyKind {
     MakeTitle,
     /// book.cls `\frontmatter`/`\mainmatter`/`\backmatter`.
     Matter(Matter),
+    /// `\tableofcontents`, `\listoffigures`, `\listoftables`.
+    ContentsList(crate::toc::ListKind),
+    /// `\addcontentsline{<ext>}{<level>}{<entry>}`: `text` is the entry
+    /// argument's inner range.
+    AddContentsLine { list: crate::toc::ListKind, level: String, text: (usize, usize) },
+    /// `\appendix`.
+    Appendix,
+    /// `\part[<short>]{<title>}` / `\part*{<title>}` (inner ranges).
+    Part { starred: bool, short: Option<(usize, usize)>, title: (usize, usize) },
 }
 
 /// Which book.cls matter command (lines 284-298).
@@ -2835,7 +3126,42 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
                 }
                 group(k).map(|(s, e, after)| (BodyKind::Chapter { starred, title: (s, e) }, after))
             }
+            "part" => {
+                let mut k = j;
+                let starred = bytes.get(k) == Some(&b'*');
+                if starred {
+                    k += 1;
+                }
+                let rest = &source[k..];
+                let trimmed = rest.trim_start();
+                let mut short = None;
+                if trimmed.starts_with('[') {
+                    if let Some(close) = trimmed.find(']') {
+                        let open = k + rest.len() - trimmed.len();
+                        short = Some((open + 1, open + close));
+                        k = open + close + 1;
+                    }
+                }
+                group(k).map(|(s, e, after)| (BodyKind::Part { starred, short, title: (s, e) }, after))
+            }
             "noindent" => Some((BodyKind::NoIndent, j)),
+            "tableofcontents" => Some((BodyKind::ContentsList(crate::toc::ListKind::Toc), j)),
+            "listoffigures" => Some((BodyKind::ContentsList(crate::toc::ListKind::Lof), j)),
+            "listoftables" => Some((BodyKind::ContentsList(crate::toc::ListKind::Lot), j)),
+            "appendix" => Some((BodyKind::Appendix, j)),
+            "addcontentsline" => group(j).and_then(|(s1, e1, a1)| {
+                let list = crate::toc::ListKind::from_ext(source[s1..e1].trim())?;
+                let (s2, e2, a2) = group(a1)?;
+                let (s3, e3, a3) = group(a2)?;
+                Some((
+                    BodyKind::AddContentsLine {
+                        list,
+                        level: source[s2..e2].trim().to_string(),
+                        text: (s3, e3),
+                    },
+                    a3,
+                ))
+            }),
             "pagenumbering" => group(j).and_then(|(s, e, after)| {
                 use flashtex_class_geometry::Numbering;
                 let n = match source[s..e].trim() {
@@ -2877,7 +3203,7 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
 fn strip_command_text(blocks: &mut Vec<CBlock>, document: DocumentId, commands: &[BodyCommand]) {
     let ranges: Vec<(usize, usize)> = commands
         .iter()
-        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_) | ChromeEvent::SetPage(_) | ChromeEvent::PageNumbering(_))))
+        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::Part { .. } | BodyKind::AddContentsLine { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_) | ChromeEvent::SetPage(_) | ChromeEvent::PageNumbering(_))))
         .map(|c| (c.start, c.end))
         .collect();
     if ranges.is_empty() {
@@ -2898,9 +3224,14 @@ fn strip_command_text(blocks: &mut Vec<CBlock>, document: DocumentId, commands: 
 
 /// Body-font words of `source[start..end]` split at whitespace, every
 /// character carrying its own bytes.
-fn words_from_source(source: &str, document: DocumentId, start: usize, end: usize) -> Vec<Item> {
+pub(crate) fn words_from_source(source: &str, document: DocumentId, start: usize, end: usize) -> Vec<Item> {
+    words_at(&source[start..end], document, start)
+}
+
+/// [`words_from_source`] of `text`, which starts at byte `start` of its
+/// document.
+pub(crate) fn words_at(text: &str, document: DocumentId, start: usize) -> Vec<Item> {
     let mut items = Vec::new();
-    let text = &source[start..end];
     let mut offset = 0usize;
     for word in text.split_whitespace() {
         let at = start + offset + text[offset..].find(word).unwrap_or(0);
@@ -2961,45 +3292,59 @@ fn plain_text(s: &str) -> String {
 /// earlier group can still contain the position), and the ends sorted.
 #[derive(Debug, Clone, Default)]
 struct Styles {
-    intervals: Vec<(usize, usize, StyleKind)>,
+    intervals: Vec<(usize, usize, crate::nfss::Command)>,
     max_end: Vec<usize>,
     ends: Vec<usize>,
+    scheme: crate::nfss::Scheme,
 }
 
 impl Styles {
-    fn new(intervals: Vec<(usize, usize, StyleKind)>) -> Styles {
+    fn new(intervals: Vec<StyleInterval>, scheme: crate::nfss::Scheme) -> Styles {
         let mut max_end = Vec::with_capacity(intervals.len());
         let mut m = 0;
-        for (_, end, _) in &intervals {
+        for (_, end, _, _) in &intervals {
             m = m.max(*end);
             max_end.push(m);
         }
-        let mut ends: Vec<usize> = intervals.iter().map(|(_, e, _)| *e).collect();
+        let mut ends: Vec<usize> = intervals.iter().filter(|i| i.3).map(|i| i.1).collect();
         ends.sort_unstable();
-        Styles { intervals, max_end, ends }
+        let intervals = intervals.into_iter().map(|(s, e, c, _)| (s, e, c)).collect();
+        Styles { intervals, max_end, ends, scheme }
     }
 
-    /// The style in force at byte `at` (bold/italic set, emph toggles:
-    /// order-independent, so the groups are visited from the nearest).
+    /// The style in force at byte `at`: the font commands of every interval
+    /// containing it, applied outermost (earliest) first through NFSS
+    /// selection (`crate::nfss::apply`), so order matters exactly as in
+    /// LaTeX (`\textsc{\emph{x}}` is not `\emph{\textsc{x}}`).
     fn at(&self, at: usize) -> TextStyle {
-        let mut s = TextStyle::default();
         let p = self.intervals.partition_point(|(start, _, _)| *start <= at);
+        let mut chain = Vec::new();
         let mut i = p;
         while i > 0 {
             i -= 1;
             if self.max_end[i] <= at {
                 break;
             }
-            let (_, end, kind) = self.intervals[i];
+            let (_, end, command) = self.intervals[i];
             if at < end {
-                match kind {
-                    StyleKind::Bold => s.bold = true,
-                    StyleKind::Italic => s.italic = true,
-                    StyleKind::Emph => s.italic = !s.italic,
-                }
+                chain.push(command);
             }
         }
-        s
+        let mut key = crate::nfss::FontKey::default();
+        let mut undefined = None;
+        for command in chain.into_iter().rev() {
+            let s = crate::nfss::apply(self.scheme, key, command);
+            key = s.key;
+            undefined = s.undefined.or(undefined);
+        }
+        TextStyle { undefined, ..TextStyle::default() }.with_key(key)
+    }
+
+    /// Whether the font in force at byte `at` is slanted (`\fontdimen1 >
+    /// 0`): the loaded shape after `sub*`/`ssub*`.
+    fn slanted_at(&self, at: usize) -> bool {
+        let key = self.at(at).key();
+        crate::nfss::terminal(self.scheme, crate::nfss::select(self.scheme, key).key).0.slanted()
     }
 
     /// Whether a style group's content ends exactly at `at`.
@@ -3163,6 +3508,7 @@ fn items_cached(
     let at = st.at(start);
     at.bold.hash(&mut h);
     at.italic.hash(&mut h);
+    (at.slanted, at.caps, at.family, at.undefined, st.scheme).hash(&mut h);
     for i in inlines {
         let s = inline_span(i);
         (s.start.wrapping_sub(start), s.end.wrapping_sub(start)).hash(&mut h);
@@ -3205,6 +3551,21 @@ fn items_cached(
             Inline::Verbatim { text, .. } => {
                 11u8.hash(&mut h);
                 text.hash(&mut h);
+            }
+            Inline::Logo { logo, style, .. } => {
+                12u8.hash(&mut h);
+                logo.hash(&mut h);
+                style.hash(&mut h);
+            }
+            Inline::Rule { rule, style, .. } => {
+                13u8.hash(&mut h);
+                rule.hash(&mut h);
+                style.hash(&mut h);
+            }
+            Inline::Kern { amount, style, .. } => {
+                14u8.hash(&mut h);
+                amount.hash(&mut h);
+                style.hash(&mut h);
             }
             Inline::HFill { .. } => 6u8.hash(&mut h),
             Inline::HSpace { pt, .. } => {
@@ -3301,7 +3662,25 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
     for inline in resolved.iter() {
         match &**inline {
             Inline::Label { key, .. } => items.push(Item::Label { key: key.clone() }),
-            Inline::Reference { .. } | Inline::Footnote { .. } | Inline::Verbatim { .. } => unreachable!("lowered by lower_inline above"),
+            Inline::Reference { .. } | Inline::Verbatim { .. } => unreachable!("lowered by lower_inline above"),
+            Inline::Footnote { number, span, mark, text, .. } => {
+                // `\@footnotemark` keeps the space factor; the space before
+                // the command is an ordinary interword space. The command's
+                // `[<n>]` and `{<text>}` are skipped for the gap that follows.
+                let src = text_of(span.document);
+                let end = footnote_command_end(src, span.end);
+                let word = src.get(span.start..span.end).unwrap_or("\\footnote");
+                let gap = space_between(prev_end, prev_span, *span, Some(word), after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                let note = text.as_ref().map(|t| items_from_inlines_styled(texts, t, styles, labels, size, false, compiler_weight));
+                items.push(Item::Footnote { number: number.clone(), mark: *mark, span: *span, text: note });
+                after_control_word = end == span.end;
+                prev_end = Some(end);
+                prev_span = Some(Span::in_document(span.document, span.start, end));
+                pending_accent = None;
+            }
             Inline::Tabular(t) => {
                 // `\leavevmode\hbox{...}`: one box, with the space before it
                 // read like a formula's.
@@ -3390,6 +3769,86 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
                 factor = 1000;
+            }
+            Inline::Logo { logo, span, style: compiler_style, .. } => {
+                // `\LaTeX` is a control word: the blanks after it are eaten.
+                let word = format!("\\{}", logo.command());
+                let has_space = space_between(prev_end, prev_span, *span, Some(&word), after_control_word);
+                let mut style = style_at(styles_of(span.document), span.start);
+                style.size_cpt = declared_size(compiler_style.size, size);
+                if heading {
+                    style.medium = !compiler_style.bold;
+                    style.italic |= compiler_style.italic;
+                }
+                if has_space {
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
+                    push_gap(&mut items, has_space, gap_style, factor);
+                }
+                prev_size_cpt = style.size_cpt;
+                items.push(Item::Logo { logo: *logo, style, span: *span });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                // `\TeX` ends with `\@` and `\LaTeXe` with math: factor 1000.
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = true;
+            }
+            Inline::Rule { rule, span, style: compiler_style, .. } => {
+                let has_space = space_between(prev_end, prev_span, *span, Some("\\rule"), after_control_word);
+                let mut style = style_at(styles_of(span.document), span.start);
+                style.size_cpt = declared_size(compiler_style.size, size);
+                if has_space {
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
+                    push_gap(&mut items, has_space, gap_style, factor);
+                }
+                prev_size_cpt = style.size_cpt;
+                items.push(Item::Rule { rule: rule.clone(), style, span: *span });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = false;
+            }
+            Inline::Kern { amount, span, style: compiler_style } => {
+                let source = text_of(span.document);
+                let word = kern_command_text(source, *span, amount);
+                let has_space = space_between(prev_end, prev_span, *span, word.as_deref(), after_control_word);
+                let mut style = style_at(styles_of(span.document), span.start);
+                style.size_cpt = declared_size(compiler_style.size, size);
+                if has_space {
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
+                    push_gap(&mut items, has_space, gap_style, factor);
+                    pending_accent = None;
+                }
+                // A kern leaves the space factor alone (§1061 applies only to
+                // characters and boxes); a control word eats the blanks after it.
+                items.push(Item::Kern { amount: amount.clone(), style });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                after_control_word = word.as_deref().is_some_and(|w| w.len() > 2);
+            }
+            Inline::Text { text, span, .. } if text == " " && text_of(span.document).get(span.start..span.end) == Some("\\ ") => {
+                // `\ ` (control space, lexed as the word " "): interword glue at
+                // space factor 1000 (§1041-1044), after which TeX skips blanks.
+                let has_space = space_between(prev_end, prev_span, *span, Some("\\ "), after_control_word);
+                let mut style = style_at(styles_of(span.document), span.start);
+                let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
+                style.size_cpt = declared_size(compiler_style.size, size);
+                if has_space {
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
+                    push_gap(&mut items, has_space, gap_style, factor);
+                }
+                items.push(Item::Space { style, factor: 1000, no_break: false });
+                prev_size_cpt = style.size_cpt;
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = true;
             }
             Inline::Text { text, span, .. } => {
                 let source = text_of(span.document);
@@ -3506,7 +3965,9 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     run.clear();
                 };
                 for (ch, src) in chars {
-                    if ch == '~' {
+                    // Only a typed `~` is the active tie; `\textasciitilde`
+                    // (the compiler's symbol text) is the character itself.
+                    if ch == '~' && source.get(src.start..src.end) == Some("~") {
                         flush(&mut run, &mut items, &mut factor);
                         items.push(Item::Space {
                             style,
@@ -3526,17 +3987,54 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 if styles_of(span.document).closes_at(span.end)
                     && source.as_bytes().get(span.end) == Some(&b'}')
                     && !matches!(source.as_bytes().get(span.end + 1), Some(b'.') | Some(b','))
-                    && !style_at(styles_of(span.document), span.end + 1).italic
+                    && !styles_of(span.document).slanted_at(span.end + 1)
                     && matches!(items.last(), Some(Item::Word(_)))
                 {
                     items.push(Item::ItalicCorrection);
                 }
+                // A text symbol the compiler set from a control word (`\AA`,
+                // `\ss`, `\today`): TeX skips the blanks after the word. User
+                // macro replacements keep their own cursor (`token_gap`).
+                after_control_word = control_word_at(source, span.start, span.end).is_some() && !is_invocation_span(source, *span);
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
             }
         }
     }
     items
+}
+
+/// The byte after `\footnote[<n>]{<text>}` whose command token ends at
+/// `at`: an optional `[...]` and a brace group (`{}` after `\footnotemark`
+/// too) are skipped; `at` itself when neither follows.
+fn footnote_command_end(src: &str, at: usize) -> usize {
+    let bytes = src.as_bytes();
+    let mut i = at;
+    if bytes.get(i) == Some(&b'[') {
+        match src[i..].find(']') {
+            Some(close) => i += close + 1,
+            None => return at,
+        }
+    }
+    if bytes.get(i) != Some(&b'{') {
+        return i;
+    }
+    let mut depth = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 1,
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    bytes.len()
 }
 
 /// The size declaration in force where TeX reads the space token between
@@ -3666,6 +4164,20 @@ mod tests {
     }
 
     #[test]
+    fn text_symbols_logos_rules_kerns_and_control_space_become_items() {
+        let src = "\\AA ngstr \\LaTeX{} and \\TeX\\ x \\S\\,4 \\rule[-1pt]{2pt}{3pt} y";
+        let it = items(src);
+        assert_eq!(shape(&it), "WSLSWSLSWSWKWSRSW", "{it:?}");
+        let Item::Word(first) = &it[0] else { panic!() };
+        assert_eq!(first.text(), "\u{00C5}ngstr");
+        // The symbol's source is its control word.
+        let c = &first.segments[0].chars[0];
+        assert_eq!(&src[c.start..c.end], "\\AA");
+        let Item::Word(section) = &it[10] else { panic!() };
+        assert_eq!(section.text(), "\u{00A7}");
+    }
+
+    #[test]
     fn accents_and_dashes_compose_with_exact_sources() {
         let src = "Na\\\"ive caf\\'e --- dash.";
         let it = items(src);
@@ -3746,6 +4258,9 @@ mod tests {
                 Item::HFill { .. } => 'F',
                 Item::Quad { .. } => 'Q',
                 Item::HSpace { .. } => 'H',
+                Item::Logo { .. } => 'L',
+                Item::Rule { .. } => 'R',
+                Item::Kern { .. } => 'K',
                 _ => '?',
             })
             .collect()
@@ -3775,9 +4290,11 @@ mod tests {
                 Block::Rule { .. } => "R".to_string(),
                 Block::Picture { .. } => "P".to_string(),
                 Block::Chapter { .. } => "C".to_string(),
+                Block::Part { .. } => "P".to_string(),
                 Block::Chrome { .. } => "M".to_string(),
                 Block::Title { .. } => "T".to_string(),
                 Block::ClearPage { .. } => "N".to_string(),
+                Block::TocEntry(..) => "E".to_string(),
             })
             .collect();
         // `Problem 1 \hfill \normalfont[4 points]`: one fill, no space after it.

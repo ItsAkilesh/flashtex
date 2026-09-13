@@ -45,7 +45,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "vskip", "hskip", "kern", "enspace", "thinspace", "negthinspace", "hline", "cline",
     "multicolumn", "tabularnewline", "arraystretch",
     // Fonts and text symbols.
-    "textsc", "scshape", "textsuperscript", "textsubscript", "underbar", "sout", "uline", "LaTeX",
+    "textsuperscript", "textsubscript", "underbar", "sout", "uline", "LaTeX",
     "LaTeXe", "TeX", "dag", "ddag", "S", "P", "copyright", "pounds", "textbackslash",
     "textasciitilde", "textasciicircum", "textbar", "textless", "textgreater", "textendash",
     "textemdash", "textbullet", "textperiodcentered", "textquoteleft", "textquoteright",
@@ -67,8 +67,8 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "usetikzlibrary", "draw", "node", "fill", "path", "scalebox", "resizebox", "rotatebox",
     "subcaption", "captionof", "listoflistings", "lstinline", "mintinline",
     // amsmath and amssymb.
-    "intertext", "shortintertext", "substack", "sideset", "xrightarrow", "xleftarrow",
-    "mathcal", "mathfrak", "mathscr", "pmb",
+    "intertext", "shortintertext", "substack", "sideset", "xrightarrow", "xleftarrow", "overbrace",
+    "underbrace", "overleftarrow", "overrightarrow", "mathcal", "mathfrak", "mathscr", "pmb",
     "limits", "nolimits", "displaylimits", "colon", "vdots", "ddots", "iff", "implies", "impliedby",
     "genfrac", "operatornamewithlimits", "dddot", "ddddot", "cancel", "bcancel", "xcancel",
     "cancelto", "numberwithin", "allowdisplaybreaks", "mathring", "lvert", "rvert", "lVert",

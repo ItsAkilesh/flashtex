@@ -408,6 +408,7 @@ pub(crate) fn style_command(name: &str) -> bool {
             | "textmd"
             | "textit"
             | "textsl"
+            | "textsc"
             | "textup"
             | "emph"
             | "texttt"
@@ -429,6 +430,7 @@ pub(crate) fn style_declaration(name: &str) -> bool {
             | "mdseries"
             | "itshape"
             | "slshape"
+            | "scshape"
             | "upshape"
             | "ttfamily"
             | "rmfamily"
@@ -438,6 +440,7 @@ pub(crate) fn style_declaration(name: &str) -> bool {
             | "bf"
             | "it"
             | "sl"
+            | "sc"
             | "tt"
             | "rm"
             | "sf"
@@ -461,6 +464,10 @@ fn apply_style(style: TextStyle, name: &str) -> TextStyle {
         "textbf" | "bfseries" => next.bold = true,
         "textmd" | "mdseries" => next.bold = false,
         "textit" | "textsl" | "itshape" | "slshape" => next.italic = true,
+        // Small capitals (latex.ltx `\textsc`/`\scshape`): the Core 14
+        // layout has no small-caps faces and keeps the current style; the
+        // render pipeline selects the NFSS `sc` shape from the source.
+        "textsc" | "scshape" => {}
         "textup" | "upshape" => next.italic = false,
         "emph" | "em" => next.italic = !style.italic,
         "texttt" | "ttfamily" => next.family = TextFamily::Mono,
@@ -476,6 +483,8 @@ fn apply_style(style: TextStyle, name: &str) -> TextStyle {
                 ..TextStyle::default()
             }
         }
+        // `\sc` is `\normalfont\scshape`: upright roman here.
+        "sc" => next = TextStyle::default(),
         "tt" | "rm" | "sf" => next = apply_style(TextStyle::default(), &format!("{name}family")),
         "tiny" => next.size = Some(FontSizeLevel::Tiny),
         "scriptsize" => next.size = Some(FontSizeLevel::ScriptSize),
@@ -566,6 +575,7 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "emph",
     "textit",
     "textsl",
+    "textsc",
     "textup",
     "texttt",
     "textrm",
@@ -620,6 +630,7 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "mdseries",
     "itshape",
     "slshape",
+    "scshape",
     "upshape",
     "ttfamily",
     "rmfamily",
@@ -628,6 +639,7 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "bf",
     "it",
     "sl",
+    "sc",
     "tt",
     "rm",
     "sf",
@@ -5636,6 +5648,28 @@ mod tests {
             ("j", Font::Helvetica),
             ("k", Font::TimesBold),
             ("l", Font::TimesRoman),
+        ] {
+            assert_eq!(font_of(&items, text), font, "{text}");
+        }
+    }
+
+    #[test]
+    fn small_caps_commands_are_supported_and_scoped() {
+        use layout::Font;
+        let source = r"a \textsc{Bb \textbf{c}} {\scshape d \itshape e} f {\bf g \sc h} i";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        for (text, font) in [
+            ("a", Font::TimesRoman),
+            ("Bb", Font::TimesRoman),
+            ("c", Font::TimesBold),
+            ("d", Font::TimesRoman),
+            ("e", Font::TimesItalic),
+            ("f", Font::TimesRoman),
+            ("g", Font::TimesBold),
+            // `\sc` resets like the other LaTeX 2.09 forms.
+            ("h", Font::TimesRoman),
+            ("i", Font::TimesRoman),
         ] {
             assert_eq!(font_of(&items, text), font, "{text}");
         }

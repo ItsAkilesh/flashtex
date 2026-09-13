@@ -1,4 +1,4 @@
-Generated from commit `a448e015b11ef20676c1c76cfdde252fc79d9c01` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
+Generated from commit `686ef6a289d6fa668961b8660990eec2e17690a2` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
 
 # FlashTeX recovery evidence
 
@@ -238,25 +238,6 @@ Positioned text items:
 
 - `Visible.` — byte range `0..8`
 
-## empty required macro argument
-
-Input:
-
-```text
-\newcommand{\echo}[1]{#1} Visible \echo{} Tail.
-```
-
-Status: `recovered`
-
-Diagnostics:
-
-- `macro \echo received an empty required argument` — recovery: `substituted an empty argument and continued`; byte range: `39..41`
-
-Positioned text items:
-
-- `Visible` — byte range `26..33`
-- `Tail.` — byte range `42..47`
-
 ## required argument missing closing brace
 
 Input:
@@ -362,7 +343,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\newcommand requires a single command name as its first argument` — recovery: `ignored the invalid macro definition`; byte range: `19..25`
+- `Missing control sequence inserted.` — recovery: `continued expanding after the problem`; byte range: `8..19`
 
 Positioned text items:
 
@@ -381,7 +362,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\newcommand argument count must be an integer from 0 to 9` — recovery: `ignored the invalid macro definition`; byte range: `15..19`
+- `You already have nine parameters.` — recovery: `continued expanding after the problem`; byte range: `0..11`
 
 Positioned text items:
 
@@ -399,7 +380,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\newcommand cannot redefine existing command \section` — recovery: `kept the existing command definition`; byte range: `0..21`
+- `LaTeX Error: Command \section already defined.` — recovery: `kept the existing command definition`; byte range: `0..11`
 
 Positioned text items:
 
@@ -417,7 +398,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\renewcommand cannot redefine undefined command \missing` — recovery: `ignored the invalid redefinition`; byte range: `0..23`
+- `LaTeX Error: Command \missing undefined.` — recovery: `defined the command anyway`; byte range: `0..13`
 
 Positioned text items:
 
@@ -428,19 +409,19 @@ Positioned text items:
 Input:
 
 ```text
-\newcommand{\loop}{\loop} Visible \loop Tail.
+\newcommand{\recurse}{\recurse} Visible \recurse Tail.
 ```
 
 Status: `recovered`
 
 Diagnostics:
 
-- `macro \loop exceeded the expansion recursion limit of 64` — recovery: `stopped expanding this macro invocation`; byte range: `34..39`
+- `expansion step limit exceeded (possible infinite macro loop)` — recovery: `stopped expanding; the rest of the document was typeset without macro expansion`; byte range: `40..48`
 
 Positioned text items:
 
-- `Visible` — byte range `26..33`
-- `Tail.` — byte range `40..45`
+- `Visible` — byte range `32..39`
+- `Tail.` — byte range `49..54`
 
 ## undeclared macro replacement parameter
 
@@ -454,7 +435,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `macro replacement references #1 but that argument is not declared` — recovery: `omitted the unavailable argument`; byte range: `31..36`
+- `Illegal parameter number in definition of \oops.` — recovery: `continued expanding after the problem`; byte range: `0..11`
 
 Positioned text items:
 

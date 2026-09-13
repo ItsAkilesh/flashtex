@@ -26,6 +26,7 @@ pub mod exact;
 pub mod images;
 pub mod inflate;
 pub mod json;
+pub mod navigation;
 pub mod protocol;
 pub mod raster;
 pub mod reader;

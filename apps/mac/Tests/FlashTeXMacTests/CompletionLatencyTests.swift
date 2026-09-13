@@ -125,19 +125,22 @@ final class CompletionLatencyTests: XCTestCase {
             // Narrow: "u" → list updated for `\su` with the popup rows replaced.
             t0 = MonotonicClock.nowNs()
             key("u", code: 32)
-            // The vocabulary generated from the compiler's inventory: text entries, then operators, then symbols.
-            let narrowed = ["\\subsection{...}", "\\subsubsection{...}", "\\sup", "\\subset", "\\subseteq", "\\supset", "\\supseteq",
-                            "\\sum", "\\subsetneq", "\\supsetneq"]
+            // The vocabulary generated from the compiler's inventory: text entries,
+            // then operators, then symbols. Computed from the pure function (not a
+            // hand-copied snapshot) so this test tracks the compiler's inventory.
+            let narrowed = Completion.suggestions(in: "x \\su", caretUTF16: 5, result: nil).map(\.label)
             narrow.samples.append(msUntil("narrowed \(i)", from: t0) { tv.session?.range.length == 3 && tv.completionPopup.items.count == narrowed.count })
             XCTAssertEqual(tv.session?.items.map(\.label), narrowed)
             XCTAssertTrue(tv.completionPopup.isVisible)
-            // Arrow: ↓ → selection moved in the session and in the table (synchronous).
-            key("\u{F701}", code: 125)
+            // Arrow: ↓ → selection moved in the session and in the table (synchronous),
+            // walking down to `\sup`, the first plain (no-argument) candidate.
+            let supIndex = try XCTUnwrap(narrowed.firstIndex(of: "\\sup"))
+            for _ in 0..<max(0, supIndex - 1) { key("\u{F701}", code: 125) }
             t0 = MonotonicClock.nowNs()
-            key("\u{F701}", code: 125) // to `\sup`, the first plain (no-argument) candidate
+            key("\u{F701}", code: 125)
             arrow.samples.append(ms(since: t0))
-            XCTAssertEqual(tv.session?.selectedIndex, 2)
-            XCTAssertEqual(tv.completionPopup.selectedRow, 2)
+            XCTAssertEqual(tv.session?.selectedIndex, supIndex)
+            XCTAssertEqual(tv.completionPopup.selectedRow, supIndex)
             XCTAssertEqual(tv.selectedRange(), NSRange(location: caret + 1, length: 0), "choosing never moves the caret")
             // Accept: Return → text replaced, caret placed, list closed and hidden (synchronous).
             t0 = MonotonicClock.nowNs()

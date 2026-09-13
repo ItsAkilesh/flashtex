@@ -651,8 +651,8 @@ fn layout_is_deterministic() {
 /// TeX badness (tex.web 108) r = 819200sp x 297 / 753664sp = 322,
 /// (322^3 + 2^17) / 2^18 = 127 <= 200 (100 x 1.284 would round to 128), and
 /// the paragraph is 2 + 2 words.
-/// The set line still only has its real 1.5pt of stretch, so like TeX's hpack
-/// it is reported "Underfull \hbox (badness 10000)" citing both boxes.
+/// The set line still only has its real 1.5pt of stretch, so TeX's hpack sets
+/// it to the full measure at ratio 12.5/1.5 and it is reported "Underfull \hbox (badness 10000)" citing both boxes.
 #[test]
 fn emergency_stretch_enables_a_third_pass_and_reports_underfull() {
     let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, "aaaa bbbb cccc dddd");
@@ -670,11 +670,12 @@ fn emergency_stretch_enables_a_third_pass_and_reports_underfull() {
     assert_eq!(with.lines[0].runs.len(), 2);
     assert!(close(with.breaks[0].ratio, 12.5 / 11.5));
     assert_eq!(with.breaks[0].badness, 127.0);
-    // Real glue: 2.5 + (12.5/11.5) x 1.5 = 4.13pt space; set width 44.13 < 55.
-    assert!(close(
-        with.lines[0].runs[1].x,
-        20.0 + 2.5 + 12.5 / 11.5 * 1.5
-    ));
+    // hpack sets the chosen line with its real 1.5pt of stretch: glue_set =
+    // 12.5/1.5, a 15pt space, and the line is exactly the 55pt measure.
+    assert!(close(with.lines[0].runs[1].x, 20.0 + 2.5 + 12.5));
+    assert!(close(with.lines[0].ratio, 12.5 / 1.5));
+    assert!(close(with.lines[0].set_width, 55.0));
+    assert_eq!(with.lines[0].badness, 10000.0);
     assert!(with.stats.overfull.is_empty());
     assert_eq!(with.diagnostics.len(), 1);
     let d = &with.diagnostics[0];
