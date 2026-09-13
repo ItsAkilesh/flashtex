@@ -262,7 +262,11 @@ pub enum TableEntry {
     RuleColor(ct::ColorSpec),
     DoubleRuleSepColor(ct::ColorSpec),
     Section(ct::LongtableSection),
-    Caption { items: Vec<Item>, number: Option<u32>, span: Span },
+    /// longtable `\caption` (`\LT@makecaption`): a `\multicolumn` row over
+    /// every column holding a `\parbox[t]\LTcapwidth`. `box_` is that
+    /// parbox once the typesetter has set it; until then the entry has no
+    /// extent.
+    Caption { items: Vec<Item>, number: Option<u32>, span: Span, box_: Option<CaptionBox> },
     PageBreak,
 }
 
@@ -345,7 +349,28 @@ pub fn from_compiler(t: &ct::Tabular, lengths: TableLengths, size_cpt: u16, item
             ct::Entry::RuleColor { color } => TableEntry::RuleColor(color.clone()),
             ct::Entry::DoubleRuleSepColor { color } => TableEntry::DoubleRuleSepColor(color.clone()),
             ct::Entry::Section { kind, .. } => TableEntry::Section(*kind),
-            ct::Entry::Caption { content, number, span } => TableEntry::Caption { items: items_of(content, false), number: *number, span: *span },
+            ct::Entry::Caption { content, number, span } => {
+                // `\LT@c@ption` sets `#1{#2: }#3`: `\fnum@table` is
+                // `\tablename~\thetable`, with a tie, and `\caption*`
+                // (`number` `None`) drops the whole prefix.
+                let mut items = Vec::new();
+                if let Some(n) = number {
+                    items.extend(crate::adapter::command_words(&format!("{} {n}:", crate::floats::FloatKind::Table.name()), *span));
+                    if let Some(Item::Space { no_break, .. }) = items.get_mut(1) {
+                        *no_break = true;
+                    }
+                    // The space after `:` carries TeX's space factor
+                    // (`\sfcode`\:` = 2000), so it takes the face's
+                    // `\fontdimen7` extra space.
+                    items.push(Item::Space {
+                        style: crate::adapter::TextStyle::default(),
+                        factor: crate::adapter::space_factor(':', 1000),
+                        no_break: false,
+                    });
+                }
+                items.extend(items_of(content, false));
+                TableEntry::Caption { items, number: *number, span: *span, box_: None }
+            }
             ct::Entry::PageBreak { .. } => TableEntry::PageBreak,
         });
     }
@@ -495,6 +520,20 @@ pub struct Placed {
     pub slot: Slot,
     pub x: f64,
     pub baseline: f64,
+}
+
+/// A longtable caption's `\parbox[t]\LTcapwidth` once it is set
+/// (`\LT@makecaption`, longtable.sty 475-485). `\parbox[t]` is a `\vtop`:
+/// its reference point is the first line's baseline, so `height` is that
+/// line's height and `depth` everything below it — the remaining lines,
+/// the last line's depth and the closing `\vskip\baselineskip`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CaptionBox {
+    /// `\LTcapwidth`: the parbox is centred on the table, and a caption
+    /// that fits on one line is centred inside it.
+    pub width: f64,
+    pub height: f64,
+    pub depth: f64,
 }
 
 /// A filled rule; `top` is relative to the table's baseline (y down).
@@ -904,6 +943,26 @@ pub fn layout_with(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics, cols: &W
             TableEntry::MoreCmidRules => {}
             TableEntry::RuleColor(color) => rule_color = Some(color.clone()),
             TableEntry::DoubleRuleSepColor(color) => gap_color = Some(color.clone()),
+            // `\LT@makecaption`: `\LT@mcol\LT@cols c{\hbox to\z@{\hss
+            // <parbox> \hss}}` — a row like any other, so it takes the
+            // `\@arstrut`, and a zero-width box centred in the table, so a
+            // wide caption never widens a column.
+            TableEntry::Caption { box_: Some(b), .. } => {
+                let height = m.strut_height.max(b.height);
+                let depth = m.strut_depth.max(b.depth);
+                first_height.get_or_insert(height);
+                let baseline = y + height;
+                band_baseline = Some(baseline);
+                placed.push(Placed {
+                    row: usize::MAX,
+                    cell: index,
+                    slot: Slot::Content,
+                    x: (box_width - b.width) / 2.0,
+                    baseline,
+                });
+                y += height + depth;
+                last_depth = depth;
+            }
             // The longtable block (`crate::longtable`) handles these.
             TableEntry::Section(_) | TableEntry::Caption { .. } | TableEntry::PageBreak => {}
         }

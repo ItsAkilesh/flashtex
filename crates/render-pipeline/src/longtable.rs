@@ -145,7 +145,12 @@ pub fn chunk_geometry(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics, cols:
     let picked: Vec<Vec<MCell>> = global_rows.iter().map(|r| rows.get(*r).cloned().unwrap_or_default()).collect();
     let mut geometry = table::layout_with(&item, &picked, m, cols, table::Options { longtable: true });
     for p in &mut geometry.placed {
-        p.row = global_rows.get(p.row).copied().unwrap_or(p.row);
+        if p.row == usize::MAX {
+            // A caption is keyed by its entry index, not by a row.
+            p.cell = indices.get(p.cell).copied().unwrap_or(p.cell);
+        } else {
+            p.row = global_rows.get(p.row).copied().unwrap_or(p.row);
+        }
     }
     for b in &mut geometry.bands {
         b.entry = indices.get(b.entry).copied().unwrap_or(b.entry);
