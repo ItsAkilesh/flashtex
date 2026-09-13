@@ -68,10 +68,13 @@ EXTRA = [
     ("dashleftarrow@", "ord", "msam", 0x4C, ["21E0"], "amsfonts.sty:92"),
     ("widehat@", "ord", "msbm", 0x5B, ["0302"], "amsfonts.sty:81"),
     ("widetilde@", "ord", "msbm", 0x5D, ["0303"], "amsfonts.sty:85"),
+    # msbm10.tfm successors of "5B/"5D (`\mathaccent` grows along them).
+    ("widehat@@", "ord", "msbm", 0x5C, ["0302"], "msbm10.tfm"),
+    ("widetilde@@", "ord", "msbm", 0x5E, ["0303"], "msbm10.tfm"),
 ]
 SKIP = {"angle", "hbar", "mho", "sqsubset", "sqsupset", "rightleftharpoons"}
 ALIASES = [("restriction", "upharpoonright"), ("Doteq", "doteqdot"), ("doublecup", "Cup"),
-           ("doublecap", "Cap"), ("llless", "lll"), ("gggtr", "ggg"), ("Box", None)]
+           ("doublecap", "Cap"), ("llless", "lll"), ("gggtr", "ggg")]
 
 
 def otf(path):

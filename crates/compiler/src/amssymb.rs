@@ -270,6 +270,8 @@ pub const SYMBOLS: &[AmsSymbol] = &[
     AmsSymbol { name: "dashleftarrow@", text: "\u{21E0}", class: SymbolClass::Ord, font: SymbolFont::Msam, slot: 0x4C, width_em: 0.500002, face: Face::NewComputerModernMath, source: "amsfonts.sty:92" },
     AmsSymbol { name: "widehat@", text: "\u{0302}", class: SymbolClass::Ord, font: SymbolFont::Msbm, slot: 0x5B, width_em: 1.888895, face: Face::LatinModernMath, source: "amsfonts.sty:81" },
     AmsSymbol { name: "widetilde@", text: "\u{0303}", class: SymbolClass::Ord, font: SymbolFont::Msbm, slot: 0x5D, width_em: 1.888895, face: Face::LatinModernMath, source: "amsfonts.sty:85" },
+    AmsSymbol { name: "widehat@@", text: "\u{0302}", class: SymbolClass::Ord, font: SymbolFont::Msbm, slot: 0x5C, width_em: 2.333341, face: Face::LatinModernMath, source: "msbm10.tfm" },
+    AmsSymbol { name: "widetilde@@", text: "\u{0303}", class: SymbolClass::Ord, font: SymbolFont::Msbm, slot: 0x5E, width_em: 2.333341, face: Face::LatinModernMath, source: "msbm10.tfm" },
 ];
 
 /// `\global\let` aliases of `amssymb.sty` (68, 90, 145, 147, 157, 159).
