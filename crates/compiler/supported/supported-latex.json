@@ -13,6 +13,7 @@
     {"name": "emph", "mode": "text", "origin": "text_style", "arguments": "{...}", "description": "emphasis: toggles italic", "renders": true},
     {"name": "textit", "mode": "text", "origin": "text_style", "arguments": "{...}", "description": "italic text", "renders": true},
     {"name": "textsl", "mode": "text", "origin": "text_style", "arguments": "{...}", "description": "slanted text (typeset as italic)", "renders": true},
+    {"name": "textsc", "mode": "text", "origin": "text_style", "arguments": "{...}", "description": "small capitals (upright in the Core 14 layout)", "renders": true},
     {"name": "textup", "mode": "text", "origin": "text_style", "arguments": "{...}", "description": "upright text", "renders": true},
     {"name": "texttt", "mode": "text", "origin": "text_style", "arguments": "{...}", "description": "typewriter text", "renders": true},
     {"name": "textrm", "mode": "text", "origin": "text_style", "arguments": "{...}", "description": "roman text", "renders": true},
@@ -52,6 +53,7 @@
     {"name": "mdseries", "mode": "text", "origin": "text_style", "arguments": "", "description": "switches to medium weight", "renders": true},
     {"name": "itshape", "mode": "text", "origin": "text_style", "arguments": "", "description": "switches to italic", "renders": true},
     {"name": "slshape", "mode": "text", "origin": "text_style", "arguments": "", "description": "switches to slanted (typeset as italic)", "renders": true},
+    {"name": "scshape", "mode": "text", "origin": "text_style", "arguments": "", "description": "switches to small capitals (upright in the Core 14 layout)", "renders": true},
     {"name": "upshape", "mode": "text", "origin": "text_style", "arguments": "", "description": "switches to upright", "renders": true},
     {"name": "ttfamily", "mode": "text", "origin": "text_style", "arguments": "", "description": "switches to typewriter", "renders": true},
     {"name": "rmfamily", "mode": "text", "origin": "text_style", "arguments": "", "description": "switches to roman", "renders": true},
@@ -60,6 +62,7 @@
     {"name": "bf", "mode": "text", "origin": "text_style", "arguments": "", "description": "LaTeX 2.09 form: bold roman", "renders": true},
     {"name": "it", "mode": "text", "origin": "text_style", "arguments": "", "description": "LaTeX 2.09 form: italic roman", "renders": true},
     {"name": "sl", "mode": "text", "origin": "text_style", "arguments": "", "description": "LaTeX 2.09 form: slanted roman", "renders": true},
+    {"name": "sc", "mode": "text", "origin": "text_style", "arguments": "", "description": "LaTeX 2.09 form: small-caps roman (upright in the Core 14 layout)", "renders": true},
     {"name": "tt", "mode": "text", "origin": "text_style", "arguments": "", "description": "LaTeX 2.09 form: upright typewriter", "renders": true},
     {"name": "rm", "mode": "text", "origin": "text_style", "arguments": "", "description": "LaTeX 2.09 form: upright roman", "renders": true},
     {"name": "sf", "mode": "text", "origin": "text_style", "arguments": "", "description": "LaTeX 2.09 form: upright sans-serif", "renders": true},
@@ -487,7 +490,7 @@
       "Source tikz: tokens of tikz.sty, tikz.code.tex (tikz.sty 2025-08-29 v3.1.11a (3.1.11a); pgf 3.1.11a); dependency baseline: pgf, pgfrcs, pgfcore, graphicx, keyval, graphics, trig, pgfsys, xcolor, pgfcomp-version-0-65, pgfcomp-version-1-18, pgffor, pgfkeys, pgfmath"
     ],
     "rows": [
-      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 104, "percent": 25.4},
+      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 106, "percent": 25.9},
       {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
       {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 35, "percent": 34.3},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
@@ -500,6 +503,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 194, "percent": 19.3}
+    "total": {"canonical": 1003, "supported": 196, "percent": 19.5}
   }
 }

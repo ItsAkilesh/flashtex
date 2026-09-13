@@ -42,7 +42,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "vskip", "hskip", "kern", "enspace", "thinspace", "negthinspace", "hline", "cline",
     "multicolumn", "tabularnewline", "arraystretch",
     // Fonts and text symbols.
-    "textsc", "scshape", "textsuperscript", "textsubscript", "underbar", "sout", "uline", "LaTeX",
+    "textsuperscript", "textsubscript", "underbar", "sout", "uline", "LaTeX",
     "LaTeXe", "TeX", "dag", "ddag", "S", "P", "copyright", "pounds", "textbackslash",
     "textasciitilde", "textasciicircum", "textbar", "textless", "textgreater", "textendash",
     "textemdash", "textbullet", "textperiodcentered", "textquoteleft", "textquoteright",
