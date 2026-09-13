@@ -9,11 +9,46 @@ cargo test --manifest-path crates/bridge/Cargo.toml
 cargo run --manifest-path crates/bridge/Cargo.toml -- --store /private/app-data/captures
 ```
 
-The private journal must be outside the repository. Grok is disabled by default;
-`--enable-grok` plus an explicit `capture_convert` request enables one request
-using `XAI_API_KEY` from the native credential adapter. `FLASHTEX_GROK_MODEL` can
-select a model; the default is `grok-4.6`. No provider fallback or purchase occurs.
-The Responses request uses a strict JSON schema, image input and `store:false`.
+The private journal must be outside the repository.
+
+## Conversion providers
+
+Conversion is disabled by default. `--conversion-provider <none|xai|openai-compatible>`
+plus an explicit `capture_convert` request enables one request (with bounded
+retries) to that provider. `--enable-grok` is a deprecated alias for
+`--conversion-provider xai`, kept for one release. Passing both with different
+providers is `invalid_arguments`. The bridge never reads
+`FLASHTEX_CONVERSION_PROVIDER`: an environment variable alone cannot enable a
+network call. The Mac's credential adapter supplies the rest per request:
+
+| Variable | `xai` | `openai-compatible` |
+|---|---|---|
+| `FLASHTEX_AI_API_KEY` | key, then legacy `XAI_API_KEY` | key, optional only for a loopback base URL |
+| `FLASHTEX_CONVERSION_MODEL` | model, then legacy `FLASHTEX_GROK_MODEL`, then `grok-4.6` | required (`invalid_model`) |
+| `FLASHTEX_CONVERSION_BASE_URL` | default `https://api.x.ai/v1` → `/responses` | required → `/chat/completions` |
+| `FLASHTEX_CONVERSION_MAX_ATTEMPTS` | 1–5, default 3 (legacy `FLASHTEX_GROK_MAX_ATTEMPTS`) | same |
+
+Base URLs must be `https://`, or `http://` on `127.0.0.1`, `localhost` or
+`[::1]`, so a local model server works without a key. No provider fallback or
+purchase occurs. Both providers get the same prompt, strict JSON schema, image
+input, proposal validation, LaTeX safety scan and review gate. xAI uses the
+Responses API with `store:false`. The openai-compatible provider uses Chat
+Completions with a strict `json_schema` `response_format`.
+
+`capture_proposal` and `capture_status` carry `provider_evidence`
+(`{provider, model, response_id, usage:{input_tokens, output_tokens, total_tokens}}`,
+or `null`), which is also persisted in the capture journal. It never contains
+the key, the image or the source context. `src/provider.rs` is the seam. See
+[`docs/design/on-device-conversion.md`](../../docs/design/on-device-conversion.md)
+for the planned on-device provider. `tests/conversion_provider.rs` drives both
+providers through the real binary against a loopback stub that replays
+`tests/fixtures/providers/*.json`, with no network access.
+
+Until FT-066, `context::build` accepted at most 64 `supported_features`. The
+compiler-derived list has more than 100 entries, so every real
+`capture_convert` through the binary failed with `context_too_large` before
+reaching a provider. The bound is now 1024 entries and 16 KiB total
+(`features::tests::derived_list_fits_the_conversion_context_limits`).
 References: [xAI image understanding](https://docs.x.ai/developers/model-capabilities/images/understanding)
 and [structured outputs](https://docs.x.ai/developers/model-capabilities/text/structured-outputs).
 

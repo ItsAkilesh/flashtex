@@ -81,7 +81,14 @@ fn relative_include_fallback_and_traversal_rejection() {
 fn selection_limit_and_feature_limit_are_preserved() {
     let d = doc("main.tex", &"a".repeat(9000));
     assert!(context::build(&d, 0, 9000, std::iter::once(&d), vec![]).is_err());
-    assert!(context::build(&d, 0, 0, std::iter::once(&d), vec!["x".into(); 65]).is_err());
+    // The compiler-derived list (>100 entries) must fit; count and total-byte
+    // bounds still reject an unreasonable list.
+    assert!(context::build(&d, 0, 0, std::iter::once(&d), vec!["x".into(); 65]).is_ok());
+    let over_count = vec!["x".to_string(); context::MAX_SUPPORTED_FEATURES + 1];
+    assert!(context::build(&d, 0, 0, std::iter::once(&d), over_count).is_err());
+    let over_bytes = vec!["x".repeat(128); context::MAX_SUPPORTED_FEATURE_BYTES / 128 + 1];
+    assert!(context::build(&d, 0, 0, std::iter::once(&d), over_bytes).is_err());
+    assert!(context::build(&d, 0, 0, std::iter::once(&d), vec!["x".repeat(129)]).is_err());
 }
 #[test]
 fn omission_is_explicit_and_never_clips_declaration() {
