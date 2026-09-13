@@ -378,6 +378,8 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
                     out.push_str(",\"font\":");
                     out.push_str(if crate::lm_math::covers(&it.text) {
                         LM_MATH_FONT_JSON
+                    } else if crate::newcm_math::covers(&it.text) {
+                        NEWCM_MATH_FONT_JSON
                     } else {
                         font_json_literal(it.font)
                     });
@@ -406,6 +408,10 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
 /// `font-hints-v1` family for glyphs bound to `crate::lm_math`.
 const LM_MATH_FONT_JSON: &str =
     r#"{"family":"Latin Modern Math","style":"normal","weight":"normal"}"#;
+
+/// `font-hints-v1` family for glyphs bound to `crate::newcm_math`.
+const NEWCM_MATH_FONT_JSON: &str =
+    r#"{"family":"New Computer Modern Math","style":"normal","weight":"normal"}"#;
 
 fn font_json_literal(font: Font) -> &'static str {
     match font {
@@ -815,5 +821,7 @@ mod font_literal_tests {
         value.set("weight", str_("normal"));
         value.set("style", str_("normal"));
         assert_eq!(LM_MATH_FONT_JSON, json::write(&value));
+        value.set("family", str_(crate::newcm_math::FAMILY));
+        assert_eq!(NEWCM_MATH_FONT_JSON, json::write(&value));
     }
 }
