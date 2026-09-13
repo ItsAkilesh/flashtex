@@ -15,11 +15,30 @@ flashtex fonts                          # which fonts/metrics this binary resolv
 flashtex --version
 ```
 
+## Install
+
+This is the engine + CLI, independent of the Mac app — it runs on macOS or
+Linux, with no TeX installation:
+
+```sh
+curl -fsSL https://flash-tex.github.io/flashtex/install-cli.sh | sh
+```
+
+Detects your OS/CPU, downloads the matching
+`flashtex-cli-<version>-<platform>.tar.gz` from
+[Releases](https://github.com/flash-tex/flashtex/releases), verifies it
+against that release's `SHA256SUMS` (refuses on a mismatch), and installs
+`flashtex` into `~/.local/bin` plus its fonts/metrics into
+`~/.local/share/flashtex`. Flags: `--prefix DIR` (e.g. `/usr/local`, may need
+sudo), `--version vX.Y.Z` (default: the latest release), `--uninstall`. For
+the Mac app instead (SwiftUI GUI, bundles this same CLI), see
+[Getting started](README.md#install).
+
 Where it lives:
 
 | Install | Path |
 |---|---|
-| CLI tarball (`flashtex-cli-<version>-<platform>.tar.gz` from [Releases](https://github.com/flash-tex/flashtex/releases)) | `bin/flashtex`, fonts and metrics in `share/flashtex/` — extract anywhere; `bin/flashtex install-cli` links it into `/usr/local/bin` |
+| `install-cli.sh`, or the CLI tarball extracted by hand (`flashtex-cli-<version>-<platform>.tar.gz` from [Releases](https://github.com/flash-tex/flashtex/releases)) | `bin/flashtex`, fonts and metrics in `share/flashtex/` — extract anywhere; `bin/flashtex install-cli` links it into `/usr/local/bin` |
 | Mac app | `/Applications/FlashTeX.app/Contents/MacOS/flashtex-cli` (uses the app's `Contents/Resources/{Fonts,texmf}`) |
 | Source build | `crates/flashtex-cli/target/release/flashtex` — add `--font-dir apps/mac/Fonts` and `FLASHTEX_TFM_DIRS=apps/mac/Fonts/texmf/fonts/tfm/public/lm`, or install the tarball layout ([Fonts](#fonts-and-metrics)) |
 
@@ -27,6 +46,8 @@ The older helpers (`flashtex-render`, `flashtex-compiler`, `flashtex-pdf`,
 `flashtex-pdf-exact`) still ship next to it and are described
 [below](#helper-binaries); `flashtex` is the same engine with a proper front
 end, and its `worker` subcommand is byte-for-byte the protocol the IDE speaks.
+Any editor or CI can drive that same JSON Lines protocol directly — see
+[Extending FlashTeX](../extensibility.md).
 
 ## Subcommands
 

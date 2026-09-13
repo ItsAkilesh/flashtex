@@ -148,39 +148,59 @@ for i in 1 2 3 4 5; do /usr/bin/time -p /Library/TeX/texbin/pdflatex -interactio
 
 ## Installation
 
-Requirements: **macOS 14 Sonoma or later on Apple Silicon** (arm64). No Intel,
-Windows or Linux app; no TeX installation is needed — the app bundles the
-engine, Latin Modern fonts and TeX metrics.
+FlashTeX is two things — a LaTeX engine with a command line, and a native Mac
+app built on it — and they install separately.
 
-**One line** (downloads the pinned release DMG, verifies its SHA-256, installs
-into `/Applications` or `~/Applications`, strips quarantine):
+### A. Engine + CLI (macOS or Linux)
+
+Each release ships `flashtex-cli-<version>-<platform>.tar.gz`: macOS arm64
+always, Linux x86_64 best-effort (see [CI/CD](docs/ci-cd.md)). The tarball has
+`bin/flashtex` plus the `flashtex-render`, `flashtex-compiler`,
+`flashtex-pdf` and `flashtex-pdf-exact` helpers, with the fonts and metrics
+they need in `share/flashtex/`.
+
+```sh
+curl -fsSL https://flash-tex.github.io/flashtex/install-cli.sh | sh
+```
+
+Detects your OS/CPU, verifies the download against the release's
+`SHA256SUMS` (refuses on a mismatch), and installs into `~/.local/bin` +
+`~/.local/share/flashtex` — pass `--prefix /usr/local` for a system install,
+`--version vX.Y.Z` for another release, or `--uninstall` to remove it. Or
+extract the tarball yourself and run `bin/flashtex build main.tex` directly;
+`bin/flashtex install-cli` links it into `/usr/local/bin`.
+
+### B. Engine + native GUI (macOS only, for now)
+
+Requirements: **macOS 14 Sonoma or later on Apple Silicon** (arm64). No TeX
+installation needed — the app bundles the engine, Latin Modern fonts and TeX
+metrics, plus this same CLI at `Contents/MacOS/flashtex-cli`.
 
 ```sh
 curl -fsSL https://flash-tex.github.io/flashtex/install.sh | sh
 ```
 
-**Disk image.** Download `FlashTeX.dmg` from
+Downloads the pinned release DMG, verifies its SHA-256, installs into
+`/Applications` (or `~/Applications`) and strips the quarantine flag. Or
+download `FlashTeX.dmg` from
 [Releases](https://github.com/flash-tex/flashtex/releases) and drag FlashTeX
-into Applications. The app is ad-hoc signed, not notarized: the first time,
-**right-click → Open** and confirm.
+into Applications yourself — the app is ad-hoc signed, not notarized, so the
+first time: **right-click → Open** and confirm.
 
-**Engine + CLI only (macOS or Linux).** Each release ships
-`flashtex-cli-<version>-macos-arm64.tar.gz` (and a best-effort
-`linux-x86_64` tarball): `bin/flashtex` with the fonts and metrics it needs
-in `share/flashtex/`, plus the `flashtex-render`, `flashtex-compiler`,
-`flashtex-pdf` and `flashtex-pdf-exact` helpers. Extract it anywhere and run
-`bin/flashtex build main.tex`; `bin/flashtex install-cli` links it into
-`/usr/local/bin`. The Mac app bundles the same `flashtex` binary in
-`Contents/MacOS`.
+Other platforms aren't ruled out, just not built yet: the GUI is SwiftUI today
+(macOS only), but the CLI already runs anywhere it's built for, and any editor
+or CI can drive the engine over the documented JSON Lines `worker` protocol
+(see [Extending FlashTeX](docs/extensibility.md)).
 
-**From source** (Xcode Command Line Tools with Swift 6, stable Rust from rustup;
-there is no root Cargo workspace, each crate builds on its own):
+**From source** (either path; Xcode Command Line Tools with Swift 6, stable
+Rust from rustup — there is no root Cargo workspace, each crate builds on its
+own):
 
 ```sh
 git clone https://github.com/flash-tex/flashtex.git && cd flashtex
-cargo build --release --manifest-path crates/flashtex-cli/Cargo.toml   # the engine + CLI
+cargo build --release --manifest-path crates/flashtex-cli/Cargo.toml   # A: the engine + CLI
 scripts/ci/build-helpers.sh                 # release-builds the CLI and every helper crate
-apps/mac/scripts/make-app.sh --install      # packages FlashTeX.app into ~/Applications
+apps/mac/scripts/make-app.sh --install      # B: packages FlashTeX.app into ~/Applications
 apps/mac/scripts/make-app.sh --dmg          # or: build a disk image
 ```
 
