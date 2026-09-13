@@ -399,7 +399,7 @@ enum EditorIntelligence {
         static let beyondCompiler: Set<String> = [
             "chapter", "part", "paragraph", "autoref", "cref", "citep", "citet",
             "def", "newline", "hline", "toprule", "midrule",
-            "bottomrule", "multicolumn", "verb", "today", "%", "$", "&", "#", "_", "{", "}",
+            "bottomrule", "multicolumn", "verb", "%", "$", "&", "#", "_", "{", "}",
             "geometry", "onehalfspacing", "doublespacing",
         ]
         static let environmentsBeyondCompiler: Set<String> = [
