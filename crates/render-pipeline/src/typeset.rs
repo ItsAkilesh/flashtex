@@ -291,6 +291,7 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
 }
 
 pub mod floatpage;
+mod toc;
 
 pub struct Laid {
     pub blocks: Vec<BuiltBlock>,
@@ -305,6 +306,8 @@ pub struct Laid {
     /// one-sided first-column left edge the blocks were assembled at (an even
     /// page's `\evensidemargin`, the second column's offset).
     pub line_dx: Vec<Vec<f64>>,
+    /// `\thepage` of every page (empty without a resolved class frame).
+    pub page_text: Vec<String>,
 }
 
 pub struct Context<'a> {
@@ -4340,7 +4343,30 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                     after_heading = true;
                 }
             }
-            Block::Chapter { number, items, title, span, mark } => {
+            Block::TocEntry(entry) => {
+                if let Some(mut b) = ctx.toc_entry_block(entry) {
+                    // `\addpenalty` does nothing under `\@nobreak` (right
+                    // after the list's heading).
+                    if after_heading {
+                        b.vertical.penalty_before = None;
+                    }
+                    // `\addvspace`: only the excess over the previous skip.
+                    if entry.style.addvspace {
+                        if let (Some(before), Some(prev)) = (b.vertical.space_before, blocks.last_mut()) {
+                            if let Some(last) = prev.vertical.space_after {
+                                if last.0 < before.0 {
+                                    prev.vertical.space_after = None;
+                                } else {
+                                    b.vertical.space_before = None;
+                                }
+                            }
+                        }
+                    }
+                    blocks.push(b);
+                    after_heading = false;
+                }
+            }
+            Block::Chapter { number, appendix, items, title, span, mark } => {
                 let Some((g, spec)) = geo.and_then(|g| g.chapter.as_ref().map(|c| (g, c))) else { continue };
                 // `\chapter`: `\clearpage`, `\thispagestyle{plain}`, then
                 // `\@chapter`'s `\chaptermark` before `\@makechapterhead`.
@@ -4348,6 +4374,14 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 if let (true, Some(rule)) = (*mark, mark_rules.iter().find(|r| r.command == "chapter")) {
                     events.push((blocks.len(), mark_event(rule, number.as_deref(), title, doc.secnumdepth), *span));
                 }
+                // `\appendix` makes `\@chapapp` `\appendixname`.
+                let appendix_spec;
+                let spec = if *appendix {
+                    appendix_spec = flashtex_class_geometry::ChapterSpec { prefix: "Appendix", ..spec.clone() };
+                    &appendix_spec
+                } else {
+                    spec
+                };
                 let built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size);
                 if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
                     chapter_starts.push((blocks.len(), events.len()));
@@ -4791,6 +4825,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
             src,
         ));
     }
+    let page_text = counters.iter().map(|(n, numbering)| numbering.format(*n)).collect();
     Laid {
         blocks,
         pages,
@@ -4799,6 +4834,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         images,
         float_labels,
         line_dx,
+        page_text,
     }
 }
 
@@ -5085,6 +5121,19 @@ pub fn label_pages(laid: &Laid) -> BTreeMap<String, u32> {
         out.insert(key.clone(), *page);
     }
     out
+}
+
+/// `\thepage` of every contents-list entry, from the pages of its synthetic
+/// label (`crate::toc::key`) in `pages` ([`label_pages`] of `laid`).
+pub fn toc_pages(laid: &Laid, pages: &BTreeMap<String, u32>) -> BTreeMap<String, String> {
+    pages
+        .iter()
+        .filter(|(key, _)| crate::toc::is_key(key))
+        .map(|(key, page)| {
+            let text = laid.page_text.get((*page as usize).wrapping_sub(1)).cloned().unwrap_or_else(|| page.to_string());
+            (key.clone(), text)
+        })
+        .collect()
 }
 
 /// Converts the placed pages into the display list.

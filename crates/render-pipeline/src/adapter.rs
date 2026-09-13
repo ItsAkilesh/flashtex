@@ -283,6 +283,8 @@ pub enum Block {
     /// `number` is `None` for `\chapter*`.
     Chapter {
         number: Option<String>,
+        /// After `\appendix`: `\@chapapp` is `\appendixname`.
+        appendix: bool,
         items: Vec<Item>,
         title: String,
         span: Span,
@@ -309,6 +311,9 @@ pub enum Block {
     /// A page-style or mark command in the body, attached to the material
     /// that follows it.
     Chrome { event: ChromeEvent, span: Span },
+    /// One `\tableofcontents`/`\listoffigures`/`\listoftables` entry line
+    /// (`crate::toc`).
+    TocEntry(Box<crate::toc::TocEntry>),
     /// A `tikzpicture`, found from the source bytes (the compiler reports the
     /// environment as unknown and sets its body as text, which is dropped
     /// here): its bounding box as one box on a line of its own, flush left
@@ -411,6 +416,11 @@ pub struct Doc {
 pub struct Labels {
     pub values: BTreeMap<String, String>,
     pub pages: BTreeMap<String, u32>,
+    /// `\thepage` of every contents entry (`toc::key`) in the previous pass;
+    /// kept apart from `pages` so the paragraph cache key is unaffected.
+    pub toc_pages: BTreeMap<String, String>,
+    /// Captioned floats: the `\listoffigures`/`\listoftables` entries.
+    pub floats: Vec<crate::toc::FloatEntry>,
 }
 
 fn inlines_of(block: &CBlock) -> &[Inline] {
@@ -433,8 +443,7 @@ fn inlines_of(block: &CBlock) -> &[Inline] {
 ///   source line (the compiler's tab-expanded text, `Mono` family) joined
 ///   by `\\`; the pipeline sets it in the body face, justified off, so
 ///   the lines keep their order but not Courier's fixed pitch.
-/// - `\tableofcontents`: article's own `\section*{\contentsname}` heading
-///   without the entries (the page builder has no contents pass).
+/// - `\tableofcontents`: kept; `crate::toc` sets the list.
 /// - `\maketitle`: three centred paragraphs (title at `\LARGE`, authors
 ///   and date at `\large`, the sizes `\@maketitle` declares) carried by the
 ///   compiler's `TextStyle::size`, which the pipeline already reads; the
@@ -516,24 +525,9 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<C
                     content,
                 });
             }
-            CBlock::TableOfContents { span } => {
-                limitations.push((
-                    "unsupported_block",
-                    *span,
-                    "\\tableofcontents set as its `Contents` heading only: the pipeline has no contents pass (entries and page numbers omitted)".to_string(),
-                ));
-                out.push(CBlock::Heading {
-                    level: 1,
-                    number: String::new(),
-                    number_span: *span,
-                    content: vec![Inline::Text {
-                        text: "Contents".to_string(),
-                        span: *span,
-                        style: CStyle::BOLD,
-                        space_before: true,
-                    }],
-                });
-            }
+            // Set by `crate::toc` from the source command; the block stays
+            // as the position a following `\clearpage` is measured from.
+            CBlock::TableOfContents { .. } => out.push(block.clone()),
             CBlock::TitleBlock { title, authors, date } if stash_titles => titles.push((title.clone(), authors.clone(), date.clone())),
             CBlock::TitleBlock { title, authors, date } => {
                 if let Some(at) = first {
@@ -635,7 +629,7 @@ impl Labels {
         }
         Labels {
             values,
-            pages: BTreeMap::new(),
+            ..Labels::default()
         }
     }
 
@@ -752,6 +746,26 @@ pub fn adapt_cached(
     let mut noindent_at: Option<usize> = None;
     // report/book: `\thesection` is `\thechapter.\arabic{section}`.
     let (mut chapter_no, mut section_nos) = (0u32, [0u32; 3]);
+    // `\appendix`: `\thesection` (article) or `\thechapter` (report/book)
+    // becomes `\@Alph`; `chapter_label` is `\thechapter`.
+    let mut appendix = false;
+    let mut chapter_label = String::new();
+    // Contents lists (`crate::toc`): every `\contentsline` record, where
+    // each list stands, and the label keys of records whose page is that of
+    // the next block. Nothing is collected without a list.
+    let toc_active = commands.iter().any(|c| matches!(c.kind, BodyKind::ContentsList(_)));
+    let toc_settings = crate::toc::Settings::read(source, has_chapters);
+    // `\@sect` writes `\numberline` up to the class's `secnumdepth`
+    // (article.cls 3, report/book.cls 2) when the document declares one.
+    let toc_secnumdepth = counter(source, "secnumdepth").unwrap_or(match (explicit_class.is_some(), has_chapters) {
+        (true, true) => 2,
+        (true, false) => 3,
+        (false, _) => options.default_secnumdepth,
+    });
+    let mut toc_records: Vec<crate::toc::Record> = Vec::new();
+    let mut toc_lists: Vec<(usize, crate::toc::ListKind, Span, bool)> = Vec::new();
+    let mut toc_pending: Vec<String> = Vec::new();
+    let mut chapter_starts: Vec<(usize, String)> = Vec::new();
     let mut after_heading = false;
     // Last source span of the previous paragraph block (None after a
     // heading or rule), for rejoining a display with its paragraph.
@@ -781,13 +795,37 @@ pub fn adapt_cached(
                         let number = (!*starred && mainmatter).then(|| {
                             chapter_no += 1;
                             section_nos = [0; 3];
-                            chapter_no.to_string()
+                            chapter_label = if appendix {
+                                flashtex_class_geometry::Numbering::UpperAlph.format(i64::from(chapter_no))
+                            } else {
+                                chapter_no.to_string()
+                            };
+                            chapter_starts.push((cmd.start, chapter_label.clone()));
+                            chapter_label.clone()
                         });
+                        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+                        let mut items = words_from_source(source, entry_doc, title.0, title.1);
+                        if toc_active {
+                            if let Some(n) = &number {
+                                // report.cls `\@chapter`: `\addcontentsline{toc}{chapter}{\protect\numberline{\thechapter}#1}`.
+                                let key = crate::toc::key(toc_records.len());
+                                toc_records.push(crate::toc::Record {
+                                    list: crate::toc::ListKind::Toc,
+                                    level: 0,
+                                    number: Some((n.clone(), span)),
+                                    title: items.clone(),
+                                    key: key.clone(),
+                                });
+                                toc_pending.push(key);
+                            }
+                            items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
+                        }
                         blocks.push(Block::Chapter {
                             number,
-                            items: words_from_source(source, entry_doc, title.0, title.1),
+                            appendix,
+                            items,
                             title: plain_text(&source[title.0..title.1]),
-                            span: Span::in_document(entry_doc, cmd.start, cmd.end),
+                            span,
                             mark: !*starred,
                         });
                         after_heading = true;
@@ -832,6 +870,39 @@ pub fn adapt_cached(
                         }
                         prev_para_end = None;
                     }
+                    BodyKind::ContentsList(kind) => {
+                        // `\newpage` (etc.) right before the command breaks
+                        // before the list's heading.
+                        let before = source[..cmd.start].trim_end();
+                        let eject = ["\\newpage", "\\clearpage", "\\cleardoublepage", "\\pagebreak"].iter().any(|c| before.ends_with(c));
+                        toc_lists.push((blocks.len(), *kind, Span::in_document(entry_doc, cmd.start, cmd.end), eject));
+                    }
+                    BodyKind::AddContentsLine { list, level, text } => {
+                        if let (true, Some(level)) = (toc_active, crate::toc::level_of(level)) {
+                            let (number, title) = crate::toc::contentsline_text(source, entry_doc, text.0, text.1);
+                            let key = crate::toc::key(toc_records.len());
+                            toc_records.push(crate::toc::Record {
+                                list: *list,
+                                level,
+                                number,
+                                title,
+                                key: key.clone(),
+                            });
+                            // The write lands on the page of the heading just
+                            // set, or of the next block.
+                            match blocks.last_mut() {
+                                Some(Block::Heading { items, .. } | Block::Chapter { items, .. }) if after_heading => items.push(Item::Label { key }),
+                                _ => toc_pending.push(key),
+                            }
+                        }
+                    }
+                    BodyKind::Appendix => {
+                        // article.cls/report.cls `\appendix`: the section
+                        // (and chapter) counters restart.
+                        appendix = true;
+                        chapter_no = 0;
+                        section_nos = [0; 3];
+                    }
                 }
             }
         }
@@ -842,13 +913,20 @@ pub fn adapt_cached(
                 number_span,
                 content,
             } => {
-                let number: String = if has_chapters && !number.is_empty() && (1..=3).contains(&level) {
+                let number: String = if (has_chapters || appendix) && !number.is_empty() && (1..=3).contains(&level) {
                     let l = usize::from(level) - 1;
                     section_nos[l] += 1;
                     for n in &mut section_nos[l + 1..] {
                         *n = 0;
                     }
-                    std::iter::once(chapter_no).chain(section_nos[..=l].iter().copied()).map(|n| n.to_string()).collect::<Vec<_>>().join(".")
+                    let mut parts: Vec<String> = section_nos[..=l].iter().map(|n| n.to_string()).collect();
+                    if has_chapters {
+                        parts.insert(0, if chapter_no == 0 { "0".to_string() } else { chapter_label.clone() });
+                    } else {
+                        // article.cls `\appendix`: `\thesection` is `\@Alph\c@section`.
+                        parts[0] = flashtex_class_geometry::Numbering::UpperAlph.format(i64::from(section_nos[0]));
+                    }
+                    parts.join(".")
                 } else {
                     number.to_string()
                 };
@@ -874,7 +952,24 @@ pub fn adapt_cached(
                     push_segment(&mut items, number.to_string(), chars, TextStyle::default());
                     items.push(Item::Quad { em: 1.0 });
                 }
-                items.extend(items_for(content, true));
+                let content_items = items_for(content, true);
+                if toc_active {
+                    // `\@sect`: `\addcontentsline{toc}{<level>}{\numberline{<number>}<title>}`
+                    // for an unstarred heading (no `\numberline` past `secnumdepth`).
+                    if !number.is_empty() {
+                        let key = crate::toc::key(toc_records.len());
+                        toc_records.push(crate::toc::Record {
+                            list: crate::toc::ListKind::Toc,
+                            level: level as i8,
+                            number: (level <= toc_secnumdepth).then(|| (number.clone(), number_span)),
+                            title: content_items.iter().filter(|i| !matches!(i, Item::Label { .. })).cloned().collect(),
+                            key: key.clone(),
+                        });
+                        toc_pending.push(key);
+                    }
+                    items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
+                }
+                items.extend(content_items);
                 blocks.push(Block::Heading {
                     level,
                     items,
@@ -917,7 +1012,8 @@ pub fn adapt_cached(
                 for inline in inlines {
                     unsupported_inlines(inline, &mut limitations);
                 }
-                let items = items_for(inlines, false);
+                let mut items = items_for(inlines, false);
+                items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
                 for item in items {
@@ -1041,6 +1137,11 @@ pub fn adapt_cached(
                 after_heading = false;
             }
         }
+    }
+    // The contents lists, now that every record is known.
+    for (at, kind, span, eject) in toc_lists.into_iter().rev() {
+        let list = crate::toc::list_blocks(kind, span, eject, &toc_settings, &toc_records, labels, &chapter_starts);
+        blocks.splice(at..at, list);
     }
     // `\end{...}`: the last paragraph of a run of same-style paragraphs
     // closes the environment (two adjacent environments of one style are
@@ -1289,6 +1390,11 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
             }
             CBlock::VSpace { pt } => {
                 pending_vspace += pt;
+                continue;
+            }
+            CBlock::TableOfContents { span } => {
+                prev_end = Some(*span);
+                prev_vmode = true;
                 continue;
             }
             CBlock::Rule { span } => {
@@ -2758,6 +2864,13 @@ pub enum BodyKind {
     MakeTitle,
     /// book.cls `\frontmatter`/`\mainmatter`/`\backmatter`.
     Matter(Matter),
+    /// `\tableofcontents`, `\listoffigures`, `\listoftables`.
+    ContentsList(crate::toc::ListKind),
+    /// `\addcontentsline{<ext>}{<level>}{<entry>}`: `text` is the entry
+    /// argument's inner range.
+    AddContentsLine { list: crate::toc::ListKind, level: String, text: (usize, usize) },
+    /// `\appendix`.
+    Appendix,
 }
 
 /// Which book.cls matter command (lines 284-298).
@@ -2836,6 +2949,23 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
                 group(k).map(|(s, e, after)| (BodyKind::Chapter { starred, title: (s, e) }, after))
             }
             "noindent" => Some((BodyKind::NoIndent, j)),
+            "tableofcontents" => Some((BodyKind::ContentsList(crate::toc::ListKind::Toc), j)),
+            "listoffigures" => Some((BodyKind::ContentsList(crate::toc::ListKind::Lof), j)),
+            "listoftables" => Some((BodyKind::ContentsList(crate::toc::ListKind::Lot), j)),
+            "appendix" => Some((BodyKind::Appendix, j)),
+            "addcontentsline" => group(j).and_then(|(s1, e1, a1)| {
+                let list = crate::toc::ListKind::from_ext(source[s1..e1].trim())?;
+                let (s2, e2, a2) = group(a1)?;
+                let (s3, e3, a3) = group(a2)?;
+                Some((
+                    BodyKind::AddContentsLine {
+                        list,
+                        level: source[s2..e2].trim().to_string(),
+                        text: (s3, e3),
+                    },
+                    a3,
+                ))
+            }),
             "pagenumbering" => group(j).and_then(|(s, e, after)| {
                 use flashtex_class_geometry::Numbering;
                 let n = match source[s..e].trim() {
@@ -2877,7 +3007,7 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
 fn strip_command_text(blocks: &mut Vec<CBlock>, document: DocumentId, commands: &[BodyCommand]) {
     let ranges: Vec<(usize, usize)> = commands
         .iter()
-        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_) | ChromeEvent::SetPage(_) | ChromeEvent::PageNumbering(_))))
+        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::AddContentsLine { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_) | ChromeEvent::SetPage(_) | ChromeEvent::PageNumbering(_))))
         .map(|c| (c.start, c.end))
         .collect();
     if ranges.is_empty() {
@@ -2898,9 +3028,14 @@ fn strip_command_text(blocks: &mut Vec<CBlock>, document: DocumentId, commands: 
 
 /// Body-font words of `source[start..end]` split at whitespace, every
 /// character carrying its own bytes.
-fn words_from_source(source: &str, document: DocumentId, start: usize, end: usize) -> Vec<Item> {
+pub(crate) fn words_from_source(source: &str, document: DocumentId, start: usize, end: usize) -> Vec<Item> {
+    words_at(&source[start..end], document, start)
+}
+
+/// [`words_from_source`] of `text`, which starts at byte `start` of its
+/// document.
+pub(crate) fn words_at(text: &str, document: DocumentId, start: usize) -> Vec<Item> {
     let mut items = Vec::new();
-    let text = &source[start..end];
     let mut offset = 0usize;
     for word in text.split_whitespace() {
         let at = start + offset + text[offset..].find(word).unwrap_or(0);
@@ -3778,6 +3913,7 @@ mod tests {
                 Block::Chrome { .. } => "M".to_string(),
                 Block::Title { .. } => "T".to_string(),
                 Block::ClearPage { .. } => "N".to_string(),
+                Block::TocEntry(..) => "E".to_string(),
             })
             .collect();
         // `Problem 1 \hfill \normalfont[4 points]`: one fill, no space after it.
