@@ -183,7 +183,7 @@ same data is available as JSON from `flashtex-compiler --supported`.
 <!-- BEGIN GENERATED supported-latex: `flashtex-compiler --supported markdown`; do not edit by hand -->
 ## Supported LaTeX
 
-This compiler implements a finite LaTeX subset: 197 text-mode and 521 math-mode command entries, 43 environments and 6 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
+This compiler implements a finite LaTeX subset: 201 text-mode and 521 math-mode command entries, 46 environments and 10 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
 
 Regenerate with `crates/compiler/scripts/render_supported_latex.sh`; `cargo test --test supported_latex` fails when this section is stale.
 
@@ -251,7 +251,7 @@ Canonical sources:
 | `\ref` | `{key}` | number of the labelled item |
 | `\pageref` | `{key}` | page number of the labelled item |
 | `\eqref` | `{key}` | parenthesised equation number of the labelled item |
-| `\caption` | `{...}` | numbered "Figure N:" caption inside figure |
+| `\caption` | `{...}` | numbered "Figure N:" caption inside figure; "Algorithm N" inside algorithm |
 | `\item` |  | entry of an itemize or enumerate list |
 | `\url` | `{url}` | monospaced URL text; links are not clickable |
 | `\href` | `{url}{text}` | link text; links are not clickable |
@@ -386,6 +386,10 @@ Canonical sources:
 | `\textbraceright` |  | text symbol \textbraceright: OT1 }, T1 } (tex-text-encoding; unavailable is a LaTeX error) |
 | `\newtheorem` | `{env}[counter]{name}` | defines a numbered theorem-like environment (amsthm) |
 | `\theoremstyle` | `{style}` | selects the amsthm style for following \newtheorem |
+| `\algnewcommand` | `{\name}[n]{body}` | algorithmicx definition: keyword texts (\algorithmicrequire ...), \algorithmicindent, \alglinenumber and \item[...] label commands |
+| `\algrenewcommand` | `{\name}[n]{body}` | algorithmicx redefinition of a keyword text, \algorithmicindent or \alglinenumber |
+| `\algsetup` | `{key=value}` | algorithmic indent, linenosize and linenodelimiter |
+| `\floatname` | `{float}{name}` | the caption name of the algorithm float |
 | `\\` |  | line break; an optional [length] is consumed |
 | `\,` |  | text kern .16667em (\thinspace) |
 | `\!` |  | text kern -.16667em (\negthinspace) |
@@ -589,6 +593,9 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `multline` | text | multi-line display; only the last line is numbered |
 | `multline*` | text | multi-line display |
 | `figure` | text | numbered captions; no floating |
+| `algorithm` | text | algorithm.sty float: "Algorithm N" captions (plain, ruled, boxed); no floating in this layout |
+| `algorithm*` | text | two-column algorithm float |
+| `algorithmic` | text | algorithmic or algpseudocode statements: nested blocks, bold keywords, line numbers, comments, procedures |
 | `center` | text | centred paragraphs |
 | `flushleft` | text | left-aligned paragraphs |
 | `flushright` | text | right-aligned paragraphs |
@@ -628,6 +635,10 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `array` | `` | tabular >{} <{} !{} m b w columns, \newcolumntype and \extrarowheight |
 | `enumitem` | `shortlabels` | enumerate label templates; \setlist itemsep/topsep |
 | `geometry` | `letterpaper, margin=1in` | matches the fixed US Letter page with 1in margins |
+| `algorithm` | `plain, ruled, boxed, section` | the algorithm float: style, counter reset and float name options |
+| `algorithmic` | `noend` | \STATE, \IF, \FOR, \WHILE, \REPEAT, \REQUIRE, \COMMENT |
+| `algpseudocode` | `noend` | \State, \If, \For, \While, \Procedure, \Function, \Call, \Comment |
+| `algorithmicx` | `` | the layout algpseudocode builds on |
 
 Any other package, or these packages with other options, is recorded and reported as recognised but not implemented.
 <!-- END GENERATED supported-latex -->
