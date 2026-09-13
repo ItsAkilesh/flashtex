@@ -812,6 +812,165 @@ reported as `no glyph at word "?"` — the itemize bullet, i.e. the same
 missing-glyph substitution this box reports for `ℚ ℝ ℤ ∖ ⟹`, not a geometry
 error. They need a MacTeX host to judge and are left for the owner.
 
+## Session 3 (NixOS PC): harness fix, origin/main, and stage 3 continued
+
+### The oracle harnesses were falsifying every lane's gate numbers
+
+Fixed first, because it invalidates measurements everywhere. Five corpus
+harnesses built the subprocess environment as
+
+    env = dict(os.environ, FLASHTEX_FONT_DIRS=args.fonts, FLASHTEX_TFM_DIRS=args.fonts)
+
+`dict(os.environ, KEY=value)` *overrides* KEY, so a correctly exported
+`FLASHTEX_TFM_DIRS` was discarded; and the value replacing it is the outline
+directory, which holds no `.tfm` at all. The renderer then fell back to
+OpenType advances -- and the pass verdict never consulted the diagnostics the
+harness had already collected, so the fallback scored. The same binary reads
+0/59 or 59/59 on amsmath depending only on whether metrics resolve, and the
+bad run still exits "recovered".
+
+New shared module `tools/visual-oracle/fontenv.py`:
+
+- `render_env()` treats `--fonts`/`--tfm-dirs` as defaults for an *unset*
+  variable, never an override; both accept colon lists.
+- When the metrics dirs are neither exported nor passed, `tfm_dirs_for()`
+  walks `<fonts>/texmf` for directories holding `.tfm` files. `--fonts` alone
+  could not reach the bundled texmf before, because the renderer's
+  bundle-relative roots are `<exe>/../Resources/texmf` and `<exe>/texmf`.
+- `font_diagnostics()` matches the codes that mean the geometry is not the
+  reference one (`font_unavailable`, `required_metrics_unavailable`,
+  `tfm_missing`, `ec_metrics_unavailable`, `math_font_unavailable`,
+  `math_metrics_opentype`). Any hit fails the fixture loudly and prints the
+  resolved directories. `font_outline_substituted` is advisory: it changes
+  the outline, not the metrics these harnesses compare.
+
+Applied to `amsmath_corpus`, `amssymb_corpus`, `tabular_corpus`,
+`xcolor_oracle`, `display-placement`, `tools/real-world-corpus/run.py`
+(which also now exits non-zero on a font diagnostic) and this lane's
+`measure.py`.
+
+There are **two** font-resolution paths and the environment feeds only one:
+the rooted required-metrics reader accepts only an exe-relative `texmf` tree
+and refuses symlinked components. Machines disagree about whether the env
+alone satisfies it -- it did here, it does not on the kernel-math lane's box
+-- which is exactly why the gate asserts on the diagnostics rather than on
+the configuration. Recorded in `fontenv.py`'s docstring.
+
+### `cargo test` was silently skipping most of the render-pipeline suite
+
+The same class of bug in Rust. `lm_available()` is guarded on ~110 times
+across 40 test files, always as `if !lm_available() { eprintln!("skipping");
+return; }`. libtest captures `eprintln!`, so with no Latin Modern resolvable
+those tests neither failed nor printed: they just did not run, and the suite
+reported ok. Measured here: **187 passed / 1 failed with no `FLASHTEX_*` set,
+177 passed / 11 failed with fonts configured.** The first number is hollow,
+not better.
+
+Both definitions of `lm_available` now panic with an actionable message
+instead of returning false; `FLASHTEX_ALLOW_FONTLESS_TESTS=1` restores the
+old behaviour for a deliberately fontless environment. This is what let
+`cargo test --test incremental` -- the test that matters most for cache work
+-- pass without ever executing.
+
+### Merged this session
+
+`origin/main` `89e49fed` (18 commits past the base), then **#156**, **#160**,
+**#168**, **#167**. Each merged individually, gates re-run, then committed;
+the per-merge accounts are in the commit messages.
+
+Recurring technique, as for #154 and #170: almost every conflict was a
+*misalignment*, where git shared a common tail between this branch's
+additions and the PR's, so each side ended mid-construct and a plain "keep
+both" would not compile. Each was rebuilt as complete separate pieces.
+
+Three findings worth carrying forward:
+
+- **Incremental cache tags collide silently.** #156 numbered its five new
+  `hash_items` arms 10-14, already used here for
+  Footnote/TextBox/SetLength/LengthGlue/HSs; renumbered to 19-23. #167 and
+  #156 both added `Item::Glue`/`Item::Penalty` with *different shapes*, and
+  git merged both definitions into the enum with no conflict marker at all --
+  only the build noticed. `Penalty` was the same thing twice (folded);
+  `Glue` was not (#156's is points plus interword spaces, #167's is
+  em-scaled `\newblock` glue), so #167's became `Item::EmGlue`. The two
+  pre-existing collisions (Logo/Table at 9, Footnote/Rule at 10) are left
+  for #182, which replaces the hand-numbering with `mem::discriminant`.
+
+- **A merged-as-written PR can regress a gate silently.** #156 guards display
+  continuation with `*prev_style == ParaStyle::Plain && prev_list.is_none()`.
+  Taken literally, display-placement fell 33/36 -> 31/36, every new failure a
+  display inside a list or quote shifted 12-20 pt. Those two conjuncts are
+  #156's older, coarser form of two conditions this branch already states
+  more precisely two lines above (`same_list`, `styled == *prev_style`).
+  Only `&& !theorem_head` was kept; back to 33/36. Found by measuring, not
+  by reading.
+
+- **Markers whose dependency has landed must be removed, and say so.** #168's
+  `PENDING` list and #167's `oracle_after_repin!` both assert their fixtures
+  *still* differ, so they fail when the awaited work arrives. #168's
+  `39-heading.tex` now matches (#151 landed): siunitx is 36/39 exact, up
+  from the 35/39 the PR reports. #167's 14 natbib/`.bbl` fixtures now pass
+  (stage 1 re-pinned the compiler): bibliography_oracle runs 21 and passes
+  20, the one residual being #167's own documented `\Citet` `Va` kern.
+
+### #162 is NOT merged: it needs reconstruction, not a merge
+
+Attempted and aborted cleanly (`git merge --abort`; nothing committed).
+
+#162's float-box layout is built on the float model that **#135 replaced**.
+This branch's `floatpage.rs` sets a float body through `set_box` and
+`flush_line` (an `bx`/`line`/`HItem` model); #162's is the earlier
+`y`/`prev_depth`/`elems` model, and it has no `set_box`/`flush_line` at all.
+git made that look mergeable and silently spliced #162's four new
+`FloatPart` arms (`Rule`, `Kern`, `StyleCaption`, `AlgLine`) **into the
+middle of `addvspace`**, over that function's tail, with no conflict marker.
+
+On top of that, merging it needs: `FloatSpec::wide` (added after #162
+branched) on its `FloatKind::Algorithm` spec; a `Block::Algorithmic` arm in
+`floats.rs`; `Elem::Rule` handling in the page builder; and its four
+`FloatPart` kinds re-expressed in the `set_box`/`flush_line` model.
+
+That is an engineering task on the float-body layout, not a merge, and it
+should be a fresh lane with the float owner -- the same call the previous
+integrator made for #145. Left for the dispatcher to assign.
+
+### Gate numbers at the end of this session
+
+NixOS PC, TeX Live 2025 (not MacTeX), bundled symlink-free tree plus the
+nix-store `ec` for `ectt*`. No committed oracle data was regenerated. Every
+number below was taken with the fixed harness and reports **zero font
+diagnostics**.
+
+| gate | result |
+|---|---|
+| amsmath corpus | 59/59 |
+| amssymb corpus | 38/39 |
+| tabular corpus | 59/59 |
+| xcolor oracle | 28/28 |
+| display-placement | 33/36 (the 3 are real content differences) |
+| graphics oracle | 24/24 |
+| theorem oracle | pass |
+| multicol oracle | pass |
+| siunitx oracle | 36/39 exact (3 pending, each naming its dependency) |
+| bibliography oracle | 20/21 (1 documented residual) |
+| thebibliography oracle | pass |
+| HW1 / HW2 | 3 pages each, 0 overfull, 0 errors, 0 diagnostics |
+| real-world corpus | 10/10 recovered, every page count = its committed MacTeX reference |
+
+`cargo test --release` in render-pipeline, fonts configured: 11 failures.
+**Eight of them also fail on unmerged `origin/main` on this machine** --
+controlled by checking out `origin/main` in this worktree and running the
+same suite: the four NewCM `math_symbols` controls, `metrics_provenance`,
+`font_families_oracle`, `footnotes_oracle` and `page_frame_oracle`. The
+other three (`float_bodies`, `headings`, `list`) have no baseline on a
+non-MacTeX host; they do not exist on main. **No failure is attributable to
+this session's merges.**
+
+`page_frame_against_pdflatex` was not on the previous session's known-failure
+list; it is now measured as pre-existing, failing identically on unmerged
+main. Its mismatches are confined to running-head small-caps x positions
+while every page count, edge and body line matches.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.
