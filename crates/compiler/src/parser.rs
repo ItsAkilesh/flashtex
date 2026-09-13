@@ -549,6 +549,8 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "usepackage",
     "newcolumntype",
     "arraybackslash",
+    "arrayrulecolor",
+    "doublerulesepcolor",
     "setlist",
     "newcommand",
     "renewcommand",
@@ -895,6 +897,9 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         counters: crate::xref::Counters::article(),
         equation_counter: 0,
         figure_counter: 0,
+        table_counter: 0,
+        table_rule_color: None,
+        table_double_rule_sep_color: None,
         footnote_counter: 0,
         current_counter: None,
         seen_labels: HashMap::new(),
@@ -1007,6 +1012,11 @@ struct P<'a> {
     counters: crate::xref::Counters,
     equation_counter: u32,
     figure_counter: u32,
+    /// LaTeX's `table` counter (stepped by every `longtable`).
+    table_counter: u32,
+    /// colortbl `\arrayrulecolor`/`\doublerulesepcolor` (global assignments).
+    table_rule_color: Option<crate::tabular::ColorSpec>,
+    table_double_rule_sep_color: Option<crate::tabular::ColorSpec>,
     /// LaTeX's `footnote` counter; article never resets it.
     footnote_counter: u32,
     current_counter: Option<String>,
@@ -1261,6 +1271,22 @@ impl P<'_> {
             // array.sty 247: `\let\\\tabularnewline`; this parser already
             // ends table rows at `\\` inside `p`-column entries.
             "arraybackslash" => {}
+            // colortbl.sty 156-165: global colour of later rules and
+            // `\doublerulesep` gaps (inside a table the row scanner takes them).
+            "arrayrulecolor" | "doublerulesepcolor" => {
+                let color = self.color_argument(name, span);
+                if !self.colortbl() {
+                    self.diags.push(Diagnostic::error(
+                        format!("\\{name} needs the colortbl package (or xcolor with the table option)"),
+                        Some(span),
+                        Some("ignored the colour".into()),
+                    ));
+                } else if name == "arrayrulecolor" {
+                    self.table_rule_color = Some(color);
+                } else {
+                    self.table_double_rule_sep_color = Some(color);
+                }
+            }
             "setlist" => self.set_list(span),
             // Definitions run in the expansion pass (`crate::expansion`); the
             // parser only sees their expansions, never these names.
@@ -1948,6 +1974,9 @@ impl P<'_> {
         };
         let in_preamble = self.has_document && !self.in_body;
         match target.as_str() {
+            // longtable's lengths are read from the source by the render
+            // pipeline's longtable layout.
+            _ if matches!(target.as_str(), "LTleft" | "LTright" | "LTpre" | "LTpost" | "LTcapwidth") => {}
             "parskip" if in_preamble => self.parskip_pt = Some(pt),
             "parindent" if in_preamble && pt == 0.0 => {}
             "parindent" if in_preamble => self.diags.push(Diagnostic::warning(
@@ -2076,6 +2105,12 @@ impl P<'_> {
             return;
         }
         self.packages.extend(packages.iter().cloned());
+        // xcolor.sty's `table` option loads colortbl (and so array).
+        if packages.iter().any(|package| package == "xcolor")
+            && options.split(',').any(|option| option.trim() == "table")
+        {
+            self.packages.push("colortbl".into());
+        }
         if packages.iter().any(|package| package == "fontenc") {
             if let Some(encoding) = text_builtins::fontenc_encoding(&options) {
                 self.font_encoding = encoding;
@@ -2296,6 +2331,10 @@ impl P<'_> {
             }
             if matches!(environment.as_str(), "tabular" | "tabular*") && self.in_body {
                 self.tabular_environment(span, &environment, para);
+                return;
+            }
+            // Package environments (inventoried with their package).
+            if self.in_body && self.package_table_environment(span, &environment, blocks, para) {
                 return;
             }
             if matches!(
@@ -4168,6 +4207,10 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // array.sty's preamble builder, column types and row strut are
         // implemented (parser/tabular.rs, crate::tabular); no options.
         "array" => options.is_empty(),
+        // Table packages (parser/tabular.rs, crate::tabular): booktabs rules
+        // and spacing, longtable page-breaking tables, multirow entries and
+        // colortbl row/column/cell colours and rule colours.
+        "booktabs" | "longtable" | "multirow" | "colortbl" => options.is_empty(),
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep
