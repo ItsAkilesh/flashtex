@@ -690,8 +690,9 @@ fn compile(id: &str, payload: &Value) -> Value {
     }
     if let Some(span) = first_lm_math_span {
         diags.push(Diagnostic::warning(
-            "blackboard bold, \\setminus and \\Longrightarrow use Latin Modern Math glyphs \
-             (unicode-math design); their widths differ from pdfLaTeX's msbm10/cmsy10",
+            "blackboard bold, \\setminus, \\Longrightarrow and other amssymb/latexsym symbols \
+             with no base-14 glyph use Latin Modern Math glyphs (unicode-math design); their \
+             widths differ from pdfLaTeX's msbm10/cmsy10",
             Some(span),
             Some("drew the real glyphs; this is not pixel parity with pdfLaTeX".into()),
         ));

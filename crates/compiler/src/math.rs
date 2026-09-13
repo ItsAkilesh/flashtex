@@ -35,6 +35,17 @@ pub struct MathAtom {
     pub span: Span,
     pub superscript: Option<MathList>,
     pub subscript: Option<MathList>,
+    /// Forces this atom's TeXbook Chapter 17 spacing class rather than
+    /// deriving it from the nucleus (see `atom_class`).
+    ///
+    /// Needed whenever the same glyph must carry two different classes
+    /// depending on which command produced it (`\bot` is Ord where `\perp`'s
+    /// identical U+22A5 glyph is Rel; `\bigtriangleup` is Bin where
+    /// `\triangle`'s identical U+25B3 glyph is Ord), and by the
+    /// `\mathbin`/`\mathrel`/`\mathord`/`\mathop`/`\mathopen`/`\mathclose`/
+    /// `\mathpunct` family, which boxes an arbitrary math list as one atom of
+    /// the stated class.
+    pub(crate) class_override: Option<AtomClass>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,6 +101,13 @@ pub enum Nucleus {
         accent: Accent,
         body: MathList,
     },
+    /// `\mathbin{...}`, `\mathrel{...}`, and the rest of the `\math*` class
+    /// family (TeXbook Chapter 17): an arbitrary math list boxed as a single
+    /// atom, laid out like a bare `{...}` group. The enclosing [`MathAtom`]'s
+    /// `class_override` carries the forced spacing class; this variant only
+    /// exists so a multi-atom argument stays one atom for spacing purposes
+    /// instead of flattening into the surrounding list.
+    Group(MathList),
 }
 
 /// The atom class plain TeX gives a `\big` delimiter: `\bigl` opens, `\bigr`
@@ -345,6 +363,7 @@ impl MathParser<'_> {
                             span: token.span,
                             superscript: None,
                             subscript: None,
+                            class_override: None,
                         }],
                     };
                 }
@@ -502,6 +521,57 @@ impl MathParser<'_> {
             return text_atom(operator.to_string(), span);
         }
         match name.as_str() {
+            // Plain TeX's `\iff` and mathtools's `\implies`/`\impliedby` are
+            // macros that expand to a thick space (`\;`, 5mu), the long
+            // double arrow, and another thick space — not a bare glyph — so
+            // they need their own arms rather than a `COMMAND_GLYPHS` row.
+            "iff" | "implies" | "impliedby" => {
+                let arrow = match name.as_str() {
+                    "iff" => "⟺",
+                    "implies" => "⟹",
+                    _ => "⟸",
+                };
+                self.pending.push(symbol(arrow.into(), span));
+                self.pending.push(space(5.0 / 18.0, span));
+                space(5.0 / 18.0, span)
+            }
+            // `\bot` renders the exact same Symbol glyph as `\perp`
+            // (U+22A5), but is Ord where `\perp` is Rel; `symbol_class` is
+            // keyed by glyph, so the class must be forced on the atom instead
+            // of invented as a second glyph.
+            "bot" => MathAtom {
+                class_override: Some(AtomClass::Ord),
+                ..symbol("⊥".into(), span)
+            },
+            // `\bigtriangleup` renders `\triangle`'s exact glyph (U+25B3) but
+            // is Bin where `\triangle` is Ord; same fix as `\bot`/`\perp`.
+            "bigtriangleup" => MathAtom {
+                class_override: Some(AtomClass::Bin),
+                ..symbol("△".into(), span)
+            },
+            // TeXbook Chapter 17's `\mathbin`/`\mathrel`/... family: the
+            // argument is a full math list, boxed as one atom whose class is
+            // forced regardless of what its own contents would imply.
+            "mathbin" | "mathrel" | "mathord" | "mathop" | "mathopen" | "mathclose"
+            | "mathpunct" => {
+                let class = match name.as_str() {
+                    "mathbin" => AtomClass::Bin,
+                    "mathrel" => AtomClass::Rel,
+                    "mathop" => AtomClass::Op,
+                    "mathopen" => AtomClass::Open,
+                    "mathclose" => AtomClass::Close,
+                    "mathpunct" => AtomClass::Punct,
+                    _ => AtomClass::Ord,
+                };
+                let body = self.required_group(&name, span);
+                MathAtom {
+                    nucleus: Nucleus::Group(body),
+                    span,
+                    superscript: None,
+                    subscript: None,
+                    class_override: Some(class),
+                }
+            }
             "operatorname" => {
                 self.skip_star();
                 let (text, argument_span) = self.required_text_group("operatorname", span);
@@ -552,6 +622,7 @@ impl MathParser<'_> {
                     span,
                     superscript: None,
                     subscript: None,
+                    class_override: None,
                 }
             }
             "begin" => self.grid_environment(span),
@@ -562,6 +633,7 @@ impl MathParser<'_> {
                     span,
                     superscript: None,
                     subscript: None,
+                    class_override: None,
                 };
                 match index {
                     // The root index sits as a raised script ahead of the sign.
@@ -588,6 +660,7 @@ impl MathParser<'_> {
                     span,
                     superscript: None,
                     subscript: None,
+                    class_override: None,
                 }
             }
             "binom" | "dbinom" | "tbinom" => {
@@ -603,6 +676,7 @@ impl MathParser<'_> {
                     span,
                     superscript: None,
                     subscript: None,
+                    class_override: None,
                 }
             }
             "mathbf" | "textbf" => {
@@ -612,6 +686,7 @@ impl MathParser<'_> {
                     span: span.merge(argument_span),
                     superscript: None,
                     subscript: None,
+                    class_override: None,
                 }
             }
             "boxed" | "overline" | "underline" => {
@@ -626,6 +701,7 @@ impl MathParser<'_> {
                     span,
                     superscript: None,
                     subscript: None,
+                    class_override: None,
                 }
             }
             "tag" => {
@@ -652,6 +728,7 @@ impl MathParser<'_> {
                     span: span.merge(argument_span),
                     superscript: None,
                     subscript: None,
+                    class_override: None,
                 }
             }
             "quad" => space(QUAD_EM, span),
@@ -792,6 +869,7 @@ impl MathParser<'_> {
             span,
             superscript: None,
             subscript: None,
+            class_override: None,
         }
     }
 
@@ -1132,6 +1210,7 @@ impl MathParser<'_> {
                 left: left.into(),
                 right: right.into(),
             },
+            class_override: None,
             span,
             superscript: None,
             subscript: None,
@@ -1168,6 +1247,7 @@ fn symbol(text: String, span: Span) -> MathAtom {
         span,
         superscript: None,
         subscript: None,
+        class_override: None,
     }
 }
 
@@ -1234,6 +1314,7 @@ fn space(em: f64, span: Span) -> MathAtom {
         span,
         superscript: None,
         subscript: None,
+        class_override: None,
     }
 }
 
@@ -1320,11 +1401,12 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("uparrow", "↑"),
     ("downarrow", "↓"),
     ("leftrightarrow", "↔"),
-    ("implies", "⇒"),
+    // `\implies`/`\impliedby`/`\iff` are handled in `command_atom`: they
+    // expand to a thick space, a long double arrow, and another thick space
+    // (matching mathtools/plain TeX), not a bare glyph, so they are not rows
+    // here.
     ("Leftarrow", "⇐"),
-    ("impliedby", "⇐"),
     ("Leftrightarrow", "⇔"),
-    ("iff", "⇔"),
     ("Uparrow", "⇑"),
     ("Downarrow", "⇓"),
     ("therefore", "∴"),
@@ -1361,6 +1443,61 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     // Latin Modern Math resource (`crate::lm_math`), not approximated.
     ("setminus", "∖"),
     ("Longrightarrow", "⟹"),
+    // amssymb/latexsym symbols below have no base-14 Symbol glyph either;
+    // all are drawn from the pinned Latin Modern Math resource (see issue #62).
+    ("mp", "∓"),
+    ("ll", "≪"),
+    ("gg", "≫"),
+    ("simeq", "≃"),
+    ("vdots", "⋮"),
+    ("ddots", "⋱"),
+    ("lfloor", "⌊"),
+    ("rfloor", "⌋"),
+    ("lceil", "⌈"),
+    ("rceil", "⌉"),
+    ("oint", "∮"),
+    ("mapsto", "↦"),
+    ("ell", "ℓ"),
+    ("hbar", "ℏ"),
+    ("circ", "∘"),
+    ("parallel", "∥"),
+    ("nmid", "∤"),
+    ("nleq", "≰"),
+    ("ngeq", "≱"),
+    ("subsetneq", "⊊"),
+    ("supsetneq", "⊋"),
+    ("lesssim", "≲"),
+    ("gtrsim", "≳"),
+    ("triangleq", "≜"),
+    ("coloneqq", "≔"),
+    ("nexists", "∄"),
+    ("complement", "∁"),
+    ("rightsquigarrow", "⇝"),
+    ("hookrightarrow", "↪"),
+    ("leftrightarrows", "⇆"),
+    ("models", "⊨"),
+    ("vdash", "⊢"),
+    ("dashv", "⊣"),
+    ("top", "⊤"),
+    ("measuredangle", "∡"),
+    ("square", "□"),
+    ("blacksquare", "■"),
+    ("lozenge", "◊"),
+    ("checkmark", "✓"),
+    // HW2 follow-up (issue #62): the remaining long arrows, drawn from the
+    // pinned Latin Modern Math resource like `\Longrightarrow` above.
+    ("Longleftrightarrow", "⟺"),
+    ("longrightarrow", "⟶"),
+    ("longleftarrow", "⟵"),
+    ("Longleftarrow", "⟸"),
+    ("longleftrightarrow", "⟷"),
+    // `\triangle`, also from the pinned Latin Modern Math resource.
+    // `\bigtriangleup` shares this exact glyph with a forced Bin class (see
+    // `command_atom`), so it is not a second row here.
+    ("triangle", "△"),
+    ("bigtriangledown", "▽"),
+    // `\bot` shares `\perp`'s exact base-14 Symbol glyph above with a forced
+    // Ord class (see `command_atom`), so it is not a second row here.
 ];
 
 /// Named operators typeset as upright roman words (`\sin x`, `\lim_{x\to 0}`).
@@ -1384,6 +1521,10 @@ const DELIMITER_COMMANDS: &[&str] = &[
     "downarrow",
     "Uparrow",
     "Downarrow",
+    "lfloor",
+    "rfloor",
+    "lceil",
+    "rceil",
 ];
 
 fn text_atom(text: String, span: Span) -> MathAtom {
@@ -1392,6 +1533,7 @@ fn text_atom(text: String, span: Span) -> MathAtom {
         span,
         superscript: None,
         subscript: None,
+        class_override: None,
     }
 }
 
@@ -1436,7 +1578,7 @@ fn takes_display_limits(nucleus: &Nucleus) -> bool {
 
 /// TeX's atom classes (TeXbook Chapter 17), which drive inter-atom spacing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AtomClass {
+pub(crate) enum AtomClass {
     Ord,
     Op,
     Bin,
@@ -1450,12 +1592,19 @@ enum AtomClass {
 /// The class of `atom`, or `None` for explicit glue (`\,`, `\quad`), which
 /// TeX skips when pairing atoms for spacing.
 ///
-/// The parser does not keep TeX's class through `\operatorname`, so
-/// `\operatorname{...}` text is ordinary. `\left`/`\right` fences do keep a
-/// real class — including the invisible null delimiter, which is still an
-/// `Open`/`Close` atom for spacing purposes even though it draws nothing.
+/// The parser does not keep TeX's class through `\left`/`\right` or
+/// `\operatorname`, so a fence is classified by its glyph (open/close, not
+/// inner) — including the invisible null delimiter, which is still an
+/// `Open`/`Close` atom for spacing purposes even though it draws nothing —
+/// and `\operatorname{...}` text is ordinary. `atom.class_override` (set by
+/// `\bot`, `\bigtriangleup`, and the `\mathbin`-family commands) wins over
+/// any of that, including the explicit-glue case above, since an atom with
+/// a forced class is never the invisible glue those commands produce.
 fn atom_class(atom: &MathAtom) -> Option<AtomClass> {
     use AtomClass::*;
+    if let Some(class) = atom.class_override {
+        return Some(class);
+    }
     Some(match &atom.nucleus {
         Nucleus::Space { .. } if atom.superscript.is_none() && atom.subscript.is_none() => {
             return None
@@ -1488,13 +1637,24 @@ fn symbol_class(glyph: &str) -> AtomClass {
     match glyph {
         "=" | "<" | ">" | ":" | "≤" | "≥" | "≠" | "≈" | "≡" | "∼" | "≅" | "∝" | "⊥" | "∈" | "∉"
         | "∋" | "⊂" | "⊆" | "⊃" | "⊇" | "∣" | "→" | "←" | "↔" | "⇒" | "⇐" | "⇔" | "⟹" | "↑"
-        | "↓" | "⇑" | "⇓" | "∴" => Rel,
+        | "↓" | "⇑" | "⇓" | "∴"
+        // amssymb/latexsym relations, all drawn from the pinned Latin Modern
+        // Math resource (`crate::lm_math`).
+        | "≪" | "≫" | "≃" | "↦" | "∥" | "∤" | "≰" | "≱" | "⊊" | "⊋" | "≲" | "≳" | "≜" | "≔"
+        | "⇝" | "↪" | "⇆" | "⊨" | "⊢" | "⊣"
+        // HW2 follow-up: the remaining long arrows (issue #62), also from the
+        // pinned Latin Modern Math resource. `⊥` above is `\perp`'s glyph;
+        // `\bot` shares it but overrides the class to Ord (see `command_atom`).
+        | "⟺" | "⟶" | "⟵" | "⟸" | "⟷" => Rel,
         "+" | "-" | "−" | "*" | "±" | "×" | "÷" | "⋅" | "·" | "∗" | "∪" | "∩" | "∨" | "∧" | "⊕"
-        | "⊗" | "∖" => Bin,
-        "(" | "[" | "{" | "〈" | "⟨" => Open,
-        ")" | "]" | "}" | "〉" | "⟩" | "!" | "?" => Close,
+        | "⊗" | "∖" | "∓" | "∘"
+        // `\bigtriangledown`; `\bigtriangleup` shares `\triangle`'s glyph
+        // (Ord by default here) and overrides its class to Bin instead.
+        | "▽" => Bin,
+        "(" | "[" | "{" | "〈" | "⟨" | "⌊" | "⌈" => Open,
+        ")" | "]" | "}" | "〉" | "⟩" | "!" | "?" | "⌋" | "⌉" => Close,
         "," | ";" => Punct,
-        "∑" | "∏" | "∫" | "∫∫" | "∫∫∫" => Op,
+        "∑" | "∏" | "∫" | "∫∫" | "∫∫∫" | "∮" => Op,
         "⋅⋅⋅" => Inner,
         _ => Ord,
     }
@@ -1785,6 +1945,7 @@ fn layout_nucleus(
                 span: atom.span,
                 superscript: None,
                 subscript: None,
+                class_override: atom.class_override,
             },
             size,
             root_size,
@@ -2081,6 +2242,9 @@ fn layout_nucleus(
         Nucleus::Accent { accent, body } => {
             layout_accent(atom, *accent, body, size, root_size, level, diagnostics)
         }
+        // `\mathbin{...}` and kin: laid out exactly like a bare `{...}`
+        // group; only the enclosing atom's forced class differs.
+        Nucleus::Group(body) => layout_list(body, size, root_size, level, diagnostics),
     }
 }
 
@@ -2361,10 +2525,12 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
                 accent: *accent,
                 body: shift_list(body, delta),
             },
+            Nucleus::Group(inner) => Nucleus::Group(shift_list(inner, delta)),
         },
         span: shift(atom.span, delta),
         superscript: atom.superscript.as_ref().map(|l| shift_list(l, delta)),
         subscript: atom.subscript.as_ref().map(|l| shift_list(l, delta)),
+        class_override: atom.class_override,
     }
 }
 
@@ -3077,6 +3243,230 @@ mod spacing_tests {
             width(r"\sin", SIZE) + width("x", SIZE) + 3.0,
         );
     }
+
+    #[test]
+    fn new_relations_get_thick_space_like_other_relations() {
+        for command in [
+            "ll",
+            "gg",
+            "simeq",
+            "mapsto",
+            "parallel",
+            "nmid",
+            "nleq",
+            "ngeq",
+            "subsetneq",
+            "supsetneq",
+            "lesssim",
+            "gtrsim",
+            "triangleq",
+            "coloneqq",
+            "rightsquigarrow",
+            "hookrightarrow",
+            "leftrightarrows",
+            "models",
+            "vdash",
+            "dashv",
+        ] {
+            let glyph = command_glyph(command).unwrap();
+            // A space after a control word is swallowed by the lexer (like
+            // real TeX), so it safely separates the command from `b`.
+            let b = laid_out(&format!(r"a\{command} b"), SIZE);
+            close(x(&b, glyph), width("a", SIZE) + 5.0);
+            close(x(&b, "b"), x(&b, glyph) + width(glyph, SIZE) + 5.0);
+        }
+    }
+
+    #[test]
+    fn mp_and_circ_get_medium_space_like_other_binary_operators() {
+        for command in ["mp", "circ"] {
+            let glyph = command_glyph(command).unwrap();
+            let b = laid_out(&format!(r"a\{command} b"), SIZE);
+            close(x(&b, glyph), width("a", SIZE) + 4.0);
+            close(x(&b, "b"), x(&b, glyph) + width(glyph, SIZE) + 4.0);
+        }
+    }
+
+    #[test]
+    fn floor_and_ceiling_are_open_and_close_fences() {
+        // Open fences get no leading space; close fences get no trailing space.
+        let b = laid_out(r"a=\lfloor x\rfloor", SIZE);
+        close(x(&b, "⌊"), x(&b, "=") + width("=", SIZE) + 5.0);
+        close(x(&b, "x"), x(&b, "⌊") + width("⌊", SIZE));
+        close(b.width, x(&b, "⌋") + width("⌋", SIZE));
+
+        let b = laid_out(r"a=\lceil x\rceil", SIZE);
+        close(x(&b, "⌈"), x(&b, "=") + width("=", SIZE) + 5.0);
+        close(x(&b, "x"), x(&b, "⌈") + width("⌈", SIZE));
+        close(b.width, x(&b, "⌉") + width("⌉", SIZE));
+    }
+
+    #[test]
+    fn left_right_floor_and_ceiling_are_accepted_as_delimiters() {
+        laid_out(r"\left\lfloor x \right\rfloor", SIZE);
+        laid_out(r"\left\lceil x \right\rceil", SIZE);
+    }
+
+    #[test]
+    fn oint_is_an_op_like_int_and_oint() {
+        let b = laid_out(r"\oint_C f", SIZE);
+        // Op class before an ordinary atom gets a thin space (3mu), same as \int.
+        let int = laid_out(r"\int_C f", SIZE);
+        close(b.width - width("∮", SIZE), int.width - width("∫", SIZE));
+    }
+
+    #[test]
+    fn every_new_amssymb_command_renders_with_no_diagnostics() {
+        for command in [
+            "mp",
+            "ll",
+            "gg",
+            "simeq",
+            "vdots",
+            "ddots",
+            "lfloor",
+            "rfloor",
+            "lceil",
+            "rceil",
+            "oint",
+            "mapsto",
+            "ell",
+            "hbar",
+            "circ",
+            "parallel",
+            "nmid",
+            "nleq",
+            "ngeq",
+            "subsetneq",
+            "supsetneq",
+            "lesssim",
+            "gtrsim",
+            "triangleq",
+            "coloneqq",
+            "nexists",
+            "complement",
+            "rightsquigarrow",
+            "hookrightarrow",
+            "leftrightarrows",
+            "models",
+            "vdash",
+            "dashv",
+            "top",
+            "measuredangle",
+            "square",
+            "blacksquare",
+            "lozenge",
+            "checkmark",
+        ] {
+            laid_out(&format!(r"\{command}"), SIZE);
+        }
+    }
+
+    /// Issue #62 HW2 follow-up: the remaining long arrows are Rel, same as
+    /// the existing short arrows and `\Longrightarrow`.
+    #[test]
+    fn long_arrows_get_thick_space_like_other_relations() {
+        for command in [
+            "Longleftrightarrow",
+            "longrightarrow",
+            "longleftarrow",
+            "Longleftarrow",
+            "longleftrightarrow",
+        ] {
+            let glyph = command_glyph(command).unwrap();
+            let b = laid_out(&format!(r"a\{command} b"), SIZE);
+            close(x(&b, glyph), width("a", SIZE) + 5.0);
+            close(x(&b, "b"), x(&b, glyph) + width(glyph, SIZE) + 5.0);
+        }
+    }
+
+    /// `\iff`/`\implies`/`\impliedby` expand to a thick space, the long
+    /// double arrow, and another thick space (mathtools/plain TeX) — deliberate
+    /// extra room on top of the automatic Rel spacing the arrow already gets,
+    /// exactly like plain TeX's real `\def\iff{\;\Longleftrightarrow\;}`.
+    #[test]
+    fn iff_implies_impliedby_expand_to_a_spaced_long_arrow() {
+        for (command, arrow) in [("iff", "⟺"), ("implies", "⟹"), ("impliedby", "⟸")] {
+            let b = laid_out(&format!(r"a\{command} b"), SIZE);
+            close(x(&b, arrow), width("a", SIZE) + 10.0);
+            close(x(&b, "b"), x(&b, arrow) + width(arrow, SIZE) + 10.0);
+        }
+    }
+
+    /// `\triangle` is Ord (no space against an adjacent ordinary atom);
+    /// `\bigtriangleup` renders the identical glyph but is Bin.
+    #[test]
+    fn triangle_is_ord_and_bigtriangleup_is_bin_on_the_same_glyph() {
+        let ord = laid_out(r"a\triangle b", SIZE);
+        close(x(&ord, "△"), width("a", SIZE));
+        close(x(&ord, "b"), x(&ord, "△") + width("△", SIZE));
+
+        let bin = laid_out(r"a\bigtriangleup b", SIZE);
+        close(x(&bin, "△"), width("a", SIZE) + 4.0);
+        close(x(&bin, "b"), x(&bin, "△") + width("△", SIZE) + 4.0);
+    }
+
+    #[test]
+    fn bigtriangledown_is_a_distinct_bin_glyph() {
+        let b = laid_out(r"a\bigtriangledown b", SIZE);
+        close(x(&b, "▽"), width("a", SIZE) + 4.0);
+        close(x(&b, "b"), x(&b, "▽") + width("▽", SIZE) + 4.0);
+    }
+
+    /// `\bot` and `\perp` render the exact same U+22A5 glyph but must space
+    /// differently: `\bot` is Ord (no relation space), `\perp` is Rel (thick
+    /// space on both sides).
+    #[test]
+    fn bot_and_perp_render_the_same_glyph_with_different_spacing() {
+        let bot = laid_out(r"a\bot b", SIZE);
+        close(x(&bot, "⊥"), width("a", SIZE));
+        close(x(&bot, "b"), x(&bot, "⊥") + width("⊥", SIZE));
+
+        let perp = laid_out(r"a\perp b", SIZE);
+        close(x(&perp, "⊥"), width("a", SIZE) + 5.0);
+        close(x(&perp, "b"), x(&perp, "⊥") + width("⊥", SIZE) + 5.0);
+
+        assert!(bot.width < perp.width);
+    }
+
+    /// TeXbook Chapter 17's `\mathbin`/`\mathrel`/`\mathord`/`\mathop`/
+    /// `\mathopen`/`\mathclose`/`\mathpunct`: the class is forced regardless
+    /// of what the argument's own atoms would otherwise imply.
+    #[test]
+    fn math_class_family_forces_spacing_around_an_arbitrary_argument() {
+        // HW2 uses `\mathbin{\triangle}` for symmetric difference: it must
+        // get Bin (medium) spacing, unlike bare `\triangle` above.
+        let b = laid_out(r"A\mathbin{\triangle}B", SIZE);
+        close(x(&b, "△"), width("A", SIZE) + 4.0);
+        close(x(&b, "B"), x(&b, "△") + width("△", SIZE) + 4.0);
+
+        // `\mathord{=}` strips the relation spacing a bare `=` would get.
+        let ord = laid_out(r"a\mathord{=}b", SIZE);
+        close(x(&ord, "="), width("a", SIZE));
+        close(x(&ord, "b"), x(&ord, "=") + width("=", SIZE));
+
+        // `\mathrel{+}` adds relation (thick) spacing a bare `+` would not get.
+        let rel = laid_out(r"a\mathrel{+}b", SIZE);
+        close(x(&rel, "+"), width("a", SIZE) + 5.0);
+        close(x(&rel, "b"), x(&rel, "+") + width("+", SIZE) + 5.0);
+
+        // A multi-atom argument is boxed as one atom: `\mathbin{ab}` spaces
+        // like a single Bin atom around the whole two-letter group, not like
+        // two separate ordinary atoms with no internal gap removed.
+        let group = laid_out(r"A\mathbin{ab}B", SIZE);
+        close(x(&group, "a"), width("A", SIZE) + 4.0);
+        close(x(&group, "b"), x(&group, "a") + width("a", SIZE));
+        close(x(&group, "B"), x(&group, "b") + width("b", SIZE) + 4.0);
+    }
+
+    #[test]
+    fn qed_glyph_is_in_the_pinned_font_and_carries_no_export_loss() {
+        assert!(crate::lm_math::advance('\u{220E}').is_some());
+        assert!(matches!(
+            crate::export::map_char('\u{220E}'),
+            crate::export::Glyph::LatinModernMath
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -3120,6 +3510,7 @@ mod shift_tests {
                             .min()
                             .unwrap_or(usize::MAX),
                         Nucleus::Accent { body, .. } => min_start(body),
+                        Nucleus::Group(body) => min_start(body),
                     };
                     let scripts = a
                         .superscript
