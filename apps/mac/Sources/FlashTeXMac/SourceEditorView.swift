@@ -69,6 +69,9 @@ struct SourceEditorView: NSViewRepresentable {
     /// The user's own definition of a command name for the hover peek
     /// (`ShellModel.definitionSummary`; EditorNavigation.swift).
     var userDefinition: (String) -> String? = { _ in nil }
+    /// The current v2 preview, for the inline math hover preview
+    /// (MathHoverPreview.swift); nil when there is no v2 frame to crop from.
+    var mathPreviewContext: () -> MathHoverPreview.Context? = { nil }
 
     /// A navigation selection that would move the caret backwards is deferred
     /// while the last user edit is younger than this.
@@ -782,6 +785,7 @@ struct SourceEditorView: NSViewRepresentable {
             guard let tv = scroll.documentView as? NSTextView else { return }
             hover.install(on: tv)
             hover.info = { [weak self] index in self?.quickInfo(at: index) }
+            hover.mathPreview = { [weak self] index in self?.mathPreview(at: index) }
             if let completing = tv as? CompletingTextView {
                 completing.commandClickHandler = { [weak self] index in self?.commandClick(at: index) ?? false }
                 completing.backgroundDecorator = { [weak self] rect in self?.drawCurrentLine(in: rect) }
@@ -823,6 +827,25 @@ struct SourceEditorView: NSViewRepresentable {
             let text = tv.textStorage?.string as NSString? ?? ""
             let h = syntax.highlighter.length == text.length ? syntax.highlighter : nil
             return EditorIntelligence.quickInfo(in: text, at: index, marks: marks.marks, highlighter: h, userDefinition: parent.userDefinition)
+        }
+
+        /// Inline math hover preview (MathHoverPreview.swift): the formula's
+        /// cropped bitmap at `index`, cropped from whichever page bitmap is
+        /// already rasterized — nothing is rendered here. Nil whenever
+        /// `MathHoverPreview.crop` is (not inside one, stale, or the current
+        /// frame's items don't cover it) or that page's bitmap isn't ready yet.
+        func mathPreview(at index: Int) -> (image: CGImage, range: NSRange)? {
+            guard let tv = textView, let context = parent.mathPreviewContext() else { return nil }
+            let text = tv.textStorage?.string as NSString? ?? ""
+            let h = syntax.highlighter.length == text.length ? syntax.highlighter : nil
+            guard let span = EditorIntelligence.inlineMathSpan(in: text, at: index, highlighter: h) else { return nil }
+            guard let crop = MathHoverPreview.crop(in: text, at: index, path: context.path, pages: context.frame.list.pages,
+                                                   previewIsStale: context.previewIsStale, highlighter: h) else { return nil }
+            guard let last = V2PageRasterizer.shared.lastRequest,
+                  let image = MathHoverPreview.image(for: crop, frame: context.frame, pixelsPerPoint: last.pixelsPerPoint, dark: context.dark,
+                                                     rasterizer: .shared)
+            else { return nil }
+            return (image, span)
         }
 
         /// ⌘-click: place the caret on the token and hand its target to the owner.

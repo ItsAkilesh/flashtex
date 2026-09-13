@@ -188,6 +188,21 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   lines for the selected row (every place; all diagnostics when none is
   selected; `-:0:` for unsourced ones) for pasting into an issue
   (`DiagnosticsPanelTests`).
+- Inline math preview on hover (`MathHoverPreview.swift`, `HoverController.mathPreview`):
+  resting the pointer over an inline formula (`$…$`, `\(…\)`) shows a small
+  popover with the formula as already rendered — cropped straight out of the
+  current v2 page bitmap (`V2PageRasterizer.images`), a few points of padding
+  added; nothing is rendered on the hover path itself. The formula's span comes
+  from `EditorIntelligence.inlineMathSpan` (the enclosing `.mathDelimiter` pair
+  from `SyntaxHighlighter`, delimiters included), converted to a UTF-8 byte
+  range and matched against every page item carrying that exact `source` span
+  (`V2Geometry.formulaBox`, the same machinery the caret's formula-box
+  highlight uses). Shows nothing when the preview is stale, when the current
+  frame has no item for that span, or when the formula's source spans more
+  than two editor lines; a ≤2-line formula's box is the union of every member
+  item. Display math (`$$…$$`, `\[…\]`) and math environments are not covered.
+  Debounced like other hover (the same 0.45 s timer; nothing while typing).
+  Tests: `MathHoverTests`.
 - Dark preview toggle in the toolbar (page and text colors only).
 - Stale offsets are never applied. Each `compile_result` remembers the exact
   document text it was produced for; after edits, a span is rebased through the
