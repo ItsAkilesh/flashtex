@@ -15,7 +15,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::layout::{self, FlowState, LayoutCursor, Page, PlacedItem, TextItem};
 use crate::math::{MathAtom, MathList, Nucleus};
-use crate::parser::{self, Block, Inline, MacroDependency, MathRow, SourceDocument};
+use crate::parser::{self, Block, Inline, MacroDependency, MathRow, SourceDocument, VerbatimLine};
 use crate::Span;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -419,6 +419,18 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             span: mapped_span(*span, changes, deltas)?,
         },
         Block::PageBreak => Block::PageBreak,
+        Block::Verbatim { lines, span } => Block::Verbatim {
+            lines: lines
+                .iter()
+                .map(|line| {
+                    Some(VerbatimLine {
+                        text: line.text.clone(),
+                        span: mapped_span(line.span, changes, deltas)?,
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?,
+            span: mapped_span(*span, changes, deltas)?,
+        },
     })
 }
 
@@ -504,6 +516,15 @@ fn shift_inlines(
             Inline::HSpace { pt, span } => Some(Inline::HSpace {
                 pt: *pt,
                 span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::Verbatim {
+                text,
+                span,
+                space_before,
+            } => Some(Inline::Verbatim {
+                text: text.clone(),
+                span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
         })
         .collect()
@@ -650,7 +671,9 @@ fn block_signature(block: &Block) -> BlockSignature {
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
-        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak | Block::Verbatim { .. } => {
+            &[]
+        }
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -662,6 +685,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Verbatim { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -690,7 +714,9 @@ fn shifted_signature(
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
-        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak | Block::Verbatim { .. } => {
+            &[]
+        }
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -702,6 +728,7 @@ fn shifted_signature(
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Verbatim { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -756,6 +783,24 @@ mod tests {
         );
         assert_eq!(result.stats.blocks_total, 3);
         assert!(result.stats.blocks_reused >= 2);
+    }
+
+    #[test]
+    fn edit_inside_verbatim_matches_clean_build() {
+        let result = compile_edit(
+            "Intro.\n\n\\begin{verbatim}\nold line\n\\end{verbatim}\n\nTail.",
+            "Intro.\n\n\\begin{verbatim}\nnew line\n\\end{verbatim}\n\nTail.",
+        );
+        assert_eq!(result.stats.blocks_total, 3);
+    }
+
+    #[test]
+    fn edit_before_verbatim_still_reuses_it() {
+        let result = compile_edit(
+            "Intro.\n\n\\begin{verbatim}\nkept line\n\\end{verbatim}\n\nTail.",
+            "Intro changed.\n\n\\begin{verbatim}\nkept line\n\\end{verbatim}\n\nTail.",
+        );
+        assert!(result.stats.blocks_reused >= 1);
     }
 
     #[test]

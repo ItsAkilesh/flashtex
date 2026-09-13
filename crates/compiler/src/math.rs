@@ -459,6 +459,14 @@ impl MathParser<'_> {
             }
             TokenKind::LineBreak => Some(symbol("\\\\".into(), token.span)),
             TokenKind::LBrace => Some(symbol("{".into(), token.span)),
+            TokenKind::Verb { .. } => {
+                self.diagnostics.push(Diagnostic::error(
+                    "\\verb is not supported in math mode",
+                    Some(token.span),
+                    Some("ignored the \\verb and continued".into()),
+                ));
+                None
+            }
             TokenKind::RBrace
             | TokenKind::Space
             | TokenKind::ParBreak
@@ -899,6 +907,13 @@ impl MathParser<'_> {
                     ));
                     text.push('\\');
                     text.push_str(&name);
+                }
+                TokenKind::Verb { .. } => {
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("\\verb is not supported inside \\{command}"),
+                        Some(token.span),
+                        Some("ignored the \\verb and continued".into()),
+                    ));
                 }
                 TokenKind::MathShift
                 | TokenKind::DisplayMathOpen

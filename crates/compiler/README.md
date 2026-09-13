@@ -86,9 +86,10 @@ Implemented and tested:
   become an em dash, two hyphens become an en dash, and an exclamation or
   question mark followed by a backtick becomes the inverted exclamation or
   question mark. Conversion runs on ordinary text words only — math is parsed
-  through an entirely separate path and is never touched, and this milestone
-  has no verbatim, `\texttt`, or `\ttfamily` state to exclude in the first
-  place. A converted word's item keeps its exact original source span; only
+  through an entirely separate path and is never touched, and `\verb` and the
+  `verbatim`/`lstlisting` environments capture their raw text separately for
+  the same reason (`\texttt`/`\ttfamily` text is still converted, an accepted
+  simplification). A converted word's item keeps its exact original source span; only
   its rendered text changes, the same rule already used for a
   command-substituted glyph such as `\alpha`. All eight resulting codepoints
   (curly quotes, en/em dash, inverted `!`/`?`) have Times-Roman AFM widths and
@@ -111,6 +112,13 @@ Implemented and tested:
   between items and around the list; other enumitem keys (`leftmargin`,
   `label`, `parsep`, `partopsep`, ...) have no layout equivalent yet and are
   named in a diagnostic instead.
+- `\verb|...|` (any matching delimiter, `\verb*` shows interword spaces as a
+  middle dot) and the `verbatim`/`verbatim*`/`lstlisting` environments: raw
+  source text set in Courier at body size, one output line per source line,
+  tabs expanded, with `%`, `\`, `$`, `{`, and `}` never given their usual
+  meaning. `lstlisting`'s `[options]` are parsed and honestly discarded (no
+  syntax highlighting); an unterminated `\verb` gets a source-located
+  diagnostic and recovers at end of line.
 - `compile` → `compile_result`, and `error` envelopes for unknown protocol
   versions, unknown message types, and malformed JSON.
 - Rejection of absolute paths and parent traversal in document paths.
@@ -128,8 +136,9 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 - Image loading (`\includegraphics`), tables, and float placement remain
   missing. `\includegraphics` emits an explicit unsupported diagnostic; a
   `figure` is laid out in source order and is not a real LaTeX float.
-- Environments other than `document`, `equation`, `figure`, `itemize`, and
-  `enumerate` warn and typeset as plain text.
+- Environments other than `document`, `equation`, `figure`, `itemize`,
+  `enumerate`, `verbatim`/`verbatim*`, and `lstlisting` warn and typeset as
+  plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
 - No bidi, joining, complex-script reordering, hyphenation, or TeX optimal
   paragraph breaking. The font engine reports unsupported shaping and missing
@@ -155,7 +164,9 @@ declarations `\tiny`, `\scriptsize`, `\footnotesize`, `\small`,
 `\normalsize`, `\large`, `\Large`, `\LARGE`, `\huge`, and `\Huge`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
 `enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
-starred or not; `multline` numbers only its last line), `\item`, `\par`,
+starred or not; `multline` numbers only its last line), `verbatim`,
+`verbatim*`, and `lstlisting` (options parsed and discarded), `\verb`
+(any matching delimiter, starred or not), `\item`, `\par`,
 `\hfill`, `\hfil`, `\hspace{<dimen>}`, `\hspace*{<dimen>}`, `\\`,
 `\listfiles`, `\noindent`, `\quad`, `\qquad`, `\bigskip`, `\medskip`, and
 `\smallskip`. Macro
