@@ -279,6 +279,37 @@ Merged on nixos-pc-kabir (Linux, TeX Live 2025) after the session handoff.
 
 ## Stage 1 close-out
 
+Ran on nixos-pc-kabir (Linux, TeX Live 2025), `CARGO_BUILD_JOBS=8`.
+
+- `crates/compiler/scripts/render_supported_latex.sh` regenerated
+  `supported/supported-latex.json`, `supported/coverage.md` and the generated
+  section of `docs/user/compiler.md`, which every stage 1 merge had deferred.
+  `supported_latex::generated_artifacts_are_current` now passes, so the whole
+  compiler suite is green for the first time since #131.
+  The canonical denominator (`supported/canonical-latex.tsv`,
+  `scripts/canonical_latex.py`) was **not** regenerated: it is TeX Live-derived
+  committed data and this machine has TeX Live 2025, not the MacTeX the file
+  was pinned from. The merged file keeps both #150's and #163's canonical sets.
+- Coverage moved as the merges predict: graphicx 0/8 → 6/8 (#169),
+  hyperref 2/132 → 35/132 and its environments 0/2 → 1/2 (#131), kernel
+  162/410 → 173/410 and 15/30 → 19/30 (#137/#147/#153/#155/#164),
+  amsmath 39/102 → 40/102 (#155), and siunitx enters as a new canonical set at
+  17/240 (#163). The total percentage falls (44.2% → 41.7%) only because
+  siunitx adds 240 names to the denominator.
+- `cargo test --release --no-fail-fast`, all green:
+
+  | Crate | Result |
+  |---|---|
+  | compiler | all binaries pass, 0 failed |
+  | math-layout | 54 passed |
+  | paragraph-layout | 85 passed |
+  | microtype | 12 passed |
+  | tex-expansion | 60 passed |
+  | pdf | 111 passed |
+
+Stage 1 is complete. Next: stage 2, the vendor re-pins.
+
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.
