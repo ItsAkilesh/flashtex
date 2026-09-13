@@ -48,8 +48,17 @@ final class SnippetTests: XCTestCase {
         let s = Completion.suggestions(in: "\\sbs", caretUTF16: 4, result: nil)
         XCTAssertEqual(labels(s).first, "\\subsection{...}")
         XCTAssertTrue(s.allSatisfy { Completion.matchRank($0.insertText.dropFirst().description, prefix: "sbs") == 2 })
+        // Table order is the inventory's: the text-mode commands in file order
+        // (`\section` … `\settodepth`), then the math operators (`\sec`), then
+        // the math symbols (`\setminus`). Adding a command to
+        // supported-latex.json extends this list; it must never reorder it.
         let se = Completion.suggestions(in: "x \\se", caretUTF16: 5, result: nil)
-        XCTAssertEqual(labels(se), ["\\section{...}", "\\setlength{\\length}{dimension}", "\\setlist[list]{options}", "\\sec", "\\setminus"], "prefix matches only, in table order")
+        XCTAssertEqual(labels(se), ["\\section{...}", "\\setlength{\\length}{dimension}", "\\setlist[list]{options}",
+                                    "\\setcounter{counter}{number}", "\\settowidth{\\name}{text}", "\\settoheight{\\name}{text}",
+                                    "\\settodepth{\\name}{text}", "\\sec", "\\setminus"], "prefix matches only, in table order")
+        XCTAssertEqual(se.map { $0.insertText.dropFirst().description },
+                       Completion.defaultSupported.filter { $0.hasPrefix("se") },
+                       "every row is a literal prefix match, in vocabulary order: no subsequence row leaks into the prefix tier")
         // Labels: `\ref{main}` finds `eq:main` only when no key starts with `main`.
         let text = "\\label{eq:main}\\label{main}\\label{sec:domain} \\ref{main"
         XCTAssertEqual(labels(Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)), ["main"])
