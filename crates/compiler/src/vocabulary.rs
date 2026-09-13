@@ -61,7 +61,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "PassOptionsToPackage", "AtBeginDocument",
     // Cross-references and links.
     "eqref", "autoref", "cref", "Cref", "nameref", "url", "href", "hyperref", "hyperlink",
-    "hypertarget", "citep", "citet", "citeauthor", "addbibresource", "printbibliography",
+    "hypertarget", "addbibresource", "printbibliography",
     // Colour and graphics packages.
     "color", "textcolor", "colorbox", "fcolorbox", "definecolor", "pagecolor", "tikz",
     "usetikzlibrary", "draw", "node", "fill", "path", "scalebox", "resizebox", "rotatebox",

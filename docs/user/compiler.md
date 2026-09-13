@@ -183,7 +183,7 @@ same data is available as JSON from `flashtex-compiler --supported`.
 <!-- BEGIN GENERATED supported-latex: `flashtex-compiler --supported markdown`; do not edit by hand -->
 ## Supported LaTeX
 
-This compiler implements a finite LaTeX subset: 197 text-mode and 521 math-mode command entries, 43 environments and 6 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
+This compiler implements a finite LaTeX subset: 215 text-mode and 521 math-mode command entries, 43 environments and 7 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
 
 Regenerate with `crates/compiler/scripts/render_supported_latex.sh`; `cargo test --test supported_latex` fails when this section is stale.
 
@@ -315,11 +315,29 @@ Canonical sources:
 | `\LARGE` |  | size declaration from the class size table |
 | `\huge` |  | size declaration from the class size table |
 | `\Huge` |  | size declaration from the class size table |
-| `\cite` | `[note]{keys}` | numbered citation from thebibliography entries |
-| `\nocite` | `{keys}` | accepted no-op; there is no .bib pipeline |
-| `\bibitem` | `[label]{key}` | entry of thebibliography |
-| `\bibliography` | `{files}` | diagnosed: .bib input is not read |
-| `\bibliographystyle` | `{style}` | diagnosed: no effect without .bib support |
+| `\cite` | `[note]{keys}` | citation as latex.ltx \@citex ([1, 2, note]); natbib's \cite under natbib |
+| `\nocite` | `{keys}` | no output; warns for undefined keys |
+| `\bibitem` | `[label]{key}` | entry of thebibliography; natbib reads Name(Year)Long names labels |
+| `\bibliography` | `{files}` | reads the project's <jobname>.bbl in its place; .bib files are not read |
+| `\bibliographystyle` | `{style}` | natbib punctuation of the BibTeX style; entry formatting comes from the .bbl |
+| `\citet` | `*[pre][post]{keys}` | natbib textual citation: Name (Year) or Name [n] |
+| `\citep` | `*[pre][post]{keys}` | natbib parenthetical citation: (Name, Year) or [n] |
+| `\citealt` | `*[pre][post]{keys}` | natbib textual citation without brackets |
+| `\citealp` | `*[pre][post]{keys}` | natbib parenthetical citation without brackets |
+| `\citeauthor` | `*{keys}` | natbib author names |
+| `\citeyear` | `{keys}` | natbib year |
+| `\citeyearpar` | `{keys}` | natbib year in brackets |
+| `\citenum` | `{keys}` | natbib citation number |
+| `\Citet` | `*[pre][post]{keys}` | \citet with the first name capitalised |
+| `\Citep` | `*[pre][post]{keys}` | \citep with the first name capitalised |
+| `\Citealt` | `*[pre][post]{keys}` | \citealt with the first name capitalised |
+| `\Citealp` | `*[pre][post]{keys}` | \citealp with the first name capitalised |
+| `\Citeauthor` | `*{keys}` | \citeauthor with the first name capitalised |
+| `\citestyle` | `{style}` | natbib punctuation of a named BibTeX style |
+| `\bibpunct` | `[cmt]{open}{close}{sep}{mode}{aysep}{yrsep}` | natbib citation punctuation and mode |
+| `\setcitestyle` | `{options}` | natbib citation punctuation keywords and key=value settings |
+| `\newblock` |  | glue between blocks of a bibliography entry |
+| `\natexlab` | `{letter}` | natbib extra year label, shown in author-year mode |
 | `\title` | `{...}` | title for \maketitle |
 | `\author` | `{...}` | author block for \maketitle; \and and \thanks inside it |
 | `\date` | `{...}` | date for \maketitle; \today inside it |
@@ -624,6 +642,7 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | --- | --- | --- |
 | `inputenc` | `utf8` | source text is already decoded as UTF-8 |
 | `fontenc` | `T1` | text glyphs are mapped from Unicode |
+| `natbib` | `numbers, super, authoryear, round, square, angle, curly, comma, semicolon, colon, sort, compress, sort&compress, longnamesfirst, sectionbib, openbib` | natbib citation commands, punctuation and bibliography labels |
 | `amsthm` | `` | \newtheorem, \theoremstyle and the proof environment |
 | `array` | `` | tabular >{} <{} !{} m b w columns, \newcolumntype and \extrarowheight |
 | `enumitem` | `shortlabels` | enumerate label templates; \setlist itemsep/topsep |
