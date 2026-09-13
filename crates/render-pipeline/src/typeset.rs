@@ -710,7 +710,7 @@ impl<'a> Context<'a> {
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
         let has_grid = segments.iter().flat_map(|(atoms, _)| atoms.iter()).any(|a| matches!(a.nucleus, flashtex_compiler::math::Nucleus::Matrix { .. }) && a.superscript.is_none() && a.subscript.is_none());
         // Every `\text` must be collected before the metrics borrow the sink.
-        let grid_pieces = if has_grid { grid_pieces(&segments, &mut sink, &fence, &class) } else { Vec::new() };
+        let grid_pieces = if has_grid { grid_pieces(&segments, &mut sink, &fence, &class, texts) } else { Vec::new() };
         let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts);
         let mut laid = if has_grid {
             self.grid_formula(&grid_pieces, style, &text_metrics, span)
@@ -1589,7 +1589,15 @@ impl<'a> Context<'a> {
         // §1199: "not enough clearance" when the display starts left of
         // where the line before it ended (`d + s <= pre_display_size`).
         let x = s + d.max(0.0);
-        let long = pre_display_size.is_some_and(|p| x <= p) || l;
+        // amsmath sets `equation{split}` through `\gather@`'s `\halign`, a
+        // display alignment: always the non-short skips (§1206).
+        let split = self
+            .texts
+            .get(span.document.0)
+            .and_then(|t| t.get(span.start..))
+            .and_then(|r| r.strip_prefix("\\begin{equation*}").or_else(|| r.strip_prefix("\\begin{equation}")))
+            .is_some_and(|r| r.trim_start().starts_with("\\begin{split}"));
+        let long = pre_display_size.is_some_and(|p| x <= p) || l || split;
         let (above, below) = if long {
             (self.style.abovedisplayskip, self.style.belowdisplayskip)
         } else {
@@ -1665,6 +1673,360 @@ impl<'a> Context<'a> {
             no_interline_first: false,
             no_interline_after: false,
             baselineskip: None,
+            vskip_after: Vec::new(),
+        };
+        Some(BuiltBlock {
+            block: pl::ParagraphBlock {
+                lines,
+                space_before: above.glue(),
+                space_after: below.glue(),
+                keep_with_next: false,
+            },
+            items,
+            recs,
+            vertical,
+            labels: Vec::new(),
+            cache_key: None,
+        })
+    }
+
+    /// An amsmath display alignment (`align`, `alignat`, `flalign`,
+    /// `gather`, `multline`) as one block of rows: amsmath's own measuring
+    /// (`\measure@`/`\calc@shift@align`, `\calc@shift@gather`,
+    /// `\multline@`) decides every cell's x; rows are `\halign` lines with
+    /// `\strut@` minima and `\openup\jot` pitch; numbers (`\tagform@`) sit
+    /// flush right. Display alignments always take `\abovedisplayskip`/
+    /// `\belowdisplayskip` (§1206); `\@display@init` removes one `\jot`
+    /// before the first row of `align`/`gather`.
+    fn rows_block(&mut self, env: adapter::RowsEnv, rows: &[adapter::RowPart], span: Span) -> Option<BuiltBlock> {
+        use adapter::RowsEnv;
+        const MINALIGNSEP: f64 = 10.0;
+        const MULTLINEGAP: f64 = 10.0;
+        const MULTLINETAGGAP: f64 = 10.0;
+        const JOT: f64 = 3.0;
+        let size = self.style.body_size_pt;
+        let dw = self.style.text_width_pt;
+        // `\mintagsep`: half of cmsy's quad at the text size.
+        let mintagsep = 0.5 * size;
+        let aligned = matches!(env, RowsEnv::Align | RowsEnv::AlignAt | RowsEnv::FlAlign);
+        // Cell boxes: (run, rec) per row per cell; right-hand (even-index
+        // from 1) align cells and every multline row start with `{}`.
+        struct Cell {
+            run: Option<(pl::GlyphRun, usize)>,
+        }
+        let mut cells: Vec<Vec<Cell>> = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut out = Vec::with_capacity(row.cells.len());
+            for (ci, list) in row.cells.iter().enumerate() {
+                let Some(first) = list.atoms.first() else {
+                    out.push(Cell { run: None });
+                    continue;
+                };
+                let prefix = (aligned && ci % 2 == 1) || matches!(env, RowsEnv::Multline);
+                let mut list = list.clone();
+                if prefix {
+                    let mut empty = first.clone();
+                    empty.nucleus = flashtex_compiler::math::Nucleus::Symbol(String::new());
+                    empty.superscript = None;
+                    empty.subscript = None;
+                    list.atoms.insert(0, empty);
+                }
+                let cspan = list.atoms.iter().map(|a| a.span).reduce(Span::merge).unwrap_or(row.span);
+                let run = self.math_box(&list, cspan, true).map(|rec| {
+                    let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
+                    (math_run(&self.maths[*mi].root, size, cspan), rec)
+                });
+                out.push(Cell { run });
+            }
+            cells.push(out);
+        }
+        let width = |c: &Cell| c.run.as_ref().map_or(0.0, |(r, _)| r.width);
+        // Number boxes.
+        let mut tags: Vec<Option<(pl::GlyphRun, usize)>> = Vec::with_capacity(rows.len());
+        for row in rows {
+            tags.push(row.number.as_ref().and_then(|(text, nspan)| {
+                let label = format!("({text})");
+                let seg = adapter::Segment {
+                    text: label.clone(),
+                    chars: label
+                        .chars()
+                        .map(|_| adapter::CharSrc {
+                            document: nspan.document,
+                            start: nspan.start,
+                            end: nspan.end,
+                        })
+                        .collect(),
+                    style: TextStyle::default(),
+                };
+                self.text_box(&seg, size)
+            }));
+        }
+        let tagw = |i: usize| tags[i].as_ref().map_or(0.0, |(r, _)| r.width);
+        // x of every cell, per row.
+        let mut xs: Vec<Vec<f64>> = cells.iter().map(|r| vec![0.0; r.len()]).collect();
+        let mut shifted_tags = 0usize;
+        match env {
+            RowsEnv::Align | RowsEnv::AlignAt | RowsEnv::FlAlign => {
+                let mut maxfields = cells.iter().map(Vec::len).max().unwrap_or(0);
+                if maxfields % 2 == 1 {
+                    maxfields += 1;
+                }
+                let mut colw = vec![0.0f64; maxfields];
+                for row in &cells {
+                    for (ci, c) in row.iter().enumerate() {
+                        colw[ci] = colw[ci].max(width(c));
+                    }
+                }
+                let totwidth: f64 = colw.iter().sum();
+                let d = dw - totwidth;
+                let p = (maxfields / 2) as i64;
+                let (mut eqnshift, mut alignsep, minalignsep, tempcntb, tempcnta);
+                match env {
+                    RowsEnv::AlignAt => {
+                        alignsep = 0.0;
+                        minalignsep = 0.0;
+                        tempcntb = 0i64;
+                        tempcnta = 2i64;
+                        eqnshift = d / 2.0;
+                    }
+                    RowsEnv::Align => {
+                        tempcntb = p - 1;
+                        tempcnta = p + 1;
+                        eqnshift = d / tempcnta as f64;
+                        alignsep = eqnshift;
+                        minalignsep = MINALIGNSEP;
+                    }
+                    _ => {
+                        tempcntb = p - 1;
+                        tempcnta = p - 1;
+                        eqnshift = 0.0;
+                        // TeX's \divide by zero leaves the dimension unchanged.
+                        alignsep = if tempcntb > 0 { d / tempcntb as f64 } else { d };
+                        minalignsep = MINALIGNSEP;
+                    }
+                }
+                if alignsep < minalignsep {
+                    alignsep = minalignsep;
+                    if eqnshift > 0.0 {
+                        eqnshift = (dw - totwidth - tempcntb as f64 * alignsep) / 2.0;
+                    }
+                }
+                eqnshift = eqnshift.max(0.0);
+                // `\calc@shift@align` (tags right, not fleqn): last row first.
+                for ri in (0..cells.len()).rev() {
+                    let t = tagw(ri);
+                    if t <= 0.0 {
+                        continue;
+                    }
+                    // `\x@rcalc@width`: right columns count fully, left
+                    // columns by their own width, trailing empty space dropped.
+                    let (mut dimb, mut dimc) = (0.0f64, 0.0f64);
+                    for (ci, c) in cells[ri].iter().enumerate() {
+                        let a = width(c);
+                        if a > 0.0 {
+                            dimc += dimb;
+                            if ci % 2 == 0 {
+                                dimc += colw[ci];
+                                dimb = 0.0;
+                            } else {
+                                dimc += a;
+                                dimb = colw[ci] - a;
+                            }
+                        } else {
+                            dimb += colw[ci];
+                        }
+                    }
+                    let k = (cells[ri].len() as i64 - 1).max(0) / 2;
+                    let (mut cntb, mut cnta) = (tempcntb, tempcnta);
+                    if cntb > k {
+                        cnta = cnta - cntb + k;
+                        cntb = k;
+                    }
+                    let dima = dimc + t;
+                    let mut dimen = minalignsep * cntb as f64 + mintagsep + dima;
+                    if env != RowsEnv::FlAlign {
+                        dimen += mintagsep;
+                    }
+                    if dimen > dw {
+                        shifted_tags += 1;
+                        continue;
+                    }
+                    let dimen = eqnshift + dima + cntb as f64 * alignsep + t;
+                    if dimen > dw {
+                        let mut dimen = dw - dima;
+                        if env == RowsEnv::FlAlign {
+                            dimen -= mintagsep;
+                        }
+                        if cnta != 0 {
+                            dimen /= cnta as f64;
+                        }
+                        if dimen < minalignsep {
+                            alignsep = minalignsep;
+                            eqnshift = (dw - dima - cntb as f64 * alignsep) / 2.0;
+                        } else {
+                            if dimen < eqnshift {
+                                eqnshift = dimen.max(0.0);
+                            }
+                            if dimen < alignsep {
+                                alignsep = dimen;
+                            }
+                        }
+                    }
+                }
+                for (ri, row) in cells.iter().enumerate() {
+                    let mut x = eqnshift;
+                    for (ci, c) in row.iter().enumerate() {
+                        xs[ri][ci] = if ci % 2 == 0 { x + colw[ci] - width(c) } else { x };
+                        x += colw[ci];
+                        if ci % 2 == 1 {
+                            x += alignsep;
+                        }
+                    }
+                }
+            }
+            RowsEnv::Gather => {
+                for (ri, row) in cells.iter().enumerate() {
+                    let w: f64 = row.iter().map(width).sum();
+                    let t = tagw(ri);
+                    let mut shift = dw - w;
+                    if t > 0.0 {
+                        if 2.0 * mintagsep + w + t > dw {
+                            shifted_tags += 1;
+                        } else if shift < 4.0 * t {
+                            shift -= t;
+                        }
+                    }
+                    let mut x = (shift / 2.0).max(0.0);
+                    for (ci, c) in row.iter().enumerate() {
+                        xs[ri][ci] = x;
+                        x += width(c);
+                    }
+                }
+            }
+            RowsEnv::Multline => {
+                let n = cells.len();
+                for (ri, row) in cells.iter().enumerate() {
+                    let w: f64 = row.iter().map(width).sum();
+                    let t = tagw(ri);
+                    let x0 = if n > 1 && ri == 0 {
+                        MULTLINEGAP
+                    } else if n > 1 && ri + 1 == n {
+                        dw - w - if t > 0.0 { MULTLINETAGGAP + t } else { MULTLINEGAP }
+                    } else {
+                        (dw - w) / 2.0
+                    };
+                    let mut x = x0;
+                    for (ci, c) in row.iter().enumerate() {
+                        xs[ri][ci] = x;
+                        x += width(c);
+                    }
+                }
+            }
+        }
+        if shifted_tags > 0 {
+            let src = self.source(span);
+            self.emit(None, Diagnostic::warning(
+                "math_limitation",
+                format!("{shifted_tags} equation number(s) too wide for their row set on the row's baseline; amsmath moves them to a line of their own"),
+                vec![src],
+            ));
+        }
+        // Rows: `\strut@` (.7/.3 `\normalbaselineskip`) minima.
+        let normal = self.style.baselineskip_pt;
+        let (strut_h, strut_d) = (0.7 * normal, 0.3 * normal);
+        let mut items = Vec::new();
+        let mut recs = Vec::new();
+        let mut lines = Vec::with_capacity(rows.len());
+        let mut extents = Vec::with_capacity(rows.len());
+        let mut total = 0.0;
+        for (ri, row) in cells.iter().enumerate() {
+            let start = items.len();
+            let (mut h, mut d) = (strut_h, strut_d);
+            let mut runs = Vec::new();
+            let mut natural = 0.0f64;
+            for (ci, c) in row.iter().enumerate() {
+                let Some((run, rec)) = &c.run else { continue };
+                h = h.max(run.height);
+                d = d.max(run.depth);
+                natural = natural.max(xs[ri][ci] + run.width);
+                runs.push(pl::PositionedRun {
+                    x: xs[ri][ci],
+                    baseline_y: 0.0,
+                    width: run.width,
+                    font: run.font,
+                    size: run.size,
+                    glyphs: Vec::new(),
+                    source: run.source.clone(),
+                    is_hyphen: false,
+                });
+                items.push(pl::Item::Box(run.clone()));
+                recs.push(Some(*rec));
+            }
+            if let Some((nrun, nrec)) = &tags[ri] {
+                h = h.max(nrun.height);
+                d = d.max(nrun.depth);
+                runs.push(position_run(nrun, dw - nrun.width, 0.0));
+                items.push(pl::Item::Box(nrun.clone()));
+                recs.push(Some(*nrec));
+            }
+            if natural > dw + 1e-6 {
+                let src = self.source(rows[ri].span);
+                self.emit(None, Diagnostic::warning("overfull_display", format!("display row is {:.2}pt wider than the text width", natural - dw), vec![src]));
+            }
+            lines.push(pl::Line {
+                index: ri,
+                runs,
+                baseline_y: h,
+                height: h,
+                depth: d,
+                natural_width: natural,
+                set_width: dw,
+                ratio: 0.0,
+                badness: 0.0,
+                items: start..items.len(),
+                hyphenated: false,
+            });
+            extents.push((h, d));
+            total += h + d;
+        }
+        if lines.is_empty() {
+            return None;
+        }
+        let above = self.style.abovedisplayskip;
+        let below = self.style.belowdisplayskip;
+        let first_adjust = if matches!(env, RowsEnv::Multline) { 0.0 } else { -JOT };
+        let (an, ast, ash) = skip_tuple(above);
+        let n = lines.len();
+        let lines = pl::Lines {
+            lines,
+            breaks: Vec::new(),
+            stats: pl::Stats {
+                algorithm: pl::Algorithm::TotalFit,
+                lines: n,
+                pass: 1,
+                total_demerits: 0.0,
+                overfull: Vec::new(),
+                underfull: Vec::new(),
+                hyphenated_lines: 0,
+                emergency_pass_used: false,
+            },
+            diagnostics: Vec::new(),
+            height: total,
+        };
+        let vertical = VBlock {
+            lines: extents,
+            penalty_before: Some(PREDISPLAY_PENALTY),
+            space_before: Some((an + first_adjust, ast, ash)),
+            parskip: None,
+            // `\interdisplaylinepenalty` is 10000 in LaTeX.
+            interline_penalty: pagebuild::INF_PENALTY,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: Some(skip_tuple(below)),
+            no_interline_first: false,
+            no_interline_after: false,
+            baselineskip: Some(normal + JOT),
             vskip_after: Vec::new(),
         };
         Some(BuiltBlock {
@@ -2087,6 +2449,7 @@ fn grid_pieces(
     sink: &mut crate::mathtext::TextSink,
     fence: &dyn Fn(&Span) -> Option<Fence>,
     class: &dyn Fn(&Span) -> Option<ml::AtomClass>,
+    texts: &[&str],
 ) -> Vec<GridPiece> {
     use flashtex_compiler::math::{MathAtom, MathList as CList, Nucleus as N};
     let mut pieces = Vec::new();
@@ -2101,14 +2464,36 @@ fn grid_pieces(
             match &a.nucleus {
                 N::Matrix { rows, columns, left, right } if a.superscript.is_none() && a.subscript.is_none() => {
                     flush(&mut run, &mut pieces, sink);
-                    let cell_runs = |cell: &CList, sink: &mut crate::mathtext::TextSink| {
+                    // amsmath `aligned`/`alignedat`/`split`: a right-hand
+                    // cell is `{}##`, so a leading relation or operator is
+                    // spaced against an empty Ord. The compiler trims the
+                    // column letters to the grid's width, so the environment
+                    // is read at the grid's `\begin`.
+                    let pairs = texts
+                        .get(a.span.document.0)
+                        .and_then(|t| t.get(a.span.start..))
+                        .is_some_and(|r| ["\\begin{aligned}", "\\begin{alignedat}", "\\begin{split}"].iter().any(|p| r.starts_with(p)));
+                    let cell_runs = |ci: usize, cell: &CList, sink: &mut crate::mathtext::TextSink| {
+                        let mut prefixed;
+                        let cell = match cell.atoms.first() {
+                            Some(first) if pairs && ci % 2 == 1 => {
+                                let mut empty = first.clone();
+                                empty.nucleus = N::Symbol(String::new());
+                                empty.superscript = None;
+                                empty.subscript = None;
+                                prefixed = cell.clone();
+                                prefixed.atoms.insert(0, empty);
+                                &prefixed
+                            }
+                            _ => cell,
+                        };
                         let parts = split_at_spaces(cell, fence);
                         let runs = parts.iter().map(|(atoms, _)| convert_math_classed(&CList { atoms: atoms.clone() }, sink, fence, class)).collect();
                         let glue = parts.iter().map(|(_, em)| *em).collect();
                         (runs, glue)
                     };
                     pieces.push(GridPiece::Grid {
-                        rows: rows.iter().map(|row| row.iter().map(|cell| cell_runs(cell, sink)).collect()).collect(),
+                        rows: rows.iter().map(|row| row.iter().enumerate().map(|(ci, cell)| cell_runs(ci, cell, sink)).collect()).collect(),
                         columns: columns.clone(),
                         left: left.clone(),
                         right: right.clone(),
@@ -2474,6 +2859,41 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                                 add_skip_before(&mut b.vertical, env_before.take());
                                 blocks.push(b);
                             }
+                        }
+                        ParaPart::Rows { env, rows, span, bracket } => {
+                            if first {
+                                let (mut opener, _) = ctx.display_opener_block(*bracket, geom);
+                                if std::mem::take(&mut eject) {
+                                    opener.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                                }
+                                add_vspace(&mut opener.vertical, std::mem::take(&mut vspace));
+                                add_skip_before(&mut opener.vertical, env_before.take());
+                                blocks.push(opener);
+                            }
+                            let (key, origin) = if cache.is_some() {
+                                let mut h = std::collections::hash_map::DefaultHasher::new();
+                                b'A'.hash(&mut h);
+                                style_fp.hash(&mut h);
+                                span.document.0.hash(&mut h);
+                                env.hash(&mut h);
+                                (span.end - span.start).hash(&mut h);
+                                for row in rows {
+                                    (row.span.start.wrapping_sub(span.start), row.span.end.wrapping_sub(span.start)).hash(&mut h);
+                                    row.number.as_ref().map(|(n, _)| n).hash(&mut h);
+                                    row.cells.len().hash(&mut h);
+                                    for cell in &row.cells {
+                                        incremental::hash_math(cell, &mut h);
+                                    }
+                                }
+                                bracket.hash(&mut h);
+                                (Some(h.finish()), Some((span.document, span.start)))
+                            } else {
+                                (None, None)
+                            };
+                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.rows_block(*env, rows, *span)) {
+                                blocks.push(b);
+                            }
+                            pre_display = None;
                         }
                         ParaPart::Display {
                             list,

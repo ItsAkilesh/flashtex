@@ -116,8 +116,57 @@ pub enum Item {
     HSpace { pt: f64 },
 }
 
+/// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
+/// environment name at the display's first byte; the compiler keeps only
+/// whether cells alternate right/left).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RowsEnv {
+    /// `align`/`align*`: column pairs spread evenly (`\xatlevel@` 1).
+    Align,
+    /// `alignat`/`alignat*`: column pairs set with no added space (level 0).
+    AlignAt,
+    /// `flalign`/`flalign*`: column pairs pushed to the margins (level 2).
+    FlAlign,
+    /// `gather`/`gather*`: every row centred on its own.
+    Gather,
+    /// `multline`/`multline*`: first row left, last row right, others centred.
+    Multline,
+}
+
+impl RowsEnv {
+    /// The environment opening at the start of `rest` (`\begin{align*}...`).
+    pub fn at(rest: &str) -> RowsEnv {
+        let name = rest.strip_prefix("\\begin{").and_then(|r| r.split('}').next()).unwrap_or("");
+        match name.trim_end_matches('*') {
+            "alignat" => RowsEnv::AlignAt,
+            "flalign" => RowsEnv::FlAlign,
+            "gather" => RowsEnv::Gather,
+            "multline" => RowsEnv::Multline,
+            _ => RowsEnv::Align,
+        }
+    }
+}
+
+/// One row of a [`ParaPart::Rows`] display: its `&`-separated cells, its
+/// equation number (or `\tag` text) and the row's source span.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RowPart {
+    pub cells: Vec<MathList>,
+    pub number: Option<(String, Span)>,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParaPart {
+    /// An amsmath multi-row display laid out as one alignment (row pitch
+    /// `\baselineskip + \jot`, cells at amsmath's column positions, numbers
+    /// flush right) instead of one centred display per row.
+    Rows {
+        env: RowsEnv,
+        rows: Vec<RowPart>,
+        span: Span,
+        bracket: bool,
+    },
     Lines(Vec<Item>),
     /// A display; `number` is the `equation` counter text and the
     /// environment's source span (`\eqno` at the right margin).
@@ -530,6 +579,9 @@ pub fn adapt_cached(
     let mut blocks = Vec::new();
     let (lowered, mut limitations) = lower_blocks(texts, &parsed.blocks);
     let mut after_heading = false;
+    // Last source span of the previous paragraph block (None after a
+    // heading or rule), for rejoining a display with its paragraph.
+    let mut prev_para_end: Option<Span> = None;
     for unit in split_at_page_breaks(texts, &lowered, size, &style) {
         let eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
@@ -564,6 +616,7 @@ pub fn adapt_cached(
                     vspace_before,
                 });
                 after_heading = true;
+                prev_para_end = None;
             }
             UnitKind::Rule { span } => {
                 blocks.push(Block::Rule {
@@ -572,6 +625,7 @@ pub fn adapt_cached(
                     vspace_before,
                 });
                 after_heading = false;
+                prev_para_end = None;
             }
             UnitKind::Paragraph {
                 inlines,
@@ -582,14 +636,6 @@ pub fn adapt_cached(
                 list,
             } => {
                 for inline in inlines {
-                    if let Inline::MathRows { rows, aligned, span } = inline {
-                        let env = if *aligned { "align" } else { "gather" };
-                        limitations.push((
-                            "math_limitation",
-                            *span,
-                            format!("{env}: {} row(s) set as separate centred displays; `&` alignment points ignored (no multi-row display block yet)", rows.len()),
-                        ));
-                    }
                     unsupported_inlines(inline, &mut limitations);
                 }
                 let items = items_for(inlines, false);
@@ -601,12 +647,36 @@ pub fn adapt_cached(
                             if !current.is_empty() {
                                 parts.push(ParaPart::Lines(std::mem::take(&mut current)));
                             }
+                            // amsmath rows: the environment's rows become one
+                            // alignment; `\tag{..}` replaces a row's number.
+                            if let Some((rows_span, row)) = math_row_of(inlines, span) {
+                                let rows_rest = texts.get(rows_span.document.0).and_then(|t| t.get(rows_span.start..)).unwrap_or("");
+                                let mut tag = None;
+                                let cells: Vec<MathList> = row.cells.iter().map(|c| strip_tag(texts, c, &mut tag)).collect();
+                                let number = match tag {
+                                    Some(t) => Some((t, row.span)),
+                                    None => row.number.clone().map(|n| (n, row.span)),
+                                };
+                                let part = RowPart { cells, number, span: row.span };
+                                match parts.last_mut() {
+                                    Some(ParaPart::Rows { span: s, rows, .. }) if *s == rows_span => rows.push(part),
+                                    _ => parts.push(ParaPart::Rows {
+                                        env: RowsEnv::at(rows_rest),
+                                        rows: vec![part],
+                                        span: rows_span,
+                                        bracket: false,
+                                    }),
+                                }
+                                continue;
+                            }
                             // The compiler counts every closed display; LaTeX
-                            // numbers only the `equation` environment. Rows of
-                            // an amsmath display carry their own numbers.
+                            // numbers only the `equation` environment (or a
+                            // `\tag` in any display).
                             let rest = texts.get(span.document.0).and_then(|t| t.get(span.start..)).unwrap_or("");
-                            let number = match math_row_number(inlines, span) {
-                                Some(row) => row,
+                            let mut tag = None;
+                            let list = strip_tag(texts, &list, &mut tag);
+                            let number = match tag {
+                                Some(t) => Some((t, span)),
                                 None => display_number(inlines, span).filter(|_| rest.starts_with("\\begin{equation}")),
                             };
                             let bracket = !amsmath && (rest.starts_with("\\[") || rest.starts_with("\\begin{displaymath}"));
@@ -629,6 +699,33 @@ pub fn adapt_cached(
                 if parts.is_empty() || only_labels {
                     continue;
                 }
+                // A display environment inside a paragraph (no blank line or
+                // `\par` around it) continues that paragraph, as in LaTeX: the
+                // compiler flushes its paragraph at `\begin{equation}`/
+                // `\begin{align}` and again at `\end`, so the pieces are
+                // rejoined here (short display skips, no second `\parskip`, no
+                // empty opener line, no indent after the display).
+                let first_span = inlines.iter().map(inline_span).next();
+                let starts_display = matches!(parts.first(), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
+                if let (Some(Block::Paragraph { parts: prev_parts, style: prev_style, list: prev_list, .. }), Some(f), Some(p)) = (blocks.last_mut(), first_span, prev_para_end) {
+                    let prev_ends_display = matches!(prev_parts.last(), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
+                    let same_flow = !eject_before
+                        && vspace_before == 0.0
+                        && unit.addvspace_before == 0.0
+                        && styled.is_none()
+                        && list.is_none()
+                        && !caption
+                        && env_open.is_none()
+                        && *prev_style == ParaStyle::Plain
+                        && prev_list.is_none();
+                    if same_flow && (starts_display || prev_ends_display) && gap_continues(texts, p, f) {
+                        prev_parts.extend(parts);
+                        prev_para_end = inlines.iter().map(inline_span).last().or(prev_para_end);
+                        after_heading = false;
+                        continue;
+                    }
+                }
+                prev_para_end = inlines.iter().map(inline_span).last();
                 // `\centering` sets `\parindent 0pt`; a list item's first
                 // paragraph carries no indent and `\list` sets
                 // `\parindent\listparindent` (0pt in article) for the
@@ -1138,6 +1235,46 @@ fn is_display(inlines: &[Inline], span: Span) -> bool {
 
 /// The row of an amsmath multi-row display whose span is `span`, if any:
 /// `Some(number)` where `number` is the row's own equation number.
+/// The amsmath row whose span is `span`, with its environment's span.
+fn math_row_of(inlines: &[Inline], span: Span) -> Option<(Span, &flashtex_compiler::parser::MathRow)> {
+    inlines.iter().find_map(|i| match i {
+        Inline::MathRows { rows, span: env, .. } => rows.iter().find(|r| r.span == span).map(|r| (*env, r)),
+        _ => None,
+    })
+}
+
+/// `list` without the atoms the compiler makes of `\tag{..}`/`\tag*{..}` (the
+/// label text and the `2\quad` glue it inserts, both spanning the command);
+/// the label, parentheses removed, goes to `tag`.
+fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>) -> MathList {
+    use flashtex_compiler::math::Nucleus;
+    let is_tag = |span: Span| texts.get(span.document.0).and_then(|t| t.get(span.start..)).is_some_and(|r| r.starts_with("\\tag"));
+    let mut atoms = Vec::with_capacity(list.atoms.len());
+    for a in &list.atoms {
+        if is_tag(a.span) {
+            if let Nucleus::Text(s) | Nucleus::Symbol(s) = &a.nucleus {
+                let inner = s.strip_prefix('(').and_then(|r| r.strip_suffix(')')).unwrap_or(s);
+                *tag = Some(inner.to_string());
+            }
+            continue;
+        }
+        atoms.push(a.clone());
+    }
+    MathList { atoms }
+}
+
+/// Whether the source between two consecutive pieces of material keeps TeX
+/// in the same paragraph (no blank line, no `\par`).
+fn gap_continues(texts: &[&str], prev: Span, next: Span) -> bool {
+    prev.document == next.document
+        && prev.end <= next.start
+        && texts
+            .get(next.document.0)
+            .and_then(|t| t.get(prev.end..next.start))
+            .is_some_and(|gap| !has_blank_line(gap) && find_command(gap, "par").is_none())
+}
+
+#[allow(dead_code)]
 fn math_row_number(inlines: &[Inline], span: Span) -> Option<Option<(String, Span)>> {
     inlines.iter().find_map(|i| match i {
         Inline::MathRows { rows, .. } => rows.iter().find(|r| r.span == span).map(|r| r.number.clone().map(|n| (n, r.span))),
@@ -2816,7 +2953,7 @@ mod tests {
                     .iter()
                     .map(|p| match p {
                         ParaPart::Lines(items) => shape(items),
-                        ParaPart::Display { .. } => "D".to_string(),
+                        ParaPart::Display { .. } | ParaPart::Rows { .. } => "D".to_string(),
                     })
                     .collect(),
                 Block::Rule { .. } => "R".to_string(),
