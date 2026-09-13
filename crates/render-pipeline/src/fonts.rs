@@ -159,6 +159,11 @@ pub const DEFAULT_FONT_DIRS: [&str; 12] = [
     "/usr/share/texlive/texmf-dist/fonts/opentype/public/lm-math",
 ];
 
+/// The CLI tarball's data directory relative to the executable:
+/// `bin/flashtex` finds `share/flashtex/{Fonts,texmf}` (FHS-style layout,
+/// `flashtex-cli-<version>-<platform>.tar.gz`).
+pub const SHARE_DIR: &str = "../share/flashtex";
+
 /// What font discovery reads from the process: the three override
 /// variables and where the executable lives. [`Discovery::from_process`]
 /// samples the real process; tests build one by hand so the bundle-relative
@@ -194,18 +199,24 @@ impl Discovery {
 
     /// The texmf trees an app bundle or a sibling directory can ship,
     /// relative to the executable: `<exe>/../Resources/texmf` (the bundle's
-    /// `Contents/Resources/texmf`, sealed with the app) then `<exe>/texmf`.
+    /// `Contents/Resources/texmf`, sealed with the app), `<exe>/texmf`, then
+    /// `<exe>/../share/flashtex/texmf` (the CLI tarball: `bin/flashtex` next
+    /// to `share/flashtex/`, see scripts/ci/package-cli.sh).
     /// Under each: `fonts/opentype/public/{lm,lm-math}`,
     /// `fonts/tfm/public/lm` and `doc/fonts/lm/GUST-FONT-LICENSE.TXT`.
     pub fn bundle_texmf_roots(&self) -> Vec<PathBuf> {
-        self.exe_dir.iter().flat_map(|d| [d.join("../Resources/texmf"), d.join("texmf")]).collect()
+        self.exe_dir
+            .iter()
+            .flat_map(|d| [d.join("../Resources/texmf"), d.join("texmf"), d.join(SHARE_DIR).join("texmf")])
+            .collect()
     }
 
     /// Font directories, in order: `FLASHTEX_FONT_DIRS`, `FLASHTEX_LM_DIR`,
     /// the bundled texmf trees' OpenType directories, a flat `Fonts`
-    /// directory next to the executable or in the bundle's `Resources`,
-    /// then [`DEFAULT_FONT_DIRS`] (host TeX). Nothing is scanned outside
-    /// this list; explicit overrides always come first.
+    /// directory next to the executable, in the bundle's `Resources` or in
+    /// the tarball's `share/flashtex`, then [`DEFAULT_FONT_DIRS`] (host
+    /// TeX). Nothing is scanned outside this list; explicit overrides
+    /// always come first.
     pub fn font_dirs(&self) -> Vec<PathBuf> {
         let mut dirs = Discovery::split(&self.font_dirs);
         dirs.extend(self.lm_dir.iter().map(PathBuf::from));
@@ -216,6 +227,7 @@ impl Discovery {
         if let Some(dir) = &self.exe_dir {
             dirs.push(dir.join("Fonts"));
             dirs.push(dir.join("../Resources/Fonts"));
+            dirs.push(dir.join(SHARE_DIR).join("Fonts"));
         }
         dirs.extend(DEFAULT_FONT_DIRS.iter().map(PathBuf::from));
         dirs
