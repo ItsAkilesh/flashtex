@@ -687,6 +687,13 @@ pub fn adapt_cached(
     if let Some(pt) = setlength(source, "columnseprule", size) {
         style.columnseprule_pt = pt;
     }
+    style.microtype = microtype_setup(source);
+    if document_sloppy(source) {
+        // `\sloppy`: `\tolerance 9999 \emergencystretch 3em \hfuzz .5pt
+        // \vfuzz\hfuzz` (latex.ltx), as the class does for two columns.
+        style.tolerance = 9999.0;
+        style.emergency_stretch_pt = 3.0 * style.body_size_pt;
+    }
     // amsmath makes `\[` a plain `$$` (see [`ParaPart::Display::bracket`]).
     let amsmath = parsed.packages.iter().any(|p| p == "amsmath");
     #[cfg(feature = "amsmath-inline")]
@@ -1645,6 +1652,74 @@ pub fn t1_encoding(source: &str) -> bool {
         .is_some_and(|opts| opts.split(',').map(str::trim).filter(|o| !o.is_empty()).last() == Some("T1"))
 }
 
+/// `\usepackage[<options>]{microtype}` under pdfTeX in PDF mode: protrusion
+/// and expansion both on by default (`\pdfprotrudechars=2`,
+/// `\pdfadjustspacing=2`, stretch/shrink 20, step 1, autoexpand);
+/// `protrusion=`/`expansion=` take `true`, `false`, `compatibility` (level 1),
+/// `nocompatibility` or a font set name; `disable` (or `disable=true`) switches
+/// both off, `disable=ifdraft` only under `draft` (a package or class option;
+/// `draft` alone changes nothing, `final` is a no-op in microtype.sty v3.2);
+/// `factor`, `stretch`, `shrink`, `step`, `selected` and `auto` map
+/// to [`flashtex_microtype::Options`]. Other options (`tracking`, `kerning`,
+/// `spacing`, `letterspace`, ...) do not affect pdfTeX's protrusion or
+/// expansion and are ignored, as is `\microtypesetup` (not read).
+pub fn microtype_setup(source: &str) -> Option<crate::style::MicrotypeSetup> {
+    let opts = package_options(source, "microtype")?;
+    let mut o = flashtex_microtype::Options::default();
+    let (mut protrude, mut adjust) = (2, 2);
+    let mut draft = class_options(source).is_some_and(|c| c.split(',').any(|o| o.trim() == "draft"));
+    let (mut disable, mut disable_ifdraft) = (false, false);
+    let level = |v: Option<&str>| match v {
+        Some("false") => 0,
+        Some("compatibility") => 1,
+        _ => 2,
+    };
+    let int = |v: Option<&str>, d: i32| v.and_then(|v| v.parse::<i32>().ok()).unwrap_or(d);
+    let named = |v: Option<&str>| {
+        v.filter(|v| !matches!(*v, "true" | "false" | "compatibility" | "nocompatibility"))
+            .map(str::to_string)
+    };
+    for kv in opts.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        let (k, v) = match kv.split_once('=') {
+            Some((k, v)) => (k.trim(), Some(v.trim().trim_matches(|c| c == '{' || c == '}').trim())),
+            None => (kv, None),
+        };
+        match k {
+            "draft" => draft = v != Some("false"),
+            "disable" => match v {
+                None | Some("true") => disable = true,
+                Some("ifdraft") => disable_ifdraft = true,
+                _ => {}
+            },
+            "protrusion" => {
+                protrude = level(v);
+                if let Some(set) = named(v) {
+                    o.protrusion_set = Some(set);
+                }
+            }
+            "expansion" => {
+                adjust = level(v);
+                if let Some(set) = named(v) {
+                    o.expansion_set = Some(set);
+                }
+            }
+            "factor" => o.protrusion_factor = int(v, o.protrusion_factor),
+            "stretch" => o.stretch = int(v, o.stretch),
+            "shrink" => o.shrink = int(v, o.shrink),
+            "step" => o.step = int(v, o.step),
+            "selected" => o.selected = v != Some("false"),
+            "auto" => o.auto_expand = v != Some("false"),
+            _ => {}
+        }
+    }
+    if disable || (disable_ifdraft && draft) {
+        (protrude, adjust) = (0, 0);
+    }
+    o.protrusion = protrude > 0;
+    o.expansion = adjust > 0;
+    Some(crate::style::MicrotypeSetup { options: o, protrude_chars: protrude, adjust_spacing: adjust })
+}
+
 /// Options of `\usepackage[opts]{name}`, if the package is loaded.
 pub fn package_options(source: &str, name: &str) -> Option<String> {
     let mut from = 0;
@@ -2107,6 +2182,40 @@ fn find_command(source: &str, name: &str) -> Option<usize> {
         i += 1;
     }
     None
+}
+
+/// Whether `\sloppy` is in force for the whole document: a `\sloppy` outside
+/// every brace group of the entry source (preamble or body). One inside a
+/// group (`{\sloppy ...}`) is local and not applied; `sloppypar` is not read.
+pub fn document_sloppy(source: &str) -> bool {
+    let mut from = 0;
+    while let Some(at) = find_command(&source[from..], "sloppy") {
+        let abs = from + at;
+        if brace_depth(&source[..abs]) == 0 {
+            return true;
+        }
+        from = abs + 1;
+    }
+    false
+}
+
+/// Unclosed `{` groups in `prefix` (escaped braces and comments skipped).
+fn brace_depth(prefix: &str) -> i64 {
+    let bytes = prefix.as_bytes();
+    let (mut depth, mut i, mut comment) = (0i64, 0usize, false);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' => comment = false,
+            _ if comment => {}
+            b'%' => comment = true,
+            b'\\' => i += 1,
+            b'{' => depth += 1,
+            b'}' => depth = (depth - 1).max(0),
+            _ => {}
+        }
+        i += 1;
+    }
+    depth
 }
 
 /// Byte offset of the last `\<name>` in `source` outside comments.
