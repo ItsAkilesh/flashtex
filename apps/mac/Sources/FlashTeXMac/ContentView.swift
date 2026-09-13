@@ -182,7 +182,7 @@ private struct EditorPane: View {
                 projectIndexMetadata: model.completionMetadata,
                 projectFiles: model.documents.map(\.path), // `\input{` completion (Completion.swift)
                 onCaretChange: { model.caretUTF16 = $0 },
-                onSelectionChange: { model.caretLengthUTF16 = $0.length },
+                onSelectionChange: { if model.caretLengthUTF16 != $0.length { model.caretLengthUTF16 = $0.length } }, // every keystroke reports length 0; an equal write still invalidates its readers
                 onEditApplied: { model.editApplied($0, newText: $1) },
                 onEditRefused: { model.editRefused($0, reason: $1) },
                 autoClosePairs: EditorPreferences.shared.autoCloseBraces ? model.autoClosePairs : [] // EditorPreferences.swift gates the braces lane set
@@ -322,43 +322,46 @@ private struct PreviewHeader: View {
     @Environment(ShellModel.self) var model
 
     var body: some View {
+        // Reads the throttled chrome mirror (ShellChrome.swift), not `result`,
+        // `editorRevision` or `inFlightRevision`: this header re-evaluated on
+        // every keystroke and every reply (FT-071 main-thread sample).
+        let chrome = model.chrome
         HStack(spacing: 8) {
-            sourceBadge
-            if let r = model.result {
-                Text(sourceName).font(.caption).lineLimit(1)
-                    .help("result id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision) · pdf: \(r.pdfPath ?? "none")")
-                if model.previewDebugStatus {
-                    Text(r.status.rawValue).font(.caption.bold()).foregroundStyle(statusColor(r.status))
+            sourceBadge(chrome)
+            if chrome.hasResult {
+                Text(sourceName(chrome)).font(.caption).lineLimit(1)
+                    .help(chrome.resultHelp)
+                if model.previewDebugStatus, let status = chrome.resultStatus {
+                    Text(status.rawValue).font(.caption.bold()).foregroundStyle(statusColor(status))
                 }
-                if r.status == .recovered && model.previewDebugStatus {
+                if chrome.resultStatus == .recovered && model.previewDebugStatus {
                     Text("provisional rendering").font(.caption).foregroundStyle(.orange).lineLimit(1).fixedSize()
                         .help("recovered: preview shown with provisional rendering")
                 }
-                if model.inFlightRevision != nil { ProgressView().controlSize(.mini) }
-                if let historical = model.historicalPreview {
-                    Text(historical.label).font(.caption.bold()).foregroundStyle(.purple).lineLimit(1)
+                // Fixed-size slot: toggling the indicator never changes the header's layout.
+                Color.clear.frame(width: 12, height: 12)
+                    .overlay { if chrome.compiling { ProgressView().controlSize(.mini) } }
+                if let historical = chrome.historicalLabel {
+                    Text(historical).font(.caption.bold()).foregroundStyle(.purple).lineLimit(1)
                         .help("A completed older snapshot is shown while the helper compiles the newer revision; navigation, caret sync, capture destinations and export return with the current preview.")
-                } else if model.previewIsStale {
-                    Text(model.outputBound?.banner // the reply exceeded a bound: nothing is compiling (ShellModel+OutputBounds.swift)
-                         ?? (model.workerAttached
-                         ? (model.autoCompile ? "editor at r\(model.editorRevision) — compiling…" : "editor at r\(model.editorRevision) — ⌘B to compile")
-                         : "editor at r\(model.editorRevision) — no producer attached"))
-                        .font(.caption).foregroundStyle(model.outputBound != nil || !model.workerAttached ? .orange : .secondary).lineLimit(1) // routine "compiling…" is quiet; only bounds/no-producer are highlighted
+                } else if let stale = chrome.staleText { // the reply exceeded a bound, or "editor at rN — compiling…" (ShellChrome)
+                    Text(stale)
+                        .font(.caption).foregroundStyle(chrome.staleHighlighted ? .orange : .secondary).lineLimit(1) // routine "compiling…" is quiet; only bounds/no-producer are highlighted
                 }
-            } else if let err = model.loadError {
+            } else if let err = chrome.loadError {
                 Text(err).font(.caption).foregroundStyle(.red).lineLimit(1).help(err)
             } else {
                 Text("Preview").font(.caption.bold()).foregroundStyle(.secondary)
             }
             Spacer()
             PreviewZoomControl() // PreviewZoom.swift: percentage and −/+
-            ForEach(model.capabilityNotes, id: \.self) { note in
+            ForEach(chrome.capabilityNotes, id: \.self) { note in
                 Image(systemName: "exclamationmark.circle").foregroundStyle(.orange).help(note)
                     .accessibilityLabel(note)
             }
-            Text(model.negotiation.accepted.isEmpty ? "legacy layout" : model.negotiation.accepted.joined(separator: ", "))
+            Text(chrome.acceptedCapabilities.isEmpty ? "legacy layout" : chrome.acceptedCapabilities.joined(separator: ", "))
                 .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                .help(model.negotiation.accepted.isEmpty
+                .help(chrome.acceptedCapabilities.isEmpty
                       ? "No layout capability accepted for this result: U+2500 fraction bars are an approximation."
                       : "Capabilities the worker accepted for this result (typed rules / explicit font hints).")
         }
@@ -366,23 +369,23 @@ private struct PreviewHeader: View {
         .background(.bar)
     }
 
-    private var sourceBadge: some View {
-        let (label, color): (String, Color) = switch model.previewSource {
+    private func sourceBadge(_ chrome: ShellChrome) -> some View {
+        let (label, color): (String, Color) = switch chrome.previewSource {
         case .none: ("NONE", .gray)
         case .fixture: ("FIXTURE", .orange)
-        case .worker: model.historicalPreview != nil ? ("HISTORICAL", .purple) : ("WORKER", .green)
+        case .worker: chrome.historicalLabel != nil ? ("HISTORICAL", .purple) : ("WORKER", .green)
         }
         return Text(label)
             .font(.caption2.bold())
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.25), in: Capsule())
-            .help(model.isFixture ? "Not a real compile." : model.producerSummary)
+            .help(chrome.previewSource == .fixture ? "Not a real compile." : model.producerSummary)
     }
 
-    private var sourceName: String {
-        switch model.previewSource {
+    private func sourceName(_ chrome: ShellChrome) -> String {
+        switch chrome.previewSource {
         case .none: "—"
-        case .fixture: model.fixtureURL?.lastPathComponent ?? "fixture"
+        case .fixture: chrome.fixtureName ?? "fixture"
         case .worker(let name): name
         }
     }
@@ -400,38 +403,40 @@ private struct StatusBar: View {
     @Environment(ShellModel.self) var model
 
     var body: some View {
+        // Reads the throttled chrome mirror (ShellChrome.swift): the revision,
+        // latency, route tooltip, problem counts and notes change on every
+        // keystroke / reply, and this bar re-evaluated with each of them.
+        let chrome = model.chrome
         HStack(spacing: 12) {
-            Label("r\(model.editorRevision)", systemImage: "pencil.line")
+            Label("r\(chrome.editorRevision)", systemImage: "pencil.line")
                 .help("Editor revision (increments on every edit)")
-            if let durable = model.controllerState.durable[model.activePath]?.revision {
+            if let durable = chrome.durableRevision {
                 Label("durable r\(durable)", systemImage: "internaldrive")
                     .help("Durable revision of \(model.activePath) in the helper's edit ledger")
             }
-            if let ms = model.lastLatencyMs, let med = model.medianLatencyMs {
+            if let ms = chrome.lastLatencyMs {
                 Label(String(format: "%.0f ms", ms), systemImage: "timer")
-                    .help(String(format: "Last compile latency %.0f ms (median %.0f over %d)", ms, med, model.latenciesMs.count))
+                    .help(chrome.latencyHelp)
             }
-            Label(route, systemImage: routeIcon)
-                .help(model.isFixture ? "Not a real compile." : (model.controllerAttached ? model.controllerStatus : model.workerStatus))
+            Label(route(chrome), systemImage: routeIcon(chrome))
+                .help(chrome.routeHelp)
             WordCountStatusItem() // GH68: live word count + breakdown popover (WordCountStatusView.swift)
-            let diags = model.displayedDiagnostics
-            if !diags.isEmpty {
-                let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)
+            let problems = chrome.problems
+            if !problems.isEmpty {
                 Button {
                     model.problemsVisible.toggle()
                 } label: {
                     HStack(spacing: 6) {
-                        if errors > 0 { Label("\(errors)", systemImage: "xmark.octagon.fill").foregroundStyle(.red) }
-                        if warnings > 0 { Label("\(warnings)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
-                        if gaps > 0 { Label("\(gaps)", systemImage: "puzzlepiece.extension").foregroundStyle(.secondary) }
+                        if problems.errors > 0 { Label("\(problems.errors)", systemImage: "xmark.octagon.fill").foregroundStyle(.red) }
+                        if problems.warnings > 0 { Label("\(problems.warnings)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                        if problems.gaps > 0 { Label("\(problems.gaps)", systemImage: "puzzlepiece.extension").foregroundStyle(.secondary) }
                     }
                 }
                 .buttonStyle(.plain)
                 .help("Errors, warnings and not-implemented gaps of the last result — click to show or hide the Problems panel (⌘⇧M)")
             }
             Divider().frame(height: 12)
-            Text(model.navigationNote ?? model.editorMarkReport.staleNote ?? model.explanationStatus
-                 ?? "Click text in the preview to select its source range.")
+            Text(chrome.note ?? "Click text in the preview to select its source range.")
                 .foregroundStyle(.secondary).lineLimit(1)
             Spacer()
             if case .running(let pid, _) = model.exportSession.state { // ShellModel+ExportSession.swift
@@ -442,7 +447,7 @@ private struct StatusBar: View {
                     .controlSize(.small)
                     .help("Terminate flashtex-pdf-exact; nothing is written to the destination")
                     .accessibilityIdentifier("export.cancel")
-            } else if let note = model.captureNote {
+            } else if let note = chrome.captureNote {
                 Text(note).foregroundStyle(.secondary).lineLimit(1).help(note)
             }
         }
@@ -454,16 +459,21 @@ private struct StatusBar: View {
         .accessibilityLabel("Status bar")
     }
 
-    private var route: String {
-        if model.isFixture { return "fixture" }
-        if model.controllerAttached { return "controller" }
-        if model.workerAttached { return "worker" }
-        return "no producer"
+    private func route(_ chrome: ShellChrome) -> String {
+        switch chrome.route {
+        case .fixture: "fixture"
+        case .controller: "controller"
+        case .worker: "worker"
+        case .none: "no producer"
+        }
     }
 
-    private var routeIcon: String {
-        if model.isFixture { return "doc.badge.gearshape" }
-        return model.workerAttached ? "bolt.horizontal.circle.fill" : "bolt.horizontal.circle"
+    private func routeIcon(_ chrome: ShellChrome) -> String {
+        switch chrome.route {
+        case .fixture: "doc.badge.gearshape"
+        case .controller, .worker: "bolt.horizontal.circle.fill"
+        case .none: "bolt.horizontal.circle"
+        }
     }
 }
 

@@ -117,14 +117,57 @@ final class ShellModel {
     /// The producer as attached ("attached: flashtex-render"), not the
     /// per-request status line: tooltips read this instead of `workerStatus`.
     private(set) var producerSummary = "no worker attached"
+    /// `displayedDiagnostics` assigned only when the list changes, for the
+    /// Problems panel: `displayedDiagnostics` itself reads `result`, so every
+    /// reply re-evaluated the panel's List (an AppKit table) while typing.
+    private(set) var problemsList: [RuntimeV1.Diagnostic] = []
+    /// `result?.status`, change-only, for the Problems panel header.
+    private(set) var resultStatus: RuntimeV1.Status?
+    /// Throttled mirror the status bar / preview header / tab bar read (ShellChrome.swift).
+    let chrome = ShellChrome()
+    @ObservationIgnored private var chromeRefreshPending = false
+
+    /// Refreshes the chrome mirror from the current state and re-arms the
+    /// tracking: the first later change to anything the refresh read
+    /// schedules the next refresh one `ShellChrome.interval` later.
+    private func refreshChrome() {
+        var again = false
+        withObservationTracking {
+            again = chrome.refresh(from: self)
+        } onChange: { [weak self] in
+            // Observation calls this at the mutation (main actor: every writer is).
+            MainActor.assumeIsolated { self?.scheduleChromeRefresh() }
+        }
+        if again { scheduleChromeRefresh() }
+    }
+
+    private func scheduleChromeRefresh() {
+        guard !chromeRefreshPending else { return }
+        chromeRefreshPending = true
+        // A run-loop timer, not the main dispatch queue: AppKit drains that
+        // queue late under typing (TypingBench.nextRunLoopTurn).
+        let timer = Timer(timeInterval: ShellChrome.interval, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.chromeRefreshPending = false
+                self.refreshChrome()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    /// Applies pending chrome changes now (tests, and the bench's paint point).
+    func flushChrome() { chromeRefreshPending = false; refreshChrome() }
 
     private func refreshToolbarMirrors() {
         let hasResult = result != nil
         if toolbarHasResult != hasResult { toolbarHasResult = hasResult }
         let hasFrame = displayListV2?.frame != nil
         if toolbarHasV2Frame != hasFrame { toolbarHasV2Frame = hasFrame }
-        let problems = displayedDiagnostics.count
-        if toolbarProblemCount != problems { toolbarProblemCount = problems }
+        let diagnostics = displayedDiagnostics
+        if toolbarProblemCount != diagnostics.count { toolbarProblemCount = diagnostics.count }
+        if problemsList != diagnostics { problemsList = diagnostics }
+        if resultStatus != result?.status { resultStatus = result?.status }
         let summary: String
         if controllerAttached { summary = "helper attached: \(controller?.executable.lastPathComponent ?? "flashtex-preview-controller")" }
         else if let worker, worker.isRunning { summary = "attached: \(worker.executable.lastPathComponent)" }
@@ -231,9 +274,13 @@ final class ShellModel {
 
     /// Binds a result's negotiation state, substitutions, and layout diagnostics.
     func bindLayout(of applied: RuntimeV1.CompileResult, requested: [String]) {
-        negotiation = LayoutNegotiation(requested: requested, accepted: applied.layoutCapabilities ?? [])
-        fontSubstitutions = PreviewFonts.substitutions(in: applied)
-        layoutDiagnostics = LayoutNegotiation.unsupportedPrimitiveDiagnostics(in: applied, negotiation: negotiation)
+        // Change-only (see handle(.result)): these are read by the preview header and toolbar.
+        let bound = LayoutNegotiation(requested: requested, accepted: applied.layoutCapabilities ?? [])
+        if negotiation != bound { negotiation = bound }
+        let substitutions = PreviewFonts.substitutions(in: applied)
+        if fontSubstitutions != substitutions { fontSubstitutions = substitutions }
+        let diagnostics = LayoutNegotiation.unsupportedPrimitiveDiagnostics(in: applied, negotiation: negotiation)
+        if layoutDiagnostics != diagnostics { layoutDiagnostics = diagnostics }
         for note in capabilityNotes { log(note) }
         for d in layoutDiagnostics { log(d.message) }
     }
@@ -437,6 +484,7 @@ final class ShellModel {
                BridgeClient.locateBridge() != nil {
                 attachDiscoveredBridge()
             }
+            refreshChrome() // ShellChrome.swift: from here on the chrome follows the model, throttled
         }
         if let fixtures = Self.locateFixturesDirectory() {
             loadFixtures(request: fixtures.appendingPathComponent("compile-request.json"),
@@ -847,8 +895,11 @@ final class ShellModel {
             }
             result = incoming
             resultID = env.id
-            previewSource = .worker(worker?.executable.lastPathComponent ?? "worker")
-            historicalPreview = nil
+            // Change-only: `@Observable` fires for every assignment, equal or not,
+            // and each of these re-evaluated the header/status views per reply.
+            let source = PreviewSource.worker(worker?.executable.lastPathComponent ?? "worker")
+            if previewSource != source { previewSource = source }
+            if historicalPreview != nil { historicalPreview = nil }
             bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
             retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
@@ -861,7 +912,7 @@ final class ShellModel {
             if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
             let latencyText = String(format: " in %.0f ms", ms)
             workerStatus = "revision \(incoming.revision): \(incoming.status.rawValue), \(incoming.diagnostics.count) diagnostics\(latencyText)"
-            selection = nil
+            if selection != nil { selection = nil } // the editor observes `selection`; a nil-to-nil write still invalidates it
             if compileQueued {
                 compileQueued = false
                 compile() // no-op when buffers and capability set are unchanged

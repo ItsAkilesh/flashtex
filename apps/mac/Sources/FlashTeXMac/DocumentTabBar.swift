@@ -19,7 +19,7 @@ struct DocumentTabBar: View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
-                    ForEach(model.project.listing) { doc in
+                    ForEach(model.chrome.listing) { doc in // throttled, change-only copy (ShellChrome.swift): `project.listing` reads `documents` per keystroke
                         DocumentTab(doc: doc, active: doc.path == model.activePath, kind: model.documentKinds.kind(of: doc.path))
                     }
                 }
@@ -39,9 +39,9 @@ struct DocumentTabBar: View {
             } else {
                 Text("unsaved buffer").font(.caption).foregroundStyle(.secondary)
             }
-            Text("\(model.activeText.utf8.count) B · \((model.activeText as NSString).length) u16")
+            Text("\(model.chrome.activeTextBytes) B · \(model.chrome.activeTextUTF16) u16")
                 .font(.caption).foregroundStyle(.tertiary).monospacedDigit()
-                .help("\(model.activeText.utf8.count) UTF-8 bytes · \((model.activeText as NSString).length) UTF-16 units")
+                .help("\(model.chrome.activeTextBytes) UTF-8 bytes · \(model.chrome.activeTextUTF16) UTF-16 units")
                 .padding(.trailing, 8)
         }
         .frame(height: 30)

@@ -1014,9 +1014,11 @@ private struct PageV2View: View, Equatable {
     let onSelect: (V2Geometry.Hit) -> Void
     @State private var hover: V2Geometry.Hit?
 
+    // `stale` is not part of the equality: nothing drawn depends on it, and the
+    // loaded -> stale -> loaded toggle of every keystroke re-evaluated every page.
     static func == (a: PageV2View, b: PageV2View) -> Bool {
         a.pageToken == b.pageToken && a.page.number == b.page.number
-            && a.dark == b.dark && a.stale == b.stale && a.scale == b.scale && a.displayScale == b.displayScale && a.caretHighlights == b.caretHighlights
+            && a.dark == b.dark && a.scale == b.scale && a.displayScale == b.displayScale && a.caretHighlights == b.caretHighlights
     }
 
     var body: some View {
