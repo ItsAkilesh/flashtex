@@ -105,9 +105,10 @@ impl MathRec {
     /// run's own shaped glyph (the text face's cmap id, 0 for its interword
     /// space) or the math provider's mapping.
     pub fn otf_glyph(&self, g: &ml::PositionedGlyph) -> Option<(Rc<LoadedFace>, u16)> {
-        // `OTF_FALLBACK_FONT` is `u32::MAX`, above the `\text` run ids: it
-        // must be answered by the provider, not looked up as a run.
-        if g.font_id != crate::mathtex::OTF_FALLBACK_FONT && g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
+        // The OTF fallback ids (`u32::MAX`, `u32::MAX - 1`) lie above the
+        // `\text` run ids: they must be answered by the provider, not
+        // looked up as a run.
+        if !crate::mathtex::is_otf_fallback(g.font_id) && g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
             let run = crate::mathtext::run_of(&self.text_runs, g.font_id)?;
             let glyph = run.glyph_at(g.font_id, g.gid)?;
             return Some((run.face.clone(), glyph.gid.0));
@@ -154,7 +155,9 @@ impl MathProvider {
     pub fn otf_glyph(&self, g: &ml::PositionedGlyph) -> Option<(Rc<LoadedFace>, u16)> {
         match self {
             MathProvider::Tex(_) if g.font_id == crate::mathtex::OTF_FALLBACK_FONT => Some((self.otf().face().clone(), g.gid)),
+            MathProvider::Tex(_) if g.font_id == crate::mathtex::OTF_FALLBACK_BB_FONT => self.otf().bb_face().map(|f| (f.clone(), g.gid)),
             MathProvider::Tex(t) => t.otf_glyph(g.font_id, g.gid as u8, g.ch),
+            MathProvider::Otf(o) if g.font_id == crate::mathfont::BB_FONT => o.bb_face().map(|f| (f.clone(), g.gid)),
             MathProvider::Otf(o) => Some((o.face().clone(), g.gid)),
         }
     }
@@ -442,7 +445,10 @@ impl<'a> Context<'a> {
         };
         match (r.substituted, MathFonts::new(r.face, sizes)) {
             (None, Some(m)) => {
-                let m = Rc::new(m);
+                // The double-struck secondary face (msbm's design) is
+                // optional: absent, Latin Modern Math draws `\mathbb` and
+                // the profile note below says so once.
+                let m = Rc::new(m.with_double_struck(self.fonts.otf(crate::mathfont::BB_FONT_FILE)));
                 // pdfLaTeX's geometry needs the lm math TFMs' parameters
                 // (metric-identical to CM, embedded in math-layout) and
                 // `rm-lmr` for the roman family; without the TFM directory
@@ -772,6 +778,22 @@ impl<'a> Context<'a> {
             self.report_once(
                 format!("mathmissing:{ch}"),
                 Diagnostic::warning("missing_glyph", format!("U+{:04X} '{}' has no glyph in {}", ch as u32, ch, fonts.otf().face().name), vec![src]),
+            );
+        }
+        if fonts.otf().take_bb_fallback() {
+            let src = self.source(span);
+            let reason = fonts.otf().bb_status().unwrap_or("not loaded");
+            self.report_once(
+                "math:bb-fallback".into(),
+                Diagnostic::warning(
+                    "math_resource_profile",
+                    format!(
+                        "msbm10: double-struck (\\mathbb) glyphs drawn from {} (open-face design); {} unavailable ({reason}), so the outlines and advances are not the reference's msbm design",
+                        fonts.otf().face().name,
+                        crate::mathfont::BB_FONT_FILE
+                    ),
+                    vec![src],
+                ),
             );
         }
         for l in laid.limitations {

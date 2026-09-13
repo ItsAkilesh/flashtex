@@ -33,6 +33,15 @@ use crate::tfm::Tfm;
 /// Math because no CM TFM slot covers the character; `gid` is then the
 /// face's own glyph id (see `MathProvider::otf_glyph`).
 pub const OTF_FALLBACK_FONT: MathFontId = MathFontId(u32::MAX);
+/// Font id of double-struck glyphs taken from the secondary math face (New
+/// Computer Modern Math, [`crate::mathfont::BB_FONT`]) the same way.
+pub const OTF_FALLBACK_BB_FONT: MathFontId = MathFontId(u32::MAX - 1);
+
+/// Whether `font` is one of the two OpenType-fallback ids (above the
+/// `\text` run range; answered by the provider, never looked up as a run).
+pub fn is_otf_fallback(font: MathFontId) -> bool {
+    font == OTF_FALLBACK_FONT || font == OTF_FALLBACK_BB_FONT
+}
 
 pub struct TexMathMetrics {
     cm: CmMathMetrics,
@@ -150,10 +159,13 @@ impl TexMathMetrics {
     /// ... that math-layout's `cm` slot table does not carry): Latin Modern
     /// Math's own glyph and OpenType box, tagged [`OTF_FALLBACK_FONT`] so the
     /// painter draws that glyph id directly. Its width is the OpenType
-    /// advance, not the cmsy/msbm TFM width pdfLaTeX would use.
+    /// advance, not the cmsy/msbm TFM width pdfLaTeX would use. Double-struck
+    /// letters come from the secondary face (New Computer Modern Math, whose
+    /// design and advances track msbm) when it is loaded, tagged
+    /// [`OTF_FALLBACK_BB_FONT`].
     fn otf_fallback_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
         let mut g = self.otf.glyph(ch, size)?;
-        g.font_id = OTF_FALLBACK_FONT;
+        g.font_id = if g.font_id == crate::mathfont::BB_FONT { OTF_FALLBACK_BB_FONT } else { OTF_FALLBACK_FONT };
         Some(g)
     }
 
@@ -342,6 +354,9 @@ impl MathFontMetrics for TexMathMetrics {
     fn font_name(&self, font: MathFontId) -> String {
         if font == OTF_FALLBACK_FONT {
             return self.otf.face().name.clone();
+        }
+        if font == OTF_FALLBACK_BB_FONT {
+            return self.otf.font_name(crate::mathfont::BB_FONT);
         }
         self.cm.font_name(font)
     }
