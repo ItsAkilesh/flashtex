@@ -89,7 +89,6 @@ fn path_rule(path: &flashtex_render_pipeline::display::PathItem) -> Option<[f64;
 }
 
 #[test]
-#[ignore = "float bodies in progress: run with --ignored (checkpoint of the rebase onto main)"]
 fn float_body_fixtures_match_pdflatex() {
     if !common::lm_available() {
         eprintln!("SKIP float_bodies_oracle: Latin Modern fonts not installed");

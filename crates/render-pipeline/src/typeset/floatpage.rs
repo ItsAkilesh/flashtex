@@ -1023,10 +1023,11 @@ impl Placer<'_> {
     }
 }
 
-/// Glue set ratio of the column box `\vbox to vsize` holding `nodes` (as
-/// `pagebuild`'s page builder: positive stretches, negative shrinks, 0 under
-/// `fil` glue).
-fn column_glue_set(p: &PageParams, vsize: f64, nodes: &[N], list: &[VItem], boxes: &[FloatBox]) -> f64 {
+/// Glue set ratio of the column box `\vbox to vsize` holding `nodes` and
+/// float material `extra` (natural height, stretch, shrink), as
+/// `pagebuild`'s page builder: positive stretches, negative shrinks, 0
+/// under `fil` glue.
+fn column_glue_set(p: &PageParams, vsize: f64, nodes: &[N], list: &[VItem], boxes: &[FloatBox], extra: (f64, f64, f64)) -> f64 {
     let (mut total, mut depth, mut has_box, mut last_box) = (0.0f64, 0.0f64, false, false);
     let (mut stretch, mut shrink, mut fil) = (0.0f64, 0.0f64, false);
     for n in nodes {
@@ -1057,7 +1058,8 @@ fn column_glue_set(p: &PageParams, vsize: f64, nodes: &[N], list: &[VItem], boxe
             }
         }
     }
-    let natural = total + if last_box { (depth - p.maxdepth).max(0.0) } else { 0.0 };
+    let natural = total + if last_box { (depth - p.maxdepth).max(0.0) } else { 0.0 } + extra.0;
+    let (stretch, shrink) = (stretch + extra.1, shrink + extra.2);
     let excess = vsize - natural;
     if excess > 0.0 {
         if fil || stretch <= 0.0 {
@@ -1298,31 +1300,47 @@ pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams,
             continue;
         }
         let end = fired.unwrap_or(nodes.len());
-        // `\@makecol`'s `\vbox to\@colroom` (see `pagebuild::break_pages`):
-        // material taller than the column shrinks; a short column stretches
-        // only under `\flushbottom` at an ordinary break.
+        let page_no = pl.pages.len() as u32 + 1;
+        let tops = std::mem::take(&mut pl.col.top);
+        let bots = std::mem::take(&mut pl.col.bot);
+        // `\@makecol`: the text (`\box255`), the top floats with `\floatsep`
+        // and `\textfloatsep` (`\@cflt`) and the bottom floats (`\@cflb`) are
+        // unboxed into `\@make@normalcolbox`'s `\vbox to\@colht`, whose glue
+        // setting covers all of them: material taller than the column
+        // shrinks; a short column stretches only under `\flushbottom` at an
+        // ordinary break (as `pagebuild::break_pages`).
+        let floats_glue = |fl: &[usize]| -> (f64, f64, f64) {
+            if fl.is_empty() {
+                return (0.0, 0.0, 0.0);
+            }
+            let k = fl.len() as f64 - 1.0;
+            (
+                fl.iter().map(|f| boxes[*f].height).sum::<f64>() + k * fp.floatsep.n + fp.textfloatsep.n,
+                k * fp.floatsep.st + fp.textfloatsep.st,
+                k * fp.floatsep.sh + fp.textfloatsep.sh,
+            )
+        };
+        let (tg, bg) = (floats_glue(&tops), floats_glue(&bots));
         let ejected = matches!(nodes.get(end), Some(N::Penalty(pen)) if *pen <= EJECT_PENALTY);
-        let set = match column_glue_set(p, vsize, &nodes[start..end], list, &boxes) {
+        let set = match column_glue_set(p, pl.colht, &nodes[start..end], list, &boxes, (tg.0 + bg.0, tg.1 + bg.1, tg.2 + bg.2)) {
             g if g < 0.0 => g,
             g if p.flushbottom && fired.is_some() && !ejected => g,
             _ => 0.0,
         };
         let glue_adj = |st: f64, sh: f64| if set > 0.0 { set * st } else { set * sh };
-        let page_no = pl.pages.len() as u32 + 1;
-        let tops = std::mem::take(&mut pl.col.top);
-        let bots = std::mem::take(&mut pl.col.bot);
+        let floatsep = fp.floatsep.n + glue_adj(fp.floatsep.st, fp.floatsep.sh);
         let off = pl.dbl_off();
         let text_off = off
             + if tops.is_empty() {
                 0.0
             } else {
-                tops.iter().map(|f| boxes[*f].height).sum::<f64>() + (tops.len() as f64 - 1.0) * fp.floatsep.n + fp.textfloatsep.n
+                tops.iter().map(|f| boxes[*f].height).sum::<f64>() + (tops.len() as f64 - 1.0) * floatsep + fp.textfloatsep.n + glue_adj(fp.textfloatsep.st, fp.textfloatsep.sh)
             };
         let mut lines: Vec<Placed> = Vec::new();
         let mut y = off;
         for &f in &tops {
             pl.emit(f, y, page_no, &mut lines);
-            y += boxes[f].height + fp.floatsep.n;
+            y += boxes[f].height + floatsep;
         }
         let (mut total, mut depth, mut has_box) = (0.0f64, 0.0f64, false);
         let mut last_text: Option<Placed> = None;
@@ -1372,11 +1390,11 @@ pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams,
             }
         }
         if !bots.is_empty() {
-            let span: f64 = bots.iter().map(|f| boxes[*f].height).sum::<f64>() + (bots.len() as f64 - 1.0) * fp.floatsep.n;
+            let span: f64 = bots.iter().map(|f| boxes[*f].height).sum::<f64>() + (bots.len() as f64 - 1.0) * floatsep;
             let mut y = off + pl.colht - span;
             for &f in &bots {
                 pl.emit(f, y, page_no, &mut lines);
-                y += boxes[f].height + fp.floatsep.n;
+                y += boxes[f].height + floatsep;
             }
         }
         pl.push_column(BuiltPage { lines, overfull_by });
