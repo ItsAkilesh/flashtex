@@ -16,7 +16,9 @@
 
 Owner: Commander — the primary Codex agent on `linux-primary`, designated by the
 user. Status: operating plan; worker registrations and implementation assignments
-are not yet confirmed. Read with [AGENTS.md](AGENTS.md).
+are not yet confirmed. Read with [AGENTS.md](AGENTS.md) and the agent onboarding
+notes in [docs/agents/README.md](docs/agents/README.md) (formerly the root README's
+"Working with agents" section).
 
 ## 1. Mission and fixed deadline
 
