@@ -42,6 +42,10 @@ pub enum Nucleus {
     Symbol(String),
     /// `\big(`, `\Bigr]`, ...: a delimiter scaled to `scale` times the current
     /// size (cmex10's 1.2, 1.8, 2.4, 3.0) and centred on the math axis.
+    /// `\left`/`\right` (`role` `Left`/`Right`, including the invisible null
+    /// delimiter) reuse this nucleus with a continuous `scale` computed from
+    /// their enclosed content by TeX's rule 19, rather than one of cmex10's
+    /// four fixed steps.
     SizedDelimiter {
         glyph: String,
         scale: f64,
@@ -90,12 +94,20 @@ pub enum Nucleus {
 
 /// The atom class plain TeX gives a `\big` delimiter: `\bigl` opens, `\bigr`
 /// closes, `\bigm` is a relation and bare `\big` is ordinary.
+///
+/// `Left` and `Right` are `\left`/`\right` specifically (classed as `Open`
+/// and `Close` in `atom_class`, same spacing as `\bigl`/`\bigr`), kept as
+/// separate variants so the `\left`/`\right` stretch-to-content pairing pass
+/// never mistakes a `\bigl`/`\bigr` pair — which stays at its fixed cmex10
+/// size — for one of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DelimiterRole {
     Ord,
     Open,
     Close,
     Rel,
+    Left,
+    Right,
 }
 
 /// `\hat`..`\grave`, plus `\widehat`/`\widetilde`.
@@ -505,8 +517,17 @@ impl MathParser<'_> {
             }
             "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "nonumber"
             | "notag" | "middle" => space(0.0, span),
-            // `\left`/`\right` do not stretch to their content yet: ordinary size.
-            "left" | "right" => self.take_delimiter(&name, span),
+            // `\left`/`\right` stretch to their enclosed content at layout
+            // time (`left_right_stretch_scales`); here they just record which
+            // role they play so that pairing pass can find them.
+            "left" | "right" => {
+                let role = if name == "left" {
+                    DelimiterRole::Left
+                } else {
+                    DelimiterRole::Right
+                };
+                left_right_delimiter(self.take_delimiter(&name, span), role)
+            }
             "big" | "Big" | "bigg" | "Bigg" | "bigl" | "Bigl" | "biggl" | "Biggl" | "bigr"
             | "Bigr" | "biggr" | "Biggr" | "bigm" | "Bigm" | "biggm" | "Biggm" => {
                 sized_delimiter(self.take_delimiter(&name, span), &name)
@@ -1180,6 +1201,33 @@ fn sized_delimiter(mut atom: MathAtom, command: &str) -> MathAtom {
     atom
 }
 
+/// Turns the atom `take_delimiter` produced for `\left`/`\right` into a
+/// `SizedDelimiter` at ordinary (scale 1) size, ready for
+/// `left_right_stretch_scales` to pair up and stretch at layout time.
+///
+/// `take_delimiter` returns either a `Symbol` (an ordinary glyph) or a
+/// `Space { em: 0.0 }` (the null delimiter `\left.`/`\right.`, or the empty
+/// recovery glyph after a parse error). Both become a `SizedDelimiter` here —
+/// with an empty glyph for the space case — so the null delimiter still
+/// participates in pairing and stretches its *partner* correctly, while
+/// itself remaining invisible (an empty glyph draws nothing, at zero width).
+fn left_right_delimiter(atom: MathAtom, role: DelimiterRole) -> MathAtom {
+    let glyph = match &atom.nucleus {
+        Nucleus::Symbol(glyph) => glyph.clone(),
+        _ => String::new(),
+    };
+    MathAtom {
+        nucleus: Nucleus::SizedDelimiter {
+            glyph,
+            scale: 1.0,
+            role,
+        },
+        span: atom.span,
+        superscript: atom.superscript,
+        subscript: atom.subscript,
+    }
+}
+
 fn space(em: f64, span: Span) -> MathAtom {
     MathAtom {
         nucleus: Nucleus::Space { em },
@@ -1399,12 +1447,13 @@ enum AtomClass {
     Inner,
 }
 
-/// The class of `atom`, or `None` for explicit glue (`\,`, `\quad`, a null
-/// `\left.`), which TeX skips when pairing atoms for spacing.
+/// The class of `atom`, or `None` for explicit glue (`\,`, `\quad`), which
+/// TeX skips when pairing atoms for spacing.
 ///
-/// The parser does not keep TeX's class through `\left`/`\right` or
-/// `\operatorname`, so a fence is classified by its glyph (open/close, not
-/// inner) and `\operatorname{...}` text is ordinary.
+/// The parser does not keep TeX's class through `\operatorname`, so
+/// `\operatorname{...}` text is ordinary. `\left`/`\right` fences do keep a
+/// real class — including the invisible null delimiter, which is still an
+/// `Open`/`Close` atom for spacing purposes even though it draws nothing.
 fn atom_class(atom: &MathAtom) -> Option<AtomClass> {
     use AtomClass::*;
     Some(match &atom.nucleus {
@@ -1414,8 +1463,8 @@ fn atom_class(atom: &MathAtom) -> Option<AtomClass> {
         Nucleus::Symbol(glyph) => symbol_class(glyph),
         Nucleus::SizedDelimiter { role, .. } => match role {
             DelimiterRole::Ord => Ord,
-            DelimiterRole::Open => Open,
-            DelimiterRole::Close => Close,
+            DelimiterRole::Open | DelimiterRole::Left => Open,
+            DelimiterRole::Close | DelimiterRole::Right => Close,
             DelimiterRole::Rel => Rel,
         },
         Nucleus::Text(text) if OPERATOR_NAMES.contains(&text.as_str()) => Op,
@@ -1521,9 +1570,10 @@ fn layout_list_with(
         ascent: size,
         descent: 0.2 * size,
     };
+    let delimiter_scales = left_right_stretch_scales(list, size, root_size, level, display);
     let classes = spacing_classes(list);
     let mut previous_class = None;
-    for (atom, class) in list.atoms.iter().zip(classes) {
+    for (index, (atom, class)) in list.atoms.iter().zip(classes).enumerate() {
         if let Some(class) = class {
             if let Some(previous) = previous_class {
                 // Scripts and fraction parts are the only lists laid out
@@ -1532,7 +1582,18 @@ fn layout_list_with(
             }
             previous_class = Some(class);
         }
-        let mut nucleus = layout_nucleus(atom, size, root_size, level, diagnostics);
+        // A matched `\left`/`\right` gets its computed stretch substituted
+        // in for this nucleus only; everything else about the atom (its
+        // scripts, its class) is untouched.
+        let stretched;
+        let atom_for_nucleus = match delimiter_scales[index] {
+            Some(scale) => {
+                stretched = with_delimiter_scale(atom, scale);
+                &stretched
+            }
+            None => atom,
+        };
+        let mut nucleus = layout_nucleus(atom_for_nucleus, size, root_size, level, diagnostics);
         if display
             && level == 0
             && (atom.superscript.is_some() || atom.subscript.is_some())
@@ -1608,6 +1669,105 @@ fn layout_list_with(
         out.width += nucleus_width + script_width;
     }
     out
+}
+
+/// Pairs each `\left` in `list` with the `\right` at the same nesting depth
+/// (a stack of open indices, like matching parentheses) and computes TeX's
+/// rule-19 stretch scale for every matched pair from the atoms strictly
+/// between them, laid out at the same size/root size/level/display as `list`
+/// itself so nested `\left`/`\right` and display-style limits measure the
+/// same way they will actually render.
+///
+/// The returned vector has one slot per atom in `list`; a matched delimiter's
+/// slot holds its scale, everything else is `None`. An unmatched `\left` or
+/// `\right` — a stray opener, or one half of a pair split across `&`/rows
+/// before it ever reaches this list — is left `None` and stays at its parsed
+/// scale of 1, the same as plain TeX leaves a runaway fence alone rather than
+/// guessing a size for it.
+fn left_right_stretch_scales(
+    list: &MathList,
+    size: f64,
+    root_size: f64,
+    level: usize,
+    display: bool,
+) -> Vec<Option<f64>> {
+    let mut scales = vec![None; list.atoms.len()];
+    let mut open: Vec<usize> = Vec::new();
+    for (index, atom) in list.atoms.iter().enumerate() {
+        let Nucleus::SizedDelimiter { role, .. } = &atom.nucleus else {
+            continue;
+        };
+        match role {
+            DelimiterRole::Left => open.push(index),
+            DelimiterRole::Right => {
+                let Some(left) = open.pop() else { continue };
+                let content = MathList {
+                    atoms: list.atoms[left + 1..index].to_vec(),
+                };
+                // Discard: the real diagnostics for these atoms are emitted
+                // once, by the atom-by-atom pass below that actually lays
+                // this list out.
+                let mut scratch = Vec::new();
+                let content_box =
+                    layout_list_with(&content, size, root_size, level, display, &mut scratch);
+                let scale = delimiter_stretch_scale(&content_box, size);
+                scales[left] = Some(scale);
+                scales[index] = Some(scale);
+            }
+            DelimiterRole::Ord
+            | DelimiterRole::Open
+            | DelimiterRole::Close
+            | DelimiterRole::Rel => {}
+        }
+    }
+    scales
+}
+
+/// TeX's rule for sizing a `\left`/`\right` pair to its content (TeXbook
+/// Appendix G, rule 19): given the enclosed material's ascent `a` and depth
+/// `d`, let `h = 2 * max(a - axis, d + axis)` — twice the larger of the two
+/// half-heights measured from the math axis — and stretch the delimiter to
+/// at least `max(delimiterfactor * h, h - delimitershortfall)`, TeX's
+/// `\delimiterfactor` (901/1000) and `\delimitershortfall` (5pt by default).
+///
+/// This compiler has no absolute-length glue yet, so shortfall is taken as
+/// `0.5 * size` instead of a fixed 5pt, keeping the same proportion at
+/// ordinary text sizes.
+///
+/// `a` is corrected by `a_eff = a - 0.3 * size` before that: this compiler's
+/// ordinary boxes carry far more headroom above their ink than cmex10's (a
+/// bare letter/symbol box is `ascent == size, descent == 0.2 * size`), so
+/// using `a` directly would stretch even `\left( x \right)`. For that
+/// baseline case (`a == size`, `d == 0.2 * size`) `a_eff` makes both
+/// half-heights equal (`0.45 * size`) and `needed` comes out just under
+/// `size`, so `scale` is exactly 1 — the calibration this constant is
+/// chosen for.
+fn delimiter_stretch_scale(content: &MathBox, size: f64) -> f64 {
+    if size <= 0.0 {
+        return 1.0;
+    }
+    let axis = MATH_AXIS_EM * size;
+    let a_eff = content.ascent - 0.3 * size;
+    let h = 2.0 * (a_eff - axis).max(content.descent + axis);
+    let needed = (h * 0.901).max(h - 0.5 * size);
+    (needed / size).max(1.0)
+}
+
+/// Substitutes `scale` into a `SizedDelimiter` nucleus, keeping its glyph,
+/// role, span and scripts. Used only for a matched `\left`/`\right` pair, and
+/// only for laying out those two atoms; the atoms stored in the `MathList`
+/// itself are never mutated.
+fn with_delimiter_scale(atom: &MathAtom, scale: f64) -> MathAtom {
+    let (glyph, role) = match &atom.nucleus {
+        Nucleus::SizedDelimiter { glyph, role, .. } => (glyph.clone(), *role),
+        _ => return atom.clone(),
+    };
+    MathAtom {
+        nucleus: Nucleus::SizedDelimiter { glyph, scale, role },
+        span: atom.span,
+        superscript: atom.superscript.clone(),
+        subscript: atom.subscript.clone(),
+    }
 }
 
 fn layout_nucleus(
@@ -2252,6 +2412,130 @@ mod parse_tests {
         // Lowered so its centre stays on the axis; 8.5pt high, 3.5pt deep.
         assert!((paren.baseline - 0.5).abs() < 1e-9, "{}", paren.baseline);
         assert!((boxed.descent - 3.5).abs() < 1e-9, "{}", boxed.descent);
+    }
+
+    #[test]
+    fn left_right_hug_ordinary_content_at_scale_one() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\left( x \right)");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let sized: Vec<(&str, f64, DelimiterRole)> = list
+            .atoms
+            .iter()
+            .filter_map(|atom| match &atom.nucleus {
+                Nucleus::SizedDelimiter { glyph, scale, role } => {
+                    Some((glyph.as_str(), *scale, *role))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sized,
+            [
+                ("(", 1.0, DelimiterRole::Left),
+                (")", 1.0, DelimiterRole::Right),
+            ],
+            "parsed at ordinary size before the layout pass stretches them"
+        );
+
+        let size = 10.0;
+        let boxed = layout(&list, size, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let open = boxed.items.iter().find(|i| i.text == "(").unwrap();
+        let close = boxed.items.iter().find(|i| i.text == ")").unwrap();
+        assert!((open.size - size).abs() < 1e-9, "{}", open.size);
+        assert!((close.size - size).abs() < 1e-9, "{}", close.size);
+    }
+
+    #[test]
+    fn left_right_stretch_around_a_fraction_and_agree_on_scale() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\left( \frac{a}{b} \right)");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let size = 10.0;
+        let boxed = layout(&list, size, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let open = boxed.items.iter().find(|i| i.text == "(").unwrap();
+        let close = boxed.items.iter().find(|i| i.text == ")").unwrap();
+        assert!(open.size > size, "expected growth, got {}", open.size);
+        assert!(
+            (open.size - close.size).abs() < 1e-9,
+            "both fences of a pair must share one scale: {} vs {}",
+            open.size,
+            close.size
+        );
+    }
+
+    #[test]
+    fn nested_left_right_pairs_each_hug_their_own_content() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\left[ \left( \frac{a}{b} \right) \right]");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let size = 10.0;
+        let boxed = layout(&list, size, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let bracket_open = boxed.items.iter().find(|i| i.text == "[").unwrap();
+        let bracket_close = boxed.items.iter().find(|i| i.text == "]").unwrap();
+        let paren_open = boxed.items.iter().find(|i| i.text == "(").unwrap();
+        let paren_close = boxed.items.iter().find(|i| i.text == ")").unwrap();
+        assert!((bracket_open.size - bracket_close.size).abs() < 1e-9);
+        assert!((paren_open.size - paren_close.size).abs() < 1e-9);
+        assert!(bracket_open.size > size, "{}", bracket_open.size);
+        assert!(paren_open.size > size, "{}", paren_open.size);
+        // The outer pair encloses the (already stretched) inner pair, so it
+        // can never need to be smaller than it.
+        assert!(
+            bracket_open.size >= paren_open.size - 1e-9,
+            "outer {} < inner {}",
+            bracket_open.size,
+            paren_open.size
+        );
+    }
+
+    #[test]
+    fn null_left_delimiter_stretches_invisibly_with_its_paired_fence() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\left. \frac{a}{b} \right|");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let size = 10.0;
+        let boxed = layout(&list, size, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let bar = boxed.items.iter().find(|i| i.text == "|").unwrap();
+        assert!(bar.size > size, "expected the bar to stretch: {}", bar.size);
+        let null = boxed
+            .items
+            .iter()
+            .find(|i| i.text.is_empty())
+            .expect("the null delimiter still emits an (invisible) item");
+        assert!(
+            (null.size - bar.size).abs() < 1e-9,
+            "the null delimiter's partner sets its scale too: {} vs {}",
+            null.size,
+            bar.size
+        );
+    }
+
+    #[test]
+    fn unmatched_left_delimiter_does_not_panic_and_stays_at_scale_one() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\left( x");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        let _ = layout(&list, 10.0, &mut diagnostics);
+        let open = list
+            .atoms
+            .iter()
+            .find_map(|atom| match &atom.nucleus {
+                Nucleus::SizedDelimiter { glyph, scale, role } if glyph == "(" => {
+                    Some((*scale, *role))
+                }
+                _ => None,
+            })
+            .expect("the lone \\left( is still a SizedDelimiter");
+        assert_eq!(open, (1.0, DelimiterRole::Left));
     }
 
     #[test]
