@@ -132,9 +132,9 @@ fn ours() -> (Vec<Word>, Vec<Lines>) {
     let mut offset = 0;
     for text in [PARA1, PARA2] {
         let mut b = ParagraphBuilder::new(&hyph);
-        b.text(&Core14Times::ROMAN, 12.0, text, offset);
+        b.text(&Core14Times::ROMAN, 12.0, text, offset).unwrap();
         let items = b.finish(Glue::fil());
-        let lines = layout_paragraph(&items, &params);
+        let lines = layout_paragraph(&items, &params).unwrap();
         all.push(lines.clone());
         blocks.push(ParagraphBlock::body(lines));
         offset += text.len() + 2;

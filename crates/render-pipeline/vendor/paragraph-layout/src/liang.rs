@@ -1,170 +1,298 @@
-//! Liang's pattern hyphenation (the algorithm TeX uses), original
-//! implementation, behind the [`Hyphenator`] trait.
+//! Liang's pattern hyphenation (the algorithm TeX uses), original Rust
+//! implementation behind the [`Hyphenator`] trait.
 //!
-//! Word rules mirror TeX §896–899: leading non-letters (`\lccode` 0) are
-//! skipped, the hyphenatable part is the first maximal run of letters, and the
-//! character nodes after it are ignored (so "engine's" hyphenates "engine" and
-//! "(documentation)" is hyphenated); uppercase letters are lower-cased (`\uchyph=1`); a
-//! word shorter than `left_min + right_min` letters is left alone; explicit
-//! `\-` markers switch the word to explicit-only discretionaries, as a
-//! discretionary node ends TeX's letter run. Exceptions (`\hyphenation{}`)
-//! override the patterns for the whole word.
+//! # Pattern data
 //!
-//! Pattern data and provenance (`EN_US_SUBSET`, `EN_US_EXCEPTIONS`):
-//! TeX Live 2026 `texmf-dist/tex/generic/hyph-utf8/patterns/tex/hyph-en-us.tex`,
-//! "Hyphenation patterns for American English", Copyright (C) 1990, 2004, 2005
-//! Gerard D.C. Kuiken, version 2005-05-30, licence: "Copying and distribution
-//! of this file, with or without modification, are permitted in any medium
-//! without royalty provided the copyright notice and this notice are
-//! preserved." That file contains Knuth's original `hyphen.tex` patterns plus
-//! Kuiken's additions. The embedded set is deliberately SMALL: the 420
-//! patterns of hyph-en-us.tex that are also in `hyphen.tex` (what pdflatex's
-//! default `english` language loads) **and** match at least one word of
-//! `docs/hyphen-sample.tex` or the wrap-sample oracle text; other words are
-//! therefore hyphenated less than TeX would (see README "Not modelled").
-//! The exception list is the 14-entry `\hyphenation{}` list both files share.
+//! Both pattern files are vendored **verbatim** under `patterns/` and parsed
+//! at construction; nothing is generated or edited:
+//!
+//! * `patterns/hyphen.tex` — Knuth's Plain TeX hyphenation tables. TeX Live's
+//!   `language.dat` loads this file for the `english` language (aliases
+//!   `usenglish`, `USenglish`, `american`), which is language 0 in pdflatex's
+//!   LaTeX format, so it is what an unconfigured `pdflatex` document uses and
+//!   the default here ([`LiangHyphenator::english`]). Licence (file header):
+//!   "Unlimited copying and redistribution of this file are permitted as long
+//!   as this file is not modified." It is not modified.
+//! * `patterns/hyph-en-us.tex` — hyph-utf8 "Hyphenation patterns for American
+//!   English", Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken, version
+//!   2005-05-30 (Knuth's patterns plus Kuiken's additions, `ushyphmax`).
+//!   Licence (file header): "Copying and distribution of this file, with or
+//!   without modification, are permitted in any medium without royalty
+//!   provided the copyright notice and this notice are preserved." Available
+//!   as [`LiangHyphenator::en_us_max`] (babel `usenglishmax`).
+//!
+//! Both come from TeX Live 2026 (`texmf-dist/tex/generic/hyphen/` and
+//! `texmf-dist/tex/generic/hyph-utf8/patterns/tex/`).
+//!
+//! # Word rules
+//!
+//! [`Hyphenator::hyphenate`] receives one whitespace-free chunk. Following
+//! TeX §894–899: leading characters that are not letters are skipped; the
+//! hyphenatable word is the maximal run of letters that follows (lower-cased,
+//! `\uchyph=1`); trailing non-letter *characters* are allowed after it
+//! ("sentence." is hyphenated), but a discretionary after the run — an explicit
+//! hyphen character or `\-` anywhere in the chunk — suppresses automatic
+//! hyphenation of the whole chunk. Words with fewer than
+//! `left_min + right_min` letters, or more than 63, are left alone. Exceptions
+//! (`\hyphenation`) replace the patterns for an exact (lower-cased) word;
+//! `\lefthyphenmin` / `\righthyphenmin` apply to both (§902).
+//!
+//! Which chunks TeX tries at all (only a word that directly follows glue) is
+//! the caller's business: [`crate::items::ParagraphBuilder::text`] applies it.
 
 use std::collections::HashMap;
 
 use crate::hyphenate::{HyphenationPoint, Hyphenator};
 
-/// One compiled pattern: letters plus the inter-letter digit weights
-/// (`weights.len() == letters.len() + 1`).
-#[derive(Debug, Clone)]
-struct Pattern {
-    weights: Vec<u8>,
+/// Knuth's `hyphen.tex`, verbatim.
+pub const HYPHEN_TEX: &str = include_str!("../patterns/hyphen.tex");
+/// hyph-utf8 `hyph-en-us.tex`, verbatim.
+pub const HYPH_EN_US_TEX: &str = include_str!("../patterns/hyph-en-us.tex");
+
+/// TeX's limit on the letters of a hyphenatable word (§897: `hn = 63`).
+pub const MAX_WORD_LETTERS: usize = 63;
+
+/// Error parsing a `\patterns{}` / `\hyphenation{}` source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatternError {
+    pub entry: String,
+    pub reason: &'static str,
 }
 
-/// TeX-style pattern hyphenator.
+impl std::fmt::Display for PatternError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "bad hyphenation entry {:?}: {}", self.entry, self.reason)
+    }
+}
+
+impl std::error::Error for PatternError {}
+
+/// TeX-style pattern hyphenator with exceptions and hyphen minima.
 #[derive(Debug, Clone)]
 pub struct LiangHyphenator {
-    patterns: HashMap<String, Pattern>,
-    /// Exceptions: word -> break offsets (char indices).
-    exceptions: HashMap<String, Vec<usize>>,
+    /// Pattern letters -> inter-letter weights (`letters.len() + 1` digits).
+    patterns: HashMap<Vec<char>, Vec<u8>>,
+    /// Longest pattern, in letters (dots included).
     max_len: usize,
-    /// `\lefthyphenmin` (2 for English).
+    /// Exception word (lower case) -> break positions (letters before the break).
+    exceptions: HashMap<Vec<char>, Vec<usize>>,
+    /// `\lefthyphenmin` (English: 2).
     pub left_min: usize,
-    /// `\righthyphenmin` (3 for English).
+    /// `\righthyphenmin` (English: 3).
     pub right_min: usize,
 }
 
 impl LiangHyphenator {
-    /// Compiles patterns written in TeX's notation (`.ch4`, `hy3ph`) and
-    /// exceptions written with hyphens (`ta-ble`).
-    pub fn new(patterns: &[&str], exceptions: &[&str], left_min: usize, right_min: usize) -> Self {
-        let mut map = HashMap::with_capacity(patterns.len());
-        let mut max_len = 0;
-        for p in patterns {
-            let mut letters = String::new();
-            let mut weights = vec![0u8];
-            for ch in p.chars() {
-                if let Some(d) = ch.to_digit(10) {
-                    *weights.last_mut().unwrap() = d as u8;
-                } else {
-                    letters.push(ch);
-                    weights.push(0);
-                }
-            }
-            max_len = max_len.max(letters.chars().count());
-            map.insert(letters, Pattern { weights });
-        }
-        let mut exc = HashMap::new();
-        for e in exceptions {
-            let mut word = String::new();
-            let mut offsets = Vec::new();
-            for ch in e.chars() {
-                if ch == '-' {
-                    offsets.push(word.chars().count());
-                } else {
-                    word.push(ch);
-                }
-            }
-            exc.insert(word, offsets);
-        }
+    /// An empty hyphenator (no patterns, no exceptions).
+    pub fn empty(left_min: usize, right_min: usize) -> Self {
         LiangHyphenator {
-            patterns: map,
-            exceptions: exc,
-            max_len,
+            patterns: HashMap::new(),
+            max_len: 0,
+            exceptions: HashMap::new(),
             left_min,
             right_min,
         }
     }
 
-    /// The embedded American-English subset with `\lefthyphenmin=2`,
-    /// `\righthyphenmin=3`.
+    /// pdflatex's default `english`: Knuth's `hyphen.tex`, hyphenmins 2/3.
+    pub fn english() -> Self {
+        Self::from_tex(HYPHEN_TEX, 2, 3).expect("vendored hyphen.tex parses")
+    }
+
+    /// hyph-utf8 `hyph-en-us.tex` (`usenglishmax`), hyphenmins 2/3.
+    pub fn en_us_max() -> Self {
+        Self::from_tex(HYPH_EN_US_TEX, 2, 3).expect("vendored hyph-en-us.tex parses")
+    }
+
+    /// Compiles patterns written in TeX's notation (`.ch4`, `hy3ph`) and
+    /// exceptions written with hyphens (`ta-ble`). Entries that are not
+    /// valid pattern/exception syntax are skipped (the embedded tables are
+    /// generated and always parse; see [`Self::add_pattern`] for the checked
+    /// form).
+    pub fn new(patterns: &[&str], exceptions: &[&str], left_min: usize, right_min: usize) -> Self {
+        let mut h = Self::empty(left_min, right_min);
+        for p in patterns {
+            let _ = h.add_pattern(p);
+        }
+        for e in exceptions {
+            let _ = h.add_exceptions(e);
+        }
+        h
+    }
+
+    /// The embedded 420-pattern American-English subset ([`EN_US_SUBSET`],
+    /// [`EN_US_EXCEPTIONS`]) with `\lefthyphenmin=2`, `\righthyphenmin=3`:
+    /// the patterns of `hyphen.tex` that match a word of the mac branch's
+    /// oracle samples. [`Self::english`] is the complete table.
     pub fn en_us_subset() -> Self {
         LiangHyphenator::new(EN_US_SUBSET, EN_US_EXCEPTIONS, 2, 3)
     }
 
-    /// Break positions (char indices) inside a lower-case letter-only word.
+    /// Parses a TeX pattern file: `%` comments, one `\patterns{...}` group and
+    /// an optional `\hyphenation{...}` group.
+    pub fn from_tex(source: &str, left_min: usize, right_min: usize) -> Result<Self, PatternError> {
+        let mut h = Self::empty(left_min, right_min);
+        let text: String = source
+            .lines()
+            .map(|l| l.find('%').map_or(l, |i| &l[..i]))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if let Some(body) = group(&text, "\\patterns") {
+            for entry in body.split_whitespace() {
+                h.add_pattern(entry)?;
+            }
+        }
+        if let Some(body) = group(&text, "\\hyphenation") {
+            h.add_exceptions(body)?;
+        }
+        Ok(h)
+    }
+
+    /// Adds one pattern in TeX notation (`.ach4`, `hy3ph`, `4b1ora`).
+    pub fn add_pattern(&mut self, entry: &str) -> Result<(), PatternError> {
+        let mut letters = Vec::new();
+        let mut weights = vec![0u8];
+        for ch in entry.chars() {
+            if let Some(d) = ch.to_digit(10) {
+                *weights.last_mut().expect("nonempty") = d as u8;
+            } else if ch == '.' || ch.is_alphabetic() {
+                letters.push(ch);
+                weights.push(0);
+            } else {
+                return Err(PatternError {
+                    entry: entry.to_string(),
+                    reason: "patterns contain only letters, dots and digits",
+                });
+            }
+        }
+        if letters.is_empty() {
+            return Err(PatternError {
+                entry: entry.to_string(),
+                reason: "pattern has no letters",
+            });
+        }
+        self.max_len = self.max_len.max(letters.len());
+        self.patterns.insert(letters, weights);
+        Ok(())
+    }
+
+    /// `\hyphenation{ta-ble as-so-ciate}`: whitespace-separated words with
+    /// hyphens at the allowed breaks. A later entry for the same word
+    /// replaces an earlier one, as in TeX.
+    pub fn add_exceptions(&mut self, list: &str) -> Result<(), PatternError> {
+        for entry in list.split_whitespace() {
+            let mut word = Vec::new();
+            let mut breaks = Vec::new();
+            for ch in entry.chars() {
+                if ch == '-' {
+                    if !word.is_empty() && breaks.last() != Some(&word.len()) {
+                        breaks.push(word.len());
+                    }
+                } else if ch.is_alphabetic() {
+                    word.extend(ch.to_lowercase());
+                } else {
+                    return Err(PatternError {
+                        entry: entry.to_string(),
+                        reason: "\\hyphenation entries contain only letters and hyphens",
+                    });
+                }
+            }
+            breaks.retain(|&b| b < word.len());
+            if !word.is_empty() {
+                self.exceptions.insert(word, breaks);
+            }
+        }
+        Ok(())
+    }
+
+    /// Number of patterns and exceptions loaded.
+    pub fn counts(&self) -> (usize, usize) {
+        (self.patterns.len(), self.exceptions.len())
+    }
+
+    /// Break positions (number of letters before each break) of a word made
+    /// only of letters. Applies exceptions, patterns and the hyphen minima.
     pub fn positions(&self, word: &str) -> Vec<usize> {
-        let n = word.chars().count();
-        if n < self.left_min + self.right_min {
+        let lower: Vec<char> = word.chars().flat_map(char::to_lowercase).collect();
+        self.positions_lower(&lower)
+    }
+
+    fn positions_lower(&self, word: &[char]) -> Vec<usize> {
+        let n = word.len();
+        if n > MAX_WORD_LETTERS || n < self.left_min.max(1) + self.right_min.max(1) {
             return Vec::new();
         }
-        if let Some(e) = self.exceptions.get(word) {
-            return e.clone();
-        }
-        let dotted: Vec<char> = std::iter::once('.')
-            .chain(word.chars())
-            .chain(std::iter::once('.'))
-            .collect();
-        let mut weights = vec![0u8; dotted.len() + 1];
-        for start in 0..dotted.len() {
-            let mut s = String::new();
-            for (k, ch) in dotted[start..].iter().enumerate() {
-                if k >= self.max_len {
-                    break;
-                }
-                s.push(*ch);
-                if let Some(p) = self.patterns.get(&s) {
-                    for (j, w) in p.weights.iter().enumerate() {
-                        let idx = start + j;
-                        if *w > weights[idx] {
-                            weights[idx] = *w;
+        let odd: Vec<usize> = if let Some(e) = self.exceptions.get(word) {
+            e.clone()
+        } else {
+            let mut dotted = Vec::with_capacity(n + 2);
+            dotted.push('.');
+            dotted.extend_from_slice(word);
+            dotted.push('.');
+            // weights[i] sits before dotted[i].
+            let mut weights = vec![0u8; dotted.len() + 1];
+            for start in 0..dotted.len() {
+                for len in 1..=self.max_len.min(dotted.len() - start) {
+                    if let Some(w) = self.patterns.get(&dotted[start..start + len]) {
+                        for (j, &d) in w.iter().enumerate() {
+                            let slot = &mut weights[start + j];
+                            *slot = (*slot).max(d);
                         }
                     }
                 }
             }
-        }
-        // weights[i] sits before dotted[i]; letter k of the word is dotted[k+1],
-        // so a break before letter k is weights[k+1].
-        (1..n)
-            .filter(|&k| weights[k + 1] % 2 == 1 && k >= self.left_min && n - k >= self.right_min)
+            // A break after k letters sits before dotted[k + 1].
+            (1..n).filter(|&k| weights[k + 1] % 2 == 1).collect()
+        };
+        odd.into_iter()
+            .filter(|&k| k >= self.left_min.max(1) && n - k >= self.right_min.max(1))
             .collect()
     }
 }
 
+/// Body of the first `name{...}` group (no nested braces in pattern files).
+fn group<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    let at = text.find(name)? + name.len();
+    let open = at + text[at..].find('{')?;
+    let close = open + text[open..].find('}')?;
+    Some(&text[open + 1..close])
+}
+
 impl Hyphenator for LiangHyphenator {
     fn hyphenate(&self, word: &str) -> Vec<HyphenationPoint> {
-        // Explicit discretionaries end TeX's letter run: honour only them.
+        // A discretionary inside the chunk (explicit hyphen or `\-`) ends TeX's
+        // search with no automatic hyphens (§896/§899 `othercases goto done1`);
+        // `\-` stays legal as an explicit point.
         if word.contains("\\-") {
             return crate::hyphenate::ExplicitDiscretionary.hyphenate(word);
         }
-        // TeX §896–899: skip leading non-letters (their `\lccode` is 0), take
-        // the maximal run of letters, and ignore whatever character nodes
-        // follow it ("engine's" hyphenates "engine"; "(documentation)" is
-        // hyphenated; "docu(mentation" only sees "docu"). Verified against
-        // pdflatex's `\showhyphens` in the tests below.
-        let mut letters = String::new();
-        let mut byte_at_char: Vec<usize> = Vec::new();
-        let mut started = false;
+        if word.contains('-') {
+            return Vec::new();
+        }
+        let mut letters: Vec<char> = Vec::new();
+        let mut byte_at: Vec<usize> = Vec::new();
+        let mut rest = "";
         for (i, ch) in word.char_indices() {
             if ch.is_alphabetic() {
-                started = true;
-                byte_at_char.push(i);
+                byte_at.push(i);
                 letters.extend(ch.to_lowercase());
-            } else if started {
+            } else if !letters.is_empty() {
+                rest = &word[i..];
                 break;
             }
         }
-        if letters.is_empty() {
+        // Only characters may follow the letter run; a later letter run would
+        // mean a non-letter character sat inside the word, which TeX allows
+        // (it just stops at the first run), so nothing further to check.
+        let _ = rest;
+        if letters.len() != byte_at.len() {
+            // A letter whose lower case is several chars: stay conservative.
             return Vec::new();
         }
-        self.positions(&letters)
+        self.positions_lower(&letters)
             .into_iter()
             .map(|k| HyphenationPoint {
-                offset: byte_at_char[k],
+                offset: byte_at[k],
                 marker_len: 0,
                 automatic: true,
             })
@@ -618,6 +746,80 @@ pub const EN_US_EXCEPTIONS: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn show(h: &LiangHyphenator, w: &str) -> String {
+        let pos = h.positions(w);
+        let mut out = String::new();
+        for (i, ch) in w.chars().enumerate() {
+            if pos.contains(&i) {
+                out.push('-');
+            }
+            out.push(ch);
+        }
+        out
+    }
+
+    #[test]
+    fn vendored_files_parse_completely() {
+        let h = LiangHyphenator::english();
+        assert_eq!(h.counts(), (4447, 14));
+        let m = LiangHyphenator::en_us_max();
+        assert_eq!(m.counts(), (4938, 14));
+    }
+
+    /// Expected strings are pdflatex `\showhyphens` output (TeX Live 2026,
+    /// `english` = hyphen.tex), recorded in `tests/oracle/showhyphens.txt`.
+    #[test]
+    fn knuth_examples() {
+        let h = LiangHyphenator::english();
+        for (w, want) in [
+            ("counterexample", "coun-terex-am-ple"),
+            ("satisfy", "sat-isfy"),
+            ("hypotheses", "hy-pothe-ses"),
+            ("explicitly", "ex-plic-itly"),
+            ("irrational", "ir-ra-tional"),
+            ("expression", "ex-pres-sion"),
+            ("specified", "spec-i-fied"),
+            ("statement", "state-ment"),
+            ("associate", "as-so-ciate"),
+            ("table", "ta-ble"),
+            ("present", "present"),
+            ("hyphenation", "hy-phen-ation"),
+        ] {
+            assert_eq!(show(&h, w), want, "{w}");
+        }
+    }
+
+    #[test]
+    fn minima_and_exceptions() {
+        let mut h = LiangHyphenator::english();
+        h.add_exceptions("FlashTeX flash-tex").unwrap();
+        assert_eq!(show(&h, "flashtex"), "flash-tex");
+        h.left_min = 1;
+        h.right_min = 1;
+        assert!(h.positions("ta").is_empty() || h.positions("ta") == vec![1]);
+        let mut h = LiangHyphenator::english();
+        h.right_min = 10;
+        assert!(h.positions("counterexample").iter().all(|&k| 14 - k >= 10));
+        assert!(LiangHyphenator::english().positions("cat").is_empty());
+    }
+
+    #[test]
+    fn chunk_rules() {
+        let h = LiangHyphenator::english();
+        let offs = |w: &str| h.hyphenate(w).iter().map(|p| p.offset).collect::<Vec<_>>();
+        assert_eq!(offs("(counterexample),"), vec![5, 10, 12]); // (coun-terex-am-ple),
+        assert_eq!(offs("Satisfy."), vec![3]);
+        assert!(offs("counter-example").is_empty());
+        let pts = h.hyphenate("re\\-pro");
+        assert_eq!(pts.len(), 1);
+        assert!(!pts[0].automatic);
+    }
+}
+
+#[cfg(test)]
+mod subset_tests {
     use super::*;
 
     /// `\showhyphens` output of pdflatex (pdfTeX 1.40.29, TeX Live 2026, language

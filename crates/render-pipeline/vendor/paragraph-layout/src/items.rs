@@ -9,8 +9,9 @@
 //! All lengths are in the caller's linear unit (points in this project).
 
 use std::ops::Range;
+use std::panic::{self, AssertUnwindSafe};
 
-use crate::hyphenate::Hyphenator;
+use crate::hyphenate::{Hyphenator, HyphenatorError};
 use crate::metrics::{FontId, FontMetricsSource};
 
 /// A penalty at or above this value forbids a break (TeX `\penalty10000`).
@@ -43,9 +44,12 @@ pub struct GlyphRun {
     pub glyphs: Vec<Glyph>,
     /// Sum of `advance + kern` over the glyphs.
     pub width: f64,
-    /// Extent above the baseline (font ascender scaled to `size`).
+    /// Extent above the baseline: the tallest glyph box in the run
+    /// ([`FontMetricsSource::glyph_height`], scaled to `size`), which is the
+    /// font ascender for a metrics source without per-glyph boxes.
     pub height: f64,
-    /// Extent below the baseline, positive (font descender scaled to `size`).
+    /// Extent below the baseline, positive: the deepest glyph box in the run
+    /// ([`FontMetricsSource::glyph_depth`], scaled to `size`).
     pub depth: f64,
     /// Source byte range covered by the whole run.
     pub source: Range<usize>,
@@ -123,6 +127,13 @@ pub struct Penalty {
     /// True when produced by an automatic hyphenator; ignored in the first
     /// (pretolerance) pass like TeX does.
     pub automatic: bool,
+    /// `\discretionary` post-break text: typeset at the start of the next
+    /// line *only if* the line breaks here. Its width counts toward that line.
+    pub post_break: Option<GlyphRun>,
+    /// `\discretionary` no-break text: the number of items directly after
+    /// this penalty that are typeset only when the line does *not* break here
+    /// (TeX's `replace_count`). They must not contain legal breakpoints.
+    pub replace_count: usize,
 }
 
 /// Fixed horizontal displacement. Discarded at a line break; a legal break
@@ -148,6 +159,8 @@ impl Item {
             flagged: false,
             pre_break: None,
             automatic: false,
+            post_break: None,
+            replace_count: 0,
         })
     }
 
@@ -198,13 +211,19 @@ impl<'h> ParagraphBuilder<'h> {
 
     /// Appends text starting at source byte `source_start`. Whitespace becomes
     /// interword glue; each maximal non-space chunk is a word.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`HyphenatorError`] from [`Self::word`] the first time the
+    /// configured [`Hyphenator`] misbehaves; text already appended before
+    /// that word stays in the builder.
     pub fn text(
         &mut self,
         font: &dyn FontMetricsSource,
         size: f64,
         text: &str,
         source_start: usize,
-    ) {
+    ) -> Result<(), HyphenatorError> {
         let bytes = text.as_bytes();
         let mut i = 0;
         while i < bytes.len() {
@@ -219,27 +238,114 @@ impl<'h> ParagraphBuilder<'h> {
                 while i < bytes.len() && !is_ws(bytes[i]) {
                     i += 1;
                 }
-                self.word(font, size, &text[start..i], source_start + start);
+                // TeX only tries to hyphenate a word that directly follows
+                // glue (§894): never the first word of a paragraph, nor one
+                // after `\\`, a kern or a box.
+                let after_glue = matches!(self.items.last(), Some(Item::Glue(_)));
+                self.word_with(
+                    font,
+                    size,
+                    &text[start..i],
+                    source_start + start,
+                    after_glue,
+                )?;
             }
         }
+        Ok(())
     }
 
     /// Appends one word (no whitespace), applying kerns, ligatures and the
     /// hyphenator. `\-` markers are consulted through the hyphenator.
+    ///
+    /// The configured [`Hyphenator`] is implemented by the caller, so it is
+    /// untrusted from this crate's point of view: this call is guarded the
+    /// same way [`crate::adapter::try_layout_paragraph`] guards the breaker
+    /// itself, via [`std::panic::catch_unwind`]. A `hyphenate` call that
+    /// panics — and a `hyphenate` call that returns normally but names a
+    /// byte offset that is not a valid place to split `word` (out of range,
+    /// off a UTF-8 char boundary, or out of order), which would otherwise
+    /// panic a few lines below when it is used to slice `word` — both become
+    /// [`HyphenatorError`] instead of a panic escaping this function.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HyphenatorError`] if the hyphenator panics or returns an
+    /// invalid [`HyphenationPoint`]. Nothing is appended to the builder in
+    /// that case.
     pub fn word(
         &mut self,
         font: &dyn FontMetricsSource,
         size: f64,
         word: &str,
         source_start: usize,
-    ) {
-        let mut points = self.hyphenator.hyphenate(word);
-        if !self.after_glue {
+    ) -> Result<(), HyphenatorError> {
+        self.word_with(font, size, word, source_start, true)
+    }
+
+    /// [`Self::word`] with control over automatic points: when
+    /// `allow_automatic` is false, only explicit discretionaries are kept.
+    fn word_with(
+        &mut self,
+        font: &dyn FontMetricsSource,
+        size: f64,
+        word: &str,
+        source_start: usize,
+        allow_automatic: bool,
+    ) -> Result<(), HyphenatorError> {
+        let hyphenator = self.hyphenator;
+        let points = panic::catch_unwind(AssertUnwindSafe(|| hyphenator.hyphenate(word))).map_err(
+            |payload| HyphenatorError::Panicked {
+                word: word.to_string(),
+                message: crate::panic_message(&*payload),
+            },
+        )?;
+
+        // Validate every point before mutating `self` or slicing `word`: a
+        // misbehaving-but-non-panicking implementation can still name an
+        // offset that isn't a legal split point, and slicing `word` with it
+        // below would panic instead of erroring.
+        let mut cursor = 0usize;
+        for p in &points {
+            let end = p
+                .offset
+                .checked_add(p.marker_len)
+                .filter(|&e| e <= word.len());
+            let valid = end.is_some_and(|end| {
+                p.offset >= cursor && word.is_char_boundary(p.offset) && word.is_char_boundary(end)
+            });
+            if !valid {
+                return Err(HyphenatorError::InvalidPoint {
+                    word: word.to_string(),
+                    offset: p.offset,
+                    reason: "offset is out of range, not a UTF-8 char boundary, \
+                             or out of order with a previous point",
+                });
+            }
+            cursor = end.expect("checked by `valid` above");
+        }
+
+        let mut points = points;
+        if !allow_automatic {
             points.retain(|p| !p.automatic);
         }
-        self.after_glue = false;
+        // An explicit hyphen character is followed by an empty discretionary
+        // (TeX §1039, `\exhyphenpenalty`): a legal break with no added hyphen.
+        // A run of hyphens (`--`, `---`) gets one, after the run.
+        let bytes = word.as_bytes();
+        let ex_hyphens: Vec<usize> = (0..bytes.len())
+            .filter(|&i| bytes[i] == b'-' && (i == 0 || bytes[i - 1] != b'\\'))
+            .map(|i| i + 1)
+            .filter(|&at| at < bytes.len() && bytes[at] != b'-')
+            .filter(|&at| !points.iter().any(|p| p.offset == at))
+            .collect();
         let mut frag_start = 0;
+        let mut ex_iter = ex_hyphens.into_iter().peekable();
         for p in &points {
+            while let Some(at) = ex_iter.next_if(|&at| at <= p.offset && at > frag_start) {
+                self.fragment(font, size, &word[frag_start..at], source_start + frag_start);
+                self.explicit_hyphen_break();
+                frag_start = at;
+            }
             let frag = &word[frag_start..p.offset];
             self.fragment(font, size, frag, source_start + frag_start);
             // The discretionary: hyphen glyph shown only if the line breaks here.
@@ -259,10 +365,84 @@ impl<'h> ParagraphBuilder<'h> {
                 flagged: true,
                 pre_break: Some(hyphen),
                 automatic: p.automatic,
+                post_break: None,
+                replace_count: 0,
             }));
             frag_start = p.offset + p.marker_len;
+            if p.marker_len > 0 {
+                // An explicit `\-` discretionary node sits between the letters,
+                // so TeX applies no font kern across it; automatic points are
+                // reconstituted with the kern (§903-918).
+                self.last_char = None;
+            }
+        }
+        for at in ex_iter {
+            if at > frag_start {
+                self.fragment(font, size, &word[frag_start..at], source_start + frag_start);
+                self.explicit_hyphen_break();
+                frag_start = at;
+            }
         }
         self.fragment(font, size, &word[frag_start..], source_start + frag_start);
+        Ok(())
+    }
+
+    /// The empty discretionary TeX appends after an explicit hyphen.
+    fn explicit_hyphen_break(&mut self) {
+        self.items.push(Item::Penalty(Penalty {
+            value: self.ex_hyphen_penalty,
+            flagged: true,
+            pre_break: None,
+            automatic: false,
+            post_break: None,
+            replace_count: 0,
+        }));
+    }
+
+    /// `\discretionary{pre}{post}{nobreak}` in one font. `pre` ends the line
+    /// and `post` starts the next one if the paragraph breaks here; otherwise
+    /// `nobreak` is typeset. The penalty is `\hyphenpenalty` when `pre` is
+    /// nonempty, else `\exhyphenpenalty` (TeX §869). All three texts carry
+    /// `source` as their span (the command's bytes).
+    pub fn discretionary(
+        &mut self,
+        font: &dyn FontMetricsSource,
+        size: f64,
+        pre: &str,
+        post: &str,
+        no_break: &str,
+        source: Range<usize>,
+    ) {
+        let run = |text: &str| {
+            (!text.is_empty()).then(|| {
+                let mut r = shape_run(font, size, text, source.start);
+                for g in &mut r.glyphs {
+                    g.cluster = source.clone();
+                }
+                r.source = source.clone();
+                r
+            })
+        };
+        let pre_break = run(pre);
+        let post_break = run(post);
+        let no_break_run = run(no_break);
+        let value = if pre_break.is_some() {
+            self.hyphen_penalty
+        } else {
+            self.ex_hyphen_penalty
+        };
+        self.items.push(Item::Penalty(Penalty {
+            value,
+            flagged: true,
+            pre_break,
+            automatic: false,
+            post_break,
+            replace_count: usize::from(no_break_run.is_some()),
+        }));
+        if let Some(r) = no_break_run {
+            self.items.push(Item::Box(r));
+        }
+        self.last_char = None;
     }
 
     fn fragment(
@@ -462,6 +642,9 @@ pub fn shape_run(
     }
     let mut glyphs = Vec::with_capacity(chars.len());
     let mut width = 0.0;
+    // TeX box rule: a run is as tall/deep as its tallest/deepest glyph.
+    let mut height: f64 = 0.0;
+    let mut depth: f64 = 0.0;
     for (idx, (ch, cluster)) in chars.iter().enumerate() {
         let advance = font.advance(*ch) * scale;
         let kern = match chars.get(idx + 1) {
@@ -469,6 +652,8 @@ pub fn shape_run(
             None => 0.0,
         };
         width += advance + kern;
+        height = height.max(font.glyph_height(*ch) * scale);
+        depth = depth.max(font.glyph_depth(*ch) * scale);
         glyphs.push(Glyph {
             gid: font.glyph_id(*ch),
             advance,
@@ -481,8 +666,8 @@ pub fn shape_run(
         size,
         glyphs,
         width,
-        height: font.ascender() * scale,
-        depth: -font.descender() * scale,
+        height,
+        depth,
         source: source_start..source_start + text.len(),
     }
 }
@@ -491,7 +676,7 @@ pub fn shape_run(
 mod tests {
     use super::*;
     use crate::core14::Core14Times;
-    use crate::hyphenate::{ExplicitDiscretionary, NoHyphenation};
+    use crate::hyphenate::{ExplicitDiscretionary, HyphenationPoint, NoHyphenation};
 
     #[test]
     fn shaping_applies_kerns_and_ligatures() {
@@ -508,10 +693,80 @@ mod tests {
     }
 
     #[test]
+    fn shape_run_height_depth_default_to_ascender_descender() {
+        // Core14Times has no per-glyph boxes, so glyph_height/glyph_depth fall
+        // back to the trait defaults: every run is exactly the font's
+        // ascender/descender scaled to size, regardless of which glyphs it
+        // holds (Times-Roman: ascender 683, descender -217, both in 1/1000 em
+        // so size 1000 leaves them unscaled).
+        let run = shape_run(&Core14Times::ROMAN, 1000.0, "Ay,", 0);
+        assert_eq!(run.height, 683.0);
+        assert_eq!(run.depth, 217.0);
+    }
+
+    /// A metrics source with real per-glyph boxes (TFM-style `charht`/`chardp`)
+    /// for a couple of test characters, to exercise the non-default path of
+    /// `glyph_height`/`glyph_depth`. Everything else defers to `Core14Times`.
+    struct BoxFont;
+
+    impl FontMetricsSource for BoxFont {
+        fn font_id(&self) -> FontId {
+            Core14Times::ROMAN.font_id()
+        }
+        fn units_per_em(&self) -> f64 {
+            Core14Times::ROMAN.units_per_em()
+        }
+        fn advance(&self, ch: char) -> f64 {
+            Core14Times::ROMAN.advance(ch)
+        }
+        fn kern(&self, left: char, right: char) -> f64 {
+            Core14Times::ROMAN.kern(left, right)
+        }
+        fn glyph_id(&self, ch: char) -> u32 {
+            Core14Times::ROMAN.glyph_id(ch)
+        }
+        fn ascender(&self) -> f64 {
+            Core14Times::ROMAN.ascender()
+        }
+        fn descender(&self) -> f64 {
+            Core14Times::ROMAN.descender()
+        }
+        fn line_gap(&self) -> f64 {
+            0.0
+        }
+        fn space(&self) -> f64 {
+            Core14Times::ROMAN.space()
+        }
+        // 'b' is a tall ascender box (above the font ascender); 'y' is a deep
+        // descender box (below the font descender). Every other character
+        // keeps the trait default (ascender / -descender).
+        fn glyph_height(&self, ch: char) -> f64 {
+            if ch == 'b' { 900.0 } else { self.ascender() }
+        }
+        fn glyph_depth(&self, ch: char) -> f64 {
+            if ch == 'y' { 500.0 } else { -self.descender() }
+        }
+    }
+
+    #[test]
+    fn shape_run_height_depth_track_the_tallest_deepest_glyph() {
+        // height = max(glyph_height('a')=683 default, 'b'=900, 'y'=683 default) = 900.
+        // depth = max(glyph_depth('a')=217 default, 'b'=217 default, 'y'=500) = 500.
+        let run = shape_run(&BoxFont, 1000.0, "aby", 0);
+        assert_eq!(run.height, 900.0);
+        assert_eq!(run.depth, 500.0);
+        // A run without the tall/deep glyphs is back to the font defaults.
+        let run = shape_run(&BoxFont, 1000.0, "aa", 0);
+        assert_eq!(run.height, 683.0);
+        assert_eq!(run.depth, 217.0);
+    }
+
+    #[test]
     fn builder_spaces_follow_space_factor() {
         let h = NoHyphenation;
         let mut b = ParagraphBuilder::new(&h);
-        b.text(&Core14Times::ROMAN, 10.0, "end. Next, one; two: A. b", 0);
+        b.text(&Core14Times::ROMAN, 10.0, "end. Next, one; two: A. b", 0)
+            .unwrap();
         let glue: Vec<&Glue> = b
             .items()
             .iter()
@@ -535,7 +790,7 @@ mod tests {
     fn explicit_discretionary_builds_flagged_penalty_with_hyphen() {
         let h = ExplicitDiscretionary;
         let mut b = ParagraphBuilder::new(&h);
-        b.word(&Core14Times::ROMAN, 10.0, "re\\-pro", 100);
+        b.word(&Core14Times::ROMAN, 10.0, "re\\-pro", 100).unwrap();
         let items = b.items();
         assert_eq!(items.len(), 3);
         match &items[1] {
@@ -552,6 +807,68 @@ mod tests {
             assert_eq!(r.source, 104..107);
         } else {
             panic!("expected box");
+        }
+    }
+
+    /// Regression for a `Hyphenator` (implemented by callers, so untrusted
+    /// from this crate's point of view) that returns a byte offset landing
+    /// inside a multi-byte UTF-8 character. Before the fix, `word` used that
+    /// offset to slice `word` directly (`&word[frag_start..p.offset]`),
+    /// which panicked past every one of this crate's own safety nets:
+    /// `try_layout_paragraph`'s `catch_unwind` only wraps the later
+    /// `layout_paragraph` call, not this item-building step. Now the offset
+    /// is validated before any slicing happens, and misbehaviour is a typed
+    /// [`HyphenatorError`] instead of a panic.
+    struct BadOffsetHyphenator;
+
+    impl Hyphenator for BadOffsetHyphenator {
+        fn hyphenate(&self, _word: &str) -> Vec<HyphenationPoint> {
+            // "café" is c,a,f (1 byte each) + é (2 bytes) = 5 bytes; offset 4
+            // is the second byte of 'é', not a char boundary.
+            vec![HyphenationPoint {
+                offset: 4,
+                marker_len: 0,
+                automatic: true,
+            }]
+        }
+    }
+
+    #[test]
+    fn hyphenator_bad_byte_offset_is_a_typed_error_not_a_panic() {
+        let h = BadOffsetHyphenator;
+        let mut b = ParagraphBuilder::new(&h);
+        assert_eq!(
+            b.word(&Core14Times::ROMAN, 10.0, "café", 0),
+            Err(HyphenatorError::InvalidPoint {
+                word: "café".to_string(),
+                offset: 4,
+                reason: "offset is out of range, not a UTF-8 char boundary, \
+                         or out of order with a previous point",
+            })
+        );
+        // Nothing was appended: a failed word leaves the builder untouched.
+        assert!(b.items().is_empty());
+    }
+
+    /// Regression for a `Hyphenator` whose `hyphenate` implementation itself
+    /// panics (as opposed to returning a bad-but-non-panicking offset, above).
+    /// Both are untrusted-caller-code failure modes this crate must not let
+    /// escape past its public API.
+    struct PanickingHyphenator;
+
+    impl Hyphenator for PanickingHyphenator {
+        fn hyphenate(&self, word: &str) -> Vec<HyphenationPoint> {
+            panic!("adversarial hyphenator blew up on {word:?}");
+        }
+    }
+
+    #[test]
+    fn hyphenator_panic_is_a_typed_error_not_a_panic() {
+        let h = PanickingHyphenator;
+        let mut b = ParagraphBuilder::new(&h);
+        match b.word(&Core14Times::ROMAN, 10.0, "word", 0) {
+            Err(HyphenatorError::Panicked { word, .. }) => assert_eq!(word, "word"),
+            other => panic!("expected Panicked, got {other:?}"),
         }
     }
 }

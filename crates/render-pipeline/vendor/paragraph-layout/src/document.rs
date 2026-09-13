@@ -107,12 +107,14 @@ pub fn paragraph_ranges(text: &str) -> Vec<Range<usize>> {
 fn break_one(spec: &DocumentSpec<'_>, range: Range<usize>) -> ParagraphLayout {
     let text = &spec.text[range.clone()];
     let mut b = ParagraphBuilder::new(spec.hyphenator);
-    b.text(spec.font, spec.size, text, range.start);
+    b.text(spec.font, spec.size, text, range.start)
+        .expect("document text is plain text; the hyphenator is this crate's own");
     let items = b.finish(Glue::fil());
     ParagraphLayout {
         source: range,
         text: text.to_string(),
-        lines: layout_paragraph(&items, &spec.line),
+        lines: layout_paragraph(&items, &spec.line)
+            .expect("document text is a bounded, finite item list"),
     }
 }
 

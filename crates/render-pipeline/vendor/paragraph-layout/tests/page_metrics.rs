@@ -25,12 +25,12 @@ fn lines(n: usize) -> Lines {
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
     for i in 0..n {
-        b.word(&Core14Times::ROMAN, 12.0, "line", i * 5);
+        b.word(&Core14Times::ROMAN, 12.0, "line", i * 5).unwrap();
         if i + 1 < n {
             b.line_break();
         }
     }
-    layout_paragraph(&b.finish(Glue::fil()), &article().line)
+    layout_paragraph(&b.finish(Glue::fil()), &article().line).unwrap()
 }
 
 /// `[12pt]{article}` on Letter as document-style computes it (article.cls
@@ -128,7 +128,7 @@ fn runtime_v1_items_are_words_with_exact_spans() {
     let text = "AVAVAV re\\-pro";
     let h = ExplicitDiscretionary;
     let mut b = ParagraphBuilder::new(&h);
-    b.text(&Core14Times::ROMAN, 12.0, text, 0);
+    b.text(&Core14Times::ROMAN, 12.0, text, 0).unwrap();
     let a = article();
     // No \parindent here: "AVAVAV re-" is 43.88 + 3 + 13.32 = 60.2pt, shrunk
     // 0.2pt over 0.72pt of shrink (badness 2) onto a 60pt measure; "pro" last.
@@ -136,7 +136,7 @@ fn runtime_v1_items_are_words_with_exact_spans() {
         parindent: 0.0,
         ..a.line.clone().with_width(60.0)
     };
-    let lines = layout_paragraph(&b.finish(Glue::fil()), &params);
+    let lines = layout_paragraph(&b.finish(Glue::fil()), &params).unwrap();
     assert_eq!(
         lines.lines.len(),
         2,
