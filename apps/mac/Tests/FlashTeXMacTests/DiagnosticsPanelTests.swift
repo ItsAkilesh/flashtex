@@ -244,6 +244,7 @@ final class DiagnosticsPanelTests: XCTestCase {
         let panel = DiagnosticsPanelState()
         let hostView = NSHostingView(rootView: Host(model: m, panel: panel))
         hostView.frame = NSRect(x: 0, y: 0, width: 640, height: 420)
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: hostView.frame, styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = hostView

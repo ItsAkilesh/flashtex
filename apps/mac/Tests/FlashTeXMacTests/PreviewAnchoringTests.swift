@@ -141,6 +141,7 @@ final class PreviewAnchoringTests: XCTestCase {
         let window: NSWindow
         let hosting: NSHostingView<V>
         init(_ view: V, width: CGFloat, height: CGFloat) {
+            HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
             window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: width, height: height), styleMask: [.titled], backing: .buffered, defer: false)
             hosting = NSHostingView(rootView: view)
             window.contentView = hosting

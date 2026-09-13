@@ -96,6 +96,7 @@ final class PanelAccessibilityTests: XCTestCase {
     private func host<V: View>(_ view: V, title: String, size: NSSize) async throws -> NSWindow {
         let hostView = NSHostingView(rootView: view)
         hostView.frame = NSRect(origin: .zero, size: size)
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: hostView.frame, styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = title
         window.isReleasedWhenClosed = false
