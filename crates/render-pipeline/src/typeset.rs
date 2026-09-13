@@ -184,6 +184,19 @@ const WIDOW_PENALTY: i32 = 150;
 const SEC_PENALTY: i32 = -300;
 const PREDISPLAY_PENALTY: i32 = pagebuild::INF_PENALTY;
 
+/// Knuth's `hyphen.tex` (pdflatex's default `english`, FT-064), parsed once,
+/// with hyphen minima 1/1 so the document's `\lefthyphenmin`/
+/// `\righthyphenmin` can be applied by the caller.
+fn english_hyphenator() -> &'static flashtex_paragraph_layout::liang_tex::LiangHyphenator {
+    static H: std::sync::OnceLock<flashtex_paragraph_layout::liang_tex::LiangHyphenator> = std::sync::OnceLock::new();
+    H.get_or_init(|| {
+        let mut h = flashtex_paragraph_layout::liang_tex::LiangHyphenator::english();
+        h.left_min = 1;
+        h.right_min = 1;
+        h
+    })
+}
+
 /// Sets `run`'s glyphs at `x` on a line (what `layout_paragraph` does for
 /// broken lines; used for the single-line display block).
 fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRun {
@@ -245,6 +258,20 @@ pub struct Context<'a> {
     /// their once-only keys, suppressed ones included).
     capture: Option<Vec<(Option<String>, Diagnostic)>>,
     path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
+    /// Set while `paragraph_block` builds its hlist: words get discretionary
+    /// breaks (FT-064), recorded in `hyph_groups`.
+    hyphenate: bool,
+    hyph_groups: Vec<HyphGroup>,
+}
+
+/// A word `hlist` split at its discretionary points: its items
+/// `start..end` in the hlist, and what is needed to set it again split
+/// only where a line actually breaks.
+struct HyphGroup {
+    start: usize,
+    end: usize,
+    seg: adapter::Segment,
+    size: f64,
 }
 
 impl<'a> Context<'a> {
@@ -269,6 +296,8 @@ impl<'a> Context<'a> {
             reported: BTreeSet::new(),
             capture: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
+            hyphenate: false,
+            hyph_groups: Vec::new(),
         }
     }
 
@@ -946,6 +975,11 @@ impl<'a> Context<'a> {
         for item in items {
             match item {
                 AItem::Word(w) => {
+                    // TeX §894: only a word that directly follows glue is
+                    // hyphenated (never the paragraph's first word); a word of
+                    // several style runs is left alone.
+                    let automatic = w.segments.len() == 1 && matches!(out.last(), Some(pl::Item::Glue(_)));
+                    let hyphenate = self.hyphenate;
                     for seg in &w.segments {
                         let seg = adapter::Segment {
                             text: seg.text.clone(),
@@ -960,8 +994,20 @@ impl<'a> Context<'a> {
                         // A size declaration in force (`{\Large ...}`) sets
                         // this segment at its own size.
                         let seg_size = seg.style.size_or(size);
-                        if let Some((run, rec)) = self.text_box(&seg, seg_size) {
-                            push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                        let only: Option<&[usize]> = if hyphenate { None } else { Some(&[]) };
+                        let parts = self.hyphenated_word(&seg, seg_size, automatic, only);
+                        let start = out.len();
+                        let split = parts.len() > 1;
+                        for (item, rec) in parts {
+                            push(&mut out, &mut recs, item, rec);
+                        }
+                        if split {
+                            self.hyph_groups.push(HyphGroup {
+                                start,
+                                end: out.len(),
+                                seg,
+                                size: seg_size,
+                            });
                         }
                     }
                 }
@@ -1041,6 +1087,156 @@ impl<'a> Context<'a> {
         (out, recs, labels, skips)
     }
 
+    /// `(\lefthyphenmin, \righthyphenmin)`: the last assignment of each in
+    /// the sources, else pdflatex's `english` values 2 and 3.
+    fn hyphen_mins(&self) -> (usize, usize) {
+        let read = |name: &str, default: usize| {
+            let mut value = default;
+            for text in self.texts.iter() {
+                if !text.contains("hyphenmin") {
+                    continue;
+                }
+                let mut from = 0;
+                while let Some(at) = text[from..].find(name) {
+                    let rest = text[from + at + name.len()..].trim_start();
+                    let rest = rest.strip_prefix('=').unwrap_or(rest).trim_start();
+                    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+                    if let Ok(n) = digits.parse() {
+                        value = n;
+                    }
+                    from += at + name.len();
+                }
+            }
+            value
+        };
+        (read("\\lefthyphenmin", 2), read("\\righthyphenmin", 3))
+    }
+
+    /// One word segment as boxes with discretionary breaks (FT-064): after an
+    /// explicit `-` an empty discretionary at `\exhyphenpenalty` (TeX
+    /// §1039); otherwise, when `automatic` (the word follows glue), Liang
+    /// points from Knuth's `hyphen.tex` (pdflatex's default `english`) with
+    /// the hyphen minima, each a flagged `\hyphenpenalty` break whose
+    /// pre-break text is a hyphen. The pieces keep the unbroken word's
+    /// width: a kern after each penalty restores the kern the whole-word
+    /// shaping put across the point, discarded when the line breaks there.
+    /// A point inside a ligature cluster is not used.
+    /// `only`: set the word split at exactly these byte offsets (the points
+    /// a line actually breaks at; empty for no split) instead of finding them.
+    fn hyphenated_word(&mut self, seg: &adapter::Segment, size: f64, automatic: bool, only: Option<&[usize]>) -> Vec<(pl::Item, Option<usize>)> {
+        use flashtex_paragraph_layout::Hyphenator;
+        const HYPHEN_PENALTY: i32 = 50;
+        const EX_HYPHEN_PENALTY: i32 = 50;
+        let Some((whole, wrec)) = self.text_box(seg, size) else { return Vec::new() };
+        let text = seg.text.as_str();
+        let bytes = text.as_bytes();
+        // (byte offset, automatic)
+        let mut points: Vec<(usize, bool)> = match only {
+            Some(offsets) => offsets.iter().map(|&o| (o, !(o > 0 && bytes.get(o - 1) == Some(&b'-')))).collect(),
+            None => (1..bytes.len()).filter(|&i| bytes[i - 1] == b'-' && bytes[i] != b'-' && (i < 2 || bytes[i - 2] != b'\\')).map(|i| (i, false)).collect(),
+        };
+        if only.is_none() && points.is_empty() && automatic && text.chars().any(char::is_alphabetic) {
+            let (lmin, rmin) = self.hyphen_mins();
+            let letters: Vec<usize> = {
+                let mut v = Vec::new();
+                for (i, ch) in text.char_indices() {
+                    if ch.is_alphabetic() {
+                        v.push(i);
+                    } else if !v.is_empty() {
+                        break;
+                    }
+                }
+                v
+            };
+            let n = letters.len();
+            for p in english_hyphenator().hyphenate(text) {
+                if let Some(k) = letters.iter().position(|&b| b == p.offset) {
+                    if k >= lmin.max(1) && n - k >= rmin.max(1) {
+                        points.push((p.offset, true));
+                    }
+                }
+            }
+        }
+        if points.is_empty() {
+            return vec![(pl::Item::Box(whole), Some(wrec))];
+        }
+        // Cluster boundaries and the unbroken advance of each byte range.
+        let clusters: Vec<(std::ops::Range<usize>, std::ops::Range<usize>)> = match &self.recs[wrec] {
+            BoxRec::Text { clusters, .. } => clusters.iter().map(|c| (c.text_range.clone(), c.glyphs.clone())).collect(),
+            _ => return vec![(pl::Item::Box(whole), Some(wrec))],
+        };
+        points.retain(|(off, _)| clusters.iter().any(|(t, _)| t.start == *off));
+        if points.is_empty() {
+            return vec![(pl::Item::Box(whole), Some(wrec))];
+        }
+        let advance = |a: usize, b: usize| -> f64 {
+            clusters
+                .iter()
+                .filter(|(t, _)| t.start >= a && t.end <= b)
+                .flat_map(|(_, g)| g.clone())
+                .filter_map(|g| whole.glyphs.get(g))
+                .map(|g| g.advance + g.kern)
+                .sum()
+        };
+        let char_at = |off: usize| text[..off].chars().count();
+        let mut bounds: Vec<usize> = vec![0];
+        bounds.extend(points.iter().map(|(o, _)| *o));
+        bounds.push(text.len());
+        let mut out = Vec::new();
+        for i in 0..bounds.len() - 1 {
+            let (a, b) = (bounds[i], bounds[i + 1]);
+            let piece = adapter::Segment {
+                text: text[a..b].to_string(),
+                chars: seg.chars[char_at(a)..char_at(b)].to_vec(),
+                style: seg.style,
+            };
+            let Some((run, rec)) = self.text_box(&piece, size) else {
+                // A piece that cannot be set on its own: keep the word whole.
+                return vec![(pl::Item::Box(whole), Some(wrec))];
+            };
+            let kern = advance(a, b) - run.width;
+            out.push((pl::Item::Box(run), Some(rec)));
+            if i + 2 < bounds.len() {
+                let auto = points[i].1;
+                let hyphen = if auto {
+                    let last = seg.chars.get(char_at(b).saturating_sub(1)).copied();
+                    last.and_then(|c| {
+                        self.text_box(
+                            &adapter::Segment {
+                                text: "-".to_string(),
+                                chars: vec![c],
+                                style: seg.style,
+                            },
+                            size,
+                        )
+                    })
+                } else {
+                    None
+                };
+                let (pre_break, hrec) = match hyphen {
+                    Some((r, rec)) => (Some(r), Some(rec)),
+                    None => (None, None),
+                };
+                if auto && pre_break.is_none() {
+                    return vec![(pl::Item::Box(whole), Some(wrec))];
+                }
+                out.push((
+                    pl::Item::Penalty(pl::Penalty {
+                        value: if auto { HYPHEN_PENALTY } else { EX_HYPHEN_PENALTY },
+                        flagged: true,
+                        pre_break,
+                        automatic: auto,
+                    }),
+                    hrec,
+                ));
+                if kern.abs() > 1e-9 {
+                    out.push((pl::Item::kern(kern), None));
+                }
+            }
+        }
+        out
+    }
+
     fn line_params(&self, indent: bool, baselineskip: f64, style: ParaStyle, hang_pt: f64) -> pl::LineBreakParams {
         let s = self.style;
         // `\centering`: `\leftskip`/`\rightskip` `0pt plus 1fil`; `\raggedleft`:
@@ -1086,7 +1282,11 @@ impl<'a> Context<'a> {
     /// `\@afterheading` (`\clubpenalty 10000`).
     fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool, style: ParaStyle, list_geom: Option<&ListGeom>) -> Option<BuiltBlock> {
         let size = self.style.body_size_pt;
-        let (mut list, mut recs, labels, mut skips) = self.hlist(items, size, TextStyle::default(), style);
+        self.hyphenate = true;
+        self.hyph_groups.clear();
+        let (mut list, mut recs, mut labels, mut skips) = self.hlist(items, size, TextStyle::default(), style);
+        self.hyphenate = false;
+        let mut groups = std::mem::take(&mut self.hyph_groups);
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
@@ -1114,10 +1314,76 @@ impl<'a> Context<'a> {
                     for (at, _) in &mut skips {
                         *at += 3;
                     }
+                    for g in &mut groups {
+                        g.start += 3;
+                        g.end += 3;
+                    }
                 }
             }
         }
-        let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt, style, hang_pt));
+        let params = self.line_params(indent, self.style.baselineskip_pt, style, hang_pt);
+        let mut lines = pl::layout_paragraph(&list, &params);
+        // Words split at every discretionary point are set again split only
+        // where a line breaks, so an unbroken word stays one glyph run (one
+        // display-list word). The breaks of the first pass are still
+        // available and still optimal, so the second pass keeps them.
+        groups.retain(|g| g.end <= list.len());
+        if !groups.is_empty() {
+            let breaks: BTreeSet<usize> = lines.breaks.iter().map(|b| b.item).collect();
+            let mut new_list = Vec::with_capacity(list.len());
+            let mut new_recs = Vec::with_capacity(recs.len());
+            let mut map = vec![0usize; list.len() + 1];
+            let mut gi = 0usize;
+            let mut i = 0usize;
+            while i < list.len() {
+                if gi < groups.len() && groups[gi].start == i {
+                    let (gstart, gend) = (groups[gi].start, groups[gi].end);
+                    let mut offset = 0usize;
+                    let mut chosen = Vec::new();
+                    for j in gstart..gend {
+                        match &list[j] {
+                            pl::Item::Box(_) => {
+                                if let Some(Some(r)) = recs.get(j) {
+                                    if let BoxRec::Text { text, .. } = &self.recs[*r] {
+                                        offset += text.len();
+                                    }
+                                }
+                            }
+                            pl::Item::Penalty(_) if breaks.contains(&j) => chosen.push(offset),
+                            _ => {}
+                        }
+                    }
+                    let seg = groups[gi].seg.clone();
+                    let gsize = groups[gi].size;
+                    let parts = self.hyphenated_word(&seg, gsize, false, Some(&chosen));
+                    for slot in map.iter_mut().take(gend).skip(gstart) {
+                        *slot = new_list.len();
+                    }
+                    for (item, rec) in parts {
+                        new_list.push(item);
+                        new_recs.push(rec);
+                    }
+                    i = gend;
+                    gi += 1;
+                    continue;
+                }
+                map[i] = new_list.len();
+                new_list.push(list[i].clone());
+                new_recs.push(recs[i]);
+                i += 1;
+            }
+            map[list.len()] = new_list.len();
+            let n = list.len();
+            for (at, _) in &mut skips {
+                *at = map[(*at).min(n)];
+            }
+            for (_, at) in &mut labels {
+                *at = map[(*at).min(n)];
+            }
+            list = new_list;
+            recs = new_recs;
+            lines = pl::layout_paragraph(&list, &params);
+        }
         self.report_overfull(&lines, &list, &recs);
         // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.
         let parskip = if list_geom.is_some() { self.style.parsep } else { self.style.parskip };
@@ -1524,7 +1790,15 @@ impl<'a> Context<'a> {
             }
         }
         let x = d.max(0.0);
-        let long = pre_display_size.is_some_and(|p| x <= p) || l;
+        // amsmath sets `equation{split}` through `\gather@`'s `\halign`, a
+        // display alignment: always the non-short skips (§1206).
+        let split = self
+            .texts
+            .get(span.document.0)
+            .and_then(|t| t.get(span.start..))
+            .and_then(|r| r.strip_prefix("\\begin{equation*}").or_else(|| r.strip_prefix("\\begin{equation}")))
+            .is_some_and(|r| r.trim_start().starts_with("\\begin{split}"));
+        let long = pre_display_size.is_some_and(|p| x <= p) || l || split;
         let (above, below) = if long {
             (self.style.abovedisplayskip, self.style.belowdisplayskip)
         } else {
@@ -1600,6 +1874,360 @@ impl<'a> Context<'a> {
             no_interline_first: false,
             no_interline_after: false,
             baselineskip: None,
+            vskip_after: Vec::new(),
+        };
+        Some(BuiltBlock {
+            block: pl::ParagraphBlock {
+                lines,
+                space_before: above.glue(),
+                space_after: below.glue(),
+                keep_with_next: false,
+            },
+            items,
+            recs,
+            vertical,
+            labels: Vec::new(),
+            cache_key: None,
+        })
+    }
+
+    /// An amsmath display alignment (`align`, `alignat`, `flalign`,
+    /// `gather`, `multline`) as one block of rows: amsmath's own measuring
+    /// (`\measure@`/`\calc@shift@align`, `\calc@shift@gather`,
+    /// `\multline@`) decides every cell's x; rows are `\halign` lines with
+    /// `\strut@` minima and `\openup\jot` pitch; numbers (`\tagform@`) sit
+    /// flush right. Display alignments always take `\abovedisplayskip`/
+    /// `\belowdisplayskip` (§1206); `\@display@init` removes one `\jot`
+    /// before the first row of `align`/`gather`.
+    fn rows_block(&mut self, env: adapter::RowsEnv, rows: &[adapter::RowPart], span: Span) -> Option<BuiltBlock> {
+        use adapter::RowsEnv;
+        const MINALIGNSEP: f64 = 10.0;
+        const MULTLINEGAP: f64 = 10.0;
+        const MULTLINETAGGAP: f64 = 10.0;
+        const JOT: f64 = 3.0;
+        let size = self.style.body_size_pt;
+        let dw = self.style.text_width_pt;
+        // `\mintagsep`: half of cmsy's quad at the text size.
+        let mintagsep = 0.5 * size;
+        let aligned = matches!(env, RowsEnv::Align | RowsEnv::AlignAt | RowsEnv::FlAlign);
+        // Cell boxes: (run, rec) per row per cell; right-hand (even-index
+        // from 1) align cells and every multline row start with `{}`.
+        struct Cell {
+            run: Option<(pl::GlyphRun, usize)>,
+        }
+        let mut cells: Vec<Vec<Cell>> = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut out = Vec::with_capacity(row.cells.len());
+            for (ci, list) in row.cells.iter().enumerate() {
+                let Some(first) = list.atoms.first() else {
+                    out.push(Cell { run: None });
+                    continue;
+                };
+                let prefix = (aligned && ci % 2 == 1) || matches!(env, RowsEnv::Multline);
+                let mut list = list.clone();
+                if prefix {
+                    let mut empty = first.clone();
+                    empty.nucleus = flashtex_compiler::math::Nucleus::Symbol(String::new());
+                    empty.superscript = None;
+                    empty.subscript = None;
+                    list.atoms.insert(0, empty);
+                }
+                let cspan = list.atoms.iter().map(|a| a.span).reduce(Span::merge).unwrap_or(row.span);
+                let run = self.math_box(&list, cspan, true).map(|rec| {
+                    let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
+                    (math_run(&self.maths[*mi].root, size, cspan), rec)
+                });
+                out.push(Cell { run });
+            }
+            cells.push(out);
+        }
+        let width = |c: &Cell| c.run.as_ref().map_or(0.0, |(r, _)| r.width);
+        // Number boxes.
+        let mut tags: Vec<Option<(pl::GlyphRun, usize)>> = Vec::with_capacity(rows.len());
+        for row in rows {
+            tags.push(row.number.as_ref().and_then(|(text, nspan)| {
+                let label = format!("({text})");
+                let seg = adapter::Segment {
+                    text: label.clone(),
+                    chars: label
+                        .chars()
+                        .map(|_| adapter::CharSrc {
+                            document: nspan.document,
+                            start: nspan.start,
+                            end: nspan.end,
+                        })
+                        .collect(),
+                    style: TextStyle::default(),
+                };
+                self.text_box(&seg, size)
+            }));
+        }
+        let tagw = |i: usize| tags[i].as_ref().map_or(0.0, |(r, _)| r.width);
+        // x of every cell, per row.
+        let mut xs: Vec<Vec<f64>> = cells.iter().map(|r| vec![0.0; r.len()]).collect();
+        let mut shifted_tags = 0usize;
+        match env {
+            RowsEnv::Align | RowsEnv::AlignAt | RowsEnv::FlAlign => {
+                let mut maxfields = cells.iter().map(Vec::len).max().unwrap_or(0);
+                if maxfields % 2 == 1 {
+                    maxfields += 1;
+                }
+                let mut colw = vec![0.0f64; maxfields];
+                for row in &cells {
+                    for (ci, c) in row.iter().enumerate() {
+                        colw[ci] = colw[ci].max(width(c));
+                    }
+                }
+                let totwidth: f64 = colw.iter().sum();
+                let d = dw - totwidth;
+                let p = (maxfields / 2) as i64;
+                let (mut eqnshift, mut alignsep, minalignsep, tempcntb, tempcnta);
+                match env {
+                    RowsEnv::AlignAt => {
+                        alignsep = 0.0;
+                        minalignsep = 0.0;
+                        tempcntb = 0i64;
+                        tempcnta = 2i64;
+                        eqnshift = d / 2.0;
+                    }
+                    RowsEnv::Align => {
+                        tempcntb = p - 1;
+                        tempcnta = p + 1;
+                        eqnshift = d / tempcnta as f64;
+                        alignsep = eqnshift;
+                        minalignsep = MINALIGNSEP;
+                    }
+                    _ => {
+                        tempcntb = p - 1;
+                        tempcnta = p - 1;
+                        eqnshift = 0.0;
+                        // TeX's \divide by zero leaves the dimension unchanged.
+                        alignsep = if tempcntb > 0 { d / tempcntb as f64 } else { d };
+                        minalignsep = MINALIGNSEP;
+                    }
+                }
+                if alignsep < minalignsep {
+                    alignsep = minalignsep;
+                    if eqnshift > 0.0 {
+                        eqnshift = (dw - totwidth - tempcntb as f64 * alignsep) / 2.0;
+                    }
+                }
+                eqnshift = eqnshift.max(0.0);
+                // `\calc@shift@align` (tags right, not fleqn): last row first.
+                for ri in (0..cells.len()).rev() {
+                    let t = tagw(ri);
+                    if t <= 0.0 {
+                        continue;
+                    }
+                    // `\x@rcalc@width`: right columns count fully, left
+                    // columns by their own width, trailing empty space dropped.
+                    let (mut dimb, mut dimc) = (0.0f64, 0.0f64);
+                    for (ci, c) in cells[ri].iter().enumerate() {
+                        let a = width(c);
+                        if a > 0.0 {
+                            dimc += dimb;
+                            if ci % 2 == 0 {
+                                dimc += colw[ci];
+                                dimb = 0.0;
+                            } else {
+                                dimc += a;
+                                dimb = colw[ci] - a;
+                            }
+                        } else {
+                            dimb += colw[ci];
+                        }
+                    }
+                    let k = (cells[ri].len() as i64 - 1).max(0) / 2;
+                    let (mut cntb, mut cnta) = (tempcntb, tempcnta);
+                    if cntb > k {
+                        cnta = cnta - cntb + k;
+                        cntb = k;
+                    }
+                    let dima = dimc + t;
+                    let mut dimen = minalignsep * cntb as f64 + mintagsep + dima;
+                    if env != RowsEnv::FlAlign {
+                        dimen += mintagsep;
+                    }
+                    if dimen > dw {
+                        shifted_tags += 1;
+                        continue;
+                    }
+                    let dimen = eqnshift + dima + cntb as f64 * alignsep + t;
+                    if dimen > dw {
+                        let mut dimen = dw - dima;
+                        if env == RowsEnv::FlAlign {
+                            dimen -= mintagsep;
+                        }
+                        if cnta != 0 {
+                            dimen /= cnta as f64;
+                        }
+                        if dimen < minalignsep {
+                            alignsep = minalignsep;
+                            eqnshift = (dw - dima - cntb as f64 * alignsep) / 2.0;
+                        } else {
+                            if dimen < eqnshift {
+                                eqnshift = dimen.max(0.0);
+                            }
+                            if dimen < alignsep {
+                                alignsep = dimen;
+                            }
+                        }
+                    }
+                }
+                for (ri, row) in cells.iter().enumerate() {
+                    let mut x = eqnshift;
+                    for (ci, c) in row.iter().enumerate() {
+                        xs[ri][ci] = if ci % 2 == 0 { x + colw[ci] - width(c) } else { x };
+                        x += colw[ci];
+                        if ci % 2 == 1 {
+                            x += alignsep;
+                        }
+                    }
+                }
+            }
+            RowsEnv::Gather => {
+                for (ri, row) in cells.iter().enumerate() {
+                    let w: f64 = row.iter().map(width).sum();
+                    let t = tagw(ri);
+                    let mut shift = dw - w;
+                    if t > 0.0 {
+                        if 2.0 * mintagsep + w + t > dw {
+                            shifted_tags += 1;
+                        } else if shift < 4.0 * t {
+                            shift -= t;
+                        }
+                    }
+                    let mut x = (shift / 2.0).max(0.0);
+                    for (ci, c) in row.iter().enumerate() {
+                        xs[ri][ci] = x;
+                        x += width(c);
+                    }
+                }
+            }
+            RowsEnv::Multline => {
+                let n = cells.len();
+                for (ri, row) in cells.iter().enumerate() {
+                    let w: f64 = row.iter().map(width).sum();
+                    let t = tagw(ri);
+                    let x0 = if n > 1 && ri == 0 {
+                        MULTLINEGAP
+                    } else if n > 1 && ri + 1 == n {
+                        dw - w - if t > 0.0 { MULTLINETAGGAP + t } else { MULTLINEGAP }
+                    } else {
+                        (dw - w) / 2.0
+                    };
+                    let mut x = x0;
+                    for (ci, c) in row.iter().enumerate() {
+                        xs[ri][ci] = x;
+                        x += width(c);
+                    }
+                }
+            }
+        }
+        if shifted_tags > 0 {
+            let src = self.source(span);
+            self.emit(None, Diagnostic::warning(
+                "math_limitation",
+                format!("{shifted_tags} equation number(s) too wide for their row set on the row's baseline; amsmath moves them to a line of their own"),
+                vec![src],
+            ));
+        }
+        // Rows: `\strut@` (.7/.3 `\normalbaselineskip`) minima.
+        let normal = self.style.baselineskip_pt;
+        let (strut_h, strut_d) = (0.7 * normal, 0.3 * normal);
+        let mut items = Vec::new();
+        let mut recs = Vec::new();
+        let mut lines = Vec::with_capacity(rows.len());
+        let mut extents = Vec::with_capacity(rows.len());
+        let mut total = 0.0;
+        for (ri, row) in cells.iter().enumerate() {
+            let start = items.len();
+            let (mut h, mut d) = (strut_h, strut_d);
+            let mut runs = Vec::new();
+            let mut natural = 0.0f64;
+            for (ci, c) in row.iter().enumerate() {
+                let Some((run, rec)) = &c.run else { continue };
+                h = h.max(run.height);
+                d = d.max(run.depth);
+                natural = natural.max(xs[ri][ci] + run.width);
+                runs.push(pl::PositionedRun {
+                    x: xs[ri][ci],
+                    baseline_y: 0.0,
+                    width: run.width,
+                    font: run.font,
+                    size: run.size,
+                    glyphs: Vec::new(),
+                    source: run.source.clone(),
+                    is_hyphen: false,
+                });
+                items.push(pl::Item::Box(run.clone()));
+                recs.push(Some(*rec));
+            }
+            if let Some((nrun, nrec)) = &tags[ri] {
+                h = h.max(nrun.height);
+                d = d.max(nrun.depth);
+                runs.push(position_run(nrun, dw - nrun.width, 0.0));
+                items.push(pl::Item::Box(nrun.clone()));
+                recs.push(Some(*nrec));
+            }
+            if natural > dw + 1e-6 {
+                let src = self.source(rows[ri].span);
+                self.emit(None, Diagnostic::warning("overfull_display", format!("display row is {:.2}pt wider than the text width", natural - dw), vec![src]));
+            }
+            lines.push(pl::Line {
+                index: ri,
+                runs,
+                baseline_y: h,
+                height: h,
+                depth: d,
+                natural_width: natural,
+                set_width: dw,
+                ratio: 0.0,
+                badness: 0.0,
+                items: start..items.len(),
+                hyphenated: false,
+            });
+            extents.push((h, d));
+            total += h + d;
+        }
+        if lines.is_empty() {
+            return None;
+        }
+        let above = self.style.abovedisplayskip;
+        let below = self.style.belowdisplayskip;
+        let first_adjust = if matches!(env, RowsEnv::Multline) { 0.0 } else { -JOT };
+        let (an, ast, ash) = skip_tuple(above);
+        let n = lines.len();
+        let lines = pl::Lines {
+            lines,
+            breaks: Vec::new(),
+            stats: pl::Stats {
+                algorithm: pl::Algorithm::TotalFit,
+                lines: n,
+                pass: 1,
+                total_demerits: 0.0,
+                overfull: Vec::new(),
+                underfull: Vec::new(),
+                hyphenated_lines: 0,
+                emergency_pass_used: false,
+            },
+            diagnostics: Vec::new(),
+            height: total,
+        };
+        let vertical = VBlock {
+            lines: extents,
+            penalty_before: Some(PREDISPLAY_PENALTY),
+            space_before: Some((an + first_adjust, ast, ash)),
+            parskip: None,
+            // `\interdisplaylinepenalty` is 10000 in LaTeX.
+            interline_penalty: pagebuild::INF_PENALTY,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: Some(skip_tuple(below)),
+            no_interline_first: false,
+            no_interline_after: false,
+            baselineskip: Some(normal + JOT),
             vskip_after: Vec::new(),
         };
         Some(BuiltBlock {
@@ -2295,6 +2923,41 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                                 blocks.push(b);
                             }
                         }
+                        ParaPart::Rows { env, rows, span, bracket } => {
+                            if first {
+                                let (mut opener, _) = ctx.display_opener_block(*bracket);
+                                if std::mem::take(&mut eject) {
+                                    opener.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                                }
+                                add_vspace(&mut opener.vertical, std::mem::take(&mut vspace));
+                                add_skip_before(&mut opener.vertical, env_before.take());
+                                blocks.push(opener);
+                            }
+                            let (key, origin) = if cache.is_some() {
+                                let mut h = std::collections::hash_map::DefaultHasher::new();
+                                b'A'.hash(&mut h);
+                                style_fp.hash(&mut h);
+                                span.document.0.hash(&mut h);
+                                env.hash(&mut h);
+                                (span.end - span.start).hash(&mut h);
+                                for row in rows {
+                                    (row.span.start.wrapping_sub(span.start), row.span.end.wrapping_sub(span.start)).hash(&mut h);
+                                    row.number.as_ref().map(|(n, _)| n).hash(&mut h);
+                                    row.cells.len().hash(&mut h);
+                                    for cell in &row.cells {
+                                        incremental::hash_math(cell, &mut h);
+                                    }
+                                }
+                                bracket.hash(&mut h);
+                                (Some(h.finish()), Some((span.document, span.start)))
+                            } else {
+                                (None, None)
+                            };
+                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.rows_block(*env, rows, *span)) {
+                                blocks.push(b);
+                            }
+                            pre_display = None;
+                        }
                         ParaPart::Display {
                             list,
                             span,
@@ -2646,12 +3309,20 @@ fn assemble_block(
             .filter_map(|i| block.recs.get(i).copied().flatten())
             .collect();
         let mut bi = 0usize;
+        // A discretionary's pre-break text (the inserted hyphen) is recorded
+        // on the penalty item that ends the line.
+        let hyphen_rec = block.recs.get(line.items.end).copied().flatten();
         for run in &line.runs {
-            if run.is_hyphen {
-                continue;
-            }
-            let Some(&rec) = boxes.get(bi) else { break };
-            bi += 1;
+            let rec = if run.is_hyphen {
+                match hyphen_rec {
+                    Some(rec) => rec,
+                    None => continue,
+                }
+            } else {
+                let Some(&rec) = boxes.get(bi) else { break };
+                bi += 1;
+                rec
+            };
             let mut local = run.clone();
             local.x += text_x;
             local.baseline_y = 0.0;
