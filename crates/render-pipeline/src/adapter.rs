@@ -1647,14 +1647,34 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                     _ => style.parskip.natural,
                 };
                 if label.is_some() {
-                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b)));
+                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b))).or_else(|| {
+                        // `\begin{thebibliography}{<widest>}` is the span of
+                        // the compiler's own `References` heading, so the
+                        // gap after that heading holds no `\begin`: look
+                        // from the heading's start (`\@nbitem` follows).
+                        let p = prev_end.filter(|p| prev_vmode && p.document == at.document && p.start < at.start)?;
+                        let g = texts.get(p.document.0)?.get(p.start..at.start)?;
+                        let b = rfind_command(g, "begin")?;
+                        g[b..].strip_prefix("\\begin").is_some_and(|r| r.trim_start().starts_with("{thebibliography}")).then_some((g, b))
+                    });
                     match opens {
                         Some((g, b)) if list_env_after_begin(&g[b..]) => {
                             let before = &g[..b];
                             list_vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
                             if prev_vmode {
                                 // `\@nbitem`: `\addvspace{\@outerparskip - \parskip}`.
-                                addvspace_before += outer_parskip - seps.parsep;
+                                // A negative `\addvspace` is never absorbed:
+                                // `\@xaddvskip`'s else branch adds it to a
+                                // non-negative `\lastskip` (the heading's
+                                // after-skip), so `\parsep` comes off it and
+                                // the item paragraph's own `\parskip` (=
+                                // `\parsep`) restores the heading's gap.
+                                let nb = outer_parskip - seps.parsep;
+                                if nb < 0.0 {
+                                    vspace_before += nb;
+                                } else {
+                                    addvspace_before += nb;
+                                }
                             } else {
                                 addvspace_before += seps.topsep + outer_parskip + if list_vmode { seps.partopsep } else { 0.0 };
                                 vspace_before -= seps.parsep;
@@ -2207,7 +2227,7 @@ fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Styleshee
 /// Whether `rest` (starting at a `\begin`) opens `itemize`/`enumerate`.
 fn list_env_after_begin(rest: &str) -> bool {
     let after = rest.strip_prefix("\\begin").unwrap_or(rest).trim_start();
-    after.starts_with("{itemize}") || after.starts_with("{enumerate}")
+    after.starts_with("{itemize}") || after.starts_with("{enumerate}") || after.starts_with("{thebibliography}")
 }
 
 /// `\endtrivlist` for every `\end{itemize}`/`\end{enumerate}` in `gap`
@@ -2223,7 +2243,7 @@ fn list_end_adjust(source: &str, gap_start: usize, gap: &str, size: u32, style: 
         let abs = from + at;
         from = abs + 1;
         let rest = gap[abs + "\\end".len()..].trim_start();
-        if !rest.starts_with("{itemize}") && !rest.starts_with("{enumerate}") {
+        if !rest.starts_with("{itemize}") && !rest.starts_with("{enumerate}") && !rest.starts_with("{thebibliography}") {
             continue;
         }
         let stack = list_stack_at(source, gap_start + abs);
@@ -2240,7 +2260,7 @@ fn list_end_adjust(source: &str, gap_start: usize, gap: &str, size: u32, style: 
 fn gap_has_list_end(gap: &str) -> Option<&'static str> {
     let end = rfind_command(gap, "end")?;
     let rest = gap[end + "\\end".len()..].trim_start();
-    ["itemize", "enumerate"].into_iter().find(|env| rest.strip_prefix('{').is_some_and(|r| r.starts_with(&format!("{env}}}"))))
+    ["itemize", "enumerate", "thebibliography"].into_iter().find(|env| rest.strip_prefix('{').is_some_and(|r| r.starts_with(&format!("{env}}}"))))
 }
 
 /// The `\setlist[<envs>]{<keys>}` calls of `source`, in order:
@@ -2303,14 +2323,18 @@ fn list_stack_at(source: &str, at: usize) -> Vec<(&str, &str)> {
         let Some(inner) = rest.strip_prefix('{') else { continue };
         let Some(close) = inner.find('}') else { continue };
         let env = inner[..close].trim();
-        if !matches!(env, "itemize" | "enumerate") {
+        if !matches!(env, "itemize" | "enumerate" | "thebibliography") {
             continue;
         }
         if is_begin {
             let after = inner[close + 1..].trim_start();
-            let options = match after.strip_prefix('[') {
-                Some(o) => o.find(']').map_or("", |c| &o[..c]),
-                None => "",
+            // `thebibliography`'s "options" are its widest-label argument
+            // (`\begin{thebibliography}{99}` -> `99`).
+            let options = match (env, after.strip_prefix('['), after.strip_prefix('{')) {
+                ("thebibliography", _, Some(o)) => o.find('}').map_or("", |c| &o[..c]),
+                ("thebibliography", _, None) => "",
+                (_, Some(o), _) => o.find(']').map_or("", |c| &o[..c]),
+                _ => "",
             };
             stack.push((env, options));
         } else if stack.last().is_some_and(|(open, _)| *open == env) {
@@ -2379,6 +2403,12 @@ fn list_margins(source: &str, at: usize, size: u32) -> Vec<ListMargin> {
         .enumerate()
         .map(|(i, (env, options))| {
             let depth = i + 1;
+            if *env == "thebibliography" {
+                // latex.ltx/article.cls `\thebibliography`:
+                // `\settowidth\labelwidth{\@biblabel{#1}}`,
+                // `\leftmargin\labelwidth \advance\leftmargin\labelsep`.
+                return ListMargin::Widest(format!("[{}]", options.trim()));
+            }
             let mut leftmargin: Option<&str> = None;
             let mut label_key: Option<&str> = None;
             let begin_keys = options.contains('=');
