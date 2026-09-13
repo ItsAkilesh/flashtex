@@ -63,8 +63,17 @@ const FIXTURES: &[&str] = &[
     "35-book-twocolumn-chapter",
 ];
 
-/// Fixtures gated at 100% (every word matched and placed, same pages).
-const EXACT: &[&str] = &[];
+/// Fixtures not yet exact (reported, not gated):
+/// * `06-article-heading-list`: list glue — pdflatex shrinks page 1 to fit
+///   one page, the pipeline's list skips are taller and it breaks (lists
+///   lane, not the heading);
+/// * `32-book-11pt-appendix`: the running head `APPENDIX A. TABLES` spaces
+///   `A.` as a sentence end (mark text, not the heading);
+/// * `33-article-math-headings`: `\sum` limits in text style inside a
+///   heading (math-layout placement); every other heading word is placed.
+/// Every other fixture is gated at 100% (every word matched and placed,
+/// same pages).
+const NOT_EXACT: &[&str] = &["06-article-heading-list", "32-book-11pt-appendix", "33-article-math-headings"];
 
 #[derive(Debug, Clone)]
 struct W {
@@ -213,7 +222,7 @@ fn headings_against_pdflatex() {
                 eprintln!("    {m}");
             }
         }
-        if EXACT.contains(name) && !full {
+        if !NOT_EXACT.contains(name) && !full {
             failures.push(format!("{name}: {rep:?}", rep = (rep.pages, rep.words, rep.matched, rep.placed, rep.misses.first())));
         }
     }

@@ -2171,7 +2171,7 @@ impl<'a> Context<'a> {
     /// `\huge\bfseries Chapter <n>\par\nobreak\vskip 20\p@` (numbered only),
     /// `\Huge\bfseries <title>\par\nobreak\vskip 40\p@`, both `\raggedright`
     /// at their own `\baselineskip`.
-    fn chapter_blocks(&mut self, number: Option<&str>, title: &[AItem], span: Span, spec: &flashtex_class_geometry::ChapterSpec, base: flashtex_class_geometry::BaseSize) -> Vec<BuiltBlock> {
+    fn chapter_blocks(&mut self, number: Option<&str>, title: &[AItem], span: Span, spec: &flashtex_class_geometry::ChapterSpec, base: flashtex_class_geometry::BaseSize, width: Option<f64>) -> Vec<BuiltBlock> {
         use crate::style::frame_pt;
         let empty = pl::Lines {
             lines: vec![pl::Line {
@@ -2222,17 +2222,17 @@ impl<'a> Context<'a> {
         if let Some(n) = number {
             let (size, bs) = metrics(spec.number_size);
             let words = adapter::command_words(&format!("{} {n}", spec.prefix), span);
-            out.extend(self.chapter_line(&words, size, bs, frame_pt(spec.number_title_skip)));
+            out.extend(self.chapter_line(&words, size, bs, frame_pt(spec.number_title_skip), width));
         }
         let (size, bs) = metrics(spec.title_size);
-        out.extend(self.chapter_line(title, size, bs, frame_pt(spec.after_title)));
+        out.extend(self.chapter_line(title, size, bs, frame_pt(spec.after_title), width));
         out
     }
 
     /// One bold `\raggedright` chapter-head paragraph at `size_pt` with its
     /// `\baselineskip`, `\nobreak` and `\vskip after_pt` after it.
-    fn chapter_line(&mut self, items: &[AItem], size_pt: f64, baselineskip_pt: f64, after_pt: f64) -> Option<BuiltBlock> {
-        self.part_line(items, size_pt, baselineskip_pt, after_pt, ParaStyle::FlushLeft, None)
+    fn chapter_line(&mut self, items: &[AItem], size_pt: f64, baselineskip_pt: f64, after_pt: f64, width: Option<f64>) -> Option<BuiltBlock> {
+        self.part_line(items, size_pt, baselineskip_pt, after_pt, ParaStyle::FlushLeft, width)
     }
 
     /// article.cls `\@part`/`\@spart` (lines 275-301): `\addvspace{4ex}`,
@@ -4491,6 +4491,10 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // placed in the box, and the box height plus `\dbltextfloatsep` that
     // both columns of the first page lose.
     let mut top_title: Option<(usize, Vec<pagebuild::Placed>, f64)> = None;
+    // Two-column `\chapter` heads (`\@topnewpage[\@makechapterhead]`): the
+    // first block after the box, the box's first block, its lines and the
+    // height the columns of its page lose.
+    let mut chapter_tops: Vec<(usize, usize, Vec<pagebuild::Placed>, f64)> = Vec::new();
     // `\sectionmark`/`\chaptermark` as defined by the last `\ps@headings` or
     // `\ps@myheadings` (`\ps@plain`/`\ps@empty` leave them alone).
     let mut mark_rules: Vec<flashtex_class_geometry::MarkRule> = geo.map(|g| g.mark_rules.clone()).unwrap_or_default();
@@ -4684,7 +4688,54 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 } else {
                     spec
                 };
-                let built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size);
+                // A contents list's `\chapter*` is set after `\onecolumn`
+                // (its entries are wide material): no `\@topnewpage` then.
+                let onecolumn_list = doc.blocks[doc_index + 1..].iter().find(|b| !matches!(b, Block::Chrome { .. })).is_some_and(|b| matches!(b, Block::TocEntry(e) if e.wide));
+                // With floats the float placement paginates and does not
+                // shorten columns: the head stays in the column there.
+                // Not yet with `\cleardoublepage` after other material: the
+                // `openright` blank page and its page style are placed by
+                // blocks that carry lines (known limitation).
+                let at_start = blocks.iter().all(|b| b.vertical.lines.is_empty());
+                let simple_break = spec.page_break != flashtex_class_geometry::PageBreak::ClearDoublePage || at_start;
+                if n_columns > 1 && !onecolumn_list && floats.is_empty() && simple_break {
+                    // report.cls/book.cls `\@chapter`: `\if@twocolumn
+                    // \@topnewpage[\@makechapterhead{#2}]` (latex.ltx line
+                    // 20466): the head is a `\textwidth` `\vbox` at the top of
+                    // the page, `\@colht` lowered by its height plus
+                    // `\dbltextfloatsep` (its own `\vskip -\dbltextfloatsep`
+                    // cancels that), no `\@afterheading`. Inside the box
+                    // `\vspace*` restores `\prevdepth` -1000pt, so the first
+                    // line gets no interline glue.
+                    let width = crate::style::frame_pt(g.frame.text_width);
+                    let first = blocks.len();
+                    let mut built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size, Some(width));
+                    if let Some(b) = built.get_mut(1) {
+                        b.vertical.no_interline_first = true;
+                    }
+                    let p = page_params(ctx.style);
+                    let vb: Vec<VBlock> = built.iter().map(|b| b.vertical.clone()).collect();
+                    let (placed, height) = pagebuild::natural_layout(&p, &pagebuild::vlist(&p, &vb), false);
+                    for b in &mut built {
+                        b.vertical.lines.clear();
+                    }
+                    blocks.extend(built);
+                    let after = blocks.len();
+                    if page_start_blocks.last() == Some(&first) {
+                        page_start_blocks.pop();
+                    }
+                    page_start_blocks.push(after);
+                    if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
+                        chapter_starts.push((after, events.len()));
+                    }
+                    // `\clearpage` before the head: the box's own blocks
+                    // carry no lines, so the break goes on the block after it.
+                    clears.push(after);
+                    chapter_tops.push((after, first, placed, height));
+                    after_heading = false;
+                    continue;
+                }
+                let built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size, None);
                 if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
                     chapter_starts.push((blocks.len(), events.len()));
                 }
@@ -5008,7 +5059,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     let columns = n_columns;
     let (mut built, images, float_labels) = if floats.is_empty() {
         let (short_pages, short) = top_title.as_ref().map_or((0, 0.0), |t| (columns, t.2));
-        (pagebuild::break_pages_shortened(&params, &list, short_pages, short), Vec::new(), Vec::new())
+        let tops: Vec<(usize, f64)> = chapter_tops.iter().map(|t| (t.0, t.3)).collect();
+        (pagebuild::break_pages_tops(&params, &list, short_pages, short, &tops, columns), Vec::new(), Vec::new())
     } else {
         if let Some((first, ..)) = &top_title {
             let span = blocks.get(*first).and_then(|b| b.recs.iter().flatten().next().copied()).and_then(|r| match &ctx.recs[r] {
@@ -5024,6 +5076,28 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         }
         floatpage::paginate(ctx, &mut blocks, &params, &list, floats)
     };
+    // Two-column chapter heads: the columns of the page that starts with the
+    // block after the box move down by its height; the box's lines go on
+    // that page's first column (`\@combinedblfloats`).
+    if floats.is_empty() {
+        for (after, first, placed, height) in chapter_tops.drain(..) {
+            let Some(i) = built.iter().position(|bp| bp.lines.first().is_some_and(|l| l.payload.0 >= after)) else { continue };
+            for bp in built.iter_mut().skip(i).take(columns) {
+                for l in &mut bp.lines {
+                    l.baseline += height;
+                }
+            }
+            let mut lines: Vec<pagebuild::Placed> = placed
+                .into_iter()
+                .map(|p| pagebuild::Placed {
+                    payload: (p.payload.0 + first, p.payload.1),
+                    ..p
+                })
+                .collect();
+            lines.append(&mut built[i].lines);
+            built[i].lines = lines;
+        }
+    }
     // The `\twocolumn[...]` box sits at the top of the first page
     // (`\@combinedblfloats`), both columns `\dbltextfloatsep` below it.
     if let Some((first, placed, height)) = top_title.take() {
