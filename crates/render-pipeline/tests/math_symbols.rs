@@ -326,7 +326,7 @@ fn mathbb_paints_from_new_computer_modern_when_bundled() {
         eprintln!("skipping the bundled half: {NEWCM} not found");
         return;
     };
-    let with = render_with(&[dir.clone()]);
+    let with = render_with(std::slice::from_ref(dir));
     let faces = bb_faces(&with);
     assert!(faces.len() >= 3, "double-struck runs: {faces:?}");
     for (text, ps, sha) in &faces {
