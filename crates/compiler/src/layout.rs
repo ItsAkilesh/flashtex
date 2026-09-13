@@ -23,6 +23,8 @@ use std::sync::OnceLock;
 
 pub use flashtex_font_engine::core14::Core14 as Font;
 
+mod footnotes;
+
 pub const PAGE_WIDTH_PT: f64 = 612.0;
 pub const PAGE_HEIGHT_PT: f64 = 792.0;
 pub const MARGIN_PT: f64 = 72.0;
@@ -366,6 +368,8 @@ pub struct LayoutCursor {
     /// outside one. Unlike `style`, this only ever affects `left_edge` —
     /// lists don't pull in the right margin the way `quote` does.
     list_margin_pt: f64,
+    /// Page-bottom footnote state; see `layout::footnotes`.
+    footnotes: footnotes::FootnoteState,
 }
 
 impl LayoutCursor {
@@ -402,6 +406,7 @@ impl LayoutCursor {
             diagnostics: Vec::new(),
             style: None,
             list_margin_pt: 0.0,
+            footnotes: footnotes::FootnoteState::default(),
         }
     }
 
@@ -499,19 +504,15 @@ impl LayoutCursor {
         self.line_spaces.clear();
         self.resolve_hfill();
         self.align_current_line();
+        self.footnotes
+            .record_closed_line(self.pages.len() - 1, self.line_start, self.y);
         self.x = self.left_edge();
         self.content_end = self.x;
         self.y += self.line_descent + size;
         self.line_ascent = size;
         self.line_descent = size * (LINE_SPACING - 1.0);
-        if self.y > PAGE_HEIGHT_PT - MARGIN_PT {
-            let n = self.pages.len() as u32 + 1;
-            self.pages.push(Page {
-                number: n,
-                width_pt: PAGE_WIDTH_PT,
-                height_pt: PAGE_HEIGHT_PT,
-                items: Vec::new(),
-            });
+        if self.y > self.body_bottom() {
+            self.open_next_page(size);
             self.y = MARGIN_PT + size;
         }
         self.line_start = self.pages.last().expect("at least one page").items.len();
@@ -578,13 +579,7 @@ impl LayoutCursor {
         self.line_spaces.clear();
         self.x = MARGIN_PT;
         self.content_end = self.x;
-        let n = self.pages.len() as u32 + 1;
-        self.pages.push(Page {
-            number: n,
-            width_pt: PAGE_WIDTH_PT,
-            height_pt: PAGE_HEIGHT_PT,
-            items: Vec::new(),
-        });
+        self.open_next_page(self.constraints.font_size_pt);
         self.y = MARGIN_PT + self.constraints.font_size_pt;
         self.line_start = 0;
     }
@@ -1086,16 +1081,19 @@ impl LayoutCursor {
         // following block to trigger `newline`'s resolution, so give it one
         // last chance here. Idempotent when nothing is pending.
         self.resolve_hfill();
+        self.finish_footnotes();
         self.pages
     }
 
     pub fn into_pages_and_diagnostics(mut self) -> (Vec<Page>, Vec<Diagnostic>) {
         self.resolve_hfill();
+        self.finish_footnotes();
         (self.pages, self.diagnostics)
     }
 
     fn into_result(mut self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>, Vec<Diagnostic>) {
         self.resolve_hfill();
+        self.finish_footnotes();
         (self.pages, self.collected_labels, self.diagnostics)
     }
 }
@@ -1260,10 +1258,18 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
             | Block::Styled { content, .. } => content,
             Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
         };
-        for inline in inlines {
-            if let Inline::Reference { key, span, .. } = inline {
-                visitor(key, *span);
-            }
+        visit_inline_references(inlines, visitor);
+    }
+}
+
+fn visit_inline_references(inlines: &[Inline], visitor: &mut impl FnMut(&str, Span)) {
+    for inline in inlines {
+        match inline {
+            Inline::Reference { key, span, .. } => visitor(key, *span),
+            Inline::Footnote {
+                text: Some(text), ..
+            } => visit_inline_references(text, visitor),
+            _ => {}
         }
     }
 }
@@ -1358,6 +1364,13 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
             }
             Inline::HFill { .. } => c.mark_hfill(),
             Inline::HSpace { pt, .. } => c.hspace(*pt),
+            Inline::Footnote {
+                number,
+                span,
+                mark,
+                text,
+                space_before,
+            } => c.footnote(number, *span, *mark, text.as_deref(), *space_before),
         }
     }
 }
