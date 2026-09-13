@@ -32,6 +32,7 @@ import SwiftUI
 /// |                         | follow it on the next draw                                               |
 /// | `autoCloseBraces`       | nothing in AppKit; the editor's typing handler reads the flag            |
 /// | `completionPopup`       | nothing in AppKit; `CompletingTextView.requestCompletion` reads the flag |
+/// | `spellCheck`            | nothing here; `LaTeXSpellChecker` observes the flag                      |
 ///
 /// Reading a property inside `withObservationTracking` (or a SwiftUI body)
 /// registers for its changes; `generation` changes with every property.
@@ -84,6 +85,7 @@ final class EditorPreferences {
         var appearance: Appearance
         var autoCloseBraces: Bool
         var completionPopup: Bool
+        var spellCheck: Bool
     }
 
     // MARK: defaults and ranges
@@ -93,7 +95,7 @@ final class EditorPreferences {
 
     static let defaultSnapshot = Snapshot(
         fontFamily: nil, fontSize: 13, lineWrapping: true, tabWidth: 4, indentStyle: .spaces,
-        appearance: .system, autoCloseBraces: true, completionPopup: true)
+        appearance: .system, autoCloseBraces: true, completionPopup: true, spellCheck: true)
 
     // MARK: storage keys (versioned)
 
@@ -105,7 +107,7 @@ final class EditorPreferences {
     nonisolated static let schemaVersionKey = "FlashTeX.EditorPreferences.schemaVersion"
 
     enum Key: String, CaseIterable {
-        case fontFamily, fontSize, lineWrapping, tabWidth, indentStyle, appearance, autoCloseBraces, completionPopup
+        case fontFamily, fontSize, lineWrapping, tabWidth, indentStyle, appearance, autoCloseBraces, completionPopup, spellCheck
         var storageKey: String { "FlashTeX.EditorPreferences.v\(EditorPreferences.schemaVersion).\(rawValue)" }
     }
 
@@ -175,11 +177,17 @@ final class EditorPreferences {
         set { update(\.completionPopup, \.completionPopup, newValue, key: .completionPopup) }
     }
 
+    /// Red underlines for misspelled prose in the source editor (LaTeXSpellCheck.swift).
+    var spellCheck: Bool {
+        get { access(keyPath: \.spellCheck); return storage.spellCheck }
+        set { update(\.spellCheck, \.spellCheck, newValue, key: .spellCheck) }
+    }
+
     /// All properties at once (registers for every property's changes).
     var snapshot: Snapshot {
         Snapshot(fontFamily: fontFamily, fontSize: fontSize, lineWrapping: lineWrapping, tabWidth: tabWidth,
                  indentStyle: indentStyle, appearance: appearance, autoCloseBraces: autoCloseBraces,
-                 completionPopup: completionPopup)
+                 completionPopup: completionPopup, spellCheck: spellCheck)
     }
 
     // MARK: derived values
@@ -287,6 +295,10 @@ final class EditorPreferences {
             s.completionPopup = value
         } else { repairs.append(.completionPopup) }
 
+        if let value = defaults.object(forKey: Key.spellCheck.storageKey) as? Bool {
+            s.spellCheck = value
+        } else { repairs.append(.spellCheck) }
+
         withMutation(keyPath: \.generation) {
             storage = s
             generation += 1
@@ -300,7 +312,7 @@ final class EditorPreferences {
         let d = Self.defaultSnapshot
         fontFamily = d.fontFamily; fontSize = d.fontSize; lineWrapping = d.lineWrapping; tabWidth = d.tabWidth
         indentStyle = d.indentStyle; appearance = d.appearance; autoCloseBraces = d.autoCloseBraces
-        completionPopup = d.completionPopup
+        completionPopup = d.completionPopup; spellCheck = d.spellCheck
     }
 
     /// Versioned migration. Absent stamp: nothing was ever stored (or only
@@ -338,6 +350,7 @@ final class EditorPreferences {
         case .appearance: defaults.set(storage.appearance.rawValue, forKey: k)
         case .autoCloseBraces: defaults.set(storage.autoCloseBraces, forKey: k)
         case .completionPopup: defaults.set(storage.completionPopup, forKey: k)
+        case .spellCheck: defaults.set(storage.spellCheck, forKey: k)
         }
     }
 
@@ -512,6 +525,8 @@ struct EditorPreferencesView: View {
                     .accessibilityHint("Typing an opening brace inserts the matching closing brace.")
                 Toggle("Show completion list", isOn: $prefs.completionPopup)
                     .accessibilityHint("When off, the list never opens; Control-Space and Escape do nothing.")
+                Toggle("Check spelling", isOn: $prefs.spellCheck)
+                    .accessibilityHint("Underlines misspelled words in prose; commands, math, comments and labels are skipped.")
             }
             if showConversion { ConversionPreferencesSection() } // provider picker, model, API key (Keychain) (ConversionPreferencesView.swift)
             Section {

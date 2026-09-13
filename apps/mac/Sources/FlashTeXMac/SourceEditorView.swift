@@ -96,6 +96,7 @@ struct SourceEditorView: NSViewRepresentable {
         context.coordinator.syntax.enabled = syntaxHighlighting
         context.coordinator.syntax.attach(tv) // follows the storage from here on; paints the visible window
         context.coordinator.attach(scroll)
+        context.coordinator.spelling.attach(tv) // LaTeX-aware spell checking (LaTeXSpellCheck.swift)
         context.coordinator.installIntelligence(on: scroll, lineNumbers: showLineNumbers)
         return scroll
     }
@@ -636,6 +637,8 @@ struct SourceEditorView: NSViewRepresentable {
         let marks = MarkPainter()
         /// Syntax colours as temporary attributes (SyntaxHighlighter.swift).
         let syntax = SyntaxPainter()
+        /// Prose-only spelling underlines and right-click suggestions (LaTeXSpellCheck.swift).
+        let spelling = LaTeXSpellChecker()
         /// Line numbers + diagnostic markers (nil while hidden).
         private(set) var gutter: LineNumberGutter?
         /// Hover quick-info popover.
