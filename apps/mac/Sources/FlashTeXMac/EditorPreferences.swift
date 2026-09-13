@@ -33,6 +33,7 @@ import SwiftUI
 /// | `autoCloseBraces`       | nothing in AppKit; the editor's typing handler reads the flag            |
 /// | `completionPopup`       | nothing in AppKit; `CompletingTextView.requestCompletion` reads the flag |
 /// | `spellCheck`            | nothing here; `LaTeXSpellChecker` observes the flag                      |
+/// | `followCaretInPreview`  | nothing in AppKit; `CaretFollow` reads the flag before each follow        |
 ///
 /// Reading a property inside `withObservationTracking` (or a SwiftUI body)
 /// registers for its changes; `generation` changes with every property.
@@ -87,6 +88,7 @@ final class EditorPreferences {
         var completionPopup: Bool
         var spellCheck: Bool
         var vimKeybindings: Bool
+        var followCaretInPreview: Bool
     }
 
     // MARK: defaults and ranges
@@ -96,7 +98,8 @@ final class EditorPreferences {
 
     static let defaultSnapshot = Snapshot(
         fontFamily: nil, fontSize: 13, lineWrapping: true, tabWidth: 4, indentStyle: .spaces,
-        appearance: .system, autoCloseBraces: true, completionPopup: true, spellCheck: true, vimKeybindings: false)
+        appearance: .system, autoCloseBraces: true, completionPopup: true, spellCheck: true,
+        vimKeybindings: false, followCaretInPreview: true)
 
     // MARK: storage keys (versioned)
 
@@ -108,7 +111,8 @@ final class EditorPreferences {
     nonisolated static let schemaVersionKey = "FlashTeX.EditorPreferences.schemaVersion"
 
     enum Key: String, CaseIterable {
-        case fontFamily, fontSize, lineWrapping, tabWidth, indentStyle, appearance, autoCloseBraces, completionPopup, spellCheck, vimKeybindings
+        case fontFamily, fontSize, lineWrapping, tabWidth, indentStyle, appearance, autoCloseBraces, completionPopup, spellCheck
+        case vimKeybindings, followCaretInPreview
         var storageKey: String { "FlashTeX.EditorPreferences.v\(EditorPreferences.schemaVersion).\(rawValue)" }
     }
 
@@ -190,11 +194,20 @@ final class EditorPreferences {
         set { update(\.vimKeybindings, \.vimKeybindings, newValue, key: .vimKeybindings) }
     }
 
+    /// Whether the preview scrolls to the caret as you edit (CaretFollow.swift).
+    /// Default ON: the owner asked for the behaviour. Off means no automatic
+    /// preview scrolling at all; ⌘⇧J still reveals the caret on demand.
+    var followCaretInPreview: Bool {
+        get { access(keyPath: \.followCaretInPreview); return storage.followCaretInPreview }
+        set { update(\.followCaretInPreview, \.followCaretInPreview, newValue, key: .followCaretInPreview) }
+    }
+
     /// All properties at once (registers for every property's changes).
     var snapshot: Snapshot {
         Snapshot(fontFamily: fontFamily, fontSize: fontSize, lineWrapping: lineWrapping, tabWidth: tabWidth,
                  indentStyle: indentStyle, appearance: appearance, autoCloseBraces: autoCloseBraces,
-                 completionPopup: completionPopup, spellCheck: spellCheck, vimKeybindings: vimKeybindings)
+                 completionPopup: completionPopup, spellCheck: spellCheck,
+                 vimKeybindings: vimKeybindings, followCaretInPreview: followCaretInPreview)
     }
 
     // MARK: derived values
@@ -310,6 +323,10 @@ final class EditorPreferences {
             s.vimKeybindings = value
         } else { repairs.append(.vimKeybindings) }
 
+        if let value = defaults.object(forKey: Key.followCaretInPreview.storageKey) as? Bool {
+            s.followCaretInPreview = value
+        } else { repairs.append(.followCaretInPreview) }
+
         withMutation(keyPath: \.generation) {
             storage = s
             generation += 1
@@ -323,7 +340,8 @@ final class EditorPreferences {
         let d = Self.defaultSnapshot
         fontFamily = d.fontFamily; fontSize = d.fontSize; lineWrapping = d.lineWrapping; tabWidth = d.tabWidth
         indentStyle = d.indentStyle; appearance = d.appearance; autoCloseBraces = d.autoCloseBraces
-        completionPopup = d.completionPopup; spellCheck = d.spellCheck; vimKeybindings = d.vimKeybindings
+        completionPopup = d.completionPopup; spellCheck = d.spellCheck
+        vimKeybindings = d.vimKeybindings; followCaretInPreview = d.followCaretInPreview
     }
 
     /// Versioned migration. Absent stamp: nothing was ever stored (or only
@@ -363,6 +381,7 @@ final class EditorPreferences {
         case .completionPopup: defaults.set(storage.completionPopup, forKey: k)
         case .spellCheck: defaults.set(storage.spellCheck, forKey: k)
         case .vimKeybindings: defaults.set(storage.vimKeybindings, forKey: k)
+        case .followCaretInPreview: defaults.set(storage.followCaretInPreview, forKey: k)
         }
     }
 
@@ -543,6 +562,8 @@ struct EditorPreferencesView: View {
                     .accessibilityHint("Underlines misspelled words in prose; commands, math, comments and labels are skipped.")
                 Toggle("Vim keybindings", isOn: $prefs.vimKeybindings)
                     .accessibilityHint("Modal editing in the source editor: normal, insert and visual modes with Vim motions, operators and : commands; the status bar shows the mode. Also View > Toggle Vim Keybindings (⌃⌘V).")
+                Toggle("Preview follows the caret", isOn: $prefs.followCaretInPreview)
+                    .accessibilityHint("While you edit, the preview scrolls to what you are changing — only when it is off screen, and not while you scroll the preview yourself. Command-Shift-J reveals the caret at any time.")
                 ErrorLensPreferenceRows() // inline diagnostic text at line ends (ErrorLens.swift)
             }
             if showConversion { ConversionPreferencesSection() } // provider picker, model, API key (Keychain) (ConversionPreferencesView.swift)

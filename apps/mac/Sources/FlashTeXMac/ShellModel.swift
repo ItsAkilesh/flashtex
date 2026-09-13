@@ -20,7 +20,12 @@ final class ShellModel {
 
     var documents: [RuntimeV1.Document] = []
     var activePath: String = "main.tex"
-    var result: RuntimeV1.CompileResult? { didSet { refreshToolbarMirrors() } }
+    var result: RuntimeV1.CompileResult? {
+        didSet {
+            refreshToolbarMirrors()
+            if result != nil { caretFollow.note(.recompile) } // CaretFollow.swift: the preview moved on, re-aim at the caret
+        }
+    }
     var resultID: String?
     var fixtureURL: URL?
     var loadError: String?
@@ -65,7 +70,12 @@ final class ShellModel {
     }
     /// Fit-to-width scale the preview pane last laid out with (written by the pane; drives Actual Size and the percentage).
     var previewFitScale: CGFloat = 1
-    var displayListV2: V2PreviewState? { didSet { refreshToolbarMirrors() } }
+    var displayListV2: V2PreviewState? {
+        didSet {
+            refreshToolbarMirrors()
+            if case .loaded = displayListV2 { caretFollow.note(.recompile) } // CaretFollow.swift
+        }
+    }
     var previewSource: PreviewSource = .none
     /// File backing the entry document, if any, and its last saved contents.
     var documentURL: URL?
@@ -83,7 +93,13 @@ final class ShellModel {
         var captureRefund: CaptureRefund? = nil
     }
     struct CaptureRefund: Equatable { var proposal: RuntimeV1.CaptureProposal; var anchorBefore: InsertionAnchor }
-    var caretUTF16: Int = 0
+    var caretUTF16: Int = 0 {
+        didSet { if caretUTF16 != oldValue { caretFollow.note(.caretMove) } } // CaretFollow.swift (only when already armed)
+    }
+    /// Debounced "the preview follows what you are editing" (CaretFollow.swift).
+    /// Triggers: `updateActiveText` (edit), a result or v2 frame landing
+    /// (recompile), a caret move, and ⌘⇧J (explicit).
+    @ObservationIgnored let caretFollow = CaretFollowController()
     var anchor: InsertionAnchor?
     var proposals: [RuntimeV1.CaptureProposal] = []
     var reviewing: RuntimeV1.CaptureProposal?
@@ -468,6 +484,9 @@ final class ShellModel {
 
     init() {
         let env = ProcessInfo.processInfo.environment
+        // Caret following asks for the target only when a follow actually
+        // fires, so this closure runs at most once per debounce interval.
+        caretFollow.target = { [weak self] in self?.caretPreviewTarget() }
         defer {
             // Demo/automation hooks: seed the editor from a .tex file and attach the
             // built compiler at launch when FLASHTEX_AUTOATTACH=1 (opt-in so tests
@@ -649,6 +668,7 @@ final class ShellModel {
         editorRevision += 1
         TypingBench.shared.noteRevision(editorRevision) // keystroke -> paint instrumentation
         scheduleAutoCompile()
+        caretFollow.note(.edit) // CaretFollow.swift: an edit also re-arms following after a manual scroll
         bridgeTextChanged(path: activePath, old: old, new: text, base: base, revision: editorRevision)
     }
 

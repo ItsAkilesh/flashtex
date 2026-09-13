@@ -17,15 +17,16 @@ struct PreviewView: View {
     var zoom: CGFloat = 1
     /// Reports the fit-to-width scale so the shell can compute Actual Size / the percentage.
     var onFitScale: ((CGFloat) -> Void)? = nil
+    /// Latest caret-follow request (CaretFollow.swift); acted on once per token.
+    var follow: CaretFollowController.Request? = nil
+    /// Reported when the reader scrolls this pane by hand.
+    var onUserScroll: (() -> Void)? = nil
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
-
-    /// First page holding a caret item, or nil; drives page-level auto-scroll.
-    private var caretPage: Int? { caretItems.filter { !$0.value.isEmpty }.keys.min() }
 
     var body: some View {
         let _ = TypingBench.shared.willRender(revision: result.revision, pages: result.pages.count)
         GeometryReader { geo in
-        ScrollViewReader { proxy in
+        ScrollViewReader { _ in
             let widest = result.pages.map(\.widthPt).max() ?? 612
             // Fit the widest page to the pane (never upscale past 100%), times the zoom.
             let fit = min(1, max(0.2, (geo.size.width - 48) / widest))
@@ -49,14 +50,14 @@ struct PreviewView: View {
                     }
                 }
                 .padding(24)
-                .background(PreviewAnchorKeeper(layout: layout))
+                .background(PreviewAnchorKeeper(layout: layout, follow: follow, onUserScroll: onUserScroll))
             }
             .onChange(of: fit, initial: true) { _, f in onFitScale?(f) }
-            .onChange(of: caretPage) { _, page in
-                // Page-level only: keeps the page under the caret in view when the
-                // editor moves across pages; no scrolling within a page.
-                if let page { ReduceMotion.animate { proxy.scrollTo(page, anchor: .top) } }
-            }
+            // The page-level `scrollTo(caretPage)` this pane used to do is gone:
+            // it jumped to the top of the page on every caret move, even when the
+            // item was already on screen. `CaretFollow` (CaretFollow.swift) does
+            // the same job for both panes, debounced, only when the target is off
+            // screen, and to the item rather than the page.
         }
         }
         .background(dark ? Color(white: 0.12) : Color(nsColor: .windowBackgroundColor))

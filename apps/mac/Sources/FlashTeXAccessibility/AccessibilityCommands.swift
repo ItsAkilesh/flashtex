@@ -448,6 +448,7 @@ public enum PanelFocusOrder {
                 Control(name: "Show completion list", sourceMarker: "Toggle(\"Show completion list\""),
                 Control(name: "Check spelling", sourceMarker: "Toggle(\"Check spelling\""),
                 Control(name: "Vim keybindings", sourceMarker: "Toggle(\"Vim keybindings\""),
+                Control(name: "Preview follows the caret", sourceMarker: "Toggle(\"Preview follows the caret\""),
                 Control(name: "Restore Defaults", sourceMarker: "Button(\"Restore Defaults\""),
               ],
               sourceFile: "EditorPreferences.swift"),
