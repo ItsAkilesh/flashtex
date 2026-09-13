@@ -39,6 +39,8 @@ struct SourceEditorView: NSViewRepresentable {
     /// Editor revision the buffer is at; completion metadata binds to it.
     var editorRevision: Int?
     var projectIndexMetadata: Completion.Metadata?
+    /// Project document paths for `\input{`/`\include{` completion (Completion.swift).
+    var projectFiles: [String] = []
     var onCaretChange: (Int) -> Void = { _ in }
     var onSelectionChange: (NSRange) -> Void = { _ in }
     var onEditApplied: (ShellModel.PendingEdit, String) -> Void = { _, _ in }
@@ -109,6 +111,7 @@ struct SourceEditorView: NSViewRepresentable {
         co.setLineNumbers(showLineNumbers, on: scroll)
         (tv as? CompletingTextView)?.compileResult = result
         (tv as? CompletingTextView)?.editorRevision = editorRevision
+        if let completing = tv as? CompletingTextView, completing.projectFiles != projectFiles { completing.projectFiles = projectFiles }
         if let m = projectIndexMetadata { _ = (tv as? CompletingTextView)?.accept(projectIndex: m) }
         if let edit = pendingEdit, edit.token != co.appliedEditToken {
             // While marked text exists the storage is ahead of the model by the
@@ -419,7 +422,29 @@ struct SourceEditorView: NSViewRepresentable {
         static func closer(for opener: Character) -> Character? {
             switch opener { case "{": return "}"; case "[": return "]"; case "$": return "$"; default: return nil }
         }
-        static func isCloser(_ c: Character) -> Bool { c == "}" || c == "]" || c == "$" }
+        /// `)` and `\` are closers only as the halves of an auto-inserted `\)`/`\]`
+        /// (type-over checks the pending-closer list before the character).
+        static func isCloser(_ c: Character) -> Bool { c == "}" || c == "]" || c == "$" || c == ")" || c == "\\" }
+
+        /// The math closer for a `(` or `[` just typed before `caretUTF16`
+        /// right after a single backslash (`\(` → `\)`, `\[` → `\]`), when
+        /// that opener is code and followed by nothing or whitespace; nil otherwise.
+        static func mathCloser(in text: String, caretUTF16: Int) -> String? {
+            guard caretUTF16 >= 2, let index = SourceEditorView.scalarIndex(text: text, utf16: caretUTF16) else { return nil }
+            let p = text.utf8.distance(from: text.utf8.startIndex, to: index)
+            var copy = text
+            return copy.withUTF8 { b -> String? in
+                let opener = p - 1
+                guard opener >= 1, b[opener - 1] == UInt8(ascii: "\\"), !escaped(b, at: opener - 1), isCode(b, at: opener - 1) else { return nil }
+                let closer: String
+                switch b[opener] { case UInt8(ascii: "("): closer = "\\)"; case UInt8(ascii: "["): closer = "\\]"; default: return nil }
+                if p < b.count {
+                    let next = b[p]
+                    guard next == 0x20 || next == 0x09 || next == 0x0A || next == 0x0D else { return nil }
+                }
+                return closer
+            }
+        }
 
         static func match(in text: String, caretUTF16: Int) -> Match? {
             guard let index = SourceEditorView.scalarIndex(text: text, utf16: caretUTF16) else { return nil }
@@ -1040,10 +1065,20 @@ struct SourceEditorView: NSViewRepresentable {
         /// The closer is inserted through `insertText`, so it coalesces with
         /// the opener into one typing undo step.
         private func autoClose(after edit: (range: NSRange, replacement: String)?, in tv: NSTextView) {
-            guard let edit, edit.range.length == 0, edit.replacement.count == 1, let opener = edit.replacement.first,
-                  parent.autoClosePairs.contains(opener), let closer = BraceMatcher.closer(for: opener) else { return }
+            guard let edit, edit.range.length == 0, edit.replacement.count == 1, let opener = edit.replacement.first else { return }
             let caret = NSRange(location: edit.range.location + (edit.replacement as NSString).length, length: 0)
             guard tv.selectedRange() == caret else { return }
+            // `\(` → `\)`, `\[` → `\]` (owner-enabled by `(`): both halves of the closer are typed over.
+            if opener == "(" || opener == "[", parent.autoClosePairs.contains("("),
+               let math = BraceMatcher.mathCloser(in: SourceEditorView.nativeText(of: tv), caretUTF16: caret.location) {
+                pairing = true
+                tv.insertText(math, replacementRange: caret)
+                tv.setSelectedRange(caret)
+                pairing = false
+                pendingClosers += [caret.location, caret.location + 1]
+                return
+            }
+            guard parent.autoClosePairs.contains(opener), let closer = BraceMatcher.closer(for: opener) else { return }
             guard BraceMatcher.autoCloseAllowed(in: SourceEditorView.nativeText(of: tv), caretUTF16: caret.location) else { return }
             pairing = true
             tv.insertText(String(closer), replacementRange: caret)

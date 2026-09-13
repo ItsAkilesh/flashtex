@@ -169,6 +169,7 @@ private struct EditorPane: View {
                 result: model.result,
                 editorRevision: model.editorRevision,
                 projectIndexMetadata: model.completionMetadata,
+                projectFiles: model.documents.map(\.path), // `\input{` completion (Completion.swift)
                 onCaretChange: { model.caretUTF16 = $0 },
                 onSelectionChange: { model.caretLengthUTF16 = $0.length },
                 onEditApplied: { model.editApplied($0, newText: $1) },
