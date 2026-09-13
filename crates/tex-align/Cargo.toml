@@ -1,0 +1,13 @@
+[package]
+name = "flashtex-tex-align"
+version = "0.1.0"
+edition = "2024"
+description = "TeX alignment (\\halign/\\valign, tex.web part 37) and LaTeX tabular/array/booktabs semantics."
+publish = false
+
+[lib]
+name = "flashtex_tex_align"
+path = "src/lib.rs"
+
+[dependencies]
+flashtex-tex-boxes = { path = "../tex-boxes" }
