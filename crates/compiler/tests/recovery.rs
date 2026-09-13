@@ -199,9 +199,12 @@ const SOURCE_CASES: &[SourceCase] = &[
         message: r"\bogus is not supported in math mode",
     },
     SourceCase {
-        name: "missing braced math argument",
-        input: r"Visible $x+\frac a{b}$ Tail.",
-        message: r"\frac requires a braced math argument",
+        // `\frac a{b}` is now valid (TeX takes the next single token as an
+        // undelimited argument, so the numerator is just `a`); a stray `^`
+        // where the denominator belongs is still a real missing-argument error.
+        name: "missing math argument",
+        input: r"Visible $x+\frac{a}^2$ Tail.",
+        message: r"\frac requires an argument",
     },
 ];
 

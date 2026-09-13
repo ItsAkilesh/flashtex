@@ -824,19 +824,40 @@ impl MathParser<'_> {
         }
         let Some(open) = self.tokens.get(self.i).cloned() else {
             self.diagnostics.push(Diagnostic::error(
-                format!("\\{command} requires a braced text argument"),
+                format!("\\{command} requires an argument"),
                 Some(span),
                 Some("used an empty argument and continued".into()),
             ));
             return (String::new(), span);
         };
         if open.kind != TokenKind::LBrace {
-            self.diagnostics.push(Diagnostic::error(
-                format!("\\{command} requires a braced text argument"),
-                Some(span),
-                Some("used an empty argument and continued".into()),
-            ));
-            return (String::new(), span);
+            // TeX's undelimited argument: without a brace, the argument is
+            // the next single token by itself -- one already-split character
+            // (`\mathbb R`, `\mathbf v`) or one whole control sequence --
+            // not a full group scan.
+            return match open.kind {
+                TokenKind::Word(ch) => {
+                    self.i += 1;
+                    (ch, open.span)
+                }
+                TokenKind::Command(name) => {
+                    self.i += 1;
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("\\{name} is not supported inside \\{command}"),
+                        Some(open.span),
+                        Some("typeset the command name literally and continued".into()),
+                    ));
+                    (format!("\\{name}"), open.span)
+                }
+                _ => {
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("\\{command} requires an argument"),
+                        Some(span),
+                        Some("used an empty argument and continued".into()),
+                    ));
+                    (String::new(), span)
+                }
+            };
         }
         self.i += 1;
         let mut depth = 1usize;
@@ -1102,6 +1123,13 @@ impl MathParser<'_> {
         }
     }
 
+    /// A TeX "undelimited" math argument: `{...}` groups as a full list, or
+    /// -- per TeX's actual grammar for a single argument -- the next token by
+    /// itself: one already-split character (`\hat AB` accents only `A`,
+    /// `\frac12` is 1 over 2) or one whole control sequence (`\hat\alpha`,
+    /// `\vec\nabla`), skipping leading spaces. `self.atom()` is exactly the
+    /// "parse one token into one atom" step the top-level list and
+    /// `script_argument` already use for this same rule (`x^ab` = `x^a b`).
     fn required_group(&mut self, command: &str, span: Span) -> MathList {
         while matches!(
             self.tokens.get(self.i).map(|t| &t.kind),
@@ -1114,15 +1142,19 @@ impl MathParser<'_> {
             Some(TokenKind::LBrace)
         ) {
             self.i += 1;
-            self.list(true)
-        } else {
-            self.diagnostics.push(Diagnostic::error(
-                format!("\\{} requires a braced math argument", command),
-                Some(span),
-                Some("used an empty argument and continued".into()),
-            ));
-            MathList { atoms: Vec::new() }
+            return self.list(true);
         }
+        if let Some(atom) = self.atom() {
+            let mut atoms = vec![atom];
+            atoms.append(&mut self.pending);
+            return MathList { atoms };
+        }
+        self.diagnostics.push(Diagnostic::error(
+            format!("\\{} requires an argument", command),
+            Some(span),
+            Some("used an empty argument and continued".into()),
+        ));
+        MathList { atoms: Vec::new() }
     }
 }
 
@@ -2372,18 +2404,348 @@ mod parse_tests {
 
     #[test]
     fn malformed_delimiter_and_text_arguments_remain_diagnostic() {
-        for source in [r"\bigl", r"\text unbraced"] {
+        // `\bigl` truly has no following delimiter at all; `\text` truly has
+        // no following token at all. Neither is TeX's "undelimited argument"
+        // case -- that requires a token to take as the argument.
+        for source in [r"\bigl", r"\text"] {
             let mut diagnostics = Vec::new();
             let tokens = crate::lexer::tokenize(source);
             let _ = parse_tokens(&tokens, &mut diagnostics);
             assert!(!diagnostics.is_empty(), "{source:?} must remain diagnostic");
         }
 
+        // TeX's undelimited argument: without braces, `\text` takes just the
+        // next single token ("u"), leaving the rest ("nbraced") to parse as
+        // ordinary math symbols rather than erroring or being swallowed.
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\text x");
         let list = parse_tokens(&tokens, &mut diagnostics);
-        assert!(matches!(list.atoms[0].nucleus, Nucleus::Text(ref text) if text.is_empty()));
-        assert!(matches!(list.atoms[1].nucleus, Nucleus::Symbol(ref text) if text == "x"));
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(list.atoms.len(), 1, "{:?}", list.atoms);
+        assert!(matches!(list.atoms[0].nucleus, Nucleus::Text(ref text) if text == "x"));
+    }
+}
+
+/// TeX's rule for an undelimited argument: without a `{...}` group, the
+/// argument is exactly the next token -- one already-split character, or one
+/// whole control sequence -- skipping leading spaces. See issue #78:
+/// `$\hat A$` was accenting nothing because `\hat` demanded a brace.
+#[cfg(test)]
+mod unbraced_argument_tests {
+    use super::*;
+
+    #[test]
+    fn unbraced_accent_takes_only_the_next_character() {
+        // `\hat AB`: the argument is just "A"; "B" is an ordinary atom after
+        // it, exactly like real TeX (and unlike the pre-fix empty-body bug).
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\hat AB");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
+        match &list.atoms[0].nucleus {
+            Nucleus::Accent { accent, body } => {
+                assert_eq!(*accent, Accent::Hat);
+                assert_eq!(body.atoms.len(), 1, "{:?}", body.atoms);
+                assert_eq!(body.atoms[0].nucleus, Nucleus::Symbol("A".into()));
+                // The body keeps its own real one-byte source span: "A" sits
+                // at byte 5 in `\hat AB` (`\hat ` is 5 bytes).
+                assert_eq!(body.atoms[0].span.start, 5);
+                assert_eq!(body.atoms[0].span.end, 6);
+            }
+            other => panic!("expected an accent, got {other:?}"),
+        }
+        assert_eq!(list.atoms[1].nucleus, Nucleus::Symbol("B".into()));
+        assert_eq!(list.atoms[1].span.start, 6);
+        assert_eq!(list.atoms[1].span.end, 7);
+    }
+
+    #[test]
+    fn unbraced_accent_argument_may_be_one_control_sequence() {
+        for (source, accent, glyph) in [
+            (r"\hat\alpha", Accent::Hat, "α"),
+            (r"\vec\nabla", Accent::Vec, "∇"),
+        ] {
+            let mut diagnostics = Vec::new();
+            let tokens = crate::lexer::tokenize(source);
+            let list = parse_tokens(&tokens, &mut diagnostics);
+            assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+            assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
+            match &list.atoms[0].nucleus {
+                Nucleus::Accent { accent: a, body } => {
+                    assert_eq!(*a, accent, "{source}");
+                    assert_eq!(body.atoms.len(), 1, "{source}: {:?}", body.atoms);
+                    assert_eq!(body.atoms[0].nucleus, Nucleus::Symbol(glyph.into()));
+                }
+                other => panic!("{source}: expected an accent, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn every_accent_family_accepts_an_unbraced_argument() {
+        for command in [
+            "hat",
+            "bar",
+            "vec",
+            "tilde",
+            "dot",
+            "ddot",
+            "check",
+            "breve",
+            "acute",
+            "grave",
+            "widehat",
+            "widetilde",
+        ] {
+            let mut diagnostics = Vec::new();
+            let source = format!(r"\{command} x");
+            let tokens = crate::lexer::tokenize(&source);
+            let list = parse_tokens(&tokens, &mut diagnostics);
+            assert!(
+                diagnostics
+                    .iter()
+                    .all(|d| !d.message.contains("requires an argument")),
+                "{source}: {diagnostics:?}"
+            );
+            assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
+            match &list.atoms[0].nucleus {
+                Nucleus::Accent { body, .. } => {
+                    assert_eq!(body.atoms.len(), 1, "{source}: {:?}", body.atoms);
+                    assert_eq!(body.atoms[0].nucleus, Nucleus::Symbol("x".into()));
+                }
+                other => panic!("{source}: expected an accent, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn unbraced_sqrt_roots_only_the_next_token() {
+        // `\sqrt 2x`: roots only "2"; "x" is outside the radical.
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\sqrt 2x");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
+        match &list.atoms[0].nucleus {
+            Nucleus::Radical(body) => {
+                assert_eq!(body.atoms.len(), 1, "{:?}", body.atoms);
+                assert_eq!(body.atoms[0].nucleus, Nucleus::Symbol("2".into()));
+                assert_eq!(body.atoms[0].span.start, 6);
+                assert_eq!(body.atoms[0].span.end, 7);
+            }
+            other => panic!("expected a radical, got {other:?}"),
+        }
+        assert_eq!(list.atoms[1].nucleus, Nucleus::Symbol("x".into()));
+        assert_eq!(list.atoms[1].span.start, 7);
+        assert_eq!(list.atoms[1].span.end, 8);
+    }
+
+    #[test]
+    fn unbraced_frac_dfrac_tfrac_take_one_token_each() {
+        // The task brief's headline case: `\frac12` is 1 over 2, not an
+        // error.
+        for command in ["frac", "dfrac", "tfrac"] {
+            let mut diagnostics = Vec::new();
+            let source = format!(r"\{command}12");
+            let tokens = crate::lexer::tokenize(&source);
+            let list = parse_tokens(&tokens, &mut diagnostics);
+            assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+            assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
+            match &list.atoms[0].nucleus {
+                Nucleus::Fraction {
+                    numerator,
+                    denominator,
+                } => {
+                    assert_eq!(numerator.atoms.len(), 1, "{source}: {:?}", numerator.atoms);
+                    assert_eq!(numerator.atoms[0].nucleus, Nucleus::Symbol("1".into()));
+                    assert_eq!(
+                        denominator.atoms.len(),
+                        1,
+                        "{source}: {:?}",
+                        denominator.atoms
+                    );
+                    assert_eq!(denominator.atoms[0].nucleus, Nucleus::Symbol("2".into()));
+                    // Each half keeps its own exact one-byte source span.
+                    let n = &numerator.atoms[0].span;
+                    let d = &denominator.atoms[0].span;
+                    assert_eq!(n.end - n.start, 1, "{source}");
+                    assert_eq!(d.end - d.start, 1, "{source}");
+                    assert_eq!(d.start, n.end, "{source}: the digits are adjacent bytes");
+                }
+                other => panic!("{source}: expected a fraction, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn unbraced_binom_takes_one_token_per_argument() {
+        for command in ["binom", "dbinom", "tbinom"] {
+            let mut diagnostics = Vec::new();
+            let source = format!(r"\{command} nk");
+            let tokens = crate::lexer::tokenize(&source);
+            let list = parse_tokens(&tokens, &mut diagnostics);
+            assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+            assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
+            match &list.atoms[0].nucleus {
+                Nucleus::Matrix { rows, .. } => {
+                    assert_eq!(rows.len(), 2, "{source}");
+                    assert_eq!(rows[0][0].atoms[0].nucleus, Nucleus::Symbol("n".into()));
+                    assert_eq!(rows[1][0].atoms[0].nucleus, Nucleus::Symbol("k".into()));
+                }
+                other => panic!("{source}: expected a matrix, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn unbraced_mathbb_and_mathbf_take_one_letter() {
+        // The issue's own examples: `\mathbb R` and `\mathbf v`.
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\mathbb RS");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
+        assert_eq!(
+            list.atoms[0].nucleus,
+            Nucleus::Symbol(crate::lm_math::double_struck('R').unwrap().to_string())
+        );
+        // The atom's span is the command merged with its argument (matching
+        // the pre-existing braced-form convention); its end lands exactly at
+        // "R", proving "S" was not swallowed along with it.
+        assert_eq!(list.atoms[0].span.end, 9);
+        assert_eq!(list.atoms[1].nucleus, Nucleus::Symbol("S".into()));
+        assert_eq!(list.atoms[1].span.start, 9);
+        assert_eq!(list.atoms[1].span.end, 10);
+
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\mathbf vw");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
+        assert_eq!(list.atoms[0].nucleus, Nucleus::Bold("v".into()));
+        assert_eq!(list.atoms[0].span.end, 9);
+        assert_eq!(list.atoms[1].nucleus, Nucleus::Symbol("w".into()));
+        assert_eq!(list.atoms[1].span.start, 9);
+        assert_eq!(list.atoms[1].span.end, 10);
+    }
+
+    #[test]
+    fn unbraced_style_switches_match_their_braced_form() {
+        // `\mathrm`, `\mathit`, `\mathsf`, `\mathtt`, `\boldsymbol` and `\bm`
+        // flatten a group's first atom into the surrounding list; the
+        // unbraced form must produce the identical atom.
+        for command in ["mathrm", "mathit", "mathsf", "mathtt", "boldsymbol", "bm"] {
+            let mut braced_diagnostics = Vec::new();
+            let braced = crate::lexer::tokenize(&format!(r"\{command}{{d}}x"));
+            let braced_list = parse_tokens(&braced, &mut braced_diagnostics);
+
+            let mut unbraced_diagnostics = Vec::new();
+            let unbraced = crate::lexer::tokenize(&format!(r"\{command} dx"));
+            let unbraced_list = parse_tokens(&unbraced, &mut unbraced_diagnostics);
+
+            assert!(
+                braced_diagnostics.is_empty() && unbraced_diagnostics.is_empty(),
+                "{command}: {braced_diagnostics:?} {unbraced_diagnostics:?}"
+            );
+            assert_eq!(
+                braced_list.atoms.len(),
+                2,
+                "{command}: {:?}",
+                braced_list.atoms
+            );
+            assert_eq!(
+                unbraced_list.atoms.len(),
+                2,
+                "{command}: {:?}",
+                unbraced_list.atoms
+            );
+            assert_eq!(
+                braced_list.atoms[0].nucleus, unbraced_list.atoms[0].nucleus,
+                "{command}"
+            );
+            assert_eq!(
+                braced_list.atoms[1].nucleus, unbraced_list.atoms[1].nucleus,
+                "{command}"
+            );
+        }
+    }
+
+    #[test]
+    fn unbraced_overline_underline_boxed_take_one_token() {
+        for (command, frame) in [
+            ("overline", Frame::Over),
+            ("underline", Frame::Under),
+            ("boxed", Frame::Box),
+        ] {
+            let mut diagnostics = Vec::new();
+            let source = format!(r"\{command} xy");
+            let tokens = crate::lexer::tokenize(&source);
+            let list = parse_tokens(&tokens, &mut diagnostics);
+            assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+            assert_eq!(list.atoms.len(), 2, "{source}: {:?}", list.atoms);
+            match &list.atoms[0].nucleus {
+                Nucleus::Framed { body, frame: got } => {
+                    assert_eq!(*got, frame, "{source}");
+                    assert_eq!(body.atoms.len(), 1, "{source}: {:?}", body.atoms);
+                    assert_eq!(body.atoms[0].nucleus, Nucleus::Symbol("x".into()));
+                }
+                other => panic!("{source}: expected a framed nucleus, got {other:?}"),
+            }
+            assert_eq!(list.atoms[1].nucleus, Nucleus::Symbol("y".into()));
+        }
+    }
+
+    #[test]
+    fn unbraced_text_takes_one_character_leaving_the_rest_as_math() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\text nR");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
+        assert!(matches!(&list.atoms[0].nucleus, Nucleus::Text(text) if text == "n"));
+        // Merged with the command's own span (see the `mathbb`/`mathbf`
+        // test above); its end lands exactly at "n", not swallowing "R".
+        assert_eq!(list.atoms[0].span.end, 7);
+        assert_eq!(list.atoms[1].nucleus, Nucleus::Symbol("R".into()));
+        assert_eq!(list.atoms[1].span.start, 7);
+        assert_eq!(list.atoms[1].span.end, 8);
+    }
+
+    #[test]
+    fn unbraced_and_braced_control_sequence_argument_diagnose_the_same_way() {
+        // A control sequence isn't literal text: both the unbraced and
+        // braced forms report it and keep its name literally, consistently.
+        for source in [r"\mathbf\alpha", r"\mathbf{\alpha}"] {
+            let mut diagnostics = Vec::new();
+            let tokens = crate::lexer::tokenize(source);
+            let list = parse_tokens(&tokens, &mut diagnostics);
+            assert_eq!(diagnostics.len(), 1, "{source}: {diagnostics:?}");
+            assert!(
+                diagnostics[0]
+                    .message
+                    .contains("is not supported inside \\mathbf"),
+                "{source}: {diagnostics:?}"
+            );
+            assert_eq!(list.atoms[0].nucleus, Nucleus::Bold("\\alpha".into()));
+        }
+    }
+
+    #[test]
+    fn superscript_without_braces_still_takes_only_the_next_token() {
+        // Pre-existing `script_argument` behavior, verified here as the
+        // reference the other undelimited arguments above now match:
+        // `x^ab` is `x^a` followed by an ordinary "b", not `x^{ab}`.
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"x^ab");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
+        assert_eq!(list.atoms[0].nucleus, Nucleus::Symbol("x".into()));
+        let sup = list.atoms[0].superscript.as_ref().expect("superscript");
+        assert_eq!(sup.atoms.len(), 1, "{:?}", sup.atoms);
+        assert_eq!(sup.atoms[0].nucleus, Nucleus::Symbol("a".into()));
+        assert_eq!(list.atoms[1].nucleus, Nucleus::Symbol("b".into()));
     }
 }
 
@@ -2440,6 +2802,23 @@ mod accent_tests {
             (expected_dx - 1.39).abs() < 0.01,
             "expected ~1.39pt at 10pt, got {expected_dx}"
         );
+    }
+
+    /// Issue #78: `$\hat A$` (no braces) used to accent an empty body, giving
+    /// a dx of 0 instead of the same centering `\hat{A}` produces.
+    #[test]
+    fn unbraced_hat_a_has_the_same_accent_dx_as_braced_hat_a() {
+        let size = 10.0;
+        let dx = |b: &MathBox| {
+            let a_item = b.items.iter().find(|i| i.text == "A").unwrap();
+            let accent_item = b.items.iter().find(|i| i.text == "\u{2C6}").unwrap();
+            accent_item.x - a_item.x
+        };
+        let (braced, d1) = laid_out(r"\hat{A}", size);
+        let (unbraced, d2) = laid_out(r"\hat A", size);
+        assert!(d1.is_empty(), "{d1:?}");
+        assert!(d2.is_empty(), "{d2:?}");
+        assert!((dx(&braced) - dx(&unbraced)).abs() < 1e-9);
     }
 
     #[test]
