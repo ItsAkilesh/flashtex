@@ -9,7 +9,7 @@
 # Usage: apps/mac/scripts/make-app.sh [--debug] [--version <x.y.z>] [--helper-root <repo>]
 #          [--compiler <path>] [--pdf <path>] [--bridge <path>] [--ledger <path>]
 #          [--render <path>] [--pdf-exact <path>] [--controller <path>] [--project-files <path>]
-#          [--assistant <path>] [--explain <path>] [--source-sha <key>=<sha>]
+#          [--explain <path>] [--source-sha <key>=<sha>]
 #          [--sign <identity>] [--entitlements <file>] [--notarize <keychain-profile>]
 #          [--open] [--install] [--install-dir <dir>] [--dmg]
 #
@@ -77,7 +77,6 @@ HELPER_TABLE=(
   "pdf_exact|flashtex-pdf-exact|pdf|--pdf-exact"
   "preview_controller|flashtex-preview-controller|preview-controller|--controller"
   "project_files|flashtex-project-files|project-files|--project-files"
-  "assistant|flashtex-assistant-context|assistant-context|--assistant"
   "explain|flashtex-explain|diagnostic-explanations|--explain"
 )
 # Explicit --<flag> <path> overrides as "key=path" (bash 3.2: no assoc arrays).
@@ -127,7 +126,7 @@ while [[ $# -gt 0 ]]; do
       APP_VERSION="${2:?--version needs x.y.z}"
       shift 2
       ;;
-    --compiler|--pdf|--bridge|--ledger|--render|--pdf-exact|--controller|--project-files|--assistant|--explain)
+    --compiler|--pdf|--bridge|--ledger|--render|--pdf-exact|--controller|--project-files|--explain)
       key="$(helper_key_for_flag "$1")"
       HELPER_OVERRIDES+=("$key=${2:-}")
       shift 2

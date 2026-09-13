@@ -28,7 +28,7 @@ proposal that the Mac user approves. iPad **simulator only**; no device run.
 
 What the iPad still cannot do: approve, reject or edit the proposal (the Mac
 user does; `latex` is read-only here), receive a push from the Mac (the iPad
-polls), or run the Grok/local conversion itself.
+polls), or run the conversion itself.
 
 ## Layout
 
@@ -98,7 +98,7 @@ build needs signing set once:
    shown on the Mac before tapping *Pair from payload*. Allow the Local Network
    prompt on both sides. Then *Edit > Pin Insertion Point* on the Mac, draw on
    the iPad, *Prepare capture* > *Send to Mac*; the Mac converts
-   (*Edit > Attach Capture Bridge* first; Grok key or the local provider) and the
+   (*Edit > Attach Capture Bridge* first; a conversion provider key, see `apps/mac/docs/capture-conversion.md`) and the
    iPad row follows journaled → converting → proposal ready (LaTeX shown) →
    inserted once you approve on the Mac.
 
@@ -108,7 +108,7 @@ Mac-side fixture: `FakeMac` — a copy of the reference client's test fixture
 (same TLS-PSK parameters as `NearbyListener`, verifies `hello.proof`, issues
 `pair_psk` on the bootstrap key, answers `destination_query` and
 `capture_submit` with an in-memory `durable:false` receipt, errors on anything
-else; loopback only; no provider, no Grok, no Rust helper). It is hosted in
+else; loopback only; no conversion provider, no Rust helper). It is hosted in
 the test process (unit tests) or in the XCUITest runner (UI tests).
 
 - `CaptureFlowUITests.testDrawSendReceipt` — app pairs with the runner's

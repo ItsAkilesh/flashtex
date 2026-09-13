@@ -54,7 +54,6 @@ HELPERS=(
   "render-pipeline||0|FLASHTEX_RENDER=flashtex-render"
   "preview-controller||0|FLASHTEX_PREVIEW_CONTROLLER=flashtex-preview-controller"
   "project-files||0|FLASHTEX_PROJECT_FILES=flashtex-project-files"
-  "assistant-context|--features grok|0|FLASHTEX_ASSISTANT_CONTEXT=flashtex-assistant-context"
   "diagnostic-explanations||1|FLASHTEX_EXPLAIN=flashtex-explain"
 )
 

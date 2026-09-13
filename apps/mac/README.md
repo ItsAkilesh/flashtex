@@ -203,7 +203,7 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   through the text view's undo manager (⌘Z reverts). Repeated `capture_id`s never
   insert twice. If the buffer changed since pinning, the anchor is rebased by its
   context or, when the destination was deleted/ambiguous, reselection is required.
-  See `Samples/capture-proposal.json`. No network or Grok call is involved here.
+  See `Samples/capture-proposal.json`. No network or provider call is involved here.
 - PDF export: `File > Export PDF…` (⌘⇧E) writes the current preview with
   CoreGraphics/CoreText (`PDFExport.swift`): one PDF page per `pages` entry at
   `width_pt` × `height_pt`, each text item in its resolved face at `font_size_pt`
@@ -246,8 +246,9 @@ What works offline (no key, no network — verified with `RealBridgeTests`):
   identical retries return the same record, a different payload under the same
   ID is `capture_id_conflict`, a non-decodable image is `invalid_image`.
 - `Edit > Convert Capture` (⌘⇧G) sends `capture_convert {capture_id,
-  supported_features: []}`. Without `--enable-grok` the bridge answers
-  `provider_disabled` (with it but no key, `provider_auth_missing`); both are
+  supported_features: []}`. Without a conversion provider flag (today the
+  bridge's `--enable-grok`) the bridge answers `provider_disabled` (with it but
+  no key, `provider_auth_missing`); both are
   shown as text and never prompt for a key. A `capture_proposal` (with
   `context_revision`) is queued in the existing review sheet.
 - Approving a bridge proposal sends `capture_prepare_insert {capture_id,
@@ -332,8 +333,10 @@ timeout; (2) `replace_document` bumps exactly one revision, so aligning an
 older store to a newer editor revision takes one round trip per step (bounded
 at 10 000 here); a `set_revision`-style alignment would remove that loop.
 
-Implemented in `GrokCredential.swift` (see `docs/grok-live.md`): the Mac credential adapter runs the bridge with
-`--enable-grok` and supplies the authorized `XAI_API_KEY` from the Keychain or the environment. Not implemented here:
+Implemented in `ConversionCredential.swift` (see `docs/capture-conversion.md`): the Mac's provider-neutral
+credential adapter runs the bridge with the selected provider's flag and supplies its key from the Keychain
+(`tech.jay3332.flashtex.ai.<provider>`) or the environment. This is the app's only model-backed feature; see
+`docs/extensibility.md` (repository root) for how third parties add their own. Not implemented here:
 the companion network transport (captures come from
 a file picker), compiler validation of proposals before review, and ledger
 compaction.
@@ -573,7 +576,7 @@ is a stand-in, the real listener is only exercised from `apps/mac`.
 
 ## Launch hooks and evidence
 
-Assistant: `FLASHTEX_ASSISTANT_CONTEXT` (helper, offline), `FLASHTEX_ASSISTANT_PROVIDER` (`grok` for live xAI through the helper's `--provider-session`, or a local provider command — the only things that may reach a network, by the user's choice), `FLASHTEX_ASSISTANT_CONTEXT_GROK` (a `--features grok` helper build), `FLASHTEX_GROK_MODEL`, `XAI_API_KEY`/`FLASHTEX_GROK_API_KEY` (after the Keychain), `FLASHTEX_KEYCHAIN_OFF=1`, `FLASHTEX_GROK_BASE_URL` (probe only, loopback/https). See `docs/grok-live.md`.
+Capture conversion: `FLASHTEX_CONVERSION_PROVIDER` (`none` / `xai`; overrides Preferences → Capture conversion), `FLASHTEX_CONVERSION_MODEL`, `FLASHTEX_AI_API_KEY` (after the Keychain; the provider's own names such as `XAI_API_KEY` still count), `FLASHTEX_KEYCHAIN_OFF=1`. The key reaches only the bridge's environment — the one child that may reach a network, by the user's choice. Live check: `FLASHTEX_CONVERSION_LIVE=1` + `FLASHTEX_CONVERSION_EVIDENCE_DIR`. See `docs/capture-conversion.md`.
 
 `FLASHTEX_NO_ACTIVATE=1` launches without activating/focusing the window (for
 automation; never steals keyboard focus). `FLASHTEX_DEBOUNCE_MS` sets the
@@ -801,7 +804,6 @@ explain that nothing is loaded.
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
-| ⌘⌥G | Ask Grok… (Edit; also the toolbar's Ask Grok button and "Fix with Grok" on a Problems row): instruction over the selection or the whole document, sent with the last compile's bound context to Grok (xAI) through the assistant helper; explanation plus the proposed edit as a before/after diff, Apply = one undoable edit, Copy, Esc closes |
 | ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures; Return shows or resumes a pairing code, Esc cancels it or dismisses a banner, Tab walks Advertise → pairing controls → Forget → Clear; the step indicator, status row and every transition are VoiceOver text) |
 | Edit > Rename Citation… | Rename citation window (reviewed `plan_citation_rename` across the project → one `apply_group`; also in the toolbar) |
 | ⌘⇧P | Command palette (View; also the toolbar's Commands button): every command in this table with its menu and shortcut; type to filter, ↑/↓ choose, Return runs, Esc closes |
