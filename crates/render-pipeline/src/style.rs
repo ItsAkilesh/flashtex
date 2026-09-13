@@ -251,8 +251,22 @@ impl Stylesheet {
 
     /// The body family selected by the loaded packages.
     pub fn family_of(packages: &[String]) -> Family {
+        Stylesheet::family_for(packages, false)
+    }
+
+    /// The body family selected by the loaded packages and the text font
+    /// encoding. LaTeX's default `\rmdefault` is `cmr`; under
+    /// `\usepackage[T1]{fontenc}` without `lmodern` that is `t1cmr.fd`,
+    /// whose metrics are the EC fonts (`ecrm1095` for 11pt body text) —
+    /// not the `ec-lm*` fonts `lmodern` selects, which are about 0.6%
+    /// wider at 10.95pt and move line breaks. Those documents get
+    /// [`Family::ComputerModern`]: EC metrics with Latin Modern outlines.
+    /// OT1 documents (no `fontenc`) keep the Latin Modern metrics.
+    pub fn family_for(packages: &[String], t1_encoding: bool) -> Family {
         if packages.iter().any(|p| matches!(p.as_str(), "times" | "mathptmx" | "newtxtext" | "txfonts")) {
             Family::Times
+        } else if t1_encoding && !packages.iter().any(|p| p == "lmodern") {
+            Family::ComputerModern
         } else {
             Family::LatinModern
         }
@@ -343,6 +357,20 @@ mod tests {
         let with = resolve(&DocumentSetup::from_preamble("\\documentclass[a4paper]{article}\n\\usepackage{geometry}\n").unwrap());
         let a4 = Stylesheet::from_resolved(&with, Family::LatinModern);
         assert!((a4.page_width_pt * 72.0 / 72.27 - 595.276).abs() < 1e-9, "{}", a4.page_width_pt);
+    }
+
+    #[test]
+    fn t1_cmr_documents_get_ec_metrics_and_lmodern_keeps_latin_modern() {
+        let p = |names: &[&str]| names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(Stylesheet::family_for(&p(&["amsmath"]), true), Family::ComputerModern);
+        assert_eq!(Stylesheet::family_for(&p(&["lmodern"]), true), Family::LatinModern);
+        assert_eq!(Stylesheet::family_for(&p(&["amsmath"]), false), Family::LatinModern);
+        assert_eq!(Stylesheet::family_for(&p(&["times"]), true), Family::Times);
+        assert_eq!(Stylesheet::family_of(&p(&["amsmath"])), Family::LatinModern);
+        assert!(crate::adapter::t1_encoding("\\usepackage[T1]{fontenc}"));
+        assert!(crate::adapter::t1_encoding("\\usepackage[OT1, T1]{fontenc}"));
+        assert!(!crate::adapter::t1_encoding("\\usepackage[T1,OT1]{fontenc}"));
+        assert!(!crate::adapter::t1_encoding("\\usepackage{lmodern}"));
     }
 
     #[test]

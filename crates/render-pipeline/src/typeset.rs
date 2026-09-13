@@ -442,6 +442,13 @@ impl<'a> Context<'a> {
                 ),
             );
         }
+        if let Some(note) = &r.face.metrics_fallback {
+            let src = self.source(span);
+            self.report_once(
+                format!("ecmetrics:{}", r.face.name),
+                Diagnostic::warning("ec_metrics_unavailable", format!("{}: {note}", r.face.name), vec![src]),
+            );
+        }
         match &r.face.tfm_status {
             crate::fonts::TfmStatus::Loaded => {}
             crate::fonts::TfmStatus::RequiredUnavailable(reason) => {
@@ -2696,7 +2703,7 @@ fn role_of(style: TextStyle) -> Role {
 pub(crate) fn design_size(family: Family, size: f64) -> u32 {
     match family {
         Family::Times => 10,
-        Family::LatinModern => {
+        Family::LatinModern | Family::ComputerModern => {
             if size < 8.5 {
                 8
             } else if size < 11.0 {

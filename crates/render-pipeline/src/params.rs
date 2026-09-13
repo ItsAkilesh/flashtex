@@ -59,7 +59,9 @@ pub fn text_params(family: Family, bold: bool, italic: bool, design_size: u32) -
             quad: 1.0,
             extra_space: 0.06,
         },
-        Family::LatinModern => {
+        // Only the fallback when no TFM is attached; Computer Modern (EC)
+        // faces normally carry their `ec*` TFM's own `\fontdimen`s.
+        Family::LatinModern | Family::ComputerModern => {
             if italic {
                 // ec-lmri12 (also used for 10: lmri10 has the same fractions
                 // to four places).
