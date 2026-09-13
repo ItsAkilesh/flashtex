@@ -1910,6 +1910,11 @@ fn visit_inline_references(inlines: &[Inline], visitor: &mut impl FnMut(&str, Sp
                     visit_inline_references(list, visitor);
                 }
             }
+            Inline::Box(b) => {
+                for list in b.inline_lists() {
+                    visit_inline_references(list, visitor);
+                }
+            }
             _ => {}
         }
     }
@@ -2041,6 +2046,18 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 span,
                 space_before,
             } => c.place(text.clone(), size, *span, Font::Courier, *space_before),
+            // The Core 14 layout has no box model: box content is placed
+            // inline (a phantom's too), paragraphs of a `\parbox` run on.
+            Inline::Box(b) => {
+                for list in b.inline_lists() {
+                    emit(c, list, size, font);
+                }
+            }
+            Inline::SetLength(_) => {}
+            Inline::LengthGlue { dimen, .. } => {
+                let pt = dimen.pt_approx(c.constraints.font_size_pt, c.constraints.measure_pt);
+                c.hspace(pt)
+            }
         }
     }
 }

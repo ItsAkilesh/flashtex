@@ -41,7 +41,29 @@
     {"name": "nolinkurl", "mode": "text", "origin": "text_dispatch", "arguments": "{url}", "description": "monospaced URL text without a link", "renders": true},
     {"name": "hfill", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "infinite-stretch horizontal glue", "renders": true},
     {"name": "hfil", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "infinite-stretch horizontal glue (same order as \\hfill)", "renders": true},
+    {"name": "hss", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "horizontal glue 0pt plus 1fil minus 1fil (inside boxes)", "renders": true},
     {"name": "hspace", "mode": "text", "origin": "text_dispatch", "arguments": "{dimension}", "description": "fixed horizontal space; starred form identical", "renders": true},
+    {"name": "mbox", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "unbreakable horizontal box", "renders": true},
+    {"name": "makebox", "mode": "text", "origin": "text_dispatch", "arguments": "[width][l|c|r|s]{...}", "description": "horizontal box of a given width; \\width/\\height/\\depth/\\totalheight in the width", "renders": true},
+    {"name": "fbox", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "framed box, \\fboxsep and \\fboxrule from \\setlength", "renders": true},
+    {"name": "framebox", "mode": "text", "origin": "text_dispatch", "arguments": "[width][l|c|r|s]{...}", "description": "framed box of a given width", "renders": true},
+    {"name": "parbox", "mode": "text", "origin": "text_dispatch", "arguments": "[t|c|b][height][t|c|b|s]{width}{...}", "description": "vertical box of paragraphs at a width, aligned on its first, centre or last line", "renders": true},
+    {"name": "raisebox", "mode": "text", "origin": "text_dispatch", "arguments": "{lift}[height][depth]{...}", "description": "raised or lowered box with optional height/depth overrides", "renders": true},
+    {"name": "phantom", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "invisible box with the content's width, height and depth", "renders": true},
+    {"name": "hphantom", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "invisible box with the content's width only", "renders": true},
+    {"name": "vphantom", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "invisible box with the content's height and depth only", "renders": true},
+    {"name": "smash", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "box with its height and depth set to zero", "renders": true},
+    {"name": "llap", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "zero-width box, content overlapping to the left", "renders": true},
+    {"name": "rlap", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "zero-width box, content overlapping to the right", "renders": true},
+    {"name": "strut", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "invisible rule of .7/.3 \\baselineskip height/depth", "renders": true},
+    {"name": "newsavebox", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}", "description": "declares a box register", "renders": true},
+    {"name": "sbox", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}{...}", "description": "stores a horizontal box", "renders": true},
+    {"name": "savebox", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}[width][pos]{...}", "description": "stores a horizontal box of a given width", "renders": true},
+    {"name": "usebox", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}", "description": "typesets a stored box again", "renders": true},
+    {"name": "newlength", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}", "description": "declares a length for box dimensions, \\hspace and \\setlength", "renders": true},
+    {"name": "settowidth", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}{...}", "description": "sets a length to the natural width of the content", "renders": true},
+    {"name": "settoheight", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}{...}", "description": "sets a length to the height of the content", "renders": true},
+    {"name": "settodepth", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}{...}", "description": "sets a length to the depth of the content", "renders": true},
     {"name": "footnote", "mode": "text", "origin": "text_dispatch", "arguments": "[n]{...}", "description": "numbered mark and page-bottom footnote text", "renders": true},
     {"name": "footnotemark", "mode": "text", "origin": "text_dispatch", "arguments": "[n]", "description": "footnote mark only", "renders": true},
     {"name": "footnotetext", "mode": "text", "origin": "text_dispatch", "arguments": "[n]{...}", "description": "footnote text without a mark", "renders": true},
@@ -449,6 +471,8 @@
     {"name": "lstlisting", "mode": "text", "description": "literal monospaced lines (basic listings)"},
     {"name": "proof", "mode": "text", "description": "amsthm proof with a closing square"},
     {"name": "thebibliography", "mode": "text", "description": "References section with numbered \\bibitem entries"},
+    {"name": "minipage", "mode": "text", "description": "[t|c|b][height][t|c|b|s]{width}: vertical box of paragraphs in running text; footnotes are set inline"},
+    {"name": "lrbox", "mode": "text", "description": "{\\name}: stores its body as a horizontal box"},
     {"name": "array", "mode": "math", "description": "math grid, centred cells"},
     {"name": "matrix", "mode": "math", "description": "math grid, centred cells"},
     {"name": "smallmatrix", "mode": "math", "description": "math grid, centred cells"},
@@ -484,8 +508,8 @@
       "Source tikz: tokens of tikz.sty, tikz.code.tex (tikz.sty 2025-08-29 v3.1.11a (3.1.11a); pgf 3.1.11a); dependency baseline: pgf, pgfrcs, pgfcore, graphicx, keyval, graphics, trig, pgfsys, xcolor, pgfcomp-version-0-65, pgfcomp-version-1-18, pgffor, pgfkeys, pgfmath"
     ],
     "rows": [
-      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 104, "percent": 25.4},
-      {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
+      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 119, "percent": 29},
+      {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 16, "percent": 53.3},
       {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 35, "percent": 34.3},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
       {"set": "amssymb", "kind": "command", "canonical": 229, "supported": 20, "percent": 8.7},
@@ -497,6 +521,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 194, "percent": 19.3}
+    "total": {"canonical": 1003, "supported": 210, "percent": 20.9}
   }
 }

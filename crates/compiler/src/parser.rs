@@ -14,6 +14,7 @@ use crate::math::{self, MathList};
 use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
 
+mod boxes;
 mod tabular;
 
 /// Maximum number of nested user-macro expansions at one use site.
@@ -138,6 +139,21 @@ pub enum Inline {
         span: Span,
         /// See `Inline::Text::space_before`.
         space_before: bool,
+    },
+    /// A LaTeX box command (`\mbox`, `\fbox`, `\parbox`, `minipage`,
+    /// `\raisebox`, `\phantom`, `\usebox`, `\strut`, ...; see
+    /// `crate::boxes`). One unbreakable box in the paragraph.
+    Box(Box<crate::boxes::TextBox>),
+    /// `\settowidth{\len}{..}` & co., or `\setlength{\len}{..}` of a
+    /// `\newlength`: no material, assigns the length for later
+    /// [`Inline::LengthGlue`] and box dimensions.
+    SetLength(Box<crate::boxes::LengthAssignment>),
+    /// `\hspace{<dimen>}` whose dimension names a length (`\hspace{\w}`,
+    /// `\hspace{.5\textwidth}`), resolved by the typesetter. Plain
+    /// dimensions stay `Inline::HSpace`.
+    LengthGlue {
+        dimen: crate::boxes::BoxDimen,
+        span: Span,
     },
 }
 
@@ -518,7 +534,29 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "nolinkurl",
     "hfill",
     "hfil",
+    "hss",
     "hspace",
+    "mbox",
+    "makebox",
+    "fbox",
+    "framebox",
+    "parbox",
+    "raisebox",
+    "phantom",
+    "hphantom",
+    "vphantom",
+    "smash",
+    "llap",
+    "rlap",
+    "strut",
+    "newsavebox",
+    "sbox",
+    "savebox",
+    "usebox",
+    "newlength",
+    "settowidth",
+    "settoheight",
+    "settodepth",
     "footnote",
     "footnotemark",
     "footnotetext",
@@ -793,6 +831,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         author: None,
         date: None,
         titlepage_option: false,
+        saved_boxes: HashMap::new(),
+        lengths: std::collections::HashSet::new(),
     };
     p.diags.extend(bibliography_diags);
     // The kernel's `\def\arraystretch{1}`, so `\renewcommand` can change it.
@@ -936,6 +976,13 @@ struct P<'a> {
     /// primitive, so `P::maketitle` renders the ordinary compact block and
     /// says so once, rather than silently ignoring the option.
     titlepage_option: bool,
+    /// `\newsavebox` names and the box last stored by `\sbox`/`\savebox`/
+    /// `lrbox` (`None` while void). Box registers are global here: LaTeX's
+    /// `\sbox` is local, but a group-scoped save stack for boxes is not
+    /// modelled (see `crate::boxes`).
+    saved_boxes: HashMap<String, Option<crate::boxes::TextBox>>,
+    /// Names declared by `\newlength` in this document.
+    lengths: std::collections::HashSet<String>,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -1115,7 +1162,7 @@ impl P<'_> {
 
         match name {
             "documentclass" => self.document_class(span),
-            "setlength" => self.set_length(span),
+            "setlength" => self.set_length(span, para),
             "usepackage" => self.use_package(span),
             "setlist" => self.set_list(span),
             "newcommand" | "renewcommand" => self.define_macro(name, span),
@@ -1446,7 +1493,15 @@ impl P<'_> {
                 }
             }
             _ if style_declaration(name) => self.style = apply_style(self.style, name),
-            "hfill" | "hfil" => para.push(Inline::HFill { span }),
+            // `\hss` is `0pt plus 1fil minus 1fil`; it shares `HFill` (the
+            // typesetter re-reads the control word for the glue's order).
+            "hfill" | "hfil" | "hss" => para.push(Inline::HFill { span }),
+            "mbox" | "makebox" | "fbox" | "framebox" | "raisebox" | "phantom" | "hphantom"
+            | "vphantom" | "smash" | "llap" | "rlap" | "strut" | "parbox" | "usebox" => {
+                self.box_command(name, span, para)
+            }
+            "newsavebox" | "sbox" | "savebox" | "newlength" | "settowidth" | "settoheight"
+            | "settodepth" => self.box_register_command(name, span, para),
             "footnote" | "footnotemark" | "footnotetext" => self.footnote(name, span, para),
             // `\linebreak[n]`/`\nolinebreak[n]`: real TeX's 0-4 priority only
             // ever hints a badness-based line-breaking algorithm this greedy
@@ -1478,6 +1533,10 @@ impl P<'_> {
                 match parse_dimen_pt(&raw) {
                     Some(pt) => para.push(Inline::HSpace {
                         pt,
+                        span: span.merge(argument_span),
+                    }),
+                    None if self.length_dimen(&tokens).is_some() => para.push(Inline::LengthGlue {
+                        dimen: self.length_dimen(&tokens).expect("checked above"),
                         span: span.merge(argument_span),
                     }),
                     None => self.diags.push(Diagnostic::error(
@@ -1755,7 +1814,7 @@ impl P<'_> {
     /// `\setlength{\parskip}{..}` and `\setlength{\parindent}{..}` in the
     /// preamble. `em`/`ex` resolve against the class body size. This engine
     /// never indents paragraphs, so only a zero `\parindent` is exact.
-    fn set_length(&mut self, span: Span) {
+    fn set_length(&mut self, span: Span, para: &mut Vec<Inline>) {
         let (target_tokens, _) = self.required_group("setlength", span);
         let (value_tokens, value_span) = self.required_group("setlength", span);
         let span = span.merge(value_span);
@@ -1763,6 +1822,9 @@ impl P<'_> {
             .trim()
             .trim_start_matches('\\')
             .to_string();
+        if self.set_box_length(&target, &value_tokens, span, para) {
+            return;
+        }
         let raw = token_text(&value_tokens);
         let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
         let Some(pt) = parse_dimen_pt_at(&raw, body) else {
@@ -2379,6 +2441,10 @@ impl P<'_> {
             }
             if matches!(environment.as_str(), "tabular" | "tabular*") && self.in_body {
                 self.tabular_environment(span, &environment, para);
+                return;
+            }
+            if matches!(environment.as_str(), "minipage" | "lrbox") && self.in_body {
+                self.box_environment(span, &environment, para);
                 return;
             }
             if matches!(

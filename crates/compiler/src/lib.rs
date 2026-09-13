@@ -10,6 +10,7 @@
 //! revision, per `docs/contracts/runtime-v1.md`.
 
 pub mod bib;
+pub mod boxes;
 pub mod diagnostics;
 pub mod export;
 pub mod incremental;
