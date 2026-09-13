@@ -838,6 +838,7 @@ impl MathParser<'_> {
                         subscript: None,
                         class_override: None,
                         width_em: None,
+                        ams_symbol: None,
                     },
                     _ => {
                         self.diagnostics.push(Diagnostic::error(
@@ -2049,6 +2050,7 @@ pub fn varepsilon_list(span: Span) -> MathList {
             subscript: None,
             class_override: None,
             width_em: None,
+            ams_symbol: None,
         }],
     }
 }
