@@ -237,3 +237,38 @@ engine can currently takes < 0.25 s; `expl3-code.tex` alone is 35 k lines.
 equivalence tests, the 415-case oracle. Helpers: `examples/probe.rs`
 (expand lines of a file), `examples/oracle_scan.rs`, `examples/inc_hunt.rs`,
 `examples/dbg.rs`.
+
+## Host integration additions (compiler adoption, kabir-claude)
+
+Added on top of round 2 (e476dbab) for `crates/compiler/src/expansion.rs`; all
+additive, default behaviour unchanged, oracle/unit/incremental suites green:
+
+- `Engine::next_content_token_with_origin` -> `(Token, Option<Span>)`: the span of
+  the outermost macro invocation whose expansion produced the token (`None`
+  for tokens read straight from a source). Tracked per pending token
+  (`Pending.origin`), filled by the push functions; `call_macro` tags its
+  replacement text.
+- `Engine::declare_host_command(name)` (`Primitive::Host`): a host-typeset
+  command that is emitted unchanged but counts as defined for
+  `\newcommand`/`\renewcommand`; no effect on names the engine defines.
+- `Engine::run_host_prelude(text)`: run host TeX definitions (own source id)
+  into the checkpointed state before the document.
+- `Engine::set_emit_unbalanced_close(bool)` (state option): pass a "Too many }'s"
+  brace on so a host parser can report it at its position.
+- `Engine::push_input(text)`, `open_input_ids()`, `input_position()`: host-driven
+  `\input` with the host's own path rules, and the resume point after a halt.
+- `IncrementalExpander::with_host(source, limits, interval, init)` and `origins()`.
+- `\newcommand` errors with pdflatex's texts (checked against MacTeX pdflatex):
+  `Missing control sequence inserted.` (non-command name, instead of "Command o
+  already defined."), `You already have nine parameters.` (`[10]`, was silent),
+  `Illegal parameter number in definition of \x.` (undeclared `#n`, was silent).
+- `IncrementalExpander::edit`: reused suffix tokens are moved instead of cloned
+  and carried checkpoints get lazy span shifts (500 KB keystroke 5.0 -> 0.9 ms
+  p50); an edit that changes the line count no longer converges onto old
+  diagnostics that embed a line number ("Incomplete \iffalse; all text was
+  ignored after line N" kept a stale N).
+
+Open for the crate owner: checkpoint snapshots/convergence compare clone the
+whole assignment state, which dominates small-document keystrokes (HW1 +0.1 ms
+in the compiler); structurally shared scopes would make dense checkpoints cheap.
+
