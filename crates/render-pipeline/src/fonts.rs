@@ -216,6 +216,25 @@ impl Discovery {
     }
 }
 
+/// How diagnostics spell the executable's directory.
+pub const EXE_DIR_LABEL: &str = "<executable-dir>";
+
+/// A comma-separated directory list for diagnostics. Directories under
+/// `exe_dir` (the bundle and sibling trees [`Discovery`] derives from the
+/// executable) are written relative to [`EXE_DIR_LABEL`], so identical
+/// documents produce identical output wherever the binary is installed.
+/// Explicit and host directories are configuration and stay as given.
+pub fn describe_dirs(dirs: &[PathBuf], exe_dir: Option<&Path>) -> String {
+    dirs.iter()
+        .map(|d| match exe_dir.and_then(|e| d.strip_prefix(e).ok()) {
+            Some(rel) if rel.as_os_str().is_empty() => EXE_DIR_LABEL.to_string(),
+            Some(rel) => format!("{EXE_DIR_LABEL}/{}", rel.display()),
+            None => d.display().to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// [`Discovery::font_dirs`] for the running process.
 pub fn default_font_dirs() -> Vec<PathBuf> {
     Discovery::from_process().font_dirs()
@@ -392,6 +411,10 @@ pub struct FontSet {
     /// File names that failed to load, with the reason (reported once).
     failures: RefCell<BTreeMap<String, String>>,
     tfm_dirs: Vec<PathBuf>,
+    /// The executable's directory when the search list was derived from
+    /// it; diagnostics show directories under it relative to
+    /// [`EXE_DIR_LABEL`] so output never depends on the install location.
+    exe_dir: Option<PathBuf>,
     /// The required 12 pt set, loaded once on first use.
     required: RefCell<Option<Result<Rc<RequiredMetrics>, String>>>,
     /// Whether the required set was found in the flat layout.
@@ -420,7 +443,7 @@ impl FontSet {
         dirs.extend(extra.iter().cloned());
         dirs.extend(d.font_dirs());
         let tfm_dirs = d.tfm_dirs_for(&dirs);
-        FontSet::with_dirs(dirs, tfm_dirs)
+        FontSet::with_dirs(dirs, tfm_dirs).with_exe_dir(d.exe_dir)
     }
 
     /// Everything [`Discovery`] finds, and nothing else: the set the
@@ -428,7 +451,19 @@ impl FontSet {
     pub fn from_discovery(d: &Discovery) -> FontSet {
         let dirs = d.font_dirs();
         let tfm_dirs = d.tfm_dirs_for(&dirs);
-        FontSet::with_dirs(dirs, tfm_dirs)
+        FontSet::with_dirs(dirs, tfm_dirs).with_exe_dir(d.exe_dir.clone())
+    }
+
+    /// Records the executable directory the search list was derived from,
+    /// so diagnostics name those directories relative to it.
+    pub fn with_exe_dir(mut self, exe_dir: Option<PathBuf>) -> FontSet {
+        self.exe_dir = exe_dir;
+        self
+    }
+
+    /// `dirs` for a diagnostic: see [`describe_dirs`].
+    fn describe(&self, dirs: &[PathBuf]) -> String {
+        describe_dirs(dirs, self.exe_dir.as_deref())
     }
 
     /// Whether the Latin Modern text and math faces the tests and the
@@ -458,6 +493,7 @@ impl FontSet {
             by_name: RefCell::new(BTreeMap::new()),
             failures: RefCell::new(BTreeMap::new()),
             tfm_dirs,
+            exe_dir: None,
             required: RefCell::new(None),
             required_flat: RefCell::new(false),
             tfms: RefCell::new(BTreeMap::new()),
@@ -507,16 +543,20 @@ impl FontSet {
                         *self.required_flat.borrow_mut() = *flat;
                         break;
                     }
-                    Err(e) => errors.push(format!("{}{}: {e:?}", root.display(), if *flat { " (flat)" } else { "" })),
+                    Err(e) => errors.push(format!(
+                        "{}{}: {e:?}",
+                        self.describe(std::slice::from_ref(root)),
+                        if *flat { " (flat)" } else { "" }
+                    )),
                 },
-                Err(e) => errors.push(format!("{}: {e:?}", root.display())),
+                Err(e) => errors.push(format!("{}: {e:?}", self.describe(std::slice::from_ref(root)))),
             }
         }
         if result.is_err() {
             result = Err(if candidates.is_empty() {
                 format!(
                     "no TFM directory exists among ({})",
-                    self.tfm_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ")
+                    self.describe(&self.tfm_dirs)
                 )
             } else {
                 errors.join("; ")
@@ -542,7 +582,7 @@ impl FontSet {
             Some(p) => Tfm::load(&p).map(Rc::new),
             None => Err(format!(
                 "{file} not found in {}",
-                self.tfm_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ")
+                self.describe(&self.tfm_dirs)
             )),
         };
         self.tfms.borrow_mut().insert(file.to_string(), r.clone());
@@ -719,9 +759,9 @@ impl FontSet {
         let Some(path) = self.search.find(file) else {
             let n = self.search.dirs().len();
             return Err(fail(format!(
-                "not found in {n} search director{}: {}",
+                "not found in {n} search director{}: {}; add a directory holding it with --font-dir or FLASHTEX_FONT_DIRS",
                 if n == 1 { "y" } else { "ies" },
-                self.search.dirs().iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ")
+                self.describe(self.search.dirs())
             )));
         };
         let face = match self.search.load(file, 0) {
@@ -839,6 +879,32 @@ mod tests {
         let b12 = set.resolve(Family::LatinModern, Role::Text { bold: false, italic: false }, 12.0).face;
         assert_ne!(f.font_id, b12.font_id);
         assert_eq!(f.font_id.len(), 64);
+    }
+
+    #[test]
+    fn missing_font_diagnostics_do_not_depend_on_the_executable_location() {
+        let message = |exe: &str| {
+            let d = Discovery { exe_dir: Some(PathBuf::from(exe)), ..Discovery::default() };
+            let set = FontSet::from_discovery(&d);
+            let Err(otf) = set.otf("flashtex-no-such-font.otf") else { panic!("font unexpectedly found") };
+            let tfm = match set.tfm("flashtex-no-such-metrics.tfm") {
+                Err(TfmStatus::Missing(m)) => m,
+                other => panic!("unexpected {:?}", other.map(|_| ())),
+            };
+            (otf, tfm)
+        };
+        let a = message("/opt/flashtex-a/bin");
+        let b = message("/Users/someone/Applications/FlashTeX.app/Contents/MacOS");
+        assert_eq!(a, b);
+        for m in [&a.0, &a.1] {
+            assert!(!m.contains("flashtex-a") && !m.contains("someone"), "{m}");
+            assert!(m.contains("<executable-dir>/../Resources/texmf/fonts"), "{m}");
+        }
+        assert!(a.0.contains("--font-dir"), "{}", a.0);
+        assert_eq!(
+            describe_dirs(&[PathBuf::from("/x/bin"), PathBuf::from("/x/bin/Fonts"), PathBuf::from("/usr/share/fonts")], Some(Path::new("/x/bin"))),
+            "<executable-dir>, <executable-dir>/Fonts, /usr/share/fonts"
+        );
     }
 
     #[test]
