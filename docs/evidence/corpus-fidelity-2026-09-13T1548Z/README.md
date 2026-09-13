@@ -78,13 +78,32 @@ branch), `before-after.md` (per fixture, with v2 JSON byte identity).
    previous line like the reference (was 54.29); `rw/article-twocolumn`
    References → `[1]` gap 21.82bp like the reference (was 25.8).
 
-Gates: `cargo test --release` in `crates/render-pipeline` green — 167
-passed, 0 failed, 1 ignored (the slow incremental test), two new oracle
+3. **enumitem keys in a list's own optional argument** (`adapter.rs`).
+   `list_seps` read `\setlist` calls only, so `\begin{itemize}[nosep]`
+   kept every class skip. `list_seps_with` now applies the `\begin`
+   argument's keys after `\setlist`: `nosep` (`\topsep`, `\partopsep`,
+   `\itemsep`, `\parsep` zero), `noitemsep` (`\itemsep`, `\parsep` zero)
+   and explicit `topsep=`/`partopsep=`/`itemsep=`/`parsep=`, at the item
+   start and at the list's closing skip.
+   Oracle: `tests/enumitem_keys_oracle.rs` (`fixtures/enumitem-keys`, 11pt,
+   `\parskip` 4pt): every one of the 13 lines at the oracle baseline within
+   0.5bp with the same words; reported, not gated: bullet x (enumitem's
+   `\labelsep` = 0.5em at the body size, 3.1bp), the indent of a paragraph
+   continuing right after `\end{itemize}` without a blank line (16.9bp,
+   pipeline follow-up), and `\begin{enumerate}[noitemsep]` labels — the
+   pinned compiler takes `[noitemsep]` as an enumerate-package template and
+   sets `noitemsep`/`noiitemsep` as the labels (compiler-owner item).
+   Effect: `rw/cv` 2 → 1 page like the reference, max Δ 131.5 → 37.4bp,
+   every list gap exact; the remaining 6bp per `\cvsection` is
+   `\\[-6pt]` (negative `\\[dim]`) not applied — follow-up.
+
+Gates: `cargo test --release` in `crates/render-pipeline` green — 168
+passed, 0 failed, 1 ignored (the slow incremental test), three new oracle
 tests included; HW1 and HW2 3/3 pages, 0 errors, 0 overfull, v2 JSON
 byte-identical before/after (neither has `\input` or a list directly after
-a heading). v2 output changed for exactly four fixtures:
+a heading). v2 output changed for exactly five fixtures:
 `rw/input-bibliography`, `rw/lecture-notes`, `rw/article-twocolumn`,
-`ext/project-book-include` — all for the reasons above.
+`ext/project-book-include`, `rw/cv` — all for the reasons above.
 
 ## Ranked table after (pipeline-owned defects first; full table in `ranked-after.md`)
 
@@ -96,7 +115,7 @@ a heading). v2 output changed for exactly four fixtures:
 | ext/document-floats-footnotes | 2/2 | 0 | 0 | 338.7 | 105/119 | `\rule` inside a `figure` omitted (`float_content_unsupported`) — page 1 sits 45bp high; footnotes omitted in documents with floats (`unsupported_block`) — pipeline (floats.rs) |
 | rw/hw1 | 3/3 | 0 | 0 | 40.8 | 563/686 | `\qquad\text{and}\qquad` inside a display (HW1.tex:2403): our gaps 48bp vs 93bp; `x^4y+ay+x=0,` display 11.5bp left of the reference (HW1.tex:3054/3160/3490) — math-layout/pipeline display |
 | ext/math-align-points | 1/1 | 0 | 0 | 46.2 | 37/54 | `align` alignment points: row 3 `=` 46bp right (main.tex:218) — pipeline/math-layout align |
-| rw/cv | 2/1 | 1 | 0 | 131.5 | 212/234 | enumitem `\begin{itemize}[nosep,leftmargin=1.5em]`: `nosep` not applied (+9bp per item at 11pt), bullet 3bp left; `\pagestyle{empty}` in the preamble is a compiler error (should be accepted) — mixed |
+| rw/cv | 1/1 | 1 | 0 | 37.4 | 220/234 | `\\[-6pt]` after `{\large\bfseries #1}` not applied (+6bp per `\cvsection`), bullet 3bp left (enumitem `\labelsep`); `\pagestyle{empty}` in the preamble is a compiler error (should be accepted) — mixed |
 | rw/math-sheet | 2/2 | 1 | 0 | 159.0 | 218/512 | `\maketitle` without `\author` is a compiler error; pdflatex only warns ("No \author given") — compiler |
 | ext/math-* (fractions, split-gather, radicals, matrices) | 1/1 | 0 | 0 | 24–101 | — | math-layout glyph mapping (`〈`, cmex10 `[`), display spacing — FT-020 |
 
@@ -123,10 +142,10 @@ below.
 5. `minipage` unsupported; its width argument leaks into the text
    ("200ptLocal note"). Repro: `\begin{minipage}{200pt}Local\end{minipage}`.
    (`ext/document-floats-footnotes`.)
-6. enumitem per-environment options `[nosep,…]`: the compiler reports
-   `leftmargin` unimplemented; the pipeline reads `leftmargin=` from the
-   source but not `nosep`/`noitemsep` — pipeline follow-up (below), compiler
-   note only.
+6. `\begin{enumerate}[noitemsep]` (enumitem loaded): the compiler takes
+   the optional argument as an enumerate-package label template and sets
+   `noitemsep`, `noiitemsep` as the item labels. Repro:
+   `fixtures/enumitem-keys/main.tex` (labels should be `1.`, `2.`).
 7. `\includeonly` in the preamble → error (`ext/project-book-include`, 3/7
    pages).
 8. `\c`, `\not`, `\star`, `\coprod`, `\varrho`, `\nobreak`, `\parbox`,
@@ -147,8 +166,10 @@ below.
   per list, so entry interword glue after periods is wider and one line of
   `rw/input-bibliography` breaks a word earlier. Needs a per-paragraph
   tolerance/space-factor override on `Block::Paragraph`.
-- enumitem `nosep`/`noitemsep` and `topsep=`/`itemsep=`/`parsep=` keys in a
-  `\begin{itemize}[…]` optional argument (`list_seps` reads `\setlist` only).
+- `\\[<negative dimen>]` at the end of a line (`rw/cv`'s `\cvsection`,
+  +6bp per section); enumitem `\labelsep` (0.5em at the body size, bullets
+  3.1bp left at 11pt); a paragraph continuing right after `\end{itemize}`
+  without a blank line is indented (pdflatex keeps it in the paragraph).
 - `\rule` (and other boxes) inside floats; footnotes when floats are present.
 - `\item` + display: label on the display line.
 - `\qquad`/`\quad` glue inside displays (HW1 p2) and the 11.5bp display

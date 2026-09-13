@@ -1624,7 +1624,9 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
             if let Some(gap) = first.and_then(gap_before) {
                 if let Some(env) = gap_has_list_end(gap) {
                     let src = texts.get(prev_end.map_or(0, |p| p.document.0)).copied().unwrap_or("");
-                    let seps = list_seps(src, env, 1, size, style);
+                    let stack = prev_end.map(|p| list_stack_at(src, p.end)).unwrap_or_default();
+                    let begin_keys = stack.last().map_or("", |(e, keys)| if *e == env && *e != "thebibliography" { keys } else { "" });
+                    let seps = list_seps_with(src, env, 1, size, style, begin_keys);
                     addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
                     if let Some(p) = prev_end {
                         endlist_adjust = list_end_adjust(src, p.end, gap, size, style);
@@ -1638,8 +1640,8 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
             if let Some(at) = anchor {
                 let src = texts.get(at.document.0).copied().unwrap_or("");
                 let stack = list_stack_at(src, at.start);
-                let env = stack.last().map_or("enumerate", |(env, _)| env);
-                let seps = list_seps(src, env, stack.len().max(1), size, style);
+                let (env, begin_keys) = stack.last().map_or(("enumerate", ""), |(env, keys)| (env, if *env == "thebibliography" { "" } else { keys }));
+                let seps = list_seps_with(src, env, stack.len().max(1), size, style, begin_keys);
                 // `\@outerparskip`: the `\parskip` in force when `\begin`
                 // was read — the enclosing list's `\parsep` when nested.
                 let outer_parskip = match stack.len() {
@@ -2182,6 +2184,14 @@ struct ListSeps {
 }
 
 fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Stylesheet) -> ListSeps {
+    list_seps_with(source, env, depth, size, style, "")
+}
+
+/// [`list_seps`] with the keys of the list's own `\begin{<env>}[<keys>]`
+/// optional argument applied after every `\setlist` (enumitem: `nosep`
+/// zeroes `topsep`/`partopsep`/`itemsep`/`parsep`, `noitemsep` zeroes
+/// `itemsep`/`parsep`).
+fn list_seps_with(source: &str, env: &str, depth: usize, size: u32, style: &Stylesheet, begin_keys: &str) -> ListSeps {
     let base = match size {
         12 => flashtex_document_style::BaseSize::Pt12,
         11 => flashtex_document_style::BaseSize::Pt11,
@@ -2203,21 +2213,35 @@ fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Styleshee
         seps.parsep = style.parsep.natural;
         seps.parsep_skip = style.parsep;
     }
-    for (envs, keys) in setlist_calls(source) {
-        if !setlist_names(envs, env) {
-            continue;
-        }
+    let calls = setlist_calls(source);
+    let all_keys = calls.iter().filter(|(envs, _)| setlist_names(envs, env)).map(|(_, keys)| *keys).chain(std::iter::once(begin_keys));
+    for keys in all_keys {
         for (key, value) in list_keys(keys) {
-            let Some(pt) = parse_dimen(value, size) else { continue };
+            let set_parsep = |seps: &mut ListSeps, pt: f64| {
+                seps.parsep = pt;
+                seps.parsep_skip = crate::style::Skip::fixed(pt);
+            };
             match key {
-                "topsep" => seps.topsep = pt,
-                "partopsep" => seps.partopsep = pt,
-                "itemsep" => seps.itemsep = pt,
-                "parsep" => {
-                    seps.parsep = pt;
-                    seps.parsep_skip = crate::style::Skip::fixed(pt);
+                "nosep" => {
+                    seps.topsep = 0.0;
+                    seps.partopsep = 0.0;
+                    seps.itemsep = 0.0;
+                    set_parsep(&mut seps, 0.0);
                 }
-                _ => {}
+                "noitemsep" => {
+                    seps.itemsep = 0.0;
+                    set_parsep(&mut seps, 0.0);
+                }
+                _ => {
+                    let Some(pt) = parse_dimen(value, size) else { continue };
+                    match key {
+                        "topsep" => seps.topsep = pt,
+                        "partopsep" => seps.partopsep = pt,
+                        "itemsep" => seps.itemsep = pt,
+                        "parsep" => set_parsep(&mut seps, pt),
+                        _ => {}
+                    }
+                }
             }
         }
     }

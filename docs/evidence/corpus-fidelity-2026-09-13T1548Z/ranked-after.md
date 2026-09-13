@@ -2,27 +2,27 @@
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 | ext/project-book-include | recovered | 3/7 | 6 | 0 | 0 | 247.93 | 8/20 | 3 | error[compiler] \includeonly is not supported in the document preamble |
 | 2 | rw/article-twocolumn | recovered | 1/2 | 1 | 0 | 0 | 438.67 | 457/527 | 1 | error[image_unavailable] no project root was supplied with the request, so image files cannot be read |
-| 3 | rw/cv | recovered | 2/1 | 1 | 0 | 0 | 131.49 | 212/234 | 1 | error[compiler] \pagestyle is not supported in the document preamble |
-| 4 | ext/packages-siunitx-chemistry | recovered | 1/1 | 30 | 0 | 0 | 101.72 | 7/39 | 1 | error[compiler] \qty is not supported by this compiler version; unrestricted TeX math mode is not implemen |
-| 5 | ext/plain-tex-halign | recovered | 1/1 | 19 | 0 | 0 | 119.29 | 4/20 | 1 | error[compiler] \hsize is not supported by this compiler version; unrestricted TeX math mode is not implem |
-| 6 | ext/boxes-rules-leaders | recovered | 1/1 | 17 | 0 | 0 | 300.12 | 2/12 | 1 | error[compiler] \fbox is not supported by this compiler version; unrestricted TeX math mode is not impleme |
-| 7 | ext/graphics-transform-color | recovered | 1/1 | 14 | 0 | 0 | 65.66 | 5/34 | 1 | error[compiler] \definecolor is not supported by this compiler version; unrestricted TeX math mode is not  |
-| 8 | ext/tables-longtable | recovered | 3/3 | 12 | 0 | 0 | 435.73 | 57/289 | 1 | error[compiler] \caption is only supported inside a figure environment |
-| 9 | ext/math-mathtools | recovered | 1/1 | 11 | 0 | 0 | 57.16 | 15/47 | 1 | error[compiler] \DeclarePairedDelimiter is not supported in the document preamble |
-| 10 | ext/tex-discretionary-italic | recovered | 1/1 | 9 | 0 | 0 | 219.21 | 13/19 | 1 | error[compiler] \parbox is not supported by this compiler version; unrestricted TeX math mode is not imple |
-| 11 | rw/letter | recovered | 1/1 | 7 | 0 | 0 | 443.29 | 218/232 | 1 | error[compiler] \signature is not supported in the document preamble |
-| 12 | ext/paragraph-glue-penalties | recovered | 1/1 | 5 | 0 | 0 | 179.32 | 30/39 | 1 | error[compiler] \nobreak is not supported by this compiler version; unrestricted TeX math mode is not impl |
-| 13 | ext/text-ligatures-accents | recovered | 1/1 | 4 | 0 | 0 | 37.16 | 36/46 | 1 | error[compiler] \c is not supported by this compiler version; unrestricted TeX math mode is not implemente |
-| 14 | ext/project-biblatex-biber | recovered | 1/1 | 4 | 0 | 0 | 20.59 | 5/18 | 1 | error[compiler] \addbibresource is not supported in the document preamble |
-| 15 | ext/math-array-spacing | recovered | 1/1 | 4 | 0 | 0 | 76.31 | 10/29 | 1 | error[compiler] unmatched '}' in math mode |
-| 16 | ext/math-atom-classes | recovered | 1/1 | 3 | 0 | 0 | 77.78 | 11/92 | 1 | error[compiler] \star is not supported in math mode |
-| 17 | ext/math-scripts-limits | recovered | 1/1 | 3 | 0 | 0 | 442.52 | 41/84 | 1 | error[compiler] \coprod is not supported in math mode |
-| 18 | ext/unicode-lualatex | recovered | 1/1 | 3 | 0 | 0 | None | 0/34 | 1 | error[compiler] \setmainfont is not supported in the document preamble |
-| 19 | ext/unicode-xelatex | recovered | 1/1 | 3 | 0 | 0 | None | 0/27 | 1 | error[compiler] \setmainfont is not supported in the document preamble |
-| 20 | rw/unicode-accents | recovered | 1/1 | 2 | 0 | 0 | 12640.53 | 159/198 | 1 | error[compiler] \c is not supported by this compiler version; unrestricted TeX math mode is not implemente |
-| 21 | ext/math-accents-overlays | recovered | 1/1 | 2 | 0 | 0 | 42.89 | 25/50 | 1 | error[compiler] \not is not supported in math mode |
-| 22 | ext/hyperref-bookmarks | recovered | 1/1 | 2 | 1 | 0 | 25.51 | 12/22 | 1 | error[compiler] \hyperref is not supported by this compiler version; unrestricted TeX math mode is not imp |
-| 23 | ext/packages-local-class | recovered | 1/1 | 2 | 0 | 0 | 94.42 | 11/22 | 1 | error[compiler] \maketitle requires \title to be set first |
+| 3 | ext/packages-siunitx-chemistry | recovered | 1/1 | 30 | 0 | 0 | 101.72 | 7/39 | 1 | error[compiler] \qty is not supported by this compiler version; unrestricted TeX math mode is not implemen |
+| 4 | ext/plain-tex-halign | recovered | 1/1 | 19 | 0 | 0 | 119.29 | 4/20 | 1 | error[compiler] \hsize is not supported by this compiler version; unrestricted TeX math mode is not implem |
+| 5 | ext/boxes-rules-leaders | recovered | 1/1 | 17 | 0 | 0 | 300.12 | 2/12 | 1 | error[compiler] \fbox is not supported by this compiler version; unrestricted TeX math mode is not impleme |
+| 6 | ext/graphics-transform-color | recovered | 1/1 | 14 | 0 | 0 | 65.66 | 5/34 | 1 | error[compiler] \definecolor is not supported by this compiler version; unrestricted TeX math mode is not  |
+| 7 | ext/tables-longtable | recovered | 3/3 | 12 | 0 | 0 | 435.73 | 57/289 | 1 | error[compiler] \caption is only supported inside a figure environment |
+| 8 | ext/math-mathtools | recovered | 1/1 | 11 | 0 | 0 | 57.16 | 15/47 | 1 | error[compiler] \DeclarePairedDelimiter is not supported in the document preamble |
+| 9 | ext/tex-discretionary-italic | recovered | 1/1 | 9 | 0 | 0 | 219.21 | 13/19 | 1 | error[compiler] \parbox is not supported by this compiler version; unrestricted TeX math mode is not imple |
+| 10 | rw/letter | recovered | 1/1 | 7 | 0 | 0 | 443.29 | 218/232 | 1 | error[compiler] \signature is not supported in the document preamble |
+| 11 | ext/paragraph-glue-penalties | recovered | 1/1 | 5 | 0 | 0 | 179.32 | 30/39 | 1 | error[compiler] \nobreak is not supported by this compiler version; unrestricted TeX math mode is not impl |
+| 12 | ext/text-ligatures-accents | recovered | 1/1 | 4 | 0 | 0 | 37.16 | 36/46 | 1 | error[compiler] \c is not supported by this compiler version; unrestricted TeX math mode is not implemente |
+| 13 | ext/project-biblatex-biber | recovered | 1/1 | 4 | 0 | 0 | 20.59 | 5/18 | 1 | error[compiler] \addbibresource is not supported in the document preamble |
+| 14 | ext/math-array-spacing | recovered | 1/1 | 4 | 0 | 0 | 76.31 | 10/29 | 1 | error[compiler] unmatched '}' in math mode |
+| 15 | ext/math-atom-classes | recovered | 1/1 | 3 | 0 | 0 | 77.78 | 11/92 | 1 | error[compiler] \star is not supported in math mode |
+| 16 | ext/math-scripts-limits | recovered | 1/1 | 3 | 0 | 0 | 442.52 | 41/84 | 1 | error[compiler] \coprod is not supported in math mode |
+| 17 | ext/unicode-lualatex | recovered | 1/1 | 3 | 0 | 0 | None | 0/34 | 1 | error[compiler] \setmainfont is not supported in the document preamble |
+| 18 | ext/unicode-xelatex | recovered | 1/1 | 3 | 0 | 0 | None | 0/27 | 1 | error[compiler] \setmainfont is not supported in the document preamble |
+| 19 | rw/unicode-accents | recovered | 1/1 | 2 | 0 | 0 | 12640.53 | 159/198 | 1 | error[compiler] \c is not supported by this compiler version; unrestricted TeX math mode is not implemente |
+| 20 | ext/math-accents-overlays | recovered | 1/1 | 2 | 0 | 0 | 42.89 | 25/50 | 1 | error[compiler] \not is not supported in math mode |
+| 21 | ext/hyperref-bookmarks | recovered | 1/1 | 2 | 1 | 0 | 25.51 | 12/22 | 1 | error[compiler] \hyperref is not supported by this compiler version; unrestricted TeX math mode is not imp |
+| 22 | ext/packages-local-class | recovered | 1/1 | 2 | 0 | 0 | 94.42 | 11/22 | 1 | error[compiler] \maketitle requires \title to be set first |
+| 23 | rw/cv | recovered | 1/1 | 1 | 0 | 0 | 37.44 | 220/234 | 1 | error[compiler] \pagestyle is not supported in the document preamble |
 | 24 | rw/math-sheet | recovered | 2/2 | 1 | 0 | 0 | 159.01 | 218/512 | 1 | error[compiler] \maketitle requires \author to name at least one author |
 | 25 | ext/math-greek-alphabets | recovered | 1/1 | 1 | 0 | 0 | 1.55 | 6/15 | 1 | error[compiler] \varrho is not supported in math mode |
 | 26 | ext/tables-spans-rules | recovered | 1/1 | 1 | 0 | 0 | 179.98 | 21/22 | 1 | error[compiler] \multirow is not supported by this compiler version; unrestricted TeX math mode is not imp |

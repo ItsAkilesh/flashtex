@@ -1,7 +1,7 @@
 | fixture | before | after | v2 JSON |
 |---|---|---|---|
 | rw/article-twocolumn | 1/2 · 1e 0o 0u · maxΔ 438.67 · aligned 457/527 | 1/2 · 1e 0o 0u · maxΔ 438.67 · aligned 457/527 | **changed** |
-| rw/cv | 2/1 · 1e 0o 0u · maxΔ 131.49 · aligned 212/234 | 2/1 · 1e 0o 0u · maxΔ 131.49 · aligned 212/234 | identical |
+| rw/cv | 2/1 · 1e 0o 0u · maxΔ 131.49 · aligned 212/234 | 1/1 · 1e 0o 0u · maxΔ 37.44 · aligned 220/234 | **changed** |
 | rw/hw1 | 3/3 · 0e 0o 0u · maxΔ 40.79 · aligned 563/686 | 3/3 · 0e 0o 0u · maxΔ 40.79 · aligned 563/686 | identical |
 | rw/hw2 | 3/3 · 0e 0o 0u · maxΔ 234.23 · aligned 523/724 | 3/3 · 0e 0o 0u · maxΔ 234.23 · aligned 523/724 | identical |
 | rw/input-bibliography | 2/2 · 0e 0o 0u · maxΔ 223.62 · aligned 456/515 | 2/2 · 0e 0o 0u · maxΔ 408.55 · aligned 500/515 | **changed** |
@@ -59,4 +59,4 @@
 | ext/tex-discretionary-italic | 1/1 · 9e 0o 0u · maxΔ 219.21 · aligned 13/19 | 1/1 · 9e 0o 0u · maxΔ 219.21 · aligned 13/19 | identical |
 | ext/graphics-included-raster | 1/1 · 0e 0o 0u · maxΔ 298.51 · aligned 9/9 | 1/1 · 0e 0o 0u · maxΔ 298.51 · aligned 9/9 | identical |
 
-changed: rw/article-twocolumn, rw/input-bibliography, rw/lecture-notes, ext/project-book-include
+changed: rw/article-twocolumn, rw/cv, rw/input-bibliography, rw/lecture-notes, ext/project-book-include
