@@ -454,6 +454,28 @@ impl<'a> Regions<'a> {
     }
 }
 
+/// `page_max_depth` for a page whose first box is `first` (§987
+/// `freeze_page_specs`: `\maxdepth` is copied into `page_max_depth` when
+/// the page's first box is contributed, and never re-read for that page).
+///
+/// `\LT@start` sets `\maxdepth\z@` (longtable.sty 230) at the outer
+/// vertical list, after `\LT@echunk` has closed the first chunk's box but
+/// before `\unvbox\z@` contributes any of its rows — so the zero reaches
+/// the page exactly when the table's first row is also the page's first
+/// box. A table starting under existing material finds `page_max_depth`
+/// already frozen at `\@maxdepth`, and every later page of the table gets
+/// `\@maxdepth` back from `\@makecol`'s `\global\maxdepth\@maxdepth`, so
+/// only the page a table opens is affected. Measured against pdflatex:
+/// 104-longtable-chunk-boundary, whose document begins with the table,
+/// loses one row on its first page and none afterwards.
+fn page_max_depth(base: &PageParams, regions: Regions, first: usize) -> f64 {
+    if regions.starts_at(first) {
+        0.0
+    } else {
+        base.maxdepth
+    }
+}
+
 /// `(height, depth, payload)` of a head or foot box.
 pub(crate) type Placed3 = (f64, f64, (usize, usize));
 
@@ -484,11 +506,6 @@ pub fn break_pages_regions(base: &PageParams, list: &[VItem], short_pages: usize
     let mut pending_head: Option<Placed3> = None;
     let regions = Regions(regions);
     while start < list.len() {
-        let page_params = PageParams {
-            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
-            ..*base
-        };
-        let p = &page_params;
         // Discard glue/penalties at the top of the page.
         while start < list.len() && !matches!(list[start], VItem::Box { .. }) {
             start += 1;
@@ -496,6 +513,12 @@ pub fn break_pages_regions(base: &PageParams, list: &[VItem], short_pages: usize
         if start >= list.len() {
             break;
         }
+        let page_params = PageParams {
+            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
+            maxdepth: page_max_depth(base, regions, start),
+            ..*base
+        };
+        let p = &page_params;
         // `\pagegoal` loses `\ht\LT@foot` for as long as the page's
         // material is inside a longtable, and `\maxdepth` is zero there.
         let reserved = |i: usize| regions.reserved(i);
@@ -944,17 +967,18 @@ pub fn break_pages_inserts_regions(
     // `\copy\LT@head\nobreak` at the top of a continuation page.
     let mut pending_head: Option<Placed3> = None;
     loop {
-        let page_params = PageParams {
-            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
-            ..*base
-        };
-        let p = &page_params;
         while start < list.len() && !matches!(list[start], VItem::Box { .. }) {
             start += 1;
         }
         if start >= list.len() && held.is_empty() {
             break;
         }
+        let page_params = PageParams {
+            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
+            maxdepth: page_max_depth(base, regions, start),
+            ..*base
+        };
+        let p = &page_params;
         let mut st = PageState::new();
         let mut is = InsertState::new(ins, p.vsize);
         // Held-over insertions are contributed ahead of the page's material.
