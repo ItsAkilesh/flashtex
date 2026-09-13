@@ -33,6 +33,7 @@ pub mod protocol;
 pub mod shape;
 pub mod style;
 pub mod table;
+pub mod tablecolor;
 pub mod tfm;
 pub mod tikz;
 pub mod toc;
