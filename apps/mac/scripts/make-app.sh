@@ -6,7 +6,7 @@
 # wraps the built executable in a minimal .app bundle so it can be launched
 # with `open` and eventually granted such permissions.
 #
-# Usage: apps/mac/scripts/make-app.sh [--debug] [--helper-root <repo>]
+# Usage: apps/mac/scripts/make-app.sh [--debug] [--version <x.y.z>] [--helper-root <repo>]
 #          [--compiler <path>] [--pdf <path>] [--bridge <path>] [--ledger <path>]
 #          [--render <path>] [--pdf-exact <path>] [--controller <path>] [--project-files <path>]
 #          [--assistant <path>] [--explain <path>] [--source-sha <key>=<sha>]
@@ -21,6 +21,10 @@
 # --notarize <profile> (requires --sign) submits with `xcrun notarytool submit
 # --wait` using a keychain profile created by `xcrun notarytool
 # store-credentials <profile>`, then staples the app (and the DMG with --dmg).
+# --version <x.y.z> (or the APP_VERSION environment variable) sets
+# CFBundleShortVersionString; the default below is the last released version.
+# CI passes the tag (.github/workflows/release.yml), so cutting a release never
+# edits this script.
 # --source-sha <key>=<sha> declares the source revision of a helper built
 # outside a repository checkout (e.g. from an archive export): components.json
 # then records it with git_sha_origin "declared" instead of "resolved".
@@ -42,7 +46,8 @@ MAC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$MAC_DIR/../.." && pwd)"
 RESOURCES_SRC="$MAC_DIR/Resources"
 
-APP_VERSION="0.1.1"
+DEFAULT_APP_VERSION="0.1.1"
+APP_VERSION="${APP_VERSION:-$DEFAULT_APP_VERSION}"
 BUNDLE_ID="tech.jay3332.flashtex.mac"
 
 CONFIG="release"
@@ -114,6 +119,10 @@ while [[ $# -gt 0 ]]; do
       HELPER_ROOT="${2:?--helper-root needs a path}"
       shift 2
       ;;
+    --version)
+      APP_VERSION="${2:?--version needs x.y.z}"
+      shift 2
+      ;;
     --compiler|--pdf|--bridge|--ledger|--render|--pdf-exact|--controller|--project-files|--assistant|--explain)
       key="$(helper_key_for_flag "$1")"
       HELPER_OVERRIDES+=("$key=${2:-}")
@@ -155,7 +164,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,26p' "${BASH_SOURCE[0]}"
+      sed -n '2,30p' "${BASH_SOURCE[0]}"
       exit 0
       ;;
     *)
@@ -166,6 +175,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 die() { echo "make-app.sh: $*" >&2; exit 1; }
+
+# A leading "v" (a git tag such as v0.2.0) is accepted and dropped; the
+# bundle version must be dotted digits (CFBundleShortVersionString rules).
+APP_VERSION="${APP_VERSION#v}"
+[[ "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || die "--version/APP_VERSION must be x[.y[.z]] digits, got \"$APP_VERSION\""
+echo "==> App version: $APP_VERSION"
 
 # --- Pre-flight: fail before the (slow) build when signing inputs are absent --
 # None of these checks print or touch a secret: identities are matched by name
