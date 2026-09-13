@@ -189,7 +189,14 @@ impl Discovery {
             font_dirs: var("FLASHTEX_FONT_DIRS"),
             lm_dir: var("FLASHTEX_LM_DIR"),
             tfm_dirs: var("FLASHTEX_TFM_DIRS"),
-            exe_dir: std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)),
+            // Symlinks resolved (`flashtex install-cli` links the binary
+            // into /usr/local/bin; `current_exe` reports the link on
+            // macOS), so the bundle and tarball layouts are found next to
+            // the real file.
+            exe_dir: std::env::current_exe()
+                .ok()
+                .map(|e| std::fs::canonicalize(&e).unwrap_or(e))
+                .and_then(|e| e.parent().map(Path::to_path_buf)),
         }
     }
 
