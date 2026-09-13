@@ -285,6 +285,18 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["mathcal"],
+        "{A-Z}",
+        "script capitals from New Computer Modern Math at cmsy10 metrics; other arguments are diagnosed",
+        true,
+    ),
+    (
+        &["varnothing"],
+        "",
+        "empty set at msbm10's 0.7778em advance (\\emptyset's glyph)",
+        true,
+    ),
+    (
         &["iff", "implies", "impliedby"],
         "",
         "long double arrow between thick (5mu) spaces",
@@ -580,6 +592,12 @@ pub fn inventory() -> Inventory {
         }
     }
     for &(name, glyph) in math::COMMAND_GLYPHS {
+        // A `command_atom` arm runs before the glyph table (`\varnothing`
+        // keeps `∅` but forces msbm10's advance), so the structure entry
+        // above already describes it.
+        if MATH_STRUCTURES.iter().any(|(names, ..)| names.contains(&name)) {
+            continue;
+        }
         commands.push(Command {
             name,
             mode: Mode::Math,
