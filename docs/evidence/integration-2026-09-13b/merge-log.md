@@ -601,6 +601,65 @@ Everything else in the stage-3 queue continues past it.
 - Checks: the `Inline::ColorBox` errors are gone; only #170's
   `Graphic`/`Transform` and `Piece::Caption::short` remain.
 
+### Integration fix: `Piece::Caption::short` in the float body
+
+Not from any one PR: main added the `\caption[short]{..}` optional argument to
+`floats::Piece::Caption` (it is what latex.ltx `\@caption#1[#2]#3` writes to
+the list of figures/tables), while #135's `Prep::parts` predates the field and
+still destructured `Piece::Caption { span, arg }`. The float body sets only the
+caption that appears on the page, so `short` is ignored there
+(`Piece::Caption { span, arg, .. }`).
+
+With this, **`crates/render-pipeline` is blocked by exactly one thing**: the
+`Inline::Graphic` and `Inline::Transform` match arms owed by #170.
+
+### #170 inline-graphics (render-pipeline) @ da3fb1bf — NOT MERGED, attempted and aborted
+
+38 conflicts across 11 files. Aborted with `git merge --abort`; the branch is
+unchanged by it. Two independent restructurings collide, and the second needs
+the same three-stage reconstruction #154 did.
+
+**Part 1 — the display wire API. This was worked out and is ready to reuse.**
+main added a `display::Wire { images, device_color }` struct threaded through
+`required_features_wire`/`to_json_wire`/`write_json_wire`; #170 instead added a
+`transforms: bool` parameter and a parallel `*_caps` family. The resolution is
+to keep main's one negotiated struct and give it #170's field:
+
+```rust
+pub struct Wire {
+    pub images: bool,
+    pub device_color: bool,
+    /// `display-list-v2-transforms`: `glyph_transform` and image `clip`.
+    pub transforms: bool,
+}
+```
+
+then drop `required_features_caps`/`to_json_caps`/`write_json_caps`, let the
+three `*_with` shims pass `transforms: false`, destructure
+`let (images, transforms) = (wire.images, wire.transforms);` at the top of
+`required_features_wire`, `write_page` and `page_json`, and keep both feature
+blocks (`device-color` from main, `glyph_transform`/`image_clip` from #170).
+`protocol.rs` builds the struct from all three negotiated capabilities
+(`caps.images`, `caps.device_color`, `caps.transforms`); `lib.rs` keeps main's
+original-source context plus both `ctx.set_math_colors(..)` and
+`ctx.set_graphics(..)`; `incremental.rs` makes
+`Item::Table | Item::ColorBox | Item::Graphic | Item::Transform` all
+non-cacheable. `tests/graphics_oracle.rs` and `examples/stages.rs` call the
+`*_caps` names and must move to `Wire`.
+
+**Part 2 — float body layout, the blocker.** #170 and #135 both rewrote it.
+`typeset/floatpage.rs` `Elem::Image` gains `clip` (#170) but loses `demo`
+(main), and git aligned main's `addvspace`/`last_skip` helper against #170's
+`flush` closure and part loop — unrelated code, exactly the #154 misalignment
+shape. `floats.rs` is the same collision as #135's: #170 improves the float
+graphic piece (`graphics::place_image` with a clip, replacing
+`graphics::size_box`), but that improvement lives in the piece loop #135
+replaced with `Prep`, so it has to be re-applied inside `Prep::parts` rather
+than picked. `typeset.rs` (9 conflicts) and `adapter.rs` (6) still to do.
+
+Recommendation: land part 1 as its own commit, then reconstruct part 2 from
+the three merge stages (`git show :1:`/`:2:`/`:3:`) as #154 was done.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.

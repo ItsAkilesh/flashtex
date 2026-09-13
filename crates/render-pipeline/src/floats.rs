@@ -985,7 +985,9 @@ impl Prep<'_> {
                         }
                     }
                 }
-                Piece::Caption { span, arg } => {
+                // `short` (the `\caption[..]` optional argument) is written to
+                // the list of figures/tables, not to the float body set here.
+                Piece::Caption { span, arg, .. } => {
                     let items = caption_items(self.f.kind, self.next_caption, *span, *arg, d, self.documents, self.entry_index, self.texts, self.options, self.labels);
                     self.next_caption += 1;
                     parts.push(FloatPart::Caption { items });
