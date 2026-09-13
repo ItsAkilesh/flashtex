@@ -43,6 +43,19 @@ pub fn is_otf_fallback(font: MathFontId) -> bool {
     font == OTF_FALLBACK_FONT || font == OTF_FALLBACK_BB_FONT
 }
 
+/// Font ids of glyphs boxed from the AMS symbol font TFMs (`msam`, `msbm`;
+/// math-layout `ams`), `gid` the slot and `ch` the
+/// [`crate::mathfont::ams_sentinel`]; painted by [`TexMathMetrics::otf_glyph`].
+pub const AMS_MSAM_FONT: MathFontId = MathFontId(u32::MAX - 2);
+pub const AMS_MSBM_FONT: MathFontId = MathFontId(u32::MAX - 3);
+
+/// Whether a placed glyph's font id is answered by the math provider even
+/// though it lies above the `\text` run range: the OpenType fallbacks and the
+/// AMS symbol fonts.
+pub fn is_provider_font(font: MathFontId) -> bool {
+    is_otf_fallback(font) || font == AMS_MSAM_FONT || font == AMS_MSBM_FONT
+}
+
 pub struct TexMathMetrics {
     cm: CmMathMetrics,
     sizes: MathSizes,
@@ -175,6 +188,38 @@ impl TexMathMetrics {
                     return Some((bb.clone(), gid.0));
                 }
             }
+        }
+        // amssymb/amsfonts symbols: the table's text from New Computer Modern
+        // Math (whose symbol designs track msam/msbm) when it carries it,
+        // else Latin Modern Math; an empty text (`\dabar@`) paints nothing
+        // (gid 0). The extra-wide accents take the Latin Modern Math
+        // horizontal variant nearest the TFM width.
+        if font == AMS_MSAM_FONT || font == AMS_MSBM_FONT {
+            let ams = crate::mathfont::ams_of(ch)?;
+            let tfm_name = if font == AMS_MSAM_FONT { "msam10" } else { "msbm10" };
+            let Some(first) = ams.text.chars().next() else {
+                return Some((self.otf.face().clone(), 0));
+            };
+            if matches!(first, '\u{0302}' | '\u{0303}') {
+                let tfm = flashtex_math_layout::ams::tfm(crate::mathfont::ams_font(ams.font), 10.0);
+                let wanted = tfm.char(code).map(|c| mtfm::scale(c.width, tfm.design_size)).unwrap_or(0.0);
+                let gid = self.otf.hvariant_nearest(first, tfm.design_size, wanted)?;
+                self.resources.borrow_mut().entry(tfm_name.to_string()).or_insert((self.otf.face().name.clone(), false));
+                return Some((self.otf.face().clone(), gid));
+            }
+            if let Some(bb) = self.otf.bb_face() {
+                if let Some(gid) = bb.face().glyph_id(first) {
+                    self.resources.borrow_mut().entry(tfm_name.to_string()).or_insert((bb.name.clone(), false));
+                    return Some((bb.clone(), gid.0));
+                }
+            }
+            let face = self.otf.face();
+            let gid = face.face().glyph_id(first).map(|g| g.0);
+            if gid.is_none() {
+                self.unmapped.borrow_mut().push((tfm_name.to_string(), code, first));
+            }
+            self.resources.borrow_mut().entry(tfm_name.to_string()).or_insert((face.name.clone(), false));
+            return Some((face.clone(), gid?));
         }
         let gid = self.otf_gid(font, code, ch)?;
         self.resources
@@ -323,6 +368,41 @@ impl TexMathMetrics {
             };
             face.face().glyph_id(MathFonts::math_char(c)).or_else(|| face.face().glyph_id(c)).map(|g| g.0)
         };
+        // `\widehat`/`\widetilde` (cmex "62-"64, "65-"67): the Latin Modern
+        // Math horizontal variant nearest the TFM width. `\overbrace`/
+        // `\underbrace` pieces (math-layout tags them U+23DE/U+23DF): Latin
+        // Modern Math assembles those braces from a left end, a middle and a
+        // right end, so cmex's two middle half-pieces map to one middle part
+        // (drawn at the first, the second paints nothing, gid 0) and the
+        // painter aligns the parts on the pieces (`typeset::math_items`).
+        if name.starts_with("cmex") && matches!(ch, '\u{0302}' | '\u{0303}') {
+            let at = cm_tfm::CMEX10.design_size;
+            let wanted = cm_tfm::CMEX10.char(code).map(|c| mtfm::scale(c.width, at)).unwrap_or(0.0);
+            let result = self.otf.hvariant_nearest(ch, at, wanted);
+            if result.is_none() {
+                self.unmapped.borrow_mut().push((name, code, ch));
+            }
+            return result;
+        }
+        if name.starts_with("cmex") && matches!(ch, '\u{23DE}' | '\u{23DF}') {
+            let parts = self.otf.hassembly_parts(ch);
+            let index = match (ch, code) {
+                ('\u{23DE}', 0x7A) | ('\u{23DF}', 0x7C) => Some(0),
+                ('\u{23DE}', 0x7D) | ('\u{23DF}', 0x7B) => Some(2),
+                ('\u{23DE}', 0x7B) | ('\u{23DF}', 0x7D) => Some(4),
+                _ => None,
+            };
+            return match index {
+                None => Some(0),
+                Some(i) => {
+                    let gid = parts.get(i).copied();
+                    if gid.is_none() {
+                        self.unmapped.borrow_mut().push((name, code, ch));
+                    }
+                    gid
+                }
+            };
+        }
         let result = if name.starts_with("cmex") {
             // Size chain in lmex: steps from the character's first cmex code
             // to `code` select the same-index vertical variant in MATH.
@@ -394,10 +474,26 @@ impl MathFontMetrics for TexMathMetrics {
         if font == OTF_FALLBACK_BB_FONT {
             return self.otf.font_name(crate::mathfont::BB_FONT);
         }
+        if font == AMS_MSAM_FONT {
+            return "msam".to_string();
+        }
+        if font == AMS_MSBM_FONT {
+            return "msbm".to_string();
+        }
         self.cm.font_name(font)
     }
 
     fn glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
+        // amssymb/amsfonts symbols: the msam/msbm box `umsa.fd`/`umsb.fd`
+        // select at this math size (`crate::mathfont::ams_sentinel`).
+        if let Some(ams) = crate::mathfont::ams_of(ch) {
+            let font = crate::mathfont::ams_font(ams.font);
+            let id = match ams.font {
+                flashtex_compiler::amssymb::SymbolFont::Msam => AMS_MSAM_FONT,
+                flashtex_compiler::amssymb::SymbolFont::Msbm => AMS_MSBM_FONT,
+            };
+            return flashtex_math_layout::ams::glyph(font, ams.slot, ch, self.cm.sizes[Self::size_index(size)], id);
+        }
         match cm::symbol_slot(ch) {
             Some((Family::Roman, code)) => self.roman_glyph(code, ch, size),
             Some(_) => self.cm.glyph(ch, size),
@@ -428,7 +524,28 @@ impl MathFontMetrics for TexMathMetrics {
     }
 
     fn accent_sizes(&self, ch: char, size: SizeClass) -> Vec<Glyph> {
+        // amsfonts' extra-wide `\widehat`/`\widetilde` (msbm "5B/"5D): the
+        // slot and its msbm TFM successors ("5C/"5E), each a table piece.
+        if let Some(ams) = crate::mathfont::ams_of(ch) {
+            let font = crate::mathfont::ams_font(ams.font);
+            let tfm = flashtex_math_layout::ams::tfm(font, self.cm.sizes[Self::size_index(size)]);
+            let mut out = Vec::new();
+            let mut cur = tfm.char(ams.slot);
+            while let Some(c) = cur {
+                let Some(piece) = flashtex_compiler::amssymb::by_slot(ams.font, c.code) else { break };
+                out.extend(self.glyph(crate::mathfont::ams_sentinel(piece), size));
+                cur = tfm.next_larger(c);
+                if out.len() > 4 {
+                    break;
+                }
+            }
+            return out;
+        }
         self.cm.accent_sizes(ch, size)
+    }
+
+    fn extension_glyph(&self, code: u8, ch: char) -> Option<Glyph> {
+        self.cm.extension_glyph(code, ch)
     }
 
     fn delimiter_extensible(&self, ch: char, size: SizeClass) -> Option<Extensible> {

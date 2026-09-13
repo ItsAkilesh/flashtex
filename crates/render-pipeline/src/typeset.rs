@@ -168,7 +168,7 @@ impl MathRec {
         // The OTF fallback ids (`u32::MAX`, `u32::MAX - 1`) lie above the
         // `\text` run ids: they must be answered by the provider, not
         // looked up as a run.
-        if !crate::mathtex::is_otf_fallback(g.font_id) && g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
+        if !crate::mathtex::is_provider_font(g.font_id) && g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
             let run = crate::mathtext::run_of(&self.text_runs, g.font_id)?;
             let glyph = run.glyph_at(g.font_id, g.gid)?;
             return Some((run.face.clone(), glyph.gid.0));
@@ -722,6 +722,10 @@ impl<'a> Context<'a> {
         if fam2_quad > 0.0 && text_quad > 0.0 {
             sink.text_quad = Some((text_quad, text_quad / fam2_quad));
         }
+        sink.body_size_pt = self.style.body_size_pt;
+        sink.amsfonts = self.texts.iter().any(|t| {
+            crate::adapter::package_options(t, "amssymb").is_some() || crate::adapter::package_options(t, "amsfonts").is_some()
+        });
         let texts = self.texts;
         let fence = |sp: &Span| fence_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
         let class = |sp: &Span| class_override_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
@@ -3010,6 +3014,8 @@ pub fn class_override_of(text: &str, at: usize) -> Option<ml::AtomClass> {
         "mathpunct" => ml::AtomClass::Punct,
         "bot" => ml::AtomClass::Ord,
         "bigtriangleup" => ml::AtomClass::Bin,
+        // amsfonts' dashed arrows: a `\mathrel` group of msam pieces.
+        "dashrightarrow" | "dasharrow" | "dashleftarrow" => ml::AtomClass::Rel,
         _ => return None,
     })
 }
@@ -3137,6 +3143,21 @@ pub fn convert_math_classed(
                 let class = class(&a.span).unwrap_or(ml::AtomClass::Ord);
                 vec![ml::Atom::new(class, ml::Nucleus::List(sub(body, sink)))]
             }
+            // amssymb/amsfonts symbols (compiler `MathAtom.ams_symbol`): one
+            // atom of the declared class whose sentinel carries the msam/msbm
+            // slot to the metrics providers.
+            N::Symbol(_) if a.ams_symbol.is_some() => {
+                use flashtex_compiler::amssymb::SymbolClass as C;
+                let ams = a.ams_symbol.expect("checked");
+                let class = match ams.class {
+                    C::Ord => ml::AtomClass::Ord,
+                    C::Bin => ml::AtomClass::Bin,
+                    C::Rel => ml::AtomClass::Rel,
+                    C::Open => ml::AtomClass::Open,
+                    C::Close => ml::AtomClass::Close,
+                };
+                vec![ml::Atom::new(class, ml::Nucleus::Symbol(crate::mathfont::ams_sentinel(ams)))]
+            }
             N::Symbol(s) => {
                 let mut chars = s.chars();
                 let single = match (chars.next(), chars.next()) {
@@ -3184,6 +3205,21 @@ pub fn convert_math_classed(
                     Frame::Over => ml::Atom::overline(body),
                     Frame::Under => ml::Atom::underline(body),
                     Frame::Box => ml::Atom::group(body),
+                    // `\mathop{..}\limits` (`fontmath.ltx` 430-437): the
+                    // compiler's scripts attach below as limits.
+                    Frame::OverBrace => ml::Atom::brace(body, false),
+                    Frame::UnderBrace => ml::Atom::brace(body, true),
+                    // amsmath `\overarrow@`/`\underarrow@` over the
+                    // `\arrowfill@` pieces (`amsmath.sty` 977-979).
+                    arrow_frame => {
+                        use flashtex_compiler::math::ExtArrow as X;
+                        let pieces = match arrow_frame.arrow() {
+                            Some(X::Left) => ['\u{2190}', '-', '-'],
+                            Some(X::LeftRight) => ['\u{2190}', '-', '\u{2192}'],
+                            _ => ['-', '-', '\u{2192}'],
+                        };
+                        ml::Atom::over_arrow(pieces, body, arrow_frame.is_under(), 1.3 * ams_ex(sink.body_size_pt))
+                    }
                 }]
             }
             // amsmath's `\overset{a}{b}` is `\mathop{b}\limits^{a}` wrapped
@@ -3206,6 +3242,19 @@ pub fn convert_math_classed(
             // combining mark Latin Modern Math carries for each command
             // (`\widehat`/`\widetilde` use the same mark; the horizontal
             // variants are not read, so a wide base gets the plain one).
+            // amsfonts' `\widehat`/`\widetilde` (`amsfonts.sty` 78-86): the cmex
+            // chain up to 2em of the text font, msbm's extra-wide form past it.
+            N::Accent { accent: accent @ (flashtex_compiler::math::Accent::WideHat | flashtex_compiler::math::Accent::WideTilde), body }
+                if sink.amsfonts && sink.text_quad.is_some() =>
+            {
+                let wide = if *accent == flashtex_compiler::math::Accent::WideHat { "widehat@" } else { "widetilde@" };
+                let threshold = 2.0 * sink.text_quad.map_or(0.0, |(q, _)| q);
+                let base = sub(body, sink);
+                match flashtex_compiler::amssymb::piece(wide) {
+                    Some(ams) => vec![ml::Atom::measured_accent(accent_char(*accent), crate::mathfont::ams_sentinel(ams), threshold, base)],
+                    None => vec![ml::Atom::accent(accent_char(*accent), base)],
+                }
+            }
             N::Accent { accent, body } => vec![ml::Atom::accent(accent_char(*accent), sub(body, sink))],
             // `array`/`cases`/matrix grids: math-layout has no array atom,
             // so the cells are set in reading order as one row inside the
@@ -3531,18 +3580,52 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
 /// what Latin Modern Math's `MATH` table carries accent attachment for.
 fn accent_char(a: flashtex_compiler::math::Accent) -> char {
     use flashtex_compiler::math::Accent as A;
+    // The character math-layout's `cm` table slots each `\mathaccent` at
+    // (`fontmath.ltx` 410-421): the `operators` (roman) spacing accents
+    // "5E `\hat`, "7E `\tilde`, "16 `\bar`, "5F `\dot`, "7F `\ddot`, "14
+    // `\check`, "15 `\breve`, "13 `\acute`, "12 `\grave`; `\vec` letters
+    // "7E; `\widehat`/`\widetilde` the `largesymbols` chains from "62/"65,
+    // which math-layout keys by the combining marks.
     match a {
-        A::Hat | A::WideHat => '\u{0302}',
-        A::Bar => '\u{0304}',
+        A::Hat => '\u{02C6}',
+        A::WideHat => '\u{0302}',
+        A::Bar => '\u{00AF}',
         A::Vec => '\u{20D7}',
-        A::Tilde | A::WideTilde => '\u{0303}',
-        A::Dot => '\u{0307}',
-        A::Ddot => '\u{0308}',
-        A::Check => '\u{030C}',
-        A::Breve => '\u{0306}',
-        A::Acute => '\u{0301}',
-        A::Grave => '\u{0300}',
+        A::Tilde => '\u{02DC}',
+        A::WideTilde => '\u{0303}',
+        A::Dot => '\u{02D9}',
+        A::Ddot => '\u{00A8}',
+        A::Check => '\u{02C7}',
+        A::Breve => '\u{02D8}',
+        A::Acute => '\u{00B4}',
+        A::Grave => '`',
     }
+}
+
+/// amsmath's `\ex@` at a font size (`amsgen.sty` 104-125, `\compute@ex@`):
+/// 1pt at 10pt, growing by 3% compounding per 0.5pt of size over 10pt (and
+/// shrinking below), 1.5pt past 20pt. Used for `\underarrow@`'s
+/// `\kern1.3\ex@`.
+fn ams_ex(size_pt: f64) -> f64 {
+    if size_pt <= 0.0 {
+        return 1.0;
+    }
+    if -size_pt < -20.0 {
+        return 1.5;
+    }
+    // In scaled points, as TeX computes it.
+    let mut d: i64 = ((10.0 - size_pt) * 2.0 * 65536.0).round() as i64;
+    let negative = d > 0;
+    d = d.abs() - 1000;
+    let mut vfuzz: i64 = 65536;
+    while d > 0 {
+        // `\vfuzz=.97\vfuzz`: `.97` scans as 63570/65536.
+        vfuzz = vfuzz * 63570 / 65536;
+        d -= 65536;
+    }
+    let delta = 65536 - vfuzz;
+    let ex = if negative { 65536 - delta } else { 65536 + delta };
+    ex as f64 / 65536.0
 }
 
 /// Constructs in `list` and its sub-formulas the pipeline sets only
@@ -5081,6 +5164,22 @@ fn math_items(
             Some((th, td)) if !b.empty => g.baseline_y + ((td - th) - (d - h)) / 2.0,
             _ => g.baseline_y,
         };
+        // Where the painted outline starts. `\overbrace`/`\underbrace`: Latin
+        // Modern Math's assembly parts stand for cmex's four pieces
+        // (`TexMathMetrics::otf_gid`), the left end at the first piece, the
+        // middle centred on the cusp between the two middle pieces, the right
+        // end flush with the last piece, each advancing by its own width.
+        // amsfonts' dashed-arrow head ("4B): the 1em arrow is right-aligned
+        // in the msam box. Everything else starts at its TeX box.
+        let face_adv = face.pt(i64::from(face.face().advance(crate::ids::GlyphId(gid)).unwrap_or(0)), g.size);
+        let ams = crate::mathfont::ams_of(g.ch);
+        let (paint_x, adv) = match (g.ch, g.gid) {
+            ('\u{23DE}', 0x7D) | ('\u{23DF}', 0x7B) => (g.x + g.width - face_adv / 2.0, face_adv),
+            ('\u{23DE}', 0x7B) | ('\u{23DF}', 0x7D) => (g.x + g.width - face_adv, face_adv),
+            ('\u{23DE}' | '\u{23DF}', _) => (g.x, face_adv),
+            _ if ams.is_some_and(|a| a.name == "dashrightarrow@") => (g.x + g.width - face_adv, adv),
+            _ => (g.x, adv),
+        };
         let start = r.text.len();
         match m.run_glyph(g) {
             // A `\text` cluster keeps its whole source text (`ffi`).
@@ -5089,6 +5188,8 @@ fn math_items(
             // stands for U+2205 everywhere outside the metrics/painting
             // lookup that needs to tell it apart from plain `\emptyset`.
             None if g.ch == crate::mathfont::VARNOTHING_SENTINEL => r.text.push('\u{2205}'),
+            // An amssymb sentinel stands for its table text.
+            None if ams.is_some() => r.text.push_str(ams.expect("checked").text),
             None => r.text.push(g.ch),
         }
         let ci = r.clusters.len() as u32;
@@ -5096,12 +5197,32 @@ fn math_items(
         let hh = Tick::from_tex_pt((h + d).max(0.01));
         r.glyphs.push(Glyph {
             gid,
-            origin_x: Tick::from_tex_pt(g.x),
+            origin_x: Tick::from_tex_pt(paint_x),
             baseline_y: Tick::from_tex_pt(baseline_y),
             advance_x: Tick::from_tex_pt(adv),
             advance_y: Tick(0),
             cluster: ci,
         });
+        // A negated amssymb relation Unicode spells as base + U+0338: the
+        // painting face's combining long solidus, its ink centred on the
+        // base's ink, in the same cluster.
+        if let Some(slash) = ams
+            .filter(|a| a.text.chars().nth(1) == Some('\u{0338}'))
+            .and_then(|_| face.face().glyph_id('\u{0338}'))
+        {
+            let sb = face.bounds(slash, Some('\u{0338}'));
+            if !b.empty && !sb.empty {
+                let centre = |x0: i32, x1: i32| face.pt(i64::from(x0) + i64::from(x1), g.size) / 2.0;
+                r.glyphs.push(Glyph {
+                    gid: slash.0,
+                    origin_x: Tick::from_tex_pt(paint_x + centre(b.x_min, b.x_max) - centre(sb.x_min, sb.x_max)),
+                    baseline_y: Tick::from_tex_pt(baseline_y),
+                    advance_x: Tick(0),
+                    advance_y: Tick(0),
+                    cluster: ci,
+                });
+            }
+        }
         r.clusters.push(Cluster {
             text_start_byte: start,
             text_end_byte: r.text.len(),

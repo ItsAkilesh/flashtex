@@ -84,6 +84,12 @@ pub struct TextSink {
     /// quad at the text size, for `\quad` glue in math (`None`: unknown,
     /// the glue is measured in math quads).
     pub text_quad: Option<(f64, f64)>,
+    /// The document's body font size in pt (`\f@size`), for size-dependent
+    /// kerns such as amsmath's `\ex@`; 0 when unknown.
+    pub body_size_pt: f64,
+    /// Whether `amsfonts` (or `amssymb`, which loads it) is loaded: its
+    /// `\widehat`/`\widetilde` switch to msbm's extra-wide accents past 2em.
+    pub amsfonts: bool,
 }
 
 impl TextSink {
@@ -269,6 +275,10 @@ impl MathFontMetrics for TextRunMetrics<'_> {
 
     fn radical_extensible(&self, size: SizeClass) -> Option<Extensible> {
         self.inner.radical_extensible(size)
+    }
+
+    fn extension_glyph(&self, code: u8, ch: char) -> Option<Glyph> {
+        self.inner.extension_glyph(code, ch)
     }
 
     fn text_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
