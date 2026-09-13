@@ -575,7 +575,7 @@ fn set_flow(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, bx: &mut VBox, mut 
         Some(ABlock::Paragraph { vspace_before, .. } | ABlock::Heading { vspace_before, .. } | ABlock::Picture { vspace_before, .. } | ABlock::Rule { vspace_before, .. }) => *vspace_before,
         _ => 0.0,
     };
-    let mut built = super::layout_blocks(ctx, &group, &[], 0, None).blocks;
+    let mut built = super::layout_blocks(ctx, &group, &[], 0, false, None).blocks;
     let Some(first) = built.first_mut() else { return };
     if bx.v.last == Last::Nothing {
         // TeX adds no `\parskip` to an empty internal vertical list.

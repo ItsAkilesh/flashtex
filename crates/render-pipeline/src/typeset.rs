@@ -331,6 +331,10 @@ pub struct Context<'a> {
     recs: Vec<BoxRec>,
     maths: Vec<MathRec>,
     math_fonts: Option<MathProvider>,
+    /// Math providers for text sizes other than the body's (math in a
+    /// heading), keyed by the size's bits; `None` when that size falls back
+    /// to the body provider.
+    math_fonts_sized: std::collections::HashMap<u64, Option<MathProvider>>,
     math_unavailable: bool,
     reported: BTreeSet<String>,
     /// Diagnostics emitted while a cacheable block is being built (with
@@ -359,9 +363,6 @@ pub struct Context<'a> {
     parbox: bool,
     /// Footnote marks are `\rlap`ped (article/report/book `\maketitle`).
     rlap_marks: bool,
-    /// Math providers for text sizes other than the body's (footnotes), by
-    /// size in centipoints; `None` when that size's metrics are missing.
-    math_fonts_sized: BTreeMap<u32, Option<MathProvider>>,
 }
 
 impl<'a> Context<'a> {
@@ -382,6 +383,7 @@ impl<'a> Context<'a> {
             recs: Vec::new(),
             maths: Vec::new(),
             math_fonts: None,
+            math_fonts_sized: std::collections::HashMap::new(),
             math_unavailable: false,
             reported: BTreeSet::new(),
             capture: None,
@@ -395,7 +397,6 @@ impl<'a> Context<'a> {
             notes: Vec::new(),
             note_anchors: Vec::new(),
             rlap_marks: false,
-            math_fonts_sized: BTreeMap::new(),
         }
     }
 
@@ -672,41 +673,6 @@ impl<'a> Context<'a> {
         }
     }
 
-    /// The math provider for text at `size`: the body's, except at the
-    /// class's `\footnotesize` below it, where LaTeX selects the math fonts
-    /// of that size (`\DeclareMathSizes`: 8/6/5 pt in a 10pt class, 10/7/5 in
-    /// a 12pt class). A size whose TeX metrics are not available (9 pt, the
-    /// 11pt class's notes: cmmi9/cmsy9 are not embedded) keeps the body's
-    /// metrics and is reported once.
-    fn math_fonts_at(&mut self, span: Span, size: f64) -> Option<MathProvider> {
-        let body = self.math_fonts(span)?;
-        let note_size = footnotes::FootnoteParams::of(self.style).size;
-        if (size - self.style.body_size_pt).abs() < 0.01 || (size - note_size).abs() > 0.01 || !matches!(body, MathProvider::Tex(_)) {
-            return Some(body);
-        }
-        let key = (size * 100.0).round() as u32;
-        if let Some(sized) = self.math_fonts_sized.get(&key) {
-            return Some(sized.clone().unwrap_or(body));
-        }
-        let (script, script_script) = match (size * 100.0).round() as u32 {
-            800 | 900 => (6.0, 5.0),
-            1000 => (7.0, 5.0),
-            _ => (8.0, 6.0),
-        };
-        let r = self.fonts.resolve(self.style.family, Role::Math, size);
-        let sized = MathFonts::new(r.face, MathSizes { text: size, script, script_script })
-            .map(|m| Rc::new(m.with_double_struck(self.fonts.otf(crate::mathfont::BB_FONT_FILE))))
-            .and_then(|m| TexMathMetrics::at_text_size(size, m, self.fonts))
-            .filter(TexMathMetrics::roman_available)
-            .map(|t| MathProvider::Tex(Rc::new(t)));
-        if sized.is_none() {
-            let src = self.source(span);
-            let msg = format!("math at {size}pt (\\footnotesize) is laid out with the {}pt math metrics: TeX's math fonts for that size are not available", self.style.body_size_pt);
-            self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
-        }
-        self.math_fonts_sized.insert(key, sized.clone());
-        Some(sized.unwrap_or(body))
-    }
 
     /// `\fontdimen`s of the face for `style` at `size`: the face's TFM
     /// when it has one (exact fixwords), else the transcribed table.
@@ -795,7 +761,7 @@ impl<'a> Context<'a> {
         let params = self.text_params(style, size);
         let mut epsilon: Option<(usize, f64, f64)> = None;
         if logo == TextLogo::LaTeXe {
-            if let Some(rec) = self.math_box(&flashtex_compiler::math::varepsilon_list(span), span, false, size) {
+            if let Some(rec) = self.math_box_sized(&flashtex_compiler::math::varepsilon_list(span), span, false, size) {
                 if let BoxRec::Math(mi) = &self.recs[rec] {
                     let root = &self.maths[*mi].root;
                     epsilon = Some((rec, root.width, root.height));
@@ -973,7 +939,44 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool, size: f64) -> Option<usize> {
+    /// The math provider for formulas set at text size `size`: the body's,
+    /// or (math in a `\Large` heading, ...) the metrics LaTeX selects for
+    /// that size (`\DeclareMathSizes` and the lmodern designs), falling back
+    /// to the body's with a note when those are not available.
+    fn math_fonts_at(&mut self, span: Span, size: f64) -> Option<MathProvider> {
+        let base = self.math_fonts(span)?;
+        if (size - self.style.body_size_pt).abs() < 1e-9 {
+            return Some(base);
+        }
+        let key = size.to_bits();
+        if let Some(p) = self.math_fonts_sized.get(&key) {
+            return Some(p.clone().unwrap_or(base));
+        }
+        let built = match &base {
+            MathProvider::Tex(_) => crate::mathtex::declare_math_sizes(size).and_then(|[text, script, script_script]| {
+                let r = self.fonts.resolve(self.style.family, Role::Math, size);
+                let m = MathFonts::new(r.face, MathSizes { text, script, script_script })?;
+                let m = Rc::new(m.with_double_struck(self.fonts.otf(crate::mathfont::BB_FONT_FILE)));
+                TexMathMetrics::for_text_size(size, m, self.fonts).filter(TexMathMetrics::roman_available).map(|t| MathProvider::Tex(Rc::new(t)))
+            }),
+            MathProvider::Otf(_) => None,
+        };
+        if built.is_none() {
+            let src = self.source(span);
+            let msg = format!("math in {size}pt text laid out with the {}pt body math fonts: no TeX math metrics for that size", self.style.body_size_pt);
+            self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
+        }
+        self.math_fonts_sized.insert(key, built.clone());
+        Some(built.unwrap_or(base))
+    }
+
+    fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool) -> Option<usize> {
+        let size = self.style.body_size_pt;
+        self.math_box_sized(list, span, display, size)
+    }
+
+    /// [`Context::math_box`] at text size `size`.
+    fn math_box_sized(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool, size: f64) -> Option<usize> {
         let fonts = self.math_fonts_at(span, size)?;
         let mut sink = crate::mathtext::TextSink::default();
         // `\quad` in math is `\hskip1em` of the text font (`\fontdimen6`),
@@ -1704,7 +1707,7 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::Glue(glue), None);
                 }
                 AItem::Math { list, span } => {
-                    if let Some(rec) = self.math_box(list, *span, false, size) {
+                    if let Some(rec) = self.math_box_sized(list, *span, false, size) {
                         let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
                         let root = &self.maths[*mi].root;
                         let run = math_run(root, size, *span);
@@ -2463,6 +2466,68 @@ impl<'a> Context<'a> {
         self.text_box(&seg, size)
     }
 
+    /// A run-in `\@startsection` heading (`\paragraph`, `\subparagraph`;
+    /// latex.ltx `\@sect` lines 17247-17278, `\@xsect` 17279-17302): the next
+    /// paragraph's `\everypar` removes its indent box, sets `\@svsechd`
+    /// (`\hskip #3`, the number with its `\quad`, the bold title), then
+    /// `\unskip \hskip -#5` and `\clubpenalty\@M`. Without a paragraph to
+    /// start (`para` None: another heading, a list or a display follows) the
+    /// next `\@startsection`/`\@item`'s `\if@noskipsec \leavevmode` makes
+    /// the heading a paragraph of its own. Before it, `\addpenalty\@secpenalty
+    /// \addvspace{#4}` (placed by the caller).
+    fn run_in_block(&mut self, level: u8, heading: &[AItem], para: Option<&[AItem]>) -> Option<BuiltBlock> {
+        let h = self.style.heading(level);
+        let mut items: Vec<AItem> = Vec::new();
+        if h.indent_pt != 0.0 {
+            items.push(AItem::HSpace { pt: h.indent_pt });
+        }
+        for item in heading {
+            items.push(match item {
+                AItem::Word(w) => {
+                    let mut w = w.clone();
+                    for seg in &mut w.segments {
+                        seg.style.bold = seg.style.bold || (h.bold && !seg.style.medium);
+                    }
+                    AItem::Word(w)
+                }
+                AItem::Space { style, factor, no_break } => AItem::Space {
+                    style: TextStyle {
+                        bold: style.bold || (h.bold && !style.medium),
+                        ..*style
+                    },
+                    factor: *factor,
+                    no_break: *no_break,
+                },
+                // `\@seccntformat`'s `\quad` is set in the heading's bold
+                // font (cmbx: 1.15em), not the paragraph's.
+                AItem::Quad { em } => AItem::HSpace {
+                    pt: em
+                        * self
+                            .text_params(
+                                TextStyle {
+                                    bold: h.bold,
+                                    ..TextStyle::default()
+                                },
+                                h.size_pt,
+                            )
+                            .quad,
+                },
+                other => other.clone(),
+            });
+        }
+        while matches!(items.last(), Some(AItem::Space { .. })) {
+            items.pop();
+        }
+        if let Some(para) = para {
+            items.push(AItem::HSpace { pt: h.run_in_hskip_pt });
+            items.extend(para.iter().skip_while(|i| matches!(i, AItem::Space { .. })).cloned());
+        }
+        let mut b = self.paragraph_block(&items, false, true, true, ParaStyle::Plain, None)?;
+        b.vertical.penalty_before = Some(SEC_PENALTY);
+        b.vertical.space_before = Some(skip_tuple(h.before));
+        Some(b)
+    }
+
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
         let h = self.style.heading(level);
         let (list, recs, labels, skips) = self.hlist(
@@ -2477,7 +2542,34 @@ impl<'a> Context<'a> {
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        let params = self.line_params(false, h.baselineskip_pt, ParaStyle::Plain, 0.0);
+        // `\@hangfrom{\hskip #3\relax\@svsec}` (latex.ltx line 17330):
+        // `\hangindent` is the width of the number box (the counter and its
+        // `\quad`), so a wrapped title's later lines start under the title.
+        // Here: every line `hang` in, the first pulled back by a kern.
+        let (mut list, mut recs, mut skips) = (list, recs, skips);
+        let numbered = items.iter().filter(|i| !matches!(i, AItem::Label { .. })).take_while(|i| !matches!(i, AItem::Space { .. })).any(|i| matches!(i, AItem::Quad { .. }));
+        let mut hang = 0.0;
+        if numbered {
+            for item in &list {
+                match item {
+                    pl::Item::Box(b) => hang += b.width,
+                    pl::Item::Kern(k) => hang += k.width,
+                    pl::Item::Glue(g) => {
+                        hang += g.width;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            if hang > 0.0 {
+                list.insert(0, pl::Item::kern(-hang));
+                recs.insert(0, None);
+                for (at, _) in &mut skips {
+                    *at += 1;
+                }
+            }
+        }
+        let params = self.line_params(false, h.baselineskip_pt, ParaStyle::Plain, hang);
         let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
         // The heading's lines are appended under its own \baselineskip
@@ -2689,7 +2781,7 @@ impl<'a> Context<'a> {
     /// `\huge\bfseries Chapter <n>\par\nobreak\vskip 20\p@` (numbered only),
     /// `\Huge\bfseries <title>\par\nobreak\vskip 40\p@`, both `\raggedright`
     /// at their own `\baselineskip`.
-    fn chapter_blocks(&mut self, number: Option<&str>, title: &[AItem], span: Span, spec: &flashtex_class_geometry::ChapterSpec, base: flashtex_class_geometry::BaseSize) -> Vec<BuiltBlock> {
+    fn chapter_blocks(&mut self, number: Option<&str>, title: &[AItem], span: Span, spec: &flashtex_class_geometry::ChapterSpec, base: flashtex_class_geometry::BaseSize, width: Option<f64>) -> Vec<BuiltBlock> {
         use crate::style::frame_pt;
         let empty = pl::Lines {
             lines: vec![pl::Line {
@@ -2740,17 +2832,17 @@ impl<'a> Context<'a> {
         if let Some(n) = number {
             let (size, bs) = metrics(spec.number_size);
             let words = adapter::command_words(&format!("{} {n}", spec.prefix), span);
-            out.extend(self.chapter_line(&words, size, bs, frame_pt(spec.number_title_skip)));
+            out.extend(self.chapter_line(&words, size, bs, frame_pt(spec.number_title_skip), width));
         }
         let (size, bs) = metrics(spec.title_size);
-        out.extend(self.chapter_line(title, size, bs, frame_pt(spec.after_title)));
+        out.extend(self.chapter_line(title, size, bs, frame_pt(spec.after_title), width));
         out
     }
 
     /// One bold `\raggedright` chapter-head paragraph at `size_pt` with its
     /// `\baselineskip`, `\nobreak` and `\vskip after_pt` after it.
-    fn chapter_line(&mut self, items: &[AItem], size_pt: f64, baselineskip_pt: f64, after_pt: f64) -> Option<BuiltBlock> {
-        self.part_line(items, size_pt, baselineskip_pt, after_pt, ParaStyle::FlushLeft, None)
+    fn chapter_line(&mut self, items: &[AItem], size_pt: f64, baselineskip_pt: f64, after_pt: f64, width: Option<f64>) -> Option<BuiltBlock> {
+        self.part_line(items, size_pt, baselineskip_pt, after_pt, ParaStyle::FlushLeft, width)
     }
 
     /// article.cls `\@part`/`\@spart` (lines 275-301): `\addvspace{4ex}`,
@@ -3429,7 +3521,7 @@ impl<'a> Context<'a> {
         style: ParaStyle,
         list_geom: Option<&ListGeom>,
     ) -> Option<BuiltBlock> {
-        let rec = self.math_box(list, span, true, self.style.body_size_pt)?;
+        let rec = self.math_box(list, span, true)?;
         let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
         let root = &self.maths[*mi].root;
         let size = self.style.body_size_pt;
@@ -3624,7 +3716,7 @@ impl<'a> Context<'a> {
                     list.atoms.insert(0, empty);
                 }
                 let cspan = list.atoms.iter().map(|a| a.span).reduce(Span::merge).unwrap_or(row.span);
-                let run = self.math_box(&list, cspan, true, self.style.body_size_pt).map(|rec| {
+                let run = self.math_box(&list, cspan, true).map(|rec| {
                     let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
                     (math_run(&self.maths[*mi].root, size, cspan), rec)
                 });
@@ -5386,6 +5478,25 @@ fn add_skip_before(v: &mut pagebuild::VBlock, skip: Option<(f64, f64, f64)>) {
 
 /// Adds `pt` points of `\vspace` glue (compiler `Block::VSpace`) to the
 /// block's before-skip. Zero is a no-op so cached blocks stay identical.
+/// `\@startsection`'s `\if@nobreak \everypar{}\else \addpenalty\@secpenalty
+/// \addvspace{#4}\fi` for a heading block about to follow `blocks`: right
+/// after a display heading nothing is added; otherwise the before-skip
+/// only tops up the skip the previous block left (`\@xaddvskip`).
+fn place_heading(blocks: &mut [BuiltBlock], b: &mut BuiltBlock, nobreak: bool) {
+    if nobreak {
+        b.vertical.space_before = None;
+        b.vertical.penalty_before = None;
+    } else if let (Some(before), Some(prev)) = (b.vertical.space_before, blocks.last_mut()) {
+        if let Some(last) = prev.vertical.space_after {
+            if last.0 < before.0 {
+                prev.vertical.space_after = None;
+            } else {
+                b.vertical.space_before = None;
+            }
+        }
+    }
+}
+
 fn add_vspace(v: &mut pagebuild::VBlock, pt: f64) {
     if pt == 0.0 {
         return;
@@ -5427,11 +5538,15 @@ pub(crate) struct Flow {
     pub page_start_blocks: Vec<usize>,
     pub wide_blocks: Vec<usize>,
     pub clears: Vec<usize>,
+    /// Two-column `\chapter` heads set as `\@topnewpage` boxes: the block
+    /// they precede, the block their lines belong to, those lines, and the
+    /// height the columns beside them lose.
+    pub chapter_tops: Vec<(usize, usize, Vec<pagebuild::Placed>, f64)>,
 }
 
 /// Sets `doc_blocks` as the main text flow does (also the material of a
 /// float or minipage box, with no cache).
-pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts: &[usize], secnumdepth: u8, cache: Option<&RenderCache>) -> Flow {
+pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts: &[usize], secnumdepth: u8, has_floats: bool, cache: Option<&RenderCache>) -> Flow {
     let mut blocks: Vec<BuiltBlock> = Vec::new();
     let style: &Stylesheet = ctx.style;
     let geo = style.class_geometry.as_deref();
@@ -5449,6 +5564,10 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
     // placed in the box, and the box height plus `\dbltextfloatsep` that
     // both columns of the first page lose.
     let mut top_title: Option<(usize, Vec<pagebuild::Placed>, f64)> = None;
+    // Two-column `\chapter` heads (`\@topnewpage[\@makechapterhead]`): the
+    // first block after the box, the box's first block, its lines and the
+    // height the columns of its page lose.
+    let mut chapter_tops: Vec<(usize, usize, Vec<pagebuild::Placed>, f64)> = Vec::new();
     // `\sectionmark`/`\chaptermark` as defined by the last `\ps@headings` or
     // `\ps@myheadings` (`\ps@plain`/`\ps@empty` leave them alone).
     let mut mark_rules: Vec<flashtex_class_geometry::MarkRule> = geo.map(|g| g.mark_rules.clone()).unwrap_or_default();
@@ -5483,9 +5602,21 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
     // text width (`\onecolumn` material), by built-block index.
     let mut page_start_blocks: Vec<usize> = Vec::new();
     let mut wide_blocks: Vec<usize> = Vec::new();
+    // A run-in heading waiting for the paragraph it starts, and whether it
+    // followed a display heading (`\@nobreak`).
+    let mut pending_run_in: Option<(u8, &[AItem], bool)> = None;
+    let merges_run_in = |block: &Block| matches!(block, Block::Paragraph { parts, list: None, style: ParaStyle::Plain, env_open: None, .. } if matches!(parts.first(), Some(ParaPart::Lines(_))));
     for (doc_index, block) in doc_blocks.iter().enumerate() {
         if page_starts.binary_search(&doc_index).is_ok() {
             page_start_blocks.push(blocks.len());
+        }
+        if pending_run_in.is_some() && !matches!(block, Block::Chrome { .. }) && !merges_run_in(block) {
+            if let Some((level, items, nobreak)) = pending_run_in.take() {
+                if let Some(mut b) = ctx.run_in_block(level, items, None) {
+                    place_heading(&mut blocks, &mut b, nobreak);
+                    blocks.push(b);
+                }
+            }
         }
         match block {
             Block::Heading {
@@ -5497,6 +5628,11 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
                 title,
                 span,
             } => {
+                if ctx.style.heading(*level).run_in {
+                    pending_run_in = Some((*level, &items[..], after_heading));
+                    after_heading = false;
+                    continue;
+                }
                 let (key, origin) = key_for(b'H', items, &[u64::from(*level)]);
                 if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.heading_block(*level, items)) {
                     if *eject_before {
@@ -5629,7 +5765,54 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
                 } else {
                     spec
                 };
-                let built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size);
+                // A contents list's `\chapter*` is set after `\onecolumn`
+                // (its entries are wide material): no `\@topnewpage` then.
+                let onecolumn_list = doc_blocks[doc_index + 1..].iter().find(|b| !matches!(b, Block::Chrome { .. })).is_some_and(|b| matches!(b, Block::TocEntry(e) if e.wide));
+                // With floats the float placement paginates and does not
+                // shorten columns: the head stays in the column there.
+                // Not yet with `\cleardoublepage` after other material: the
+                // `openright` blank page and its page style are placed by
+                // blocks that carry lines (known limitation).
+                let at_start = blocks.iter().all(|b| b.vertical.lines.is_empty());
+                let simple_break = spec.page_break != flashtex_class_geometry::PageBreak::ClearDoublePage || at_start;
+                if n_columns > 1 && !onecolumn_list && !has_floats && simple_break {
+                    // report.cls/book.cls `\@chapter`: `\if@twocolumn
+                    // \@topnewpage[\@makechapterhead{#2}]` (latex.ltx line
+                    // 20466): the head is a `\textwidth` `\vbox` at the top of
+                    // the page, `\@colht` lowered by its height plus
+                    // `\dbltextfloatsep` (its own `\vskip -\dbltextfloatsep`
+                    // cancels that), no `\@afterheading`. Inside the box
+                    // `\vspace*` restores `\prevdepth` -1000pt, so the first
+                    // line gets no interline glue.
+                    let width = crate::style::frame_pt(g.frame.text_width);
+                    let first = blocks.len();
+                    let mut built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size, Some(width));
+                    if let Some(b) = built.get_mut(1) {
+                        b.vertical.no_interline_first = true;
+                    }
+                    let p = page_params(ctx.style);
+                    let vb: Vec<VBlock> = built.iter().map(|b| b.vertical.clone()).collect();
+                    let (placed, height) = pagebuild::natural_layout(&p, &pagebuild::vlist(&p, &vb), false);
+                    for b in &mut built {
+                        b.vertical.lines.clear();
+                    }
+                    blocks.extend(built);
+                    let after = blocks.len();
+                    if page_start_blocks.last() == Some(&first) {
+                        page_start_blocks.pop();
+                    }
+                    page_start_blocks.push(after);
+                    if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
+                        chapter_starts.push((after, events.len()));
+                    }
+                    // `\clearpage` before the head: the box's own blocks
+                    // carry no lines, so the break goes on the block after it.
+                    clears.push(after);
+                    chapter_tops.push((after, first, placed, height));
+                    after_heading = false;
+                    continue;
+                }
+                let built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size, None);
                 if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
                     chapter_starts.push((blocks.len(), events.len()));
                 }
@@ -5721,7 +5904,11 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
                 // block already left (`\@xaddvskip`).
                 if *addvspace_before != 0.0 {
                     let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
-                    vspace += (addvspace_before - prev_after).max(0.0);
+                    // latex.ltx `\@xaddvskip` (line 9307): a negative amount
+                    // after a non-negative `\lastskip` is added to it
+                    // (`\@nbitem` right after a heading takes `\parsep` off
+                    // the heading's after-skip).
+                    vspace += if *addvspace_before < 0.0 && prev_after >= 0.0 { *addvspace_before } else { (addvspace_before - prev_after).max(0.0) };
                 }
                 // `\begin{center}`/`\begin{quote}`: `\addvspace{\topsep}` (plus
                 // `\partopsep` from vertical mode) before the first paragraph;
@@ -5760,6 +5947,19 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
                 for part in parts {
                     match part {
                         ParaPart::Lines(items) => {
+                            if let (true, Some((level, heading, nobreak))) = (first, pending_run_in.take()) {
+                                if let Some(mut b) = ctx.run_in_block(level, heading, Some(items)) {
+                                    pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
+                                    place_heading(&mut blocks, &mut b, nobreak);
+                                    if std::mem::take(&mut eject) {
+                                        b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                                    }
+                                    add_vspace(&mut b.vertical, std::mem::take(&mut vspace));
+                                    blocks.push(b);
+                                    first = false;
+                                    continue;
+                                }
+                            }
                             // TeX discards the space token right after a
                             // display's closing `$$` (§1200 resume_after_display).
                             let items = if !first && matches!(items.first(), Some(AItem::Space { .. })) { &items[1..] } else { &items[..] };
@@ -5915,12 +6115,18 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
             }
         }
     }
+    if let Some((level, items, nobreak)) = pending_run_in.take() {
+        if let Some(mut b) = ctx.run_in_block(level, items, None) {
+            place_heading(&mut blocks, &mut b, nobreak);
+            blocks.push(b);
+        }
+    }
     for &at in &clears {
         if let Some(b) = blocks.get_mut(at) {
             b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
         }
     }
-    Flow { blocks, events, chapter_starts, top_title, page_start_blocks, wide_blocks, clears }
+    Flow { blocks, events, chapter_starts, top_title, page_start_blocks, wide_blocks, clears, chapter_tops }
 }
 
 /// [`build`] with `figure`/`table` floats placed by LaTeX's algorithm
@@ -5929,8 +6135,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     let style: &Stylesheet = ctx.style;
     let geo = style.class_geometry.as_deref();
     let n_columns = geo.map_or(1, |g| g.frame.columns.len().max(1));
-    let Flow { mut blocks, events, chapter_starts, mut top_title, mut page_start_blocks, wide_blocks, clears } =
-        layout_blocks(ctx, &doc.blocks, &doc.page_starts, doc.secnumdepth, cache);
+    let Flow { mut blocks, events, chapter_starts, mut top_title, mut page_start_blocks, wide_blocks, clears, mut chapter_tops } =
+        layout_blocks(ctx, &doc.blocks, &doc.page_starts, doc.secnumdepth, !floats.is_empty(), cache);
     let s = style;
     let params = page_params(s);
     let vblocks: Vec<VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
@@ -5944,13 +6150,26 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     let columns = n_columns;
     let (mut built, mut images, float_labels) = if floats.is_empty() {
         let (short_pages, short) = top_title.as_ref().map_or((0, 0.0), |t| (columns, t.2));
+        // #151's later `\@topnewpage` boxes (two-column `\chapter` heads).
+        let tops: Vec<(usize, f64)> = chapter_tops.iter().map(|t| (t.0, t.3)).collect();
         match &insertions {
             Some(ins) => {
+                // `break_pages_inserts` (#154) and `break_pages_tops` (#151)
+                // are separate page builders; neither models the other's
+                // feature. Footnotes win, and the unmodelled combination is
+                // reported rather than silently mis-set.
+                if !tops.is_empty() {
+                    ctx.diagnostics.push(Diagnostic::warning(
+                        "unsupported_block",
+                        "footnotes together with two-column \\chapter head boxes: the columns beside a chapter head are not shortened by it".to_string(),
+                        Vec::new(),
+                    ));
+                }
                 let (mut pages, areas) = pagebuild::break_pages_inserts(&params, &list, short_pages, short, ins);
                 footnotes::place(ctx, &mut blocks, &mut pages, areas);
                 (pages, Vec::new(), Vec::new())
             }
-            None => (pagebuild::break_pages_shortened(&params, &list, short_pages, short), Vec::new(), Vec::new()),
+            None => (pagebuild::break_pages_tops(&params, &list, short_pages, short, &tops, columns), Vec::new(), Vec::new()),
         }
     } else {
         // `\@topnewpage`: both columns of the first page have `\@colht`
@@ -5965,6 +6184,28 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         }
         (pages, images, labels)
     };
+    // Two-column chapter heads: the columns of the page that starts with the
+    // block after the box move down by its height; the box's lines go on
+    // that page's first column (`\@combinedblfloats`).
+    if floats.is_empty() {
+        for (after, first, placed, height) in chapter_tops.drain(..) {
+            let Some(i) = built.iter().position(|bp| bp.lines.first().is_some_and(|l| l.payload.0 >= after)) else { continue };
+            for bp in built.iter_mut().skip(i).take(columns) {
+                for l in &mut bp.lines {
+                    l.baseline += height;
+                }
+            }
+            let mut lines: Vec<pagebuild::Placed> = placed
+                .into_iter()
+                .map(|p| pagebuild::Placed {
+                    payload: (p.payload.0 + first, p.payload.1),
+                    ..p
+                })
+                .collect();
+            lines.append(&mut built[i].lines);
+            built[i].lines = lines;
+        }
+    }
     // The `\twocolumn[...]` box sits at the top of the first page
     // (`\@combinedblfloats`), both columns `\dbltextfloatsep` below it.
     if let Some((first, placed, height)) = top_title.take() {

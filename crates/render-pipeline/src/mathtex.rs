@@ -93,24 +93,54 @@ impl TexMathMetrics {
     /// glyph program; `fonts` supplies `rm-lmr<d>.tfm` (digest-bound for
     /// the 12 pt set).
     pub fn new(base: u32, otf: Rc<MathFonts>, fonts: &FontSet) -> TexMathMetrics {
-        let text = match base {
-            10 => 10.0,
-            11 => 10.95,
-            _ => 12.0,
-        };
-        Self::at_text_size(text, otf, fonts).expect("the class sizes are embedded")
+        let (cm, roman_names) = TexMathMetrics::class_metrics(base);
+        TexMathMetrics::with_metrics(cm, roman_names, otf, fonts)
     }
 
-    /// The metrics `\DeclareMathSizes` selects for text at `text_pt`
-    /// (10, 10.95, 12, and 8 pt: `\footnotesize` of the 10pt class, 8/6/5 pt
-    /// with cmr/cmmi/cmsy 8, 6 and 5); `None` for a size whose TFMs
-    /// math-layout does not embed (9 pt needs cmr9/cmmi9/cmsy9).
-    pub fn at_text_size(text_pt: f64, otf: Rc<MathFonts>, fonts: &FontSet) -> Option<TexMathMetrics> {
-        let close = |at: f64| (text_pt - at).abs() < 0.01;
-        let (cm, roman_names) = if close(10.0) {
-            (CmMathMetrics::latex_10pt(), ["rm-lmr10", "rm-lmr7", "rm-lmr5"])
-        } else if close(10.95) {
-            (
+    /// Math set at another text size than the body's (a `\Large` heading):
+    /// the sizes of `\DeclareMathSizes` (fontmath.ltx, size1x.clo) and the
+    /// designs lmodern's `.fd` files load for them (`omllmm.fd`: lmmi10 up to
+    /// 11pt, lmmi12 above; `omslmsy.fd`: lmsy10 from 9.5pt; `ot1lmr.fd`:
+    /// rm-lmr12 for 11-15pt). `None` for a size without a declaration or a
+    /// design that is not embedded (9pt, rm-lmr17).
+    pub fn for_text_size(text: f64, otf: Rc<MathFonts>, fonts: &FontSet) -> Option<TexMathMetrics> {
+        let sizes = declare_math_sizes(text)?;
+        let design = |size: f64, table: &[(f64, &'static str)]| table.iter().find(|(upto, _)| size < *upto).map(|(_, name)| *name);
+        let roman_name = |size: f64| design(size, &[(5.5, "5"), (6.5, "6"), (7.5, "7"), (8.5, "8"), (9.5, "9"), (11.0, "10"), (15.0, "12"), (f64::INFINITY, "17")]);
+        let mi_name = |size: f64| design(size, &[(5.5, "5"), (6.5, "6"), (7.5, "7"), (8.5, "8"), (9.5, "9"), (11.0, "10"), (f64::INFINITY, "12")]);
+        let sy_name = |size: f64| design(size, &[(5.5, "5"), (6.5, "6"), (7.5, "7"), (8.5, "8"), (9.5, "9"), (f64::INFINITY, "10")]);
+        let tfm = |family: &str, design: &str| {
+            let name = format!("{family}{design}");
+            cm_tfm_by_name(&name)
+        };
+        let mut families = [[&cm_tfm::CMR10; 3]; 3];
+        let mut roman_names = ["rm-lmr10"; 3];
+        for (i, size) in sizes.iter().enumerate() {
+            let r = roman_name(*size)?;
+            families[0][i] = tfm("cmr", r)?;
+            families[1][i] = tfm("cmmi", mi_name(*size)?)?;
+            families[2][i] = tfm("cmsy", sy_name(*size)?)?;
+            roman_names[i] = match r {
+                "5" => "rm-lmr5",
+                "6" => "rm-lmr6",
+                "7" => "rm-lmr7",
+                "8" => "rm-lmr8",
+                "10" => "rm-lmr10",
+                _ => "rm-lmr12",
+            };
+        }
+        let cm = CmMathMetrics {
+            sizes,
+            extension: cm::ExtensionSizing::Fixed,
+            families,
+        };
+        Some(TexMathMetrics::with_metrics(cm, roman_names, otf, fonts))
+    }
+
+    fn class_metrics(base: u32) -> (CmMathMetrics, [&'static str; 3]) {
+        match base {
+            10 => (CmMathMetrics::latex_10pt(), ["rm-lmr10", "rm-lmr7", "rm-lmr5"]),
+            11 => (
                 // size11.clo: \DeclareMathSizes{\@xipt}{\@xipt}{8}{6} with the
                 // 10pt designs scaled to 10.95pt for text.
                 CmMathMetrics {
@@ -123,26 +153,12 @@ impl TexMathMetrics {
                     ],
                 },
                 ["rm-lmr10", "rm-lmr8", "rm-lmr6"],
-            )
-        } else if close(12.0) {
-            (CmMathMetrics::latex_12pt(), ["rm-lmr12", "rm-lmr8", "rm-lmr6"])
-        } else if close(8.0) {
-            (
-                // fontmath.ltx: \DeclareMathSizes{\@viiipt}{\@viiipt}{\@vipt}{\@vpt}.
-                CmMathMetrics {
-                    sizes: [8.0, 6.0, 5.0],
-                    extension: cm::ExtensionSizing::Fixed,
-                    families: [
-                        [&cm_tfm::CMR8, &cm_tfm::CMR6, &cm_tfm::CMR5],
-                        [&cm_tfm::CMMI8, &cm_tfm::CMMI6, &cm_tfm::CMMI5],
-                        [&cm_tfm::CMSY8, &cm_tfm::CMSY6, &cm_tfm::CMSY5],
-                    ],
-                },
-                ["rm-lmr8", "rm-lmr6", "rm-lmr5"],
-            )
-        } else {
-            return None;
-        };
+            ),
+            _ => (CmMathMetrics::latex_12pt(), ["rm-lmr12", "rm-lmr8", "rm-lmr6"]),
+        }
+    }
+
+    fn with_metrics(cm: CmMathMetrics, roman_names: [&str; 3], otf: Rc<MathFonts>, fonts: &FontSet) -> TexMathMetrics {
         let sizes = MathSizes {
             text: cm.sizes[0],
             script: cm.sizes[1],
@@ -167,7 +183,7 @@ impl TexMathMetrics {
         };
         let roman_faces = [text_face(cm.sizes[0]), text_face(cm.sizes[1]), text_face(cm.sizes[2])];
         let fraktur = cm.sizes.map(|at| fonts.tfm(&format!("{}.tfm", crate::mathalpha::fraktur_tfm(at))).ok());
-        Some(TexMathMetrics {
+        TexMathMetrics {
             fraktur,
             alphabets: Vec::new(),
             cm,
@@ -178,7 +194,7 @@ impl TexMathMetrics {
             otf,
             unmapped: RefCell::new(Vec::new()),
             resources: RefCell::new(std::collections::BTreeMap::new()),
-        })
+        }
     }
 
     /// `(TFM font, face drawn, exact optical design)` for every TFM font a
@@ -752,4 +768,49 @@ fn script_capital_slot(ch: char) -> Option<u8> {
 /// (`cmmi12` → `lmmi12`), for provenance messages.
 fn lm_name(cm: &str) -> String {
     cm.replacen("cm", "lm", 1)
+}
+
+/// `\DeclareMathSizes{<text>}{<text>}{<script>}{<scriptscript>}` of the
+/// kernel (fontmath.ltx) and the standard size files: the math sizes LaTeX
+/// uses for a text size.
+pub fn declare_math_sizes(text: f64) -> Option<[f64; 3]> {
+    const TABLE: [[f64; 3]; 12] = [
+        [5.0, 5.0, 5.0],
+        [6.0, 5.0, 5.0],
+        [7.0, 5.0, 5.0],
+        [8.0, 6.0, 5.0],
+        [9.0, 6.0, 5.0],
+        [10.0, 7.0, 5.0],
+        [10.95, 8.0, 6.0],
+        [12.0, 8.0, 6.0],
+        [14.4, 10.0, 7.0],
+        [17.28, 12.0, 10.0],
+        [20.74, 14.4, 12.0],
+        [24.88, 20.74, 17.28],
+    ];
+    TABLE.iter().find(|row| (row[0] - text).abs() < 0.005).copied()
+}
+
+/// The embedded Computer Modern math-layout TFM of that name.
+fn cm_tfm_by_name(name: &str) -> Option<&'static mtfm::TfmFont> {
+    Some(match name {
+        "cmr5" => &cm_tfm::CMR5,
+        "cmr6" => &cm_tfm::CMR6,
+        "cmr7" => &cm_tfm::CMR7,
+        "cmr8" => &cm_tfm::CMR8,
+        "cmr10" => &cm_tfm::CMR10,
+        "cmr12" => &cm_tfm::CMR12,
+        "cmmi5" => &cm_tfm::CMMI5,
+        "cmmi6" => &cm_tfm::CMMI6,
+        "cmmi7" => &cm_tfm::CMMI7,
+        "cmmi8" => &cm_tfm::CMMI8,
+        "cmmi10" => &cm_tfm::CMMI10,
+        "cmmi12" => &cm_tfm::CMMI12,
+        "cmsy5" => &cm_tfm::CMSY5,
+        "cmsy6" => &cm_tfm::CMSY6,
+        "cmsy7" => &cm_tfm::CMSY7,
+        "cmsy8" => &cm_tfm::CMSY8,
+        "cmsy10" => &cm_tfm::CMSY10,
+        _ => return None,
+    })
 }

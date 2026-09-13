@@ -431,6 +431,43 @@ same per-column placement code in `typeset/floatpage.rs`.
   render-pipeline build errors are #152, #158, #165, #170 and the
   `Piece::Caption::short` field.
 
+### #151 heading-fidelity (render-pipeline) @ d1d4facb
+
+Two genuine feature overlaps with #154, both resolved in favour of the more
+general implementation rather than by keeping both.
+
+- **Math at another text size.** #154 added `TexMathMetrics::at_text_size`
+  (the four class sizes plus `\footnotesize`) with a `Context::math_fonts_at`
+  that returns the body provider for anything but the note size; #151 added
+  `TexMathMetrics::for_text_size` (any size with a `\DeclareMathSizes`
+  declaration, choosing lmodern designs from `.fd` tables) with its own
+  `math_fonts_at`. #151's subsumes #154's — it reaches the same metrics at the
+  note sizes and additionally handles math in a `\Large` heading — so:
+  - `at_text_size` was removed from `mathtex.rs` (it had no other caller);
+  - #154's `math_fonts_at`, its duplicate `math_fonts_sized` field and that
+    field's initialiser were removed from `typeset.rs`, keeping #151's;
+  - `math_box` is #151's three-argument wrapper again, with
+    `math_box_sized` for the sized calls. #154's `\LaTeXe` epsilon call now
+    uses `math_box_sized`; the two display calls drop the redundant
+    `self.style.body_size_pt`.
+  - `with_metrics` returns a plain `TexMathMetrics`; the `Some(..)` #154 had
+    put on the shared struct literal moved out to `for_text_size`.
+- **Page building.** #154's `break_pages_inserts` (footnotes charged against
+  `\@colroom`) and #151's `break_pages_tops` (two-column `\chapter` heads as
+  later `\@topnewpage` boxes) are separate page builders and neither models
+  the other's feature. Footnotes take precedence, and a document that wants
+  both now gets an explicit `unsupported_block` diagnostic instead of silently
+  mis-set columns. **Known integration gap for the Commander**: merging the two
+  page builders is real work and is not attempted here.
+- `#151` also read `doc.blocks` and `floats` inside what #135 turned into
+  `layout_blocks`. Carried across the same way as the two-column state:
+  `layout_blocks` gained a `has_floats: bool` argument, `Flow` gained
+  `chapter_tops`, and the float-body call site passes `false`.
+- `src/adapter.rs`: main's NFSS scheme (`Styles::new(.., style.nfss)`) plus
+  #151's class `\c@secnumdepth` default; both.
+- Checks: every error this merge introduced is resolved. Remaining
+  render-pipeline errors are #152, #158, #165, #170 and `Piece::Caption::short`.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.
