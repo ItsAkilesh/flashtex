@@ -529,7 +529,12 @@ pub fn substitute_grids(root: &mut ml::MathBox, grids: &[GridBox]) {
         _ => None,
     };
     if let Some(b) = found {
+        // The grid's fences and rules belong to the grid environment.
+        #[cfg(feature = "math-glyph-spans")]
+        let tag = root.tag;
         *root = b.hbox.clone();
+        #[cfg(feature = "math-glyph-spans")]
+        root.inherit_tag(tag);
     }
     if let ml::BoxKind::HBox(children) | ml::BoxKind::VBox(children) = &mut root.kind {
         for c in children {
@@ -545,7 +550,12 @@ pub fn substitute(root: &mut ml::MathBox, runs: &[TextRun]) {
             if handle_index(*ch).is_some() {
                 if let Some(run) = run_of(runs, *font_id) {
                     debug_assert_eq!(run.size, *size);
+                    // The run's glyphs map to the `\text` command's span.
+                    #[cfg(feature = "math-glyph-spans")]
+                    let tag = root.tag;
                     *root = run.hbox.clone();
+                    #[cfg(feature = "math-glyph-spans")]
+                    root.inherit_tag(tag);
                 }
             }
         }
@@ -629,6 +639,7 @@ fn shape_run(
                 width,
                 height: 0.0,
                 depth: 0.0,
+                ..ml::MathBox::empty()
             });
         }
         first = false;
@@ -665,6 +676,7 @@ fn shape_run(
                     width,
                     height: if g.empty { 0.0 } else { height },
                     depth: if g.empty { 0.0 } else { depth },
+                    ..ml::MathBox::empty()
                 });
             }
         }
