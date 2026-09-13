@@ -390,6 +390,12 @@ pub struct Context<'a> {
     /// microtype's per-font pdfTeX parameters by (metrics identity, size).
     microtype_fonts: BTreeMap<(Rc<str>, u64), Option<Rc<flashtex_microtype::FontParams>>>,
     math_colors: std::collections::HashMap<(usize, usize, usize), flashtex_compiler::color::DeviceColor>,
+    /// Box records of `\item` labels. LaTeX sets a label inside the
+    /// `\@labels` hbox, so pdfTeX's line packer never expands its
+    /// characters (`hpack` adds `char_stretch` only for character nodes
+    /// of the line itself) and they take no part in the line's font
+    /// stretch/shrink.
+    label_recs: BTreeSet<usize>,
     /// Footnote texts met while building horizontal lists, and for each
     /// the box record its `\insert` follows (the mark, or the box before
     /// `\footnotetext`): see [`footnotes`].
@@ -428,6 +434,7 @@ impl<'a> Context<'a> {
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
             microtype_fonts: BTreeMap::new(),
             math_colors: Default::default(),
+            label_recs: BTreeSet::new(),
             notes: Vec::new(),
             note_anchors: Vec::new(),
             multicol: multicol::State::default(),
@@ -1557,7 +1564,7 @@ impl<'a> Context<'a> {
             let rec = recs.get(i).copied().flatten();
             let mut mi = pl::MicroItem::default();
             match item {
-                pl::Item::Box(run) => mi.run = rec.and_then(|r| self.micro_run(r, run)),
+                pl::Item::Box(run) => mi.run = rec.filter(|r| !self.label_recs.contains(r)).and_then(|r| self.micro_run(r, run)),
                 pl::Item::Penalty(p) => {
                     if let Some(pre) = &p.pre_break {
                         mi.pre_break = rec.and_then(|r| self.micro_run(r, pre));
@@ -2109,17 +2116,22 @@ impl<'a> Context<'a> {
             if let Some((text, span)) = geom.label.as_ref().filter(|_| starts_paragraph) {
                 if let Some((run, rec)) = self.label_box(text, *span, size) {
                     let labelsep = self.style.labelsep_pt;
-                    let lead = [
+                    let protrude = self.item_left_protrusion(&list, &recs);
+                    let mut lead = vec![
                         (pl::Item::kern(-(labelsep + run.width.min(labelwidth))), None),
                         (pl::Item::Box(run), Some(rec)),
                         (pl::Item::kern(labelsep), None),
                     ];
+                    if protrude != 0.0 {
+                        lead.push((pl::Item::kern(-protrude), None));
+                    }
+                    let n = lead.len();
                     for (i, (item, rec)) in lead.into_iter().enumerate() {
                         list.insert(i, item);
                         recs.insert(i, rec);
                     }
                     for (at, _) in &mut skips {
-                        *at += 3;
+                        *at += n;
                     }
                 }
             }
@@ -2190,6 +2202,27 @@ impl<'a> Context<'a> {
         shaped.width_units as f64 * size / shaped.units_per_em as f64
     }
 
+    /// microtype's `\leftprotrusion`, which it appends to `\@item`'s
+    /// `\everypar` (microtype.sty, `\MT@patch@patch\@item{\everypar{}}
+    /// {\everypar{\leftprotrusion}}`): `\MT@get@prot` sets the item text's
+    /// first group alone and adds `\kern\leftmarginkern` of that line, the
+    /// negated `char_pw` of its first character, after the label. pdfTeX's
+    /// own margin kern cannot reach that character (`find_protchar_left`
+    /// stops at the `\@labels` box's glue), so this explicit kern is the
+    /// item text's only protrusion. In points; 0 without protrusion or when
+    /// the text does not open with a character of a configured font.
+    fn item_left_protrusion(&mut self, list: &[pl::Item], recs: &[Option<usize>]) -> f64 {
+        if !self.style.microtype.as_ref().is_some_and(|m| m.protrude_chars > 0) {
+            return 0.0;
+        }
+        let (Some(pl::Item::Box(run)), Some(Some(rec))) = (list.first(), recs.first()) else { return 0.0 };
+        let Some(micro) = self.micro_run(*rec, run) else { return 0.0 };
+        match micro.glyphs.first().and_then(|g| g.code) {
+            Some(c) => f64::from(micro.params.left_protrusion(c)) / 65536.0,
+            None => 0.0,
+        }
+    }
+
     /// The `\item` label as a text box whose characters all point at the
     /// `\item` command's bytes (article's `\labelenumi`/`\labelitemi` in
     /// the body font).
@@ -2206,7 +2239,11 @@ impl<'a> Context<'a> {
                 .collect(),
             style: TextStyle::default(),
         };
-        self.text_box(&seg, size)
+        let boxed = self.text_box(&seg, size);
+        if let Some((_, rec)) = &boxed {
+            self.label_recs.insert(*rec);
+        }
+        boxed
     }
 
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
