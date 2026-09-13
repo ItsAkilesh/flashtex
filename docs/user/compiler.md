@@ -20,7 +20,7 @@ Where it lives:
 | Install | Path |
 |---|---|
 | CLI tarball (`flashtex-cli-<version>-<platform>.tar.gz` from [Releases](https://github.com/flash-tex/flashtex/releases)) | `bin/flashtex`, fonts and metrics in `share/flashtex/` — extract anywhere; `bin/flashtex install-cli` links it into `/usr/local/bin` |
-| Mac app | `/Applications/FlashTeX.app/Contents/MacOS/flashtex` (uses the app's `Contents/Resources/{Fonts,texmf}`) |
+| Mac app | `/Applications/FlashTeX.app/Contents/MacOS/flashtex-cli` (uses the app's `Contents/Resources/{Fonts,texmf}`) |
 | Source build | `crates/flashtex-cli/target/release/flashtex` — add `--font-dir apps/mac/Fonts` and `FLASHTEX_TFM_DIRS=apps/mac/Fonts/texmf/fonts/tfm/public/lm`, or install the tarball layout ([Fonts](#fonts-and-metrics)) |
 
 The older helpers (`flashtex-render`, `flashtex-compiler`, `flashtex-pdf`,
@@ -260,7 +260,7 @@ scripts/ci/package-cli.sh 0.0.0-local macos-arm64 dist   # the tarball, from the
 builds against the pinned sibling mirrors under
 `crates/render-pipeline/vendor/` (see `vendor/VENDORING.md`). Binaries land
 in `crates/<crate>/target/release/`. `make-app.sh` bundles `flashtex` as
-`Contents/MacOS/flashtex` alongside the helpers, verifies the bundled fonts
+`Contents/MacOS/flashtex-cli` alongside the helpers, verifies the bundled fonts
 and metrics against a pinned manifest, and ad-hoc signs the bundle; add
 `--dmg` for a disk image. `cargo test --release` in `crates/flashtex-cli`
 builds HW1/HW2 and the multi-file fixture end to end (including a run with
