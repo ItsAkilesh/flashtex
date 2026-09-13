@@ -105,6 +105,9 @@ pub enum Family {
 pub enum Role {
     /// Text face (roman/bold/italic per the style).
     Text { bold: bool, italic: bool },
+    /// Upright-medium slanted text (`\slshape`, running heads): Latin Modern
+    /// `lmromanslant*` with `ec-lmro*` metrics.
+    Slanted,
     /// Math letters, symbols and operators: Latin Modern Math (`MATH`
     /// table) for both families, because `\usepackage{times}` leaves math
     /// in Computer Modern.
@@ -233,6 +236,10 @@ pub fn default_tfm_dirs() -> Vec<PathBuf> {
 /// `ec-lmri12`, `-bolditalic` → `ec-lmbxi10`. `None` for the math face and
 /// for names this table does not know.
 pub fn latin_modern_tfm(otf_stem: &str) -> Option<String> {
+    if let Some(rest) = otf_stem.strip_prefix("lmromanslant") {
+        let d: u32 = rest.strip_suffix("-regular")?.parse().ok()?;
+        return Some(format!("ec-lmro{d}.tfm"));
+    }
     let rest = otf_stem.strip_prefix("lmroman")?;
     let (digits, style) = rest.split_once('-')?;
     let d: u32 = digits.parse().ok()?;
@@ -635,6 +642,21 @@ impl FontSet {
                 format!("lmroman{d}-italic.otf")
             }
             Role::Text { bold: true, italic: true } => "lmroman10-bolditalic.otf".to_string(),
+            // t1lmr.fd `m/sl`: <-8.5> 8, <8.5-9.5> 9, <9.5-11> 10, <11-15> 12, <15-> 17.
+            Role::Slanted => {
+                let d = if s < 8.5 {
+                    8
+                } else if s < 9.5 {
+                    9
+                } else if s < 11.0 {
+                    10
+                } else if s < 15.0 {
+                    12
+                } else {
+                    17
+                };
+                format!("lmromanslant{d}-regular.otf")
+            }
         }
     }
 
@@ -645,13 +667,14 @@ impl FontSet {
             Role::Text { bold: true, italic: false } => Core14::TimesBold,
             Role::Text { bold: false, italic: true } => Core14::TimesItalic,
             Role::Text { bold: true, italic: true } => Core14::TimesBoldItalic,
+            Role::Slanted => Core14::TimesItalic,
         }
     }
 
     /// Resolves (and loads once) the face for `family`/`role` at `size_pt`.
     pub fn resolve(&self, family: Family, role: Role, size_pt: f64) -> Resolved {
         match (family, role) {
-            (Family::Times, Role::Text { .. }) => Resolved {
+            (Family::Times, Role::Text { .. } | Role::Slanted) => Resolved {
                 face: self.core14(Self::core14_for(role)),
                 substituted: None,
             },

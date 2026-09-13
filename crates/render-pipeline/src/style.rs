@@ -81,8 +81,14 @@ pub struct Stylesheet {
     pub pretolerance: f64,
     pub linepenalty: f64,
     pub adjdemerits: f64,
-    /// `\raggedbottom` (article one-column default).
+    /// `\raggedbottom` (standard classes: one-sided, one-column documents;
+    /// otherwise the kernel's `\flushbottom`).
     pub raggedbottom: bool,
+    /// `\emergencystretch` (0; `3em` under `\sloppy`, which the standard
+    /// classes select for two-column documents).
+    pub emergency_stretch_pt: f64,
+    /// `\columnseprule` (the class default, or a preamble `\setlength`).
+    pub columnseprule_pt: f64,
     /// `\topsep`, `\partopsep` and `\leftmargini` of a level-1 list
     /// (`\` of size1x.clo): the glue around and the margins of
     /// `center`/`quote`-style environments.
@@ -182,6 +188,8 @@ impl Stylesheet {
             linepenalty: 10.0,
             adjdemerits: 10000.0,
             raggedbottom: true,
+            emergency_stretch_pt: 0.0,
+            columnseprule_pt: 0.0,
             topsep: Skip::new(list.topsep.pt, list.topsep.plus, list.topsep.minus),
             partopsep: Skip::new(list.partopsep.pt, list.partopsep.plus, list.partopsep.minus),
             leftmargini_pt: list.leftmargin.0,
@@ -206,9 +214,14 @@ impl Stylesheet {
     /// MacTeX 2026), so `\documentclass[a4paper]{article}` alone ships a
     /// Letter page with the A4 text block placed from its top-left corner.
     /// The frame values are the `\oddsidemargin` (odd/one-sided page) text
-    /// block of the first column; two-sided left edges, two-column
-    /// frames and header/footer baselines are in `class_geometry` and not
-    /// yet laid out.
+    /// block of the first column (`text_width_pt` is `\columnwidth`); the
+    /// page builder takes even-page left edges, the second column and the
+    /// header/footer baselines from `class_geometry`.
+    ///
+    /// article/report/book end with `\if@twoside\else\raggedbottom\fi` and
+    /// `\if@twocolumn \sloppy\flushbottom\fi`: two-sided or two-column
+    /// documents keep `\flushbottom`, two-column ones `\sloppy`
+    /// (`\tolerance 9999`, `\emergencystretch 3em`).
     pub fn from_resolved(doc: &ResolvedDocument, family: Family) -> Stylesheet {
         let size = match doc.options.size {
             flashtex_class_geometry::BaseSize::Pt10 => 10,
@@ -226,6 +239,12 @@ impl Stylesheet {
         s.topskip_pt = frame_pt(p.topskip);
         s.maxdepth_pt = frame_pt(p.maxdepth);
         s.parindent_pt = frame_pt(p.parindent);
+        s.raggedbottom = !(doc.flags.twoside || doc.flags.twocolumn);
+        s.columnseprule_pt = frame_pt(frame.columnseprule);
+        if doc.flags.twocolumn {
+            s.tolerance = 9999.0;
+            s.emergency_stretch_pt = 3.0 * s.body_size_pt;
+        }
         s.class_geometry = Some(Box::new(doc.clone()));
         s
     }
@@ -252,7 +271,7 @@ impl Stylesheet {
 /// display lists stay byte-identical; every value remains within 2 sp of
 /// pdflatex, 30x finer than the 0.001 bp pdfTeX writes positions with.
 /// Lengths further from a 0.001 pt decimal keep their exact sp value.
-fn frame_pt(len: Sp) -> f64 {
+pub(crate) fn frame_pt(len: Sp) -> f64 {
     let exact = len.to_pt();
     let decimal = (exact * 1000.0).round() / 1000.0;
     if ((decimal - exact) * 65536.0).abs() <= FRAME_SNAP_SP {
