@@ -37,6 +37,29 @@ diagnostics are exactly the ones that invalidate a geometry comparison — the
 renderer says, in so many words, "the layout is not the reference geometry" —
 so `font_diagnostics` finds them and harnesses fail loudly on any hit.
 
+There are two font-resolution paths, and the environment only feeds one
+-----------------------------------------------------------------------
+
+`FLASHTEX_FONT_DIRS` / `FLASHTEX_TFM_DIRS` feed the general discovery list
+(`render-pipeline/src/fonts.rs::font_dirs` / `tfm_dirs_for`). The *rooted*
+required-metrics reader is separate: it only accepts a `texmf` tree found
+relative to the executable -- `<exe>/../Resources/texmf`, `<exe>/texmf`,
+`<exe>/../share/flashtex/texmf` -- and it refuses symlinked path components,
+which is why a NixOS texmf-dist never satisfies it.
+
+So a correct environment is not always sufficient, and neither path announces
+itself. Do not try to tell them apart from the outside: the reliable assertion
+is the one below, `font_diagnostics` returning empty, because it catches
+whichever path failed. Reports differ between machines on whether the env
+alone satisfies the rooted reader (it did on the NixOS PC for the amsmath
+corpus, 59/59 with the env and a loud `required_metrics_unavailable` without
+it); that disagreement is exactly why the gate asserts on the diagnostics
+rather than on the configuration.
+
+If the rooted reader is the one failing, the fix is a real `texmf` directory
+next to the binary (or in `../Resources`/`../share/flashtex`), not more
+environment variables.
+
 Usage in a harness
 ------------------
 
