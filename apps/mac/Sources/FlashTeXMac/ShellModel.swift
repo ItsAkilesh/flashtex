@@ -377,18 +377,21 @@ final class ShellModel {
                 documentURL = URL(fileURLWithPath: seed)
                 savedText = text
             }
-            // A compiler shipped inside the .app bundle attaches by default.
-            let bundledCompiler = Bundle.main.executableURL?.deletingLastPathComponent()
-                .appendingPathComponent("flashtex-compiler").path
-            let hasBundled = bundledCompiler.map { FileManager.default.isExecutableFile(atPath: $0) } ?? false
+            // A producer shipped inside the .app bundle attaches by default: the
+            // render pipeline (Latin Modern, display-list-v2) when bundled, else
+            // the plain compiler. FLASHTEX_COMPILER still names an explicit worker.
+            let bundledDir = Bundle.main.executableURL?.deletingLastPathComponent()
+            let hasBundled = ["flashtex-render", "flashtex-compiler"].contains { name in
+                bundledDir.map { FileManager.default.isExecutableFile(atPath: $0.appendingPathComponent(name).path) } ?? false
+            }
             if env["FLASHTEX_AUTOATTACH"] == "1", let helper = env["FLASHTEX_PREVIEW_CONTROLLER"],
                FileManager.default.isExecutableFile(atPath: helper) {
                 // Durable helper route (STDIO.md): the helper owns the ledger and the
                 // compiler; the direct worker is not attached alongside it.
                 attachController(at: URL(fileURLWithPath: helper))
             } else if env["FLASHTEX_AUTOATTACH"] != "0", (env["FLASHTEX_AUTOATTACH"] == "1" || hasBundled),
-               Self.locateCompiler() != nil {
-                attachDiscoveredWorker()
+               let url = Self.locateDefaultProducer() {
+                attachWorker(at: url)
                 compile()
             }
             let bundledBridge = Bundle.main.executableURL?.deletingLastPathComponent()
@@ -570,6 +573,16 @@ final class ShellModel {
         attachWorker(at: url)
         compile()
         return true
+    }
+
+    /// The worker attached at launch: an explicit `FLASHTEX_COMPILER`, else the
+    /// bundled/built render pipeline, else the bundled/built compiler.
+    static func locateDefaultProducer() -> URL? {
+        let fm = FileManager.default
+        if let env = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"], fm.isExecutableFile(atPath: env) {
+            return URL(fileURLWithPath: env)
+        }
+        return locateRenderPipeline() ?? locateCompiler()
     }
 
     static func locateCompiler() -> URL? {
