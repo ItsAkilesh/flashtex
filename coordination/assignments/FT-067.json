@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-067",
+  "title": "Supported-LaTeX truth: generated docs + drift gate",
+  "agent_id": "kabir-claude",
+  "machine": "mac-m5pro-kabir",
+  "allocation_id": "claude-max-20x-kabir",
+  "branch": "agent/kabir-claude/supported-latex",
+  "owned_paths": [
+    "crates/compiler",
+    "docs/user"
+  ],
+  "objective": "Generate crates/compiler's supported-commands/environments/packages tables from the parser's actual arms (a `flashtex-compiler --supported` JSON mode + a script that renders docs/user/compiler.md's Supported LaTeX section and apps/mac's Completion vocabulary data file), so the Mac test testStaticVocabularyMatchesTheCompilerDocs can never drift; include a coverage percentage against a canonical list (LaTeX kernel + amsmath + amssymb + enumitem + geometry + graphicx + hyperref + tikz core) published in the README benchmarks.",
+  "acceptance": [
+    "`flashtex-compiler --supported` output consumed by the Mac vocabulary (coordinate with mac-claude-a)",
+    "README coverage table generated, not hand-written"
+  ],
+  "dependencies": [],
+  "input_main_sha": "591d86400dbdc81304b131c62c6db9a3b69a8a48",
+  "revision": 1,
+  "state": "assigned",
+  "timebox_minutes": 120,
+  "deadline_utc": null,
+  "updated_utc": "2026-09-13T04:38:21Z",
+  "notes": "MacTeX is available on this machine: use it as the oracle (pdflatex word positions / rasters), never in the product path. Report on GitHub issue #2 with SHAs and test counts at every checkpoint; ack with `python3 scripts/coord.py ack`."
+}

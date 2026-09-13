@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-061",
+  "title": "amsmath environment completeness",
+  "agent_id": "kabir-claude",
+  "machine": "mac-m5pro-kabir",
+  "allocation_id": "claude-max-20x-kabir",
+  "branch": "agent/kabir-claude/amsmath-envs",
+  "owned_paths": [
+    "crates/compiler",
+    "crates/math-layout"
+  ],
+  "objective": "Full amsmath display-environment support with numbering and \\tag/\\notag/\\nonumber: align/align*/alignat/flalign/gather/multline/split/aligned/gathered/cases/dcases, matrix family incl. smallmatrix, \\intertext, \\substack, \\overset/\\underset, \\xrightarrow/\\xleftarrow, \\DeclareMathOperator/\\operatorname*, \\text in subscripts, \\dfrac/\\tfrac/\\binom sizes, \\left/\\right with \\middle, \\big family sizes, spacing commands \\, \\: \\; \\! \\quad \\qquad \\phantom/\\hphantom/\\vphantom. Every construct gets an oracle test against MacTeX (word positions, not raw bytes).",
+  "acceptance": [
+    "a tests/amsmath_corpus with \u226540 one-page oracle fixtures, all within 0.5pt of pdflatex word positions",
+    "no regressions in HW1/HW2 counts"
+  ],
+  "dependencies": [],
+  "input_main_sha": "591d86400dbdc81304b131c62c6db9a3b69a8a48",
+  "revision": 1,
+  "state": "assigned",
+  "timebox_minutes": 180,
+  "deadline_utc": null,
+  "updated_utc": "2026-09-13T04:38:21Z",
+  "notes": "MacTeX is available on this machine: use it as the oracle (pdflatex word positions / rasters), never in the product path. Report on GitHub issue #2 with SHAs and test counts at every checkpoint; ack with `python3 scripts/coord.py ack`."
+}

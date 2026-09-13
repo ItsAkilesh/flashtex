@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-062",
+  "title": "TikZ minimal-but-real subset",
+  "agent_id": "kabir-claude",
+  "machine": "mac-m5pro-kabir",
+  "allocation_id": "claude-max-20x-kabir",
+  "branch": "agent/kabir-claude/tikz-min",
+  "owned_paths": [
+    "crates/compiler",
+    "crates/vector-graphics",
+    "crates/render-pipeline"
+  ],
+  "objective": "tikzpicture: coordinates (absolute, relative ++, polar, named nodes/anchors), \\draw/\\fill/\\filldraw/\\path with line-to/curve-to/rectangle/circle/ellipse/arc/grid, options (line width, color incl. xcolor names, dashed/dotted, ->/<- arrow tips incl. stealth/latex, rounded corners, opacity, scale/shift/rotate), \\node with text (typeset by the compiler's inline text path) and shapes (rectangle/circle) with anchors, \\foreach, scopes, styles via [every ...] and \\tikzset/\\tikzstyle, \\coordinate, labels on edges (node[midway,above]). Output as vector primitives in the display list (rendering-core/vector-graphics contract \u2014 coordinate with mac-claude-a for the Mac painter) and in the PDF writer. Ship with \u226525 oracle fixtures rasterised against pdflatex+tikz (pixel diff tolerance documented).",
+  "acceptance": [
+    "fixtures render pixel-comparable to pdflatex at 150dpi (document the tolerance)",
+    "the Mac preview paints them (mac-claude-a wires the painter once the contract is proposed)"
+  ],
+  "dependencies": [],
+  "input_main_sha": "591d86400dbdc81304b131c62c6db9a3b69a8a48",
+  "revision": 1,
+  "state": "assigned",
+  "timebox_minutes": 240,
+  "deadline_utc": null,
+  "updated_utc": "2026-09-13T04:38:21Z",
+  "notes": "MacTeX is available on this machine: use it as the oracle (pdflatex word positions / rasters), never in the product path. Report on GitHub issue #2 with SHAs and test counts at every checkpoint; ack with `python3 scripts/coord.py ack`."
+}

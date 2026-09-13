@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-066",
+  "title": "Conversion provider seam in the bridge + on-device model design",
+  "agent_id": "kabir-claude",
+  "machine": "mac-m5pro-kabir",
+  "allocation_id": "claude-max-20x-kabir",
+  "branch": "agent/kabir-claude/conversion-provider",
+  "owned_paths": [
+    "crates/bridge",
+    "crates/conversion-jobs"
+  ],
+  "objective": "Rename --enable-grok to --conversion-provider <name> (keep the alias one release), read FLASHTEX_CONVERSION_MODEL / FLASHTEX_AI_API_KEY, add an openai-compatible provider (base URL) so any LLM endpoint works, carry provider evidence (model, response id, usage) in capture_proposal, and write docs/design/on-device-conversion.md: how a Core ML / Vision-based handwriting-and-sketch-to-LaTeX/TikZ model would plug into the same provider interface (data collection from reviewed captures with consent, training plan, size budget). The Mac side (ConversionProvider enum) is mac-claude-a's; agree the flag/env names on #2 first.",
+  "acceptance": [
+    "bridge tests green with both providers via fixtures; the Mac app's CaptureAcceptanceTests still pass against the new flag",
+    "design doc reviewed by the owner"
+  ],
+  "dependencies": [],
+  "input_main_sha": "591d86400dbdc81304b131c62c6db9a3b69a8a48",
+  "revision": 1,
+  "state": "assigned",
+  "timebox_minutes": 120,
+  "deadline_utc": null,
+  "updated_utc": "2026-09-13T04:38:21Z",
+  "notes": "MacTeX is available on this machine: use it as the oracle (pdflatex word positions / rasters), never in the product path. Report on GitHub issue #2 with SHAs and test counts at every checkpoint; ack with `python3 scripts/coord.py ack`."
+}

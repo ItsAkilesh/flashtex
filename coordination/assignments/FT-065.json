@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-065",
+  "title": "Compiler hyperoptimization",
+  "agent_id": "kabir-claude",
+  "machine": "mac-m5pro-kabir",
+  "allocation_id": "claude-max-20x-kabir",
+  "branch": "agent/kabir-claude/compiler-perf",
+  "owned_paths": [
+    "crates/compiler",
+    "crates/paragraph-layout",
+    "crates/math-layout",
+    "crates/render-pipeline"
+  ],
+  "objective": "End-to-end profile (parse / macro expansion / layout / math / export split) on HW1, HW2 and a 500KB document; land Daniel's compile-latency 24f285af (squash 9ec29873's stray trailer); then attack the top hotspots: incremental reparse (reuse unchanged paragraphs by byte range), arena allocation for the AST, avoiding the output copy (write display-list frames directly), font metric caches, parallel page layout where semantics allow. Targets: warm single-keystroke edit on a 500KB document < 5 ms end-to-end in the compiler, HW1 full render < 20 ms, byte-identical output before/after (the render-pipeline incremental gate).",
+  "acceptance": [
+    "a docs/evidence/perf-<date>/ report with before/after numbers and flamegraphs",
+    "tools/typing-bench numbers on the Mac (mac-claude-a runs them) improve accordingly"
+  ],
+  "dependencies": [],
+  "input_main_sha": "591d86400dbdc81304b131c62c6db9a3b69a8a48",
+  "revision": 1,
+  "state": "assigned",
+  "timebox_minutes": 240,
+  "deadline_utc": null,
+  "updated_utc": "2026-09-13T04:38:21Z",
+  "notes": "MacTeX is available on this machine: use it as the oracle (pdflatex word positions / rasters), never in the product path. Report on GitHub issue #2 with SHAs and test counts at every checkpoint; ack with `python3 scripts/coord.py ack`."
+}

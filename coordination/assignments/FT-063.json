@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-063",
+  "title": "Real images and floats: \\includegraphics + figure/table placement",
+  "agent_id": "kabir-claude",
+  "machine": "mac-m5pro-kabir",
+  "allocation_id": "claude-max-20x-kabir",
+  "branch": "agent/kabir-claude/graphics-floats",
+  "owned_paths": [
+    "crates/compiler",
+    "crates/render-pipeline",
+    "protocol"
+  ],
+  "objective": "Extend display-list-v2 (docs/proposals) with an image item carrying a content hash + source path (bytes fetched by the consumer through project-files), implement \\includegraphics[width/height/scale/angle/keepaspectratio], PNG/JPEG/PDF (first page) sizing from headers, figure/table floats with htbp placement per LaTeX's float algorithm (top/bottom/here, \\caption numbering, \\label/\\ref), wrapfigure not required. Coordinate the contract with mac-claude-a (Mac painter + PDF export need image bytes).",
+  "acceptance": [
+    "contract proposal doc + implementation; 10 oracle fixtures within 1pt for float placement",
+    "Mac preview shows the images after the parent wires the consumer"
+  ],
+  "dependencies": [],
+  "input_main_sha": "591d86400dbdc81304b131c62c6db9a3b69a8a48",
+  "revision": 1,
+  "state": "assigned",
+  "timebox_minutes": 180,
+  "deadline_utc": null,
+  "updated_utc": "2026-09-13T04:38:21Z",
+  "notes": "MacTeX is available on this machine: use it as the oracle (pdflatex word positions / rasters), never in the product path. Report on GitHub issue #2 with SHAs and test counts at every checkpoint; ack with `python3 scripts/coord.py ack`."
+}

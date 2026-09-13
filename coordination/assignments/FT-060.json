@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-060",
+  "title": "HW2 math completion + \\mathcal from NewCMMath",
+  "agent_id": "kabir-claude",
+  "machine": "mac-m5pro-kabir",
+  "allocation_id": "claude-max-20x-kabir",
+  "branch": "agent/kabir-claude/hw2-math-final",
+  "owned_paths": [
+    "crates/compiler",
+    "crates/math-layout"
+  ],
+  "objective": "Land Daniel's agent/daniel-parent/hw2-math (b3d9664c, conflicts with 7a695a79 in protocol.rs/tests/lm_math_binding.rs) on current main, add \\mathcal{...} drawn from the bundled NewCMMath-Regular.otf (CM calligraphic design; apps/mac/Fonts, lm_math.rs binding pattern), \\Longrightarrow classified Rel (math-layout), \\varnothing width from msbm, then make fixtures/real-world/hw2/HW2.tex compile with 0 'not supported' errors through both crates/compiler and the Mac producer.",
+  "acceptance": [
+    "cargo test --release green in crates/compiler and crates/math-layout",
+    "HW2.tex through crates/compiler: 0 errors; through crates/render-pipeline (Mac producer, ask mac-claude-a to re-pin): 3 pages matching HW2-reference.pdf",
+    "oracle comparison via MacTeX pdflatex for each new symbol (word x within 0.5pt)"
+  ],
+  "dependencies": [],
+  "input_main_sha": "591d86400dbdc81304b131c62c6db9a3b69a8a48",
+  "revision": 1,
+  "state": "assigned",
+  "timebox_minutes": 90,
+  "deadline_utc": null,
+  "updated_utc": "2026-09-13T04:38:21Z",
+  "notes": "MacTeX is available on this machine: use it as the oracle (pdflatex word positions / rasters), never in the product path. Report on GitHub issue #2 with SHAs and test counts at every checkpoint; ack with `python3 scripts/coord.py ack`."
+}
