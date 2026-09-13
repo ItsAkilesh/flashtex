@@ -154,14 +154,14 @@ Full details: [Getting started](docs/user/README.md) and
 
 ## Quick start — CLI
 
-Render a `.tex` file to PDF (`--font-dir` is only needed for a source build;
-the app bundle and the CLI tarball find their fonts next to the binary):
+Render a `.tex` file to PDF. The app bundle and the CLI tarball find their
+fonts next to the binary; with a source build add `--font-dir apps/mac/Fonts`
+to every command below (both tools accept it, repeatably):
 
 ```sh
 flashtex-render --tex main.tex --pdf main.pdf                    # diagnostics on stderr, exit 0
 flashtex-render --tex main.tex --v2 main-v2.json --timing        # rendering-v2 display list + wall time
 flashtex-pdf-exact from-v2 main-v2.json --out main-exact.pdf     # exact PDF with embedded Latin Modern subsets
-flashtex-render --tex main.tex --pdf main.pdf --font-dir apps/mac/Fonts
 ```
 
 Without `--tex`, `flashtex-render` is a long-running **JSON Lines worker** —
