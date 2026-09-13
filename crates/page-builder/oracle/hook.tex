@@ -1,0 +1,23 @@
+% FlashTeX page-builder oracle hook, inserted by gen.py right after
+% \documentclass. \ftpbhuge selects the list-capture run.
+\makeatletter
+\showboxbreadth=1000000 \tracingonline=0
+\ifdefined\ftpbhuge
+  % Capture run: one page per forced break, inserts kept in \box255.
+  \setlength\textheight{8000pt}
+  \holdinginserts=1 \dimen\footins=\maxdimen
+  \showboxdepth=2
+\else
+  \tracingpages=1 \tracingoutput=1 \showboxdepth=4
+\fi
+\AddToHook{begindocument/end}{\typeout{FTPB-PARAMS
+  vsize=\the\vsize\space maxdepth=\the\maxdepth\space topskip=\the\topskip\space
+  colht=\the\@colht\space hsize=\the\hsize\space
+  splittopskip=\the\splittopskip\space splitmaxdepth=\the\splitmaxdepth\space
+  kludgeins=\number\@kludgeins\space footins=\number\footins\space
+  footcount=\the\count\footins\space footdimen=\the\dimen\footins\space
+  footskip=\the\skip\footins\space
+  ragged=\ifx\@textbottom\relax 0\else 1\fi}}
+\def\ftpb@out{\typeout{FTPB-OUT penalty=\the\outputpenalty}{\showboxdepth=\ifdefined\ftpbhuge 2\else 1\fi\relax\showbox255}}
+\output=\expandafter{\expandafter\ftpb@out\the\output}
+\makeatother
