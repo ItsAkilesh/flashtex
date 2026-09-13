@@ -659,10 +659,19 @@ fn compile(id: &str, payload: &Value) -> Value {
     // mark in the exported file. Silently substituting is what rev 4 forbids.
     let mut offenders: Vec<char> = Vec::new();
     let mut first_span = None;
+    let mut first_lm_math_span = None;
     for page in &pages {
         for item in &page.items {
             if capabilities.enabled.rules_v1 && item.rule.is_some() {
                 continue;
+            }
+            if first_lm_math_span.is_none()
+                && item
+                    .text
+                    .chars()
+                    .any(|c| crate::lm_math::advance(c).is_some())
+            {
+                first_lm_math_span = Some(item.span);
             }
             for c in crate::export::unrepresentable(&item.text) {
                 if !offenders.contains(&c) {
@@ -685,14 +694,11 @@ fn compile(id: &str, payload: &Value) -> Value {
             Some("the preview shows it correctly; the exported PDF will not".into()),
         ));
     }
-    if offenders
-        .iter()
-        .any(|c| crate::lm_math::advance(*c).is_some())
-    {
+    if let Some(span) = first_lm_math_span {
         diags.push(Diagnostic::warning(
             "blackboard bold, \\setminus and \\Longrightarrow use Latin Modern Math glyphs \
              (unicode-math design); their widths differ from pdfLaTeX's msbm10/cmsy10",
-            first_span,
+            Some(span),
             Some("drew the real glyphs; this is not pixel parity with pdfLaTeX".into()),
         ));
     }
