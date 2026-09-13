@@ -24,8 +24,11 @@
 //! Pages are white: the writer paints no background and takes no theme
 //! input. Coordinates are PDF user space (origin bottom-left, y up); the
 //! caller does any flip before handing operands over, so no arithmetic
-//! happens here. Alpha, shading, images and inline images are outside the
-//! bounded operator set and are reported as errors, never dropped.
+//! happens here. Image and form XObjects are painted with `/Name Do`
+//! against [`ExactDocument::images`] (`crate::images`); a page declares
+//! exactly the XObjects it paints. Alpha (ExtGState), shading and inline
+//! images are outside the bounded operator set and are reported as errors,
+//! never dropped.
 //!
 //! Output is deterministic: the same [`ExactDocument`] serialises to the
 //! same bytes (no timestamps, no `/ID`), which the tests check.
@@ -232,6 +235,8 @@ pub enum Op {
     TextMatrix([Decimal; 6]),
     ShowText(Vec<u8>),
     ShowTextArray(Vec<TjElement>),
+    /// `/Name Do`: paint an image or form XObject of the document.
+    Do(String),
 }
 
 impl Op {
@@ -271,6 +276,7 @@ impl Op {
             Op::TextMatrix(_) => "Tm",
             Op::ShowText(_) => "Tj",
             Op::ShowTextArray(_) => "TJ",
+            Op::Do(_) => "Do",
         }
     }
 
@@ -325,6 +331,11 @@ impl Op {
                 out.extend_from_slice(name.as_bytes());
                 out.push(b' ');
                 nums(out, std::slice::from_ref(size));
+            }
+            Op::Do(name) => {
+                out.push(b'/');
+                out.extend_from_slice(name.as_bytes());
+                out.push(b' ');
             }
             Op::ShowText(bytes) => {
                 write_literal(out, bytes);
@@ -755,6 +766,10 @@ fn build_op(name: &str, operands: &[Operand]) -> Result<Op, String> {
                 Op::ShowTextArray(elements)
             }
             _ => return Err("TJ takes exactly one array".into()),
+        },
+        "Do" => match operands {
+            [Operand::Name(n)] => Op::Do(n.clone()),
+            _ => return Err("Do takes one name".into()),
         },
         other => {
             return Err(format!(
@@ -1253,6 +1268,9 @@ pub struct ExactDocument {
     pub pages: Vec<ExactPage>,
     /// Font resources by name (the `Tf` operand without the slash).
     pub fonts: BTreeMap<String, ExactFont>,
+    /// Image and form XObjects by name (the `Do` operand without the
+    /// slash). A page declares exactly the ones its content paints.
+    pub images: BTreeMap<String, crate::images::ImageXObject>,
 }
 
 /// One glyph in a [`GlyphRun`].
@@ -1351,6 +1369,7 @@ fn validate(
     ops: &[Op],
     fonts: &BTreeMap<String, ExactFont>,
     page_fonts: Option<&[String]>,
+    images: &BTreeMap<String, crate::images::ImageXObject>,
 ) -> Result<(), ExactError> {
     let err = |op: usize, m: String| ExactError::Content {
         page: page_index + 1,
@@ -1459,6 +1478,17 @@ fn validate(
                     if let TjElement::Text(b) = e {
                         check_string(i, b, font)?;
                     }
+                }
+            }
+            Op::Do(name) => {
+                if in_text {
+                    return Err(err(i, "Do inside a text object".into()));
+                }
+                if has_path {
+                    return Err(err(i, "Do while a path is under construction".into()));
+                }
+                if !images.contains_key(name) {
+                    return Err(err(i, format!("XObject resource /{name} is not declared")));
                 }
             }
             Op::Move(..) => {
@@ -1588,6 +1618,21 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
         font_objects.insert(name, next);
         next += f.object_count();
     }
+    // Image XObjects follow the fonts, in resource-name order.
+    let mut image_objects: BTreeMap<&str, usize> = BTreeMap::new();
+    for (name, img) in &doc.images {
+        let valid = !name.is_empty()
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.');
+        if !valid || img.objects.is_empty() {
+            return Err(ExactError::Invalid(format!(
+                "XObject /{name}: resource names must be non-empty ASCII alphanumerics, '_', '-' or '.', and the resource needs at least one object"
+            )));
+        }
+        image_objects.insert(name, next);
+        next += img.objects.len();
+    }
     let mut page_resources: Vec<String> = Vec::with_capacity(page_count);
     for (i, page) in doc.pages.iter().enumerate() {
         let mut resources = String::from("/Font <<");
@@ -1619,14 +1664,23 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
     // Validate and serialise each page's content first so errors surface
     // before any object is written.
     let mut contents: Vec<Vec<u8>> = Vec::with_capacity(doc.pages.len());
+    let mut page_groups: Vec<bool> = Vec::with_capacity(doc.pages.len());
+    let used_xobjects = |ops: &[Op]| -> BTreeSet<String> {
+        ops.iter()
+            .filter_map(|op| match op {
+                Op::Do(n) => Some(n.clone()),
+                _ => None,
+            })
+            .collect()
+    };
     for (i, page) in doc.pages.iter().enumerate() {
-        let bytes = match &page.content {
+        let (bytes, xobjects) = match &page.content {
             Content::Ops(ops) => {
                 if ops.len() > MAX_OPERATORS {
                     return Err(ExactError::Limit("operators per page"));
                 }
-                validate(i, ops, &doc.fonts, page.fonts.as_deref())?;
-                serialize(ops)
+                validate(i, ops, &doc.fonts, page.fonts.as_deref(), &doc.images)?;
+                (serialize(ops), used_xobjects(ops))
             }
             Content::Verbatim(bytes) => {
                 let ops = parse(bytes).map_err(|e| match e {
@@ -1637,10 +1691,21 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
                     },
                     other => other,
                 })?;
-                validate(i, &ops, &doc.fonts, page.fonts.as_deref())?;
-                bytes.clone()
+                validate(i, &ops, &doc.fonts, page.fonts.as_deref(), &doc.images)?;
+                (bytes.clone(), used_xobjects(&ops))
             }
         };
+        let mut group = false;
+        if !xobjects.is_empty() {
+            let mut s = String::from(" /XObject <<");
+            for name in &xobjects {
+                let _ = write!(s, " /{name} {} 0 R", image_objects[name.as_str()]);
+                group |= doc.images[name].needs_page_group;
+            }
+            s.push_str(" >>");
+            page_resources[i].push_str(&s);
+        }
+        page_groups.push(group);
         contents.push(bytes);
     }
 
@@ -1663,11 +1728,16 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
         d.object(
             page_obj,
             format!(
-                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << {} >> /Contents {} 0 R >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << {} >> /Contents {} 0 R{} >>",
                 page.width,
                 page.height,
                 page_resources[i],
-                page_obj + 1
+                page_obj + 1,
+                if page_groups[i] {
+                    format!(" /Group {}", crate::images::PAGE_TRANSPARENCY_GROUP)
+                } else {
+                    String::new()
+                }
             )
             .as_bytes(),
         );
@@ -1675,6 +1745,16 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
     }
     for (name, f) in &doc.fonts {
         write_font(&mut d, font_objects[name.as_str()], f);
+    }
+    for (name, img) in &doc.images {
+        let base = image_objects[name.as_str()];
+        for (k, obj) in img.objects.iter().enumerate() {
+            let dict = crate::images::resolve_pieces(&obj.dict, base);
+            match &obj.stream {
+                Some(data) => d.stream_with(base + k, &dict, data),
+                None => d.object(base + k, dict.as_bytes()),
+            }
+        }
     }
     Ok(crate::PdfOutput {
         bytes: d.finish_with_info(3),
