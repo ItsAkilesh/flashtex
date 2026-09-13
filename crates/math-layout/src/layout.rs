@@ -101,6 +101,29 @@ fn is_glue(atom: &Atom) -> bool {
         && atom.subscript.is_none()
 }
 
+/// TeX §1186: when a math group closes holding exactly one ordinary atom
+/// without scripts, the group's nucleus is replaced by that atom's nucleus,
+/// so `{x}^2` and `\mathrm{K}^{-1}` place their scripts on a character
+/// (Rule 18a, `shift_up` starts at 0) and `\mathop{x}` centres a character
+/// on the axis (`make_op`), instead of treating a boxed sub-list. Glue is not
+/// a noad and blocks the replacement.
+fn unpacked(nucleus: &Nucleus) -> &Nucleus {
+    let mut n = nucleus;
+    while let Nucleus::List(list) = n {
+        match list.atoms.as_slice() {
+            [a] if a.class == AtomClass::Ord
+                && a.superscript.is_none()
+                && a.subscript.is_none()
+                && !matches!(a.nucleus, Nucleus::Glue { .. }) =>
+            {
+                n = &a.nucleus
+            }
+            _ => break,
+        }
+    }
+    n
+}
+
 impl Engine<'_> {
     fn params(&self, style: Style) -> MathParams {
         self.m.params(style.size_class())
@@ -145,14 +168,34 @@ impl Engine<'_> {
         g
     }
 
+    /// A character of the upright text family (`\fam0`) at this style's size.
+    fn text_char(&mut self, ch: char, style: Style) -> Option<Glyph> {
+        let g = self.m.text_glyph(ch, style.size_class());
+        if g.is_none() {
+            self.limitations.push(Limitation::MissingGlyph(ch));
+        }
+        g
+    }
+
     fn atom(&mut self, atom: &Atom, class: AtomClass, style: Style) -> MathBox {
         if class == AtomClass::Op {
             return self.make_op(atom, style);
         }
         // The nucleus, TeX's `delta` (italic correction still to be applied),
         // and whether the nucleus is a bare character (Rule 18a).
-        let (nucleus, delta, is_char) = match &atom.nucleus {
+        let (nucleus, delta, is_char) = match unpacked(&atom.nucleus) {
             Nucleus::Symbol(ch) => match self.glyph(*ch, style) {
+                Some(g) => {
+                    let b = MathBox::glyph(&g);
+                    if atom.subscript.is_none() && g.italic != 0.0 {
+                        (MathBox::hlist(vec![b, MathBox::kern(g.italic)]), 0.0, true)
+                    } else {
+                        (b, g.italic, true)
+                    }
+                }
+                None => (MathBox::empty(), 0.0, false),
+            },
+            Nucleus::TextChar(ch) => match self.text_char(*ch, style) {
                 Some(g) => {
                     let b = MathBox::glyph(&g);
                     if atom.subscript.is_none() && g.italic != 0.0 {
@@ -364,10 +407,14 @@ impl Engine<'_> {
             Limits::Limits => true,
             Limits::NoLimits => false,
         };
-        let (nucleus, delta) = match &atom.nucleus {
-            Nucleus::Symbol(ch) => {
-                let mut g = self.glyph(*ch, style);
-                if style.is_display()
+        let (nucleus, delta) = match unpacked(&atom.nucleus) {
+            n @ (Nucleus::Symbol(_) | Nucleus::TextChar(_)) => {
+                let mut g = match n {
+                    Nucleus::Symbol(ch) => self.glyph(*ch, style),
+                    Nucleus::TextChar(ch) => self.text_char(*ch, style),
+                    _ => None,
+                };
+                if let (true, Nucleus::Symbol(ch)) = (style.is_display(), n)
                     && let Some(large) = self.m.large_operator(*ch, style.size_class())
                 {
                     g = Some(large);
