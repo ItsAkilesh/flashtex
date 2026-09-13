@@ -7,7 +7,7 @@ Pencil sketches and photos into reviewed LaTeX/TikZ insertions.
 
 | Guide | What it covers |
 |---|---|
-| **This page** | Requirements, installing, a 5-minute first document |
+| **This page** | Requirements, installing, a 5-minute first document, a multi-file project from scratch in 4 steps |
 | [The Mac app](gui.md) | Workspace, projects and multi-file documents, editing and IntelliSense, compiling, the preview, the Problems panel and quick fixes, PDF export, capture conversion, the Nearby companion, Preferences, all keyboard shortcuts |
 | [FlashTeXPad for iPad](ipad.md) | What the capture companion does, building it on a device, pairing, sending a capture, limits |
 | [Command-line tools](compiler.md) | `flashtex-render`, `flashtex-compiler`, `flashtex-pdf`/`flashtex-pdf-exact`, fonts and metrics, building from source, **supported LaTeX**, diagnostic codes |
@@ -59,10 +59,12 @@ preferences are kept.
    header names it. *File › Attach Render Pipeline (Latin Modern)* (⌘⇧R)
    re-attaches it if you switched engines.
 
-2. **Open your document** with *File › Open LaTeX File…* (⌘O) and pick a
-   `.tex` file, or start typing in the sample. The file you open becomes the
-   project's entry document; files it pulls in with `\input`/`\include`
-   appear in the sidebar. Try this minimal document if you have none:
+2. **Create a project** with *File › New Project…* (⌘⌥N): choose a folder,
+   a name and a template (Blank article, Article with sections, Report with
+   chapters, Homework sheet). `main.tex` opens as the entry document and its
+   `\input`/`\include` members are in the sidebar. Or open an existing file
+   with *File › Open LaTeX File…* (⌘O) — it becomes the entry document. Try
+   this minimal document if you have none:
 
    ```latex
    \documentclass[11pt]{article}
@@ -90,6 +92,21 @@ preferences are kept.
    preview; *File › Export PDF…* (⌘⇧E) is the simpler CoreGraphics route.
    The dark-preview toggle only changes the on-screen colours — exports are
    always black on white.
+
+### A multi-file project from scratch, in 4 steps
+
+1. *File › New Project…* (⌘⌥N) → pick a folder, name it, choose **Article
+   with sections** → Create. `main.tex`, `sections/introduction.tex` and
+   `sections/methods.tex` are written and opened.
+2. Press ⌘N (or the sidebar's **+**), type `sections/results`, keep **Insert
+   `\input` at the caret** checked → Create. `\input{sections/results}` lands
+   at the caret in `main.tex` (⌘Z undoes it) and the new file opens in a tab.
+3. Or type `\input{sections/discussion}` yourself: the sidebar shows
+   `sections/discussion.tex` as **missing — create**; click it (or the
+   *Create sections/discussion.tex* button on the Problems row after a compile).
+4. Right-click a member in the sidebar for **Rename…** (references in open
+   documents are rewritten, one undoable edit each) or **Delete…** (to the
+   Trash). ⌘S saves each file to its own path.
 
 Next: read [the Mac app guide](gui.md) for projects, IntelliSense, the AI
 capture conversion and the full shortcut table, and [Supported LaTeX](compiler.md#supported-latex)

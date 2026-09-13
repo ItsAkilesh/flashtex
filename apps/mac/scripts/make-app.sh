@@ -7,7 +7,7 @@
 # with `open` and eventually granted such permissions.
 #
 # Usage: apps/mac/scripts/make-app.sh [--debug] [--version <x.y.z>] [--helper-root <repo>]
-#          [--compiler <path>] [--pdf <path>] [--bridge <path>] [--ledger <path>]
+#          [--cli <path>] [--compiler <path>] [--pdf <path>] [--bridge <path>] [--ledger <path>]
 #          [--render <path>] [--pdf-exact <path>] [--controller <path>] [--project-files <path>]
 #          [--explain <path>] [--source-sha <key>=<sha>]
 #          [--sign <identity>] [--entitlements <file>] [--notarize <keychain-profile>]
@@ -69,6 +69,7 @@ DO_DMG=0
 # The bridge is additionally built on demand when missing (see below); the
 # others are optional and skipped when not built or passed.
 HELPER_TABLE=(
+  "cli|flashtex|flashtex-cli|--cli"
   "compiler|flashtex-compiler|compiler|--compiler"
   "pdf|flashtex-pdf|pdf|--pdf"
   "bridge|flashtex-bridge|bridge|--bridge"
@@ -126,7 +127,7 @@ while [[ $# -gt 0 ]]; do
       APP_VERSION="${2:?--version needs x.y.z}"
       shift 2
       ;;
-    --compiler|--pdf|--bridge|--ledger|--render|--pdf-exact|--controller|--project-files|--explain)
+    --cli|--compiler|--pdf|--bridge|--ledger|--render|--pdf-exact|--controller|--project-files|--explain)
       key="$(helper_key_for_flag "$1")"
       HELPER_OVERRIDES+=("$key=${2:-}")
       shift 2

@@ -1,0 +1,46 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.65em}
+
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\R}{\mathbb{R}}
+
+\begin{document}
+\pagestyle{empty}
+
+\section*{The Chain Rule}
+
+\textbf{Theorem.} Let $U \subseteq \R^n$ and $V \subseteq \R^m$ be open, let $g : U \to V$ be differentiable at $a \in U$ and let $f : V \to \R^p$ be differentiable at $b = g(a)$. Then $f \circ g$ is differentiable at $a$ and $D(f \circ g)(a) = Df(b) \circ Dg(a)$.
+
+\textbf{Proof.} Write $L_g = Dg(a)$ and $L_f = Df(b)$. By differentiability of $g$ at $a$ we have $g(a+h) = g(a) + L_g(h) + E_g(h)$ where $\lim_{h\to 0} |E_g(h)|/|h| = 0$. Let $k(h) = L_g(h) + E_g(h)$. Then $f(g(a+h)) = f(b+k(h)) = f(b) + L_f(k(h)) + E_f(k(h))$, so that $f(g(a+h)) - f(g(a)) - L_f(L_g(h)) = L_f(E_g(h)) + E_f(k(h))$. Since $L_f$ is linear it is bounded, say $|L_f(v)| \le \|L_f\|_{\mathrm{op}} |v|$ for all $v \in \R^m$, hence $|L_f(E_g(h))|/|h| \le \|L_f\|_{\mathrm{op}} |E_g(h)|/|h| \to 0$ as $h \to 0$. For the second term, $|k(h)| \le \|L_g\|_{\mathrm{op}} |h| + |E_g(h)| \le (\|L_g\|_{\mathrm{op}} + 1)|h|$ for $|h|$ small, and $E_f(k)/|k| \to 0$ as $k \to 0$, so $|E_f(k(h))|/|h| \le (\|L_g\|_{\mathrm{op}} + 1) |E_f(k(h))|/|k(h)| \to 0$ as well (with the convention $E_f(0)/|0| = 0$). Therefore $f \circ g$ is differentiable at $a$ with derivative $L_f \circ L_g$.
+
+\section*{Sequences and series}
+
+Let $(a_n)_{n \in \N}$ be a sequence of real numbers with $a_n \to a$ and let $(b_n)_{n \in \N}$ satisfy $|b_n - b| \le 2^{-n}$ for every $n \ge n_0$. Then $a_n + b_n \to a + b$, $a_n b_n \to ab$ and, provided $b \ne 0$ and $b_n \ne 0$ for all $n$, $a_n / b_n \to a/b$; moreover $\sup_{n \ge N} |a_n - a| \to 0$ and $\inf_{n \ge N} a_n \to a$ as $N \to \infty$, and if $a_n \le c_n \le b_n$ for all $n \ge n_1$ with $b_n \to a$ then $c_n \to a$ too. If in addition $\sum_{n=1}^{\infty} |a_n - a| < \infty$ then $\sum_{n=1}^{N} (a_n - a) \to s$ for some $s \in \R$ with $|s| \le \sum_{n=1}^{\infty} |a_n - a|$, and $\sum_{n=1}^{N} a_n - Na \to s$ as $N \to \infty$.
+
+\section*{Linear maps}
+
+Let $T : \R^n \to \R^m$ be linear with matrix $A = (a_{ij})$ so that $T(e_j) = \sum_{i=1}^{m} a_{ij} e_i$ for $1 \le j \le n$. For $x = \sum_{j} x_j e_j$ we obtain $T(x) = \sum_{i=1}^{m} \bigl( \sum_{j=1}^{n} a_{ij} x_j \bigr) e_i$ and hence $|T(x)| \le \sum_{i,j} |a_{ij}| |x_j| \le \bigl( \sum_{i,j} |a_{ij}| \bigr) |x|$, which shows $\|T\|_{\mathrm{op}} \le \sum_{i,j} |a_{ij}| < \infty$; conversely $\|T\|_{\mathrm{op}} \ge |T(e_j)| = |(a_{1j}, \dots, a_{mj})| \ge |a_{ij}|$ for every $i$ and $j$, so $\max_{i,j} |a_{ij}| \le \|T\|_{\mathrm{op}} \le mn \max_{i,j} |a_{ij}|$. The kernel $\ker T = \{x \in \R^n : T(x) = 0\}$ and the image $T(\R^n) = \{T(x) : x \in \R^n\}$ satisfy $\dim \ker T + \dim T(\R^n) = n$, and $T$ is injective if and only if $\ker T = \{0\}$, if and only if $|T(x)| \ge c|x|$ for some $c > 0$ and all $x \in \R^n$.
+
+\section*{Number theory}
+
+For $a, b \in \Z$ not both zero let $d = \gcd(a, b)$. Then there exist $u, v \in \Z$ with $au + bv = d$, and $d \mid c$ whenever $c \in \Z$ satisfies $c = ax + by$ for some $x, y \in \Z$; in particular $\{ax + by : x, y \in \Z\} = d\Z$. If $p$ is prime and $p \mid ab$ then $p \mid a$ or $p \mid b$, because otherwise $\gcd(p, a) = \gcd(p, b) = 1$ gives $1 = pu_1 + av_1 = pu_2 + bv_2$ and multiplying yields $1 = p(pu_1u_2 + au_2v_1 + bu_1v_2) + ab v_1 v_2 \equiv 0 \pmod p$, a contradiction. Consequently every $n \ge 2$ factors as $n = p_1^{e_1} p_2^{e_2} \cdots p_k^{e_k}$ with $p_1 < p_2 < \cdots < p_k$ prime and $e_i \ge 1$, uniquely, and $\tau(n) = (e_1 + 1)(e_2 + 1) \cdots (e_k + 1)$, $\sigma(n) = \prod_{i=1}^{k} (p_i^{e_i+1} - 1)/(p_i - 1)$ and $\varphi(n) = n \prod_{i=1}^{k} (1 - 1/p_i)$.
+
+\section*{Continuity and compactness}
+
+Suppose $K \subseteq \R^n$ is compact and $f : K \to \R$ is continuous. Then $f$ is bounded and attains its bounds: there are $x_0, x_1 \in K$ with $f(x_0) \le f(x) \le f(x_1)$ for all $x \in K$. Indeed, choose $x_k \in K$ with $f(x_k) \to \sup_K f \in (-\infty, +\infty]$; by compactness a subsequence $x_{k_j} \to x_1 \in K$, and continuity gives $f(x_1) = \lim_{j \to \infty} f(x_{k_j}) = \sup_K f < \infty$. Moreover $f$ is uniformly continuous: for every $\varepsilon > 0$ there is $\delta > 0$ such that $|f(x) - f(y)| < \varepsilon$ whenever $x, y \in K$ and $|x - y| < \delta$, since otherwise we would find $x_k, y_k \in K$ with $|x_k - y_k| < 1/k$ but $|f(x_k) - f(y_k)| \ge \varepsilon$, and passing to a subsequence $x_{k_j} \to z$, $y_{k_j} \to z$ would contradict $f(x_{k_j}) - f(y_{k_j}) \to f(z) - f(z) = 0$.
+
+\section*{Inequalities}
+
+For $x, y \ge 0$ and $p, q > 1$ with $1/p + 1/q = 1$ we have $xy \le x^p/p + y^q/q$ (Young), hence for $u, v \in \R^n$ the estimate $\sum_{i=1}^{n} |u_i v_i| \le \bigl( \sum_{i=1}^{n} |u_i|^p \bigr)^{1/p} \bigl( \sum_{i=1}^{n} |v_i|^q \bigr)^{1/q}$ (H\"older), and with $p = q = 2$ the Cauchy--Schwarz inequality $|\langle u, v \rangle| \le |u| \, |v|$, with equality if and only if $u$ and $v$ are linearly dependent. From it, $|u + v|^2 = |u|^2 + 2\langle u, v \rangle + |v|^2 \le |u|^2 + 2|u||v| + |v|^2 = (|u| + |v|)^2$, which is the triangle inequality $|u + v| \le |u| + |v|$, and also $\bigl| |u| - |v| \bigr| \le |u - v|$, so that $x \mapsto |x|$ is $1$-Lipschitz and in particular continuous on $\R^n$.
+
+\end{document}

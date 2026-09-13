@@ -370,6 +370,85 @@ impl TrueTypeFont {
     }
 }
 
+impl TrueTypeFont {
+    /// Builds a subset that **keeps glyph ids in place**: glyphs `0..=max`
+    /// (where `max` is the highest requested or component glyph id) are
+    /// all present, the requested ones and their composite components with
+    /// their original outlines and metrics, every other one as an empty
+    /// glyph. Composite references therefore need no renumbering and a
+    /// `/CIDToGIDMap /Identity` CID font selects glyphs by the font's own
+    /// ids. The trailing unused glyphs are dropped, so `maxp.numGlyphs`
+    /// becomes `max + 1`.
+    pub fn subset_keep_gids(
+        &self,
+        gids: &std::collections::BTreeSet<u16>,
+    ) -> Result<Vec<u8>, String> {
+        if self.outlines != Outlines::TrueType {
+            return Err("only glyf outlines can be subset in place".into());
+        }
+        let mut wanted = std::collections::BTreeSet::new();
+        wanted.insert(0u16);
+        let mut stack: Vec<u16> = gids.iter().copied().collect();
+        while let Some(g) = stack.pop() {
+            if g >= self.num_glyphs {
+                return Err(format!("glyph {g} out of range"));
+            }
+            if !wanted.insert(g) {
+                continue;
+            }
+            for part in composite_components(self.glyph_data(g))? {
+                stack.push(part.gid);
+            }
+        }
+        let n = *wanted.iter().max().expect("has .notdef") as usize + 1;
+        let mut glyf = Vec::new();
+        let mut loca = Vec::with_capacity(n + 1);
+        let mut hmtx = Vec::with_capacity(4 * n);
+        for g in 0..n as u16 {
+            loca.push(glyf.len() as u32);
+            let (adv, lsb) = self.metrics[g as usize];
+            if wanted.contains(&g) {
+                glyf.extend_from_slice(self.glyph_data(g));
+                while glyf.len() % 4 != 0 {
+                    glyf.push(0);
+                }
+            }
+            // Metrics are kept for every glyph so /W stays truthful; an
+            // unused glyph simply has an empty outline.
+            hmtx.extend_from_slice(&adv.to_be_bytes());
+            hmtx.extend_from_slice(&lsb.to_be_bytes());
+        }
+        loca.push(glyf.len() as u32);
+        let loca_bytes: Vec<u8> = loca.iter().flat_map(|o| o.to_be_bytes()).collect();
+        let src = |tag: &[u8; 4]| -> Vec<u8> {
+            let (o, l) = self.tables[tag];
+            self.data[o..o + l].to_vec()
+        };
+        let mut head = src(b"head");
+        head[8..12].copy_from_slice(&[0; 4]);
+        head[50..52].copy_from_slice(&1i16.to_be_bytes());
+        let mut hhea = src(b"hhea");
+        hhea[34..36].copy_from_slice(&(n as u16).to_be_bytes());
+        let mut maxp = src(b"maxp");
+        maxp[4..6].copy_from_slice(&(n as u16).to_be_bytes());
+        let mut out_tables: Vec<([u8; 4], Vec<u8>)> = vec![
+            (*b"head", head),
+            (*b"hhea", hhea),
+            (*b"maxp", maxp),
+            (*b"hmtx", hmtx),
+            (*b"loca", loca_bytes),
+            (*b"glyf", glyf),
+        ];
+        for tag in COPIED_IF_PRESENT {
+            if self.tables.contains_key(tag) {
+                out_tables.push((*tag, src(tag)));
+            }
+        }
+        out_tables.sort_by_key(|t| t.0);
+        Ok(write_sfnt(&out_tables))
+    }
+}
+
 struct Component {
     gid: u16,
     /// Byte offset of the component's glyph index within the glyph data.

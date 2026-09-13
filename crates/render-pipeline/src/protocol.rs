@@ -80,6 +80,53 @@ fn result_envelope(id: &str, payload: Value) -> Value {
     v
 }
 
+/// The runtime-v1 worker loop: requests on `input`, one reply per line on
+/// `output` (plus the `display_list` line when negotiated), until EOF or a
+/// write failure. A block cache lives across requests so a keystroke
+/// retypesets only the paragraph it touched. `on_rendered` sees each
+/// request's id and render after its reply was flushed (`--v2`/`--pdf`
+/// side outputs). Malformed and oversized lines are answered with the
+/// compiler's error envelopes, never dropped. Read errors are returned.
+pub fn serve<R: std::io::BufRead, W: std::io::Write>(
+    input: &mut R,
+    output: &mut W,
+    fonts: &FontSet,
+    options: &RenderOptions,
+    mut on_rendered: impl FnMut(&str, &Rendered),
+) -> std::io::Result<()> {
+    use flashtex_compiler::protocol::{read_request_line, RequestLine};
+    let cache = RenderCache::new();
+    let error = |code: &str, msg: &str| Reply {
+        line: json::write(&error_envelope("", code, msg)),
+        extra_lines: Vec::new(),
+        rendered: None,
+        id: String::new(),
+    };
+    loop {
+        let reply = match read_request_line(input)? {
+            Some(RequestLine::Data(bytes)) => match std::str::from_utf8(&bytes) {
+                Ok(line) if line.trim().is_empty() => continue,
+                Ok(line) => handle_line(line, fonts, options, Some(&cache)),
+                Err(_) => error("invalid_utf8", "request line is not valid UTF-8"),
+            },
+            Some(RequestLine::TooLarge) => error("payload_too_large", &format!("line exceeds the {MAX_LINE_BYTES}-byte limit")),
+            None => return Ok(()),
+        };
+        if writeln!(output, "{}", reply.line).is_err() {
+            return Ok(());
+        }
+        for extra in &reply.extra_lines {
+            if writeln!(output, "{extra}").is_err() {
+                return Ok(());
+            }
+        }
+        let _ = output.flush();
+        if let Some(r) = &reply.rendered {
+            on_rendered(&reply.id, r);
+        }
+    }
+}
+
 /// Handles one request line.
 pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions, cache: Option<&RenderCache>) -> Reply {
     let err = |id: &str, code: &str, msg: &str| Reply {

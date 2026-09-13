@@ -195,6 +195,21 @@ pub struct MathRec {
     /// Empty until the compiler reports colour ranges (#150/#158).
     #[cfg(feature = "math-glyph-spans")]
     pub span_paints: Vec<(std::ops::Range<usize>, Paint)>,
+    /// Where a paragraph may break inside this text-style formula: TeX
+    /// §760/§767 inserts `\binoppenalty` (700) after a Bin atom and
+    /// `\relpenalty` (500) after a Rel atom (never when the next noad is a
+    /// Rel, never after the last one), and only at the top level: a
+    /// `\left...\right` body, a fraction or a script is packed by
+    /// `clean_box` without penalties. Each entry is the index of the
+    /// atom's box among `root`'s children (the root is flattened to one
+    /// hbox when this is non-empty) and the penalty; `Context::math_pieces`
+    /// cuts the formula there into consecutive boxes. Empty for display
+    /// math and once the pieces are cut.
+    pub inline_breaks: Vec<(usize, i32)>,
+    /// A piece cut from the formula before it (`math_pieces`): its glyph
+    /// runs continue the previous piece's items when they land on the
+    /// same line, so an unbroken formula assembles exactly as one box.
+    pub continues: bool,
 }
 
 impl MathRec {
@@ -1137,6 +1152,10 @@ impl<'a> Context<'a> {
         let (text_runs, notices) = text_metrics.finish();
         crate::mathtext::substitute_grids(&mut laid.root, &grid_boxes);
         crate::mathtext::substitute(&mut laid.root, &text_runs);
+        // Text-style formulas in a paragraph break after top-level Bin/Rel
+        // atoms; a formula holding a grid stays one box.
+        let kerned = !(ml_lists.len() == 1 && segments[0].1.is_none());
+        let inline_breaks = if display || has_grid || !inline_math_breaks_enabled() { Vec::new() } else { inline_break_points(&mut laid.root, &ml_lists, kerned) };
         for text in &sink.refused {
             let src = self.source(span);
             self.emit(
@@ -1239,10 +1258,85 @@ impl<'a> Context<'a> {
             raise: 0.0,
             #[cfg(feature = "math-glyph-spans")]
             span_paints: Vec::new(),
+            inline_breaks,
+            continues: false,
         });
         let idx = self.maths.len() - 1;
         self.recs.push(BoxRec::Math(idx));
         Some(self.recs.len() - 1)
+    }
+
+    /// The paragraph items of an inline formula: one box, or, at each of
+    /// its `inline_breaks`, the box up to the Bin/Rel atom, the penalty
+    /// TeX puts after that atom, then the glue after it (the inter-atom
+    /// spacing, plus any explicit kern) and the next box. A break taken at
+    /// the penalty discards the glue, so the line ends after the operator;
+    /// with no break, the pieces sit exactly where the one box's children
+    /// did. The first piece keeps `rec`; the others are new records that
+    /// `continues` the piece before them.
+    fn math_pieces(&mut self, rec: usize, size: f64, span: Span) -> Vec<(pl::Item, Option<usize>)> {
+        let BoxRec::Math(mi) = self.recs[rec] else { unreachable!() };
+        let breaks = std::mem::take(&mut self.maths[mi].inline_breaks);
+        if breaks.is_empty() {
+            return vec![(pl::Item::Box(math_run(&self.maths[mi].root, size, span)), Some(rec))];
+        }
+        let ml::BoxKind::HBox(children) = &self.maths[mi].root.kind else {
+            return vec![(pl::Item::Box(math_run(&self.maths[mi].root, size, span)), Some(rec))];
+        };
+        let units: Vec<ml::MathBox> = children.iter().map(|c| c.content.clone()).collect();
+        let discardable = |b: &ml::MathBox| matches!(b.kind, ml::BoxKind::Glue { .. } | ml::BoxKind::Kern);
+        // (piece, penalty and glue after it)
+        let mut pieces: Vec<(ml::MathBox, Option<(i32, pl::Glue)>)> = Vec::new();
+        let mut start = 0usize;
+        for (last, penalty) in breaks {
+            if last < start || last >= units.len() {
+                continue;
+            }
+            let piece = ml::MathBox::hlist(units[start..=last].to_vec());
+            let mut next = last + 1;
+            let mut glue = pl::Glue::fixed(0.0);
+            while next < units.len() && discardable(&units[next]) {
+                let u = &units[next];
+                glue.width += u.width;
+                // plain.tex: `\thickmuskip=5mu plus 5mu`, `\medmuskip=4mu
+                // plus 2mu minus 4mu`, `\thinmuskip=3mu`; a kern is fixed.
+                if let ml::BoxKind::Glue { mu, .. } = u.kind {
+                    if mu >= 5.0 {
+                        glue.stretch += u.width;
+                    } else if mu >= 4.0 {
+                        glue.stretch += u.width / 2.0;
+                        glue.shrink += u.width;
+                    }
+                }
+                next += 1;
+            }
+            pieces.push((piece, Some((penalty, glue))));
+            start = next;
+        }
+        if start < units.len() {
+            pieces.push((ml::MathBox::hlist(units[start..].to_vec()), None));
+        }
+        let mut out = Vec::with_capacity(pieces.len() * 3);
+        for (i, (piece, after)) in pieces.into_iter().enumerate() {
+            let piece_rec = if i == 0 {
+                self.maths[mi].root = piece;
+                rec
+            } else {
+                let mut m = self.maths[mi].clone();
+                m.root = piece;
+                m.continues = true;
+                self.maths.push(m);
+                self.recs.push(BoxRec::Math(self.maths.len() - 1));
+                self.recs.len() - 1
+            };
+            let BoxRec::Math(pm) = self.recs[piece_rec] else { unreachable!() };
+            out.push((pl::Item::Box(math_run(&self.maths[pm].root, size, span)), Some(piece_rec)));
+            if let Some((penalty, glue)) = after {
+                out.push((pl::Item::penalty(penalty), None));
+                out.push((pl::Item::Glue(glue), None));
+            }
+        }
+        out
     }
 
     /// A formula holding a top-level grid: the top-level atoms are split
@@ -1788,10 +1882,9 @@ impl<'a> Context<'a> {
                 }
                 AItem::Math { list, span } => {
                     if let Some(rec) = self.math_box_sized(list, *span, false, size) {
-                        let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
-                        let root = &self.maths[*mi].root;
-                        let run = math_run(root, size, *span);
-                        push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                        for (item, rec) in self.math_pieces(rec, size, *span) {
+                            push(&mut out, &mut recs, item, rec);
+                        }
                     }
                 }
                 AItem::LineBreak { skip_pt } => {
@@ -5553,6 +5646,98 @@ fn layout_kerned(runs: &[ml::MathList], glue: &[Option<f64>], style: ml::Style, 
     }
 }
 
+/// `FLASHTEX_INLINE_MATH_BREAKS=0` keeps every inline formula one
+/// unbreakable box (the behaviour before break points existed), for the
+/// tests that compare the two and for bisecting a layout difference.
+fn inline_math_breaks_enabled() -> bool {
+    !std::env::var_os("FLASHTEX_INLINE_MATH_BREAKS").is_some_and(|v| v == "0")
+}
+
+/// The paragraph break points of a text-style formula (tex.web §760,
+/// §767: `\binoppenalty` after a Bin atom, `\relpenalty` after a Rel
+/// atom, unless the atom is the formula's last noad or the next noad is a
+/// Rel; glue counts as a next noad). `runs` are the kern-split lists the
+/// formula was laid out from and `root` their layout: one hlist when
+/// `!kerned` (`layout_with_report`), else `layout_kerned`'s hbox of run
+/// hlists joined by kerns. Rules 5/6 run per run, as the layout did.
+///
+/// With break points, `root` is flattened to one hbox of the runs'
+/// children and the kerns (all on the baseline, so the pieces re-hbox
+/// without a shift) and each entry is the index of the Bin/Rel atom's box
+/// among those children. Math-layout's `list` emits, per non-glue atom,
+/// the inter-atom glue (when Rule 20 gives any) then the atom's box, and
+/// one glue box per glue atom, so the boxes are paired with the atoms by
+/// walking both.
+fn inline_break_points(root: &mut ml::MathBox, runs: &[ml::MathList], kerned: bool) -> Vec<(usize, i32)> {
+    use ml::AtomClass::{Bin, Rel};
+    let is_glue_atom = |a: &ml::Atom| matches!(a.nucleus, ml::Nucleus::Glue { .. }) && a.superscript.is_none() && a.subscript.is_none();
+    let ml::BoxKind::HBox(children) = &root.kind else { return Vec::new() };
+    // The runs' children in order, and each run's range in them.
+    let mut units: Vec<ml::MathBox> = Vec::new();
+    let mut run_ranges: Vec<(usize, usize)> = Vec::new();
+    if kerned {
+        let mut ci = 0usize;
+        for _ in runs {
+            let start = units.len();
+            let Some(ml::BoxKind::HBox(run_children)) = children.get(ci).map(|c| &c.content.kind) else { return Vec::new() };
+            units.extend(run_children.iter().map(|c| c.content.clone()));
+            run_ranges.push((start, units.len()));
+            ci += 1;
+            if let Some(kern) = children.get(ci) {
+                units.push(kern.content.clone());
+                ci += 1;
+            }
+        }
+    } else {
+        units.extend(children.iter().map(|c| c.content.clone()));
+        run_ranges.push((0, units.len()));
+    }
+    let mut breaks = Vec::new();
+    for (r, l) in runs.iter().enumerate() {
+        let classes = ml::layout::effective_classes(&l.atoms);
+        let (start, end) = run_ranges[r];
+        let mut ci = start;
+        for (i, (atom, class)) in l.atoms.iter().zip(&classes).enumerate() {
+            if is_glue_atom(atom) {
+                ci += 1;
+                continue;
+            }
+            if matches!(units.get(ci).map(|u| &u.kind), Some(ml::BoxKind::Glue { .. })) {
+                ci += 1;
+            }
+            let at = ci;
+            ci += 1;
+            let next = l.atoms.get(i + 1);
+            let has_next = next.is_some() || r + 1 < runs.len();
+            let next_rel = next.is_some_and(|n| n.class == Rel && !is_glue_atom(n));
+            let penalty = match class {
+                Bin if has_next && !next_rel => Some(700),
+                Rel if has_next && !next_rel => Some(500),
+                _ => None,
+            };
+            // `\medmuskip`/`\thickmuskip` after this atom stretch and shrink
+            // with the line (`4mu plus 2mu minus 4mu`, `5mu plus 5mu`): the
+            // formula is cut there too, with no break allowed unless the
+            // atom carries a penalty.
+            let stretchy_glue_next = matches!(units.get(ci).map(|u| &u.kind), Some(ml::BoxKind::Glue { mu, .. }) if *mu >= 4.0);
+            if let Some(penalty) = penalty {
+                breaks.push((at, penalty));
+            } else if stretchy_glue_next {
+                breaks.push((at, pl::INFINITE_PENALTY));
+            }
+        }
+        // The walk must land on the run's end, else the pairing is off and
+        // the formula stays one box.
+        if ci != end {
+            return Vec::new();
+        }
+    }
+    if !breaks.is_empty() {
+        *root = ml::MathBox::hlist(units);
+    }
+    breaks
+}
+
 /// One top-level part of a formula holding a grid (see
 /// `Context::grid_formula`): a run for math-layout, a kern in ems, or an
 /// `array`/`cases`/matrix grid with its cells already converted.
@@ -8133,6 +8318,23 @@ fn math_items(
     // Group consecutive glyphs of one face, size and paint into a run; each
     // glyph is a cluster.
     let mut current: Option<GlyphRun> = None;
+    // A piece cut from the formula before it (`math_pieces`), on the same
+    // line: its glyphs go on before the rules that piece appended (one
+    // box's rules follow all its glyph runs) and continue its last run
+    // when the face and size match, as one box would have grouped them.
+    let mut tail: Vec<display::Item> = Vec::new();
+    if m.continues {
+        let own = Provenance::Source(src.clone());
+        while matches!(items.last(), Some(display::Item::Rule(r)) if r.provenance == own) {
+            tail.push(items.pop().expect("checked"));
+        }
+        tail.reverse();
+        if matches!(items.last(), Some(display::Item::GlyphRun(r)) if r.role == display::RunRole::Math) {
+            if let Some(display::Item::GlyphRun(r)) = items.pop() {
+                current = Some(r);
+            }
+        }
+    }
     let flush = |current: &mut Option<GlyphRun>, items: &mut Vec<display::Item>| {
         if let Some(r) = current.take() {
             if !r.glyphs.is_empty() {
@@ -8270,6 +8472,7 @@ fn math_items(
         });
     }
     flush(&mut current, items);
+    items.extend(tail);
     for rule in &flat.rules {
         if rule.w <= 0.0 || rule.h <= 0.0 {
             continue;

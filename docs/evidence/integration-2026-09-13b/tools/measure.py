@@ -23,7 +23,11 @@ if ref:
     for n in ('HW1', 'HW2'):
         for _ in range(2):
             subprocess.run([PDFLATEX, '-interaction=batchmode', n + '.tex'], cwd=O + '/ref', env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-env = dict(os.environ, FLASHTEX_FONT_DIRS=R + '/apps/mac/Fonts')
+# Respect an exported font environment (fontenv-nixos.sh); only fall back
+# to the bundled outlines when the caller set nothing. Overriding it here
+# is how the oracle harnesses used to discard a correct configuration.
+env = dict(os.environ)
+env.setdefault('FLASHTEX_FONT_DIRS', R + '/apps/mac/Fonts')
 for h in ('hw1/HW1', 'hw2/HW2'):
     n = h.split('/')[1]
     with open(f'{O}/ours/{n}.out', 'w') as out:

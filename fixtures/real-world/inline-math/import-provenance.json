@@ -1,0 +1,20 @@
+{
+  "source_commit": "bffd168a",
+  "files": {
+    "main.tex": {
+      "bytes": 5574,
+      "sha256": "2c8b2d6ac1ccdd52a3864046a7344a3b9121373d0674004d9557dc9b3ed24ae6"
+    },
+    "reference.pdf": {
+      "bytes": 240439,
+      "sha256": "19ea5419044c7053fa63b483afab39d020eaae2bb66b6efa13372b4ac570c0e2"
+    }
+  },
+  "scope": "Fixture written by lane mac-inline-math-breaks (Claude Code subagent, parent mac-claude-a, mac-m1max-a) from the user's bug report: the Chain Rule theorem/proof paragraph whose inline math ran off the right margin, plus five paragraphs of dense inline math. The reference PDF was generated on this Mac with MacTeX 2026 (pdfTeX 3.141592653-2.6-1.40.29, TeX Live 2026): SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1 pdflatex -interaction=nonstopmode '\\pdfcompresslevel=0\\pdfobjcompresslevel=0\\input{main.tex}', two passes, no overfull or underfull boxes in the log. pdflatex is an oracle only; the import establishes the fixture and its reference, not rendering parity.",
+  "reference_pdf_metadata": {
+    "pages": 2,
+    "page_size": "612 x 792 pt",
+    "producer": "pdfTeX-1.40.29",
+    "scope": "content-stream metadata only; word geometry is extracted by crates/render-pipeline/tools/inline-math-oracle/generate.py into crates/render-pipeline/fixtures/inline-math/expected.txt"
+  }
+}

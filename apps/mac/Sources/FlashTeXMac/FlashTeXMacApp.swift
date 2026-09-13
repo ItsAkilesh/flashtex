@@ -204,6 +204,11 @@ struct FlashTeXMacApp: App {
                 Button("Durable History…") { openWindow(id: EditHistoryPanel.windowID) } // EditHistoryPanel.swift
             }
             CommandGroup(replacing: .newItem) {
+                Button("New Project…") { model.scaffold.presentNewProject() } // ProjectScaffoldViews.swift
+                    .keyboardShortcut("n", modifiers: [.command, .option]) // ⌘⇧N is Nearby Companion
+                Button("New File…") { model.scaffold.presentNewFile() }
+                    .keyboardShortcut("n")
+                    .disabled(model.project.projectRoot == nil)
                 Button("Open LaTeX File…") { model.openTexPanel() }
                     .keyboardShortcut("o")
                 Button("Save") { model.saveTexInteractive() }

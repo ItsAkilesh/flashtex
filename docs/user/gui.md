@@ -45,23 +45,68 @@ text says so.
 
 ## Projects and multi-file documents
 
-There is no "New project" command: a project is simply a `.tex` file and the
-folder it lives in.
+A project is a folder with an **entry document** (`main.tex`) and the files it
+pulls in with `\input{…}` / `\include{…}`. You can start one from scratch
+without leaving the app, or open an existing `.tex` file.
+
+### Creating a project from scratch
+
+1. **File › New Project…** (⌘⌥N). Choose the folder the project folder goes
+   in, type a name, and pick a template:
+   - **Blank article** — `main.tex` only.
+   - **Article with sections** — `main.tex` plus `sections/introduction.tex`
+     and `sections/methods.tex` via `\input`.
+   - **Report with chapters** — `report` class, `chapters/introduction.tex`
+     and `chapters/background.tex` via `\include`.
+   - **Homework sheet** — the problem-sheet preamble (geometry, amsmath,
+     amssymb, amsthm, enumitem, `\N`/`\Z`/`\Q`/`\R`) with a
+     `\problem{n}{points}` macro.
+
+   The files are written to `<folder>/<name>/`, `main.tex` opens as the entry
+   document and the include tree is in the sidebar, every member opened in a
+   tab. If the folder already holds a template file, FlashTeX asks before
+   replacing it; other files in the folder are never touched.
+2. **Add a file** with **New File…** (⌘N, the sidebar's **+** button, or
+   *New File…* in a project row's context menu). Type a name — subfolders are
+   fine (`sections/results` becomes `sections/results.tex`); anything above
+   the project root (`..`, absolute paths) is refused. With **Insert `\input`
+   at the caret** checked (the default while the entry document is active)
+   the reference is inserted at the caret as one undoable edit, then the new
+   file opens in a tab. The New File items are enabled once the entry document
+   is saved (a file needs a folder to live in).
+3. **Type the reference first if you prefer.** Write `\input{chapters/two}`
+   in any document: the sidebar shows `chapters/two.tex` as **missing —
+   create**; click it and the empty file is created and opened. After a
+   compile, the *Problems* row of the engine's "included file not found"
+   diagnostic offers **Create chapters/two.tex** — the same action.
+4. **Rename… / Delete…** are in a member's context menu (not the entry).
+   Rename moves the file and rewrites every `\input`/`\include` that
+   points at it in the open documents — one undoable edit per document
+   (⌘Z undoes it there). Delete moves the file to the Trash after detaching
+   it; references to it show as *missing — create* again. Both are refused
+   while the file (or, for Rename, a document that references it) has
+   unsaved edits, so nothing is rewritten under you.
+
+### Opening and working in a project
 
 - **Open** a file with *File › Open LaTeX File…* (⌘O). It becomes the
   **entry document** (sent to the engine as `main.tex`, whatever its real
   name) and its folder becomes the project root. If the current buffer is
   unsaved you are asked to Save / Discard / Cancel; a discarded buffer can be
   brought back with *Edit › Restore Discarded Buffer* until you quit.
-- **Create** a document by opening FlashTeX, typing into the empty/sample
-  buffer and pressing ⌘⇧S (*Save As…*).
 - **`\input{…}` and `\include{…}`** are scanned lexically (no macro
   expansion; `\input{\jobname}` is reported as non-literal). Targets resolve
   against the project root, `name.tex` before `name`, never above the root
   and never through symlinks. Resolved files show in the sidebar; open them
-  (click, ⌘-click the command, or *Open All Includes*) to edit them. **Only
-  open files are sent to the engine** — open an include if you want its
-  content compiled.
+  (click, ⌘-click the command, or *Open All Includes*) to edit them. On the
+  direct route (no preview controller attached) the compile request carries
+  the whole resolved include closure automatically — chapters you never
+  opened are still compiled, read fresh from disk each time, and recompile
+  when they change on disk. An unopened include still shows as a greyed
+  sidebar row; opening it makes its buffer (not disk) authoritative, and
+  closing it reverts to reading disk. On the helper route (below), an include
+  still needs an explicit open: the durable helper compiles only its own
+  ledger membership.
 - **Saving** (⌘S) is compare-and-replace: if the file changed on disk since
   it was read, you get *File › Resolve On-Disk Conflict…* with **Overwrite /
   Reload / Keep Editing** instead of a silent overwrite. FlashTeX also watches
@@ -236,6 +281,15 @@ FlashTeX compiles through a **producer** process that ships inside the app.
   figures/plot.png" in the header and leaves that box empty until the next
   compile. Clicking the image selects its `\includegraphics` in the editor.
   `Export PDF (v2)…` embeds the same images; the exact export does not yet.
+- **TikZ: drawn in the preview and v2 export** (v2 pane, `flashtex-render`
+  attached). A `tikzpicture` (`\usepackage{tikz}`; the tikz-min subset —
+  `\draw`, `\fill`, `\clip`, `\node`, lines, circles, rectangles, arrows,
+  `dashed`, colours) is painted as vector paths: fills by their rule,
+  strokes with their width, caps, joins and dash pattern, clips applied.
+  Clicking anywhere on the drawn ink selects the whole `tikzpicture` in the
+  editor (the engine attributes each path to the picture, not to one
+  command). `Export PDF (v2)…` writes the same paths; `File › Export PDF
+  (exact, v2)…` does not accept them yet and reports the item it refused.
 
 ## Problems and quick fixes
 
@@ -268,11 +322,11 @@ What each diagnostic code means is listed in
 | **File › Export PDF (exact, v2)…** | — | The current v2 display list through `flashtex-pdf-exact`: embedded Latin Modern subsets, original glyph IDs, exact positions and typed rules. Needs a v2 frame (i.e. `flashtex-render` attached). Progress and Cancel in the status bar; the file is written atomically. **Use this one.** |
 | File › Export PDF via Rust Writer… | ⌘⌥E | The v1 result through `flashtex-pdf --verify`: base-14/Latin Modern text items; characters outside those encodings become `?` with a warning |
 | File › Export PDF… | ⌘⇧E | A CoreGraphics rendering of the v1 layout (Times/Latin Modern, no images, no links) |
-| Export PDF (v2)… (v2 pane header) | — | A CoreGraphics rendering of the v2 display list: the preview's own draw routine, including `\includegraphics` images |
+| Export PDF (v2)… (v2 pane header) | — | A CoreGraphics rendering of the v2 display list: the preview's own draw routine, including `\includegraphics` images and TikZ paths |
 
 All exports are black on white regardless of the dark-preview switch. None of
 them is a pdfTeX PDF: only what the engine laid out is written (no hyperlinks,
-no metadata; `\includegraphics` images only through *Export PDF (v2)…* for now).
+no metadata; `\includegraphics` images and TikZ paths only through *Export PDF (v2)…* for now).
 
 ## Capture conversion (the only model-backed feature)
 
@@ -358,6 +412,8 @@ you trust.
 |---|---|
 | ⌘, | Settings / Preferences |
 | ⌘O | Open LaTeX file… (becomes the entry document) |
+| ⌘⌥N | New Project… (folder, name, template; opens `main.tex` with its include tree) |
+| ⌘N | New File… (rooted `.tex` name; optional `\input` at the caret; also the sidebar's + and the project row's context menu) |
 | ⌘S / ⌘⇧S | Save / Save As… |
 | ⌘⇧P | Command palette |
 | ⌘B | Compile now |

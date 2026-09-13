@@ -1022,6 +1022,8 @@ pub fn adapt_cached(
     strip_command_text(&mut lowered, entry_doc, &commands);
     let mut next_command = 0usize;
     let mut noindent_at: Option<usize> = None;
+    // The `\input`/`\include`d document whose units are being laid out.
+    let mut input_doc: Option<DocumentId> = None;
     // report/book: `\thesection` is `\thechapter.\arabic{section}`.
     let (mut chapter_no, mut section_nos) = (0u32, [0u32; 3]);
     // `\appendix`: `\thesection` (article) or `\thechapter` (report/book)
@@ -1067,10 +1069,28 @@ pub fn adapt_cached(
             UnitKind::Rule { span } => Some(*span),
             UnitKind::Picture { document, picture, .. } => Some(Span::in_document(*document, picture.start, picture.end)),
         };
-        if let Some(at) = unit_start.filter(|s| s.document == entry_doc) {
-            while let Some(cmd) = commands.get(next_command).filter(|c| c.start < at.start) {
+        // Entry-document commands are laid out before the first unit that
+        // follows them in the entry source. A unit of an `\input`/`\include`d
+        // document follows the `\input` command that read it, so everything
+        // before that command (a `\maketitle` ahead of `\input{intro}`)
+        // precedes the file's first unit; later units of the same file flush
+        // nothing until the entry document resumes.
+        let flush_before = match unit_start {
+            Some(at) if at.document == entry_doc => {
+                input_doc = None;
+                Some(at.start)
+            }
+            Some(at) if input_doc != Some(at.document) => {
+                input_doc = Some(at.document);
+                commands[next_command..].iter().find(|c| matches!(c.kind, BodyKind::Input)).map(|c| c.start)
+            }
+            _ => None,
+        };
+        if let Some(at) = flush_before {
+            while let Some(cmd) = commands.get(next_command).filter(|c| c.start < at) {
                 next_command += 1;
                 match &cmd.kind {
+                    BodyKind::Input => {}
                     BodyKind::Event(event) => blocks.push(Block::Chrome {
                         event: event.clone(),
                         span: Span::in_document(entry_doc, cmd.start, cmd.end),
@@ -1283,6 +1303,10 @@ pub fn adapt_cached(
                         prev_para_end = None;
                     }
                 }
+            }
+            // The `\input` command that read this unit's document is spent.
+            if input_doc.is_some() && commands.get(next_command).is_some_and(|c| c.start == at && matches!(c.kind, BodyKind::Input)) {
+                next_command += 1;
             }
         }
         match unit.kind {
@@ -2024,7 +2048,16 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                     _ => style.parskip.natural,
                 };
                 if label.is_some() {
-                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b)));
+                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b))).or_else(|| {
+                        // `\begin{thebibliography}{<widest>}` is the span of
+                        // the compiler's own `References` heading, so the
+                        // gap after that heading holds no `\begin`: look
+                        // from the heading's start (`\@nbitem` follows).
+                        let p = prev_end.filter(|p| prev_vmode && p.document == at.document && p.start < at.start)?;
+                        let g = texts.get(p.document.0)?.get(p.start..at.start)?;
+                        let b = rfind_command(g, "begin")?;
+                        g[b..].strip_prefix("\\begin").is_some_and(|r| r.trim_start().starts_with("{thebibliography}")).then_some((g, b))
+                    });
                     match opens {
                         Some((g, b)) if list_env_after_begin(&g[b..]) => {
                             let before = &g[..b];
@@ -2033,13 +2066,18 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                             // the paragraph) leaves vertical mode too.
                             let vmode = prev_vmode || prev_end.is_none() || list_closed || has_blank_line(before) || find_command(before, "par").is_some() || ends_in_vmode(before);
                             if prev_vmode {
-                                // `\@nbitem`: `\addvspace{\@outerparskip - \parskip}`;
-                                // a negative one is added to the heading's skip.
+                                // `\@nbitem`: `\addvspace{\@outerparskip - \parskip}`.
+                                // A negative `\addvspace` is never absorbed:
+                                // `\@xaddvskip`'s else branch adds it to a
+                                // non-negative `\lastskip` (the heading's
+                                // after-skip), so `\parsep` comes off it and
+                                // the item paragraph's own `\parskip` (=
+                                // `\parsep`) restores the heading's gap.
                                 let nb = outer_parskip - seps.parsep;
                                 if nb < 0.0 {
                                     vspace_before += nb;
                                 } else {
-                                    addvspace_before = addvspace_before.max(nb);
+                                    addvspace_before += nb;
                                 }
                             } else {
                                 addvspace_before = addvspace_before.max(seps.topsep + outer_parskip + if vmode { seps.partopsep } else { 0.0 });
@@ -2819,15 +2857,17 @@ fn list_labelsep(source: &str, env: &str, options: &str, size: u32, style: &Styl
 /// Whether `rest` (starting at a `\begin`) opens `itemize`/`enumerate`.
 fn list_env_after_begin(rest: &str) -> bool {
     let after = rest.strip_prefix("\\begin").unwrap_or(rest).trim_start();
-    after.starts_with("{itemize}") || after.starts_with("{enumerate}") || after.starts_with("{description}")
+    LIST_ENVS.iter().any(|e| after.strip_prefix('{').is_some_and(|r| r.starts_with(e) && r[e.len()..].starts_with('}')))
 }
 
 /// The environments built on `\trivlist`, whose `\end` runs
 /// `\@endparenv` and so leaves TeX in vertical mode.
 const TRIVLIST_ENVS: [&str; 9] = ["itemize", "enumerate", "description", "center", "flushleft", "flushright", "quote", "quotation", "verse"];
 
-/// The environments that nest as `\list`s (`\@listdepth`).
-const LIST_ENVS: [&str; 3] = ["itemize", "enumerate", "description"];
+/// The environments that nest as `\list`s (`\@listdepth`): `description`
+/// from the list-structure work, `thebibliography` from main's label
+/// geometry -- both are `\list`s, so both count for depth.
+const LIST_ENVS: [&str; 4] = ["itemize", "enumerate", "description", "thebibliography"];
 
 /// Whether the source `before` a `\begin` leaves TeX in vertical mode by
 /// its last material alone: an `\end{<trivlist env>}`, `\begin{document}`
@@ -2891,7 +2931,7 @@ fn list_end_adjust(source: &str, gap_start: usize, gap: &str, size: u32, style: 
         let abs = from + at;
         from = abs + 1;
         let rest = gap[abs + "\\end".len()..].trim_start();
-        if !rest.starts_with("{itemize}") && !rest.starts_with("{enumerate}") && !rest.starts_with("{description}") {
+        if !LIST_ENVS.iter().any(|e| rest.strip_prefix('{').is_some_and(|r| r.starts_with(e) && r[e.len()..].starts_with('}'))) {
             continue;
         }
         let stack = list_stack_at(source, gap_start + abs);
@@ -2971,9 +3011,13 @@ fn list_stack_at(source: &str, at: usize) -> Vec<(&str, &str, usize)> {
         }
         if is_begin {
             let after = inner[close + 1..].trim_start();
-            let options = match after.strip_prefix('[') {
-                Some(o) => o.find(']').map_or("", |c| &o[..c]),
-                None => "",
+            // `thebibliography`'s "options" are its widest-label argument
+            // (`\begin{thebibliography}{99}` -> `99`).
+            let options = match (env, after.strip_prefix('['), after.strip_prefix('{')) {
+                ("thebibliography", _, Some(o)) => o.find('}').map_or("", |c| &o[..c]),
+                ("thebibliography", _, None) => "",
+                (_, Some(o), _) => o.find(']').map_or("", |c| &o[..c]),
+                _ => "",
             };
             stack.push((env, options, pos));
         } else if stack.last().is_some_and(|(open, _, _)| *open == env) {
@@ -3051,6 +3095,12 @@ fn list_margins(source: &str, at: usize, size: u32, twocolumn: bool) -> Vec<List
         .enumerate()
         .map(|(i, (env, options, _))| {
             let depth = i + 1;
+            if *env == "thebibliography" {
+                // latex.ltx/article.cls `\thebibliography`:
+                // `\settowidth\labelwidth{\@biblabel{#1}}`,
+                // `\leftmargin\labelwidth \advance\leftmargin\labelsep`.
+                return ListMargin::Widest(format!("[{}]", options.trim()));
+            }
             let mut leftmargin: Option<&str> = None;
             let mut label_key: Option<&str> = None;
             let begin_keys = is_key_list(options);
@@ -3751,6 +3801,10 @@ pub enum BodyKind {
     /// `\setcounter{secnumdepth}{<n>}` in the body (the compiler skips the
     /// command and its first argument and sets `<n>` as text).
     SecNumDepth(i32),
+    /// `\input{<file>}` / `\include{<file>}`: where the entry document
+    /// reads another document, so that commands before it precede that
+    /// document's material.
+    Input,
 }
 
 /// Which book.cls matter command (lines 284-298).
@@ -3764,10 +3818,6 @@ pub enum Matter {
     Back,
 }
 
-/// `\pagestyle`, `\thispagestyle`, `\markboth`, `\markright`, `\noindent`,
-/// `\maketitle`, (when the class has chapters) `\chapter` and (book)
-/// `\frontmatter`/`\mainmatter`/`\backmatter` after `\begin{document}`,
-/// in source order, skipping comments.
 /// The argument ranges of `\section`/`\subsection`/`\subsubsection` (starred
 /// or with an optional argument) after `\begin{document}` that hold inline
 /// math: the compiler sets such a title's math as plain text, so the
@@ -3815,6 +3865,10 @@ pub fn math_title_spans(source: &str, document: DocumentId) -> Vec<Span> {
     out
 }
 
+/// `\pagestyle`, `\thispagestyle`, `\markboth`, `\markright`, `\noindent`,
+/// `\maketitle`, `\input`/`\include`, (when the class has chapters)
+/// `\chapter` and (book) `\frontmatter`/`\mainmatter`/`\backmatter` after
+/// `\begin{document}`, in source order, skipping comments.
 pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyCommand> {
     let bytes = source.as_bytes();
     let begin = source.find("\\begin{document}").map_or(0, |b| b + "\\begin{document}".len());
@@ -3947,6 +4001,7 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
                 group(k).map(|(s, e, after)| (BodyKind::RunIn { level, starred, title: (s, e) }, after))
             }
             "maketitle" => Some((BodyKind::MakeTitle, j)),
+            "input" | "include" => group(j).map(|(_, _, after)| (BodyKind::Input, after)),
             "frontmatter" if book => Some((BodyKind::Matter(Matter::Front), j)),
             "mainmatter" if book => Some((BodyKind::Matter(Matter::Main), j)),
             "backmatter" if book => Some((BodyKind::Matter(Matter::Back), j)),

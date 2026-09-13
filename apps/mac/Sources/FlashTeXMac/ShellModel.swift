@@ -725,11 +725,16 @@ final class ShellModel {
         }
         let id = "mac-\(nextRequestID)"
         nextRequestID += 1
+        // include-closure-compile (lane mac-includes-auto): every unopened
+        // \input/\include the entry transitively reaches goes out too, read
+        // fresh from disk (never a project member, never durable) — see
+        // ProjectDocuments.implicitClosureDocuments().
+        let sendDocuments = documents + project.implicitClosureDocuments().map { RuntimeV1.Document(path: $0.path, text: $0.text) }
         let request = RuntimeV1.CompileRequest(
             projectId: result?.projectId ?? "demo",
             revision: editorRevision,
             entryPath: project.entryPath, // the entry stays first whichever document is being edited
-            documents: documents,
+            documents: sendDocuments,
             layoutCapabilities: capabilities.isEmpty ? nil : capabilities,
             // display-list-v2-images: the producer sizes `\includegraphics`
             // files under the open project's directory (V2ImageStore.swift).
@@ -738,7 +743,7 @@ final class ShellModel {
             if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             try worker.send(request, id: id)
             inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
-                                            documents: documents, sentAt: Date(), layoutCapabilities: capabilities)
+                                            documents: sendDocuments, sentAt: Date(), layoutCapabilities: capabilities)
             latestRequestID = id
             inFlightRevision = editorRevision
             workerStatus = "compiling revision \(editorRevision) (\(id))…"

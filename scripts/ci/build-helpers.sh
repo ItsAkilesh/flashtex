@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds every Rust helper that apps/mac/scripts/make-app.sh bundles, in
+# Builds the `flashtex` CLI and every Rust helper that
+# apps/mac/scripts/make-app.sh bundles, in
 # release mode, one crate at a time (the crates are independent: there is no
 # Cargo workspace). Idempotent: cargo rebuilds only what changed. Prints one
 # `FLASHTEX_<NAME>=<absolute path>` line per built binary on stdout, in the
@@ -47,6 +48,7 @@ done
 # Mirrors HELPER_TABLE in apps/mac/scripts/make-app.sh and the FLASHTEX_*
 # variables the Mac app reads (apps/mac/Sources/FlashTeXMac/*).
 HELPERS=(
+  "flashtex-cli||0|FLASHTEX_CLI=flashtex"
   "compiler||0|FLASHTEX_COMPILER=flashtex-compiler"
   "pdf||0|FLASHTEX_PDF=flashtex-pdf,FLASHTEX_PDF_EXACT=flashtex-pdf-exact"
   "bridge||0|FLASHTEX_BRIDGE=flashtex-bridge"

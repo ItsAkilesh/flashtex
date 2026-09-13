@@ -125,6 +125,24 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
 
 - Editor: `NSTextView` (monospaced, undo, no smart substitutions). Footer shows
   UTF-8 byte and UTF-16 unit counts of the active document.
+- Projects from scratch (`ProjectScaffold.swift`, `ProjectScaffoldViews.swift`):
+  *File › New Project…* (⌘⌥N) writes a template (`ProjectTemplate`: Blank article,
+  Article with sections via `\input`, Report with chapters via `\include`,
+  Homework sheet with the HW1-style preamble and `\problem`) into
+  `<folder>/<name>/` and opens `main.tex` through `openTex` — existing template
+  files are refused unless confirmed. *New File…* (⌘N, sidebar +, project-row
+  context menu) resolves a rooted `.tex` name (`NewFilePath`: subfolders yes,
+  `..`/absolute no, `main.tex` no), writes it under `ProjectDocuments.rootedFile`,
+  opens it via `openDocument`, and optionally posts `\input{name}` at the caret
+  as one `pendingEdit`. A literal `\input`/`\include` with no file is a
+  "missing — create" sidebar row, and the compiler's `included file not found:
+  looked for 'x' and 'x.tex'` diagnostic gets a **Create x.tex** button on its
+  Problems row (`MissingIncludeFix`, deterministic message parse). Context-menu
+  *Rename…* moves the file, retargets the member's metadata and rewrites
+  references in open documents (`ReferenceRewrite.plan`: one grouped
+  `pendingEdit` per document, applied in sequence as the editor consumes each);
+  *Delete…* detaches and `FileManager.trashItem`s. Both refuse the entry
+  document and unsaved edits. Tests: `ProjectScaffoldTests`.
 - Preview: pages drawn at 1pt = 1 screen point, origin top-left; text items are
   placed by `x_pt` / `baseline_y_pt` / `font_size_pt`. Hover highlights an item;
   clicking it navigates to its `source` range. Diagnostics list with "Go to source".
@@ -885,6 +903,8 @@ explain that nothing is loaded.
 |---|---|
 | ⌘, | Settings window (editor preferences: font, wrapping, tab width, indent, appearance, auto-close brackets & math, completion list; Tab walks the controls top to bottom) |
 | ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
+| ⌘⌥N | New Project… sheet (folder, name, template: Blank article / Article with sections / Report with chapters / Homework sheet; writes `<folder>/<name>/main.tex` plus its `\input`/`\include` members, opens `main.tex` as the entry document with the include tree in the sidebar; asks before replacing existing template files) |
+| ⌘N | New File… sheet (also the sidebar's + button and the project row's context menu): a rooted `.tex` name, subfolders allowed, never above the project root; "Insert `\input` at the caret" (on by default while the entry document is active) is one undoable edit; the file opens in a tab |
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
 | Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
 | ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
@@ -1062,6 +1082,40 @@ not replace, negotiate, or change the v1 path.
   Tests: `V2ImageTests` (generated PNG/JPEG/PDF fixtures, stale-hash and symlink
   refusals, rotated PDF box, cache keying, request wiring, and a `FLASHTEX_RENDER`-gated
   round trip through the real producer with `project_root`).
+- TikZ paths (proposal `path-v0`, `crates/render-pipeline/src/display.rs` `PathItem`;
+  producer: Kabir's tikz-min work). Whenever `display-list-v2` is negotiated — there is
+  no separate capability to request, `protocol.rs` gates only `display-list-v2` and
+  `display-list-v2-images` — a `tikzpicture` arrives as `kind: "path_fill"`
+  (`fill_rule` nonzero|evenodd) and `kind: "path_stroke"` (`stroke{width, cap, join,
+  miter_limit, dash{array, phase}?}`) items with `path` commands `["m",x,y]`, `["l",x,y]`,
+  `["c",x1,y1,x2,y2,x,y]`, `["z"]` in page ticks (top-left, y down; no transform on the
+  wire), optional `clips` (`kind: "path"` + `fill_rule` + `path`), `paint` and the usual
+  provenance (the producer attributes every path to the whole `tikzpicture` span), and
+  `required_features` gains `path_fill` / `path_stroke` / `clip` (all in
+  `RenderingV2.knownFeatures`). Both readers decode them
+  (`RenderingV2.Path`/`PathCommand`/`Stroke`/`ClipPath`; `RenderingV2Fast` typed path);
+  validation is fail-closed: 1…65536 commands per path or clip, ≤16 clips, exact ticks, a
+  move before any line/curve/close, positive stroke width, finite miter limit ≥ 1, a
+  1…32-entry nonnegative dash with a positive entry, paint in 0…1, provenance, and used
+  features declared. `V2PathGeometry` (V2PathGeometry.swift) turns commands into a
+  `CGPath` in PDF space (y flipped, 7-significant-digit quantized like every other
+  coordinate) and `V2PreparedPath.draw` paints it inside the one `GlyphRunRenderer.draw`
+  routine — fill rule, width/cap/join/miter/dash in points from ticks, every clip applied
+  in a saved graphics state — so the preview bitmap and the CoreGraphics `Export PDF
+  (v2)…` paint identical geometry; the dark preview inverts path ink like rules and text.
+  Hit-testing is exact ink containment (`CGPath.contains` by fill rule, or the stroked
+  outline at least 2 pt wide, and inside every clip) and a click navigates to the
+  picture's source span; `DisplayListDelta.pageDigest` covers commands, op, clips, paint
+  and provenance and relocation moves path sources; `V2PageCache` keys on page bytes so
+  paths are covered by construction. Gap: `flashtex-pdf-exact from-v2` (crates/pdf
+  `v2.rs`, Commander-owned) refuses `path_fill`/`path_stroke` ("glyph_run, rule and image
+  only"), so the exact export of a frame with a `tikzpicture` fails naming the item; use
+  `Export PDF (v2)…` for those. Tests: `V2PathTests` (both readers agree and round-trip,
+  malformed shapes refused, a triangle / Bézier circle / dashed line with arrowhead /
+  clipped fill painted offscreen with pixel assertions in preview and export, hit tests,
+  dark inversion, digest and relocation, and a `FLASHTEX_RENDER`-gated live compile of
+  `\draw (0,0) -- (2,1); \fill[red] (1,1) circle (0.3);` asserting path items arrive,
+  decode, prepare and paint red at the disc centre).
 - Input, file: a `display_list` JSON envelope written by `flashtex-render --v2 out.json`.
   Open it with `File > Open Display List (v2)…`, or launch with `FLASHTEX_V2_FILE=<json>`
   (`FLASHTEX_PREVIEW_V2=1` starts with the toolbar toggle on). The toolbar's

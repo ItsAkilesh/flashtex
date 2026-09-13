@@ -1,0 +1,24 @@
+[package]
+name = "flashtex-cli"
+version = "0.1.0"
+edition = "2021"
+description = "flashtex: the FlashTeX engine on the command line — build, check, watch, supported, worker, fonts."
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "flashtex"
+path = "src/main.rs"
+
+# The engine is linked, never spawned: `flashtex build` is the render
+# pipeline in-process plus the pdf sibling's exact route. The pdf,
+# project-files and compiler paths point at the pipeline's pinned vendor
+# mirrors on purpose: they must be the very package instances
+# `flashtex-render-pipeline` links (Cargo refuses two path packages with
+# the same name and version in one lockfile), and `vendor/pdf` is pinned to
+# main's `crates/pdf` (see crates/render-pipeline/vendor/VENDORING.md).
+[dependencies]
+flashtex-render-pipeline = { path = "../render-pipeline" }
+flashtex-pdf = { path = "../render-pipeline/vendor/pdf" }
+flashtex-project-files = { path = "../render-pipeline/vendor/project-files" }
+flashtex-compiler = { path = "../render-pipeline/vendor/compiler" }

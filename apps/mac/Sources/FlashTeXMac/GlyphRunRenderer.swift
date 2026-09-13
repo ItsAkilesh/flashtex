@@ -144,6 +144,8 @@ struct V2PreparedPage: @unchecked Sendable {
         case run(Run)
         /// display-list-v2-images: a verified, decoded image (V2ImageStore.swift).
         case image(V2PreparedImage)
+        /// path-v0 (TikZ): a CGPath in PDF space with its paint operation and clips.
+        case path(V2PreparedPath)
     }
     var number: Int
     var widthPt: Double
@@ -155,6 +157,8 @@ struct V2PreparedPage: @unchecked Sendable {
     /// order. The item painted nothing; the page is otherwise complete.
     var imageNotices: [String] = []
     var imageCount = 0
+    /// `path_fill` + `path_stroke` items on this page.
+    var pathCount = 0
     /// Per source path, the lowest `start_byte` and highest `end_byte` over
     /// every cluster source on the page: a caret byte outside this range
     /// matches no cluster (`V2Geometry.clusters(containing:)`), so the pane
@@ -187,6 +191,13 @@ struct V2PreparedPage: @unchecked Sendable {
                     imageCount += 1
                 } catch let refusal as V2ImageStore.Refusal {
                     if !imageNotices.contains(refusal.notice) { imageNotices.append(refusal.notice) }
+                }
+            case .path(let p):
+                items.append(.path(V2PreparedPath(item: p, pageHeight: heightPt)))
+                pathCount += 1
+                for s in p.sources ?? [] {
+                    if let b = bounds[s.path] { bounds[s.path] = min(b.lowerBound, s.startByte)...max(b.upperBound, s.endByte) }
+                    else { bounds[s.path] = min(s.startByte, s.endByte)...max(s.startByte, s.endByte) }
                 }
             case .glyphRun(let run):
                 guard let font = fonts[run.fontId] else {
@@ -329,6 +340,9 @@ enum GlyphRunRenderer {
                 // Never inverted for the dark preview: photographs and figures
                 // keep their own colors; only the page ground changes.
                 image.draw(in: ctx)
+            case .path(let path):
+                // Inverted like rules and text: TikZ ink is document ink.
+                path.draw(in: ctx, color: color(path.paint, dark: dark))
             case .run(let run):
                 ctx.setFillColor(color(run.paint, dark: dark))
                 if glyphByGlyph {
@@ -535,6 +549,13 @@ enum V2Geometry {
                 let rect = RenderingV2.Rect(x: i.x, top: i.top, width: i.width, height: i.height)
                 if rect.contains(x: x, y: y) {
                     return Hit(itemIndex: index, clusterIndex: nil, text: nil, sources: i.sources ?? [], syntheticReason: i.syntheticReason, rect: rect)
+                }
+            case .path(let p):
+                // Exact ink containment (fill rule / stroked outline, inside
+                // every clip): a click on a TikZ path navigates to its source
+                // span (the whole picture, as the producer attributes it).
+                if let rect = V2PathGeometry.hit(p, tickX: x, tickY: y) {
+                    return Hit(itemIndex: index, clusterIndex: nil, text: nil, sources: p.sources ?? [], syntheticReason: p.syntheticReason, rect: rect)
                 }
             }
         }
