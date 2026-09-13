@@ -2,7 +2,7 @@
 //! (or of the fixture index named on the command line) in text or display
 //! style, using the Computer Modern metrics.
 //!
-//! Run: `cargo run --example dump -- [--display] [--12pt] [fixture-index]`
+//! Run: `cargo run --example dump -- [--display] [fixture-index]`
 
 use flashtex_math_layout::{
     BoxKind, CmMathMetrics, MathBox, MathFontMetrics, Style, fixtures, layout_with_report,
@@ -48,11 +48,7 @@ fn main() {
     let display = args.iter().any(|a| a == "--display");
     let only: Option<usize> = args.iter().find_map(|a| a.parse().ok());
     let style = if display { Style::DISPLAY } else { Style::TEXT };
-    let m = if args.iter().any(|a| a == "--12pt") {
-        CmMathMetrics::latex_12pt()
-    } else {
-        CmMathMetrics::latex_10pt()
-    };
+    let m = CmMathMetrics::latex_10pt();
     for (i, (name, list)) in fixtures::all().into_iter().enumerate() {
         if only.is_some_and(|o| o != i) {
             continue;

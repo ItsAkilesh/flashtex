@@ -15,6 +15,22 @@ rendering-v2 display list's glyph_run items for the candidate. Words are
 aligned on normalised text (tools/visual-oracle/rank.py:align_words).
 A fixture passes when both sides have one page, every word aligns, and
 every aligned word's origin is within 0.5 bp in x and y.
+
+Two reference-side facts need normalising before words can pair:
+
+* pdfTeX's math symbol font (cmsy/lmsy, OMS encoding) carries glyph names
+  pdftext does not map (`lessequal`, `arrowright`), so those glyphs read as
+  `?`; they are given their Unicode text from the OMS code (`OMS_TEXT`).
+* Glyphs of the 10 pt math extension font (cmex10/lmex10: big delimiters,
+  extensible pieces, display operators) are compared as columns, not words:
+  pdfTeX draws the Type 1 glyph from the origin at the top of its TFM box,
+  one Type 1 glyph per extensible piece, while FlashTeX paints the Latin
+  Modern Math OpenType variant or assembly, whose origin (and piece count)
+  legitimately differ. Their horizontal placement is checked instead: the
+  sorted distinct x origins of extension glyphs must match within 0.5 bp.
+  A candidate glyph counts as an extension glyph when it is a delimiter or
+  large-operator character set at the extension font's 10 pt (the fixtures
+  are 12 pt documents, where no other math glyph is set at 10 pt).
 """
 import argparse, json, os, subprocess, sys, tempfile
 
@@ -29,6 +45,14 @@ FIXTURES = os.path.join(HERE, "fixtures")
 REFS = os.path.join(HERE, "refs")
 TOL = 0.5
 Q = float(2 ** 20)
+# cmex10 at its design size, in bp.
+EXT_SIZE_BP = 10 * 72 / 72.27
+# Characters FlashTeX paints from the math extension role.
+EXT_TEXT = set("()[]{}|‖⟨⟩⌊⌋⌈⌉/\\∑∏∐∫∮⋃⋂⨁⨂⨀⨄⨆√")
+# OMS (cmsy) code -> text, for the glyph names pdftext leaves as "?".
+OMS_TEXT = dict(enumerate(
+    "−·×∗÷⋄±∓⊕⊖⊗⊘⊙◯∘∙≍≡⊆⊇≤≥⪯⪰∼≈⊂⊃≪≫≺≻←→↑↓↔↗↘≃⇐⇒⇑⇓⇔↖↙∝′∞∈∋△▽/↦∀∃¬∅ℜℑ⊤⊥ℵ"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ∪∩⊎∧∨⊢⊣⌊⌋⌈⌉{}⟨⟩|‖↕⇕\\≀√⨿∇∫⊔⊓⊑⊒§†‡¶♣♢♡♠"))
 
 
 def regroup(glyphs):
@@ -37,27 +61,53 @@ def regroup(glyphs):
             for w in pdftext.words_from_glyphs(glyphs)]
 
 
+def columns(glyphs):
+    """Sorted distinct x origins (0.05 bp) of extension glyphs."""
+    xs = []
+    for x in sorted(g["x"] for g in glyphs):
+        if not xs or x - xs[-1] > 0.05:
+            xs.append(x)
+    return [round(x, 4) for x in xs]
+
+
+def ref_page(glyphs):
+    words, ext = [], []
+    for g in glyphs:
+        font = g["font"].upper()
+        if "MATHEXTENSION" in font or font.startswith("CMEX") or font.startswith("LMEX"):
+            ext.append(g)
+            continue
+        if g["text"] == "?" and ("MATHSYMBOLS" in font or font.startswith("CMSY") or font.startswith("LMSY")):
+            g = dict(g, text=OMS_TEXT.get(g["code"], "?"))
+        words.append(g)
+    return regroup(words), columns(ext)
+
+
 def ref_pages(pdf):
     doc = pdftext.PdfDocument.load(pdf)
-    return [regroup(pdftext.page_glyphs(doc, page)[0]) for page in doc.pages()]
+    return [ref_page(pdftext.page_glyphs(doc, page)[0]) for page in doc.pages()]
 
 
 def cand_pages(v2path):
     pl = json.load(open(v2path, encoding="utf-8"))["payload"]
     pages = []
     for page in pl["pages"]:
-        glyphs = []
+        glyphs, ext = [], []
         for item in page.get("items", []):
             if item.get("kind") != "glyph_run":
                 continue
-            text = item.get("text") or ""
+            # Cluster ranges are UTF-8 byte offsets.
+            text = (item.get("text") or "").encode("utf-8")
             clusters = item.get("clusters") or []
+            size = item.get("font_size", 0) / Q
             for gi, g in enumerate(item.get("glyphs") or []):
                 ci = g.get("cluster", gi)
-                ct = text[clusters[ci]["text_start_byte"]:clusters[ci]["text_end_byte"]] if ci < len(clusters) else "?"
-                glyphs.append({"text": ct, "x": g["origin_x"] / Q, "y_top": g["baseline_y"] / Q,
-                               "advance": g["advance_x"] / Q, "size": item.get("font_size", 0) / Q, "font": ""})
-        pages.append(regroup(glyphs))
+                ct = (text[clusters[ci]["text_start_byte"]:clusters[ci]["text_end_byte"]].decode("utf-8", "replace")
+                      if ci < len(clusters) else "?")
+                glyph = {"text": ct, "x": g["origin_x"] / Q, "y_top": g["baseline_y"] / Q,
+                         "advance": g["advance_x"] / Q, "size": size, "font": ""}
+                (ext if abs(size - EXT_SIZE_BP) < 0.01 and ct in EXT_TEXT else glyphs).append(glyph)
+        pages.append((regroup(glyphs), columns(ext)))
     return pages
 
 
@@ -83,16 +133,21 @@ def cmd_refs(args):
             with open(os.path.join(REFS, name + ".json"), "w", encoding="utf-8") as f:
                 json.dump({"fixture": name + ".tex", "reference_engine": version,
                            "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
-                           "unit": "bp, y from page top", "pages": pages}, f, indent=1)
+                           "unit": "bp, y from page top",
+                           "pages": [words for words, _ in pages],
+                           "extension_columns": [cols for _, cols in pages]}, f, indent=1)
                 f.write("\n")
-            print(f"{name}: {len(pages)} page(s), {sum(len(p) for p in pages)} words")
+            print(f"{name}: {len(pages)} page(s), {sum(len(w) for w, _ in pages)} words, "
+                  f"{sum(len(c) for _, c in pages)} extension columns")
 
 
 def cmd_check(args):
     passed, rows = 0, []
     with tempfile.TemporaryDirectory() as work:
         for name in fixtures(args.only):
-            ref = json.load(open(os.path.join(REFS, name + ".json"), encoding="utf-8"))["pages"]
+            pinned = json.load(open(os.path.join(REFS, name + ".json"), encoding="utf-8"))
+            ref = pinned["pages"]
+            ref_cols = pinned.get("extension_columns") or [[] for _ in ref]
             text = open(os.path.join(FIXTURES, name + ".tex"), encoding="utf-8").read()
             req = {"protocol_version": 1, "id": name, "type": "compile",
                    "payload": {"project_id": "amsmath-corpus", "revision": 1, "entry_path": "main.tex",
@@ -112,20 +167,28 @@ def cmd_check(args):
                              if d.get("severity") == "error" or d.get("code") == "math_limitation"]
             cand = cand_pages(v2) if os.path.isfile(v2) else []
             n = ok = unaligned = 0
+            cols_ok = True
             worst = 0.0
-            for rw, cw in zip(ref, cand):
+            for rw, rc, (cw, cc) in zip(ref, ref_cols, cand):
                 idx, ur, uc = rank.align_words(rw, cw)
                 unaligned += ur + uc
                 for i, j in idx:
                     d = max(abs(cw[j]["x"] - rw[i]["x"]), abs(cw[j]["y_top"] - rw[i]["y_top"]))
                     worst, n, ok = max(worst, d), n + 1, ok + (d <= TOL)
-            good = len(ref) == len(cand) == 1 and n > 0 and ok == n and unaligned == 0
+                if len(rc) != len(cc):
+                    cols_ok = False
+                for rx, cx in zip(rc, cc):
+                    worst = max(worst, abs(rx - cx))
+                    cols_ok = cols_ok and abs(rx - cx) <= TOL
+            good = len(ref) == len(cand) == 1 and n > 0 and ok == n and unaligned == 0 and cols_ok
             passed += good
+            ncols = [sum(len(c) for c in ref_cols), sum(len(c) for _, c in cand)]
             row = {"fixture": name, "pass": good, "pages": [len(ref), len(cand)], "aligned": n, "within_tol": ok,
-                   "unaligned": unaligned, "worst_bp": round(worst, 3),
+                   "unaligned": unaligned, "extension_columns": ncols, "worst_bp": round(worst, 3),
                    "diagnostics": [(d.get("code"), (d.get("message") or "")[:120]) for d in diags]}
             rows.append(row)
-            print(f"{'PASS' if good else 'FAIL'} {name:26} words {n:3} ok {ok:3} unaligned {unaligned:3} worst {worst:8.3f}")
+            print(f"{'PASS' if good else 'FAIL'} {name:26} words {n:3} ok {ok:3} unaligned {unaligned:3} "
+                  f"ext cols {ncols[0]:2}/{ncols[1]:2} worst {worst:8.3f}")
     print(f"TOTAL {passed}/{len(rows)} within {TOL} bp")
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:

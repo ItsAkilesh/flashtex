@@ -19,6 +19,15 @@ path = "src/bin/flashtex-render.rs"
 # registry crates are font-resources' serde/serde_json/sha2. Repoint these at
 # ../<name> once the siblings merge.
 [features]
+# amsmath-inline's preconditions (vendor/compiler and vendor/math-layout at a
+# revision carrying `Nucleus::GenFraction`/`Phantom`/`Operator`/`SubArray` and
+# math-layout's matching atoms) are met as of the a9952df3 re-pin, so it is a
+# default feature: without it, the compiler's Nucleus enum (unconditionally
+# exposing those variants now) makes the pipeline's own exhaustive matches
+# (`hash_math`/`shift_math`/`math_grids`/`math_glue_em`/`convert_math_classed`)
+# fail to build. `--no-default-features` still builds against a pinned vendor
+# older than this without the new variants.
+default = ["amsmath-inline"]
 # The compiler's `Nucleus::Text` (`\text{...}` in math) is an isolated
 # candidate (crates/preview-controller/docs/handoffs/hw1-text-candidate/
 # candidate.patch on compiler base 1c02a2bc, not on main nor in

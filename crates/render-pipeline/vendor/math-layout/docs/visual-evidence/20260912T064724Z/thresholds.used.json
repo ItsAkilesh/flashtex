@@ -1,9 +1,0 @@
-{
-  "_comment": "Raster-gate limits for tools/run_visual.sh, in the visual-oracle harness's thresholds.json format (diff.py check_thresholds). Scope: the export side (flashtex-pdf output) against the pdflatex Latin Modern reference with the corpus compiler. ssim_8x8_mean is a minimum, diff_mean and above_threshold_fraction are maxima. Values are placeholders until the first recorded run sets them from measured numbers with ~10-20% headroom; they catch worsening, they do not certify quality (fonts differ: LM reference vs CM layout metrics with LM/Symbol substitution in the PDF).",
-  "default": {
-    "scope": [["export", "pdflatex-lm", "math"]],
-    "ssim_8x8_mean": 0.9,
-    "diff_mean": 3.0,
-    "above_threshold_fraction": 0.02
-  }
-}
