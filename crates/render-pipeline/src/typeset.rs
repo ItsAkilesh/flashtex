@@ -100,9 +100,10 @@ pub enum BoxRec {
         continues: bool,
     },
     Math(usize),
-    /// `\hrule`: a filled rectangle `width` x `height` sitting on the line's
-    /// baseline (depth 0), painted as a display-list rule.
-    Rule { width: f64, height: f64, span: Span },
+    /// A filled rectangle `width` x `height` whose top is `top` below the
+    /// line's baseline (`\hrule`: `-height`, sitting on the baseline),
+    /// painted as a display-list rule.
+    Rule { width: f64, height: f64, top: f64, span: Span },
     /// A `tikzpicture`: its bounding box sits on the baseline (depth 0).
     Picture(Rc<PictureRec>),
     /// A `tabular` (`table.rs`): its cell lines and rules, set as one box
@@ -620,7 +621,7 @@ impl<'a> Context<'a> {
     /// The face a text style is set in: the typewriter face for `mono`.
     fn resolve_text(&self, style: TextStyle, size: f64) -> crate::fonts::Resolved {
         if style.mono {
-            self.fonts.resolve_mono(self.style.family, self.style.mono_metrics, style.bold, size)
+            self.fonts.resolve_mono(self.style.family, self.style.mono_metrics, style.bold, style.italic, size)
         } else {
             self.fonts.resolve(self.style.family, role_of(style), size)
         }
@@ -1266,7 +1267,7 @@ impl<'a> Context<'a> {
         // microtype's default sets (`alltext`, `basictext`) are the `rm*`
         // and `sf*` families: pdfTeX neither protrudes nor expands
         // typewriter text.
-        if style.mono {
+        if style.mono || style.literal {
             return None;
         }
         if glyphs.len() != run.glyphs.len() || !glyphs.iter().any(|g| g.tfm_code.is_some()) {
@@ -1481,6 +1482,37 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::Glue(glue), None)
                 }
                 AItem::HSpace { pt } => push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(*pt)), None),
+                AItem::InlineListing { document, start, text, options, size_cpt } => {
+                    let class = self.class_size();
+                    let font = crate::listings::FontState {
+                        mono: base.mono,
+                        bold: base.bold,
+                        italic: base.italic,
+                        size_cpt: *size_cpt,
+                    };
+                    let span = Span::in_document(*document, *start, *start + text.len());
+                    let texts = [text.as_str()];
+                    let skip = crate::listings::kept_lines(&texts, options).first().map_or(0, |k| k.1);
+                    let lines = {
+                        let mut m = ListingMeasure { ctx: self, span };
+                        crate::listings::layout(&texts, options, font, class, true, &mut m)
+                    };
+                    for piece in lines.first().map(|l| l.pieces.as_slice()).unwrap_or(&[]) {
+                        match piece {
+                            crate::listings::Piece::Kern(k) => push(&mut out, &mut recs, pl::Item::kern(*k), None),
+                            crate::listings::Piece::Break => {}
+                            crate::listings::Piece::Token { width, .. } => match self.listing_box(piece, *document, *start + skip) {
+                                Some((run, rec, lead)) => {
+                                    if lead != 0.0 {
+                                        push(&mut out, &mut recs, pl::Item::kern(lead), None);
+                                    }
+                                    push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                                }
+                                None => push(&mut out, &mut recs, pl::Item::kern(*width), None),
+                            },
+                        }
+                    }
+                }
                 AItem::Table(table) => {
                     if let Some((run, rec)) = self.table_box(table, size) {
                         push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
@@ -2104,6 +2136,274 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// The class size option (10, 11 or 12).
+    fn class_size(&self) -> u32 {
+        match self.style.base {
+            flashtex_document_style::BaseSize::Pt10 => 10,
+            flashtex_document_style::BaseSize::Pt11 => 11,
+            flashtex_document_style::BaseSize::Pt12 => 12,
+        }
+    }
+
+    /// The point size of a listings font state.
+    fn listing_size(&self, font: crate::listings::FontState) -> f64 {
+        if font.size_cpt == 0 {
+            self.style.body_size_pt
+        } else {
+            f64::from(font.size_cpt) / 100.0
+        }
+    }
+
+    /// One listings output box ([`crate::listings::Piece::Token`]) as a text
+    /// box whose glyph advances put every character at its listings offset
+    /// (`\lst@FillFixed`'s `\hss` between the characters of a fixed-column
+    /// box); returns the box, its record and the offset of its first
+    /// character. `None` for a box without glyphs (an output space).
+    fn listing_box(&mut self, piece: &crate::listings::Piece, document: DocumentId, base: usize) -> Option<(pl::GlyphRun, usize, f64)> {
+        let crate::listings::Piece::Token { text, bytes, font, width, offsets, .. } = piece else { return None };
+        let mut seg_text = String::new();
+        let mut chars = Vec::new();
+        let mut at = Vec::new();
+        for ((c, (s, e)), off) in text.chars().zip(bytes.iter()).zip(offsets.iter()) {
+            if c == ' ' {
+                continue;
+            }
+            seg_text.push(c);
+            chars.push(adapter::CharSrc { document, start: base + s, end: base + e });
+            at.push(*off);
+        }
+        if seg_text.is_empty() {
+            return None;
+        }
+        let size = self.listing_size(*font);
+        let (mut run, rec) = self.text_box(&adapter::Segment { text: seg_text, chars, style: listing_style(*font) }, size)?;
+        let lead = at[0];
+        if run.glyphs.len() == at.len() {
+            for k in 0..at.len() {
+                let next = at.get(k + 1).copied().unwrap_or(*width);
+                run.glyphs[k].kern = 0.0;
+                run.glyphs[k].advance = next - at[k];
+            }
+            run.width = width - lead;
+        }
+        Some((run, rec, lead))
+    }
+
+    /// `lstlisting`/`\lstinputlisting` (listings.sty `\lst@Init`): every
+    /// kept line is a paragraph of its own (`\lst@NewLine`: `\par\noindent
+    /// \hbox{}`, `\parskip` 0, `\normalbaselines` then `basicstyle`), set
+    /// at `\@totalleftmargin` plus `xleftmargin`, its boxes and lost-space
+    /// kerns placed by [`crate::listings::layout`], with the line number
+    /// (`\llap{\normalfont\lst@numberstyle{..}\kern\lst@numbersep}`) before
+    /// it. The block's before/after skips are `aboveskip`/`belowskip` in the
+    /// font in force; the caller adds the `\penalty-50`s.
+    fn listing_block(&mut self, v: &adapter::VerbatimBlock, opts: &crate::listings::Options) -> BuiltBlock {
+        use crate::listings::{self as lst, FontState, Numbers, Piece};
+        let class = self.class_size();
+        let base = FontState {
+            size_cpt: v.size_cpt,
+            ..FontState::default()
+        };
+        let basic = opts.basicstyle.apply(base, class);
+        let texts: Vec<&str> = v.lines.iter().map(|l| l.text.as_str()).collect();
+        let kept = lst::kept_lines(&texts, opts);
+        let out = {
+            let mut m = ListingMeasure { ctx: self, span: v.span };
+            lst::layout(&texts, opts, base, class, false, &mut m)
+        };
+        let base_params = self.text_params(listing_style(base), self.listing_size(base));
+        let basic_params = self.text_params(listing_style(basic), self.listing_size(basic));
+        let hang = match &v.list {
+            Some(geom) => self.list_geometry(geom, self.style.body_size_pt).0,
+            None => 0.0,
+        };
+        let xleft = opts.xleftmargin.resolve(basic_params.quad, basic_params.x_height);
+        let xright = opts.xrightmargin.resolve(basic_params.quad, basic_params.x_height);
+        let margin = hang + xleft;
+        let linewidth = self.style.text_width_pt - hang - xleft - xright;
+        let size_cpt = if basic.size_cpt != 0 { basic.size_cpt } else { v.size_cpt };
+        let baselineskip = if size_cpt == 0 { self.style.baselineskip_pt } else { crate::table::baselineskip_pt(class, size_cpt) };
+        let number_font = opts.numberstyle.apply(FontState { size_cpt: basic.size_cpt, ..FontState::default() }, class);
+        // `\strutbox` of the listing's size (`\@setfontsize`: .7/.3
+        // `\baselineskip`): every line holds `\lst@framelr`, a box of strut
+        // height and depth (lstmisc.sty `\lst@frameInit`).
+        let (strut_ht, strut_dp) = (0.7 * baselineskip, 0.3 * baselineskip);
+        let rule = opts.framerule.resolve(basic_params.quad, basic_params.x_height);
+        let sep = opts.framesep.resolve(basic_params.quad, basic_params.x_height);
+        let frame = opts.frame;
+        // `breaklines`: the parts of every line, with the continuation indent
+        // (`\lst@breakNewLine`: `breakindent`, plus the line's leading lost
+        // space under `breakautoindent`).
+        let mut parts: Vec<(usize, Vec<Piece>, f64, bool)> = Vec::new();
+        for (k, line) in out.iter().enumerate() {
+            if opts.breaklines {
+                let indent = opts.breakindent.resolve(basic_params.quad, basic_params.x_height) + if opts.breakautoindent { line.leading } else { 0.0 };
+                for (p, pieces) in lst::break_line(&line.pieces, linewidth, linewidth - indent).into_iter().enumerate() {
+                    parts.push((k, pieces, if p == 0 { 0.0 } else { indent }, p == 0));
+                }
+            } else {
+                parts.push((k, line.pieces.clone(), 0.0, true));
+            }
+        }
+        let count = parts.len();
+        let mut items: Vec<pl::Item> = Vec::new();
+        let mut recs: Vec<Option<usize>> = Vec::new();
+        let mut lines: Vec<pl::Line> = Vec::with_capacity(count);
+        let mut extents = Vec::with_capacity(count);
+        let mut y = 0.0;
+        for (index, (k, pieces, indent, first_part)) in parts.iter().enumerate() {
+            let (line, (source_index, skip, _)) = (&out[*k], &kept[*k]);
+            let raw = &v.lines[*source_index];
+            let first_item = items.len();
+            let mut runs = Vec::new();
+            let (mut height, mut depth) = (strut_ht, strut_dp);
+            if let Some(n) = line.number.filter(|_| *first_part) {
+                let text = n.to_string();
+                let style = TextStyle { literal: false, ..listing_style(number_font) };
+                let size = self.listing_size(number_font);
+                let chars = text.chars().map(|_| adapter::CharSrc { document: raw.document, start: raw.start, end: raw.start }).collect();
+                if let Some((run, rec)) = self.text_box(&adapter::Segment { text, chars, style }, size) {
+                    let x = if opts.numbers == Numbers::Right {
+                        let normal = FontState { size_cpt: basic.size_cpt, ..FontState::default() };
+                        let p = self.text_params(listing_style(normal), self.listing_size(normal));
+                        margin + linewidth + opts.numbersep.resolve(p.quad, p.x_height)
+                    } else {
+                        let p = self.text_params(style, size);
+                        margin - opts.numbersep.resolve(p.quad, p.x_height) - run.width
+                    };
+                    height = height.max(run.height);
+                    depth = depth.max(run.depth);
+                    runs.push(position_run(&run, x, 0.0));
+                    items.push(pl::Item::Box(run));
+                    recs.push(Some(rec));
+                }
+            }
+            let mut x = margin + indent;
+            for piece in pieces {
+                match piece {
+                    Piece::Kern(k) => x += k,
+                    Piece::Break => {}
+                    Piece::Token { width, .. } => match self.listing_box(piece, raw.document, raw.start + skip) {
+                        Some((run, rec, lead)) => {
+                            height = height.max(run.height);
+                            depth = depth.max(run.depth);
+                            runs.push(position_run(&run, x + lead, 0.0));
+                            x += lead + run.width;
+                            items.push(pl::Item::Box(run));
+                            recs.push(Some(rec));
+                        }
+                        None => x += width,
+                    },
+                }
+            }
+            // The frame (lstmisc.sty `\lst@frameMakeBoxV`, `\lst@frameH`): the
+            // side rules span every line's strut, the first line's reaching
+            // up through the top frame box (`framesep` + `framerule`) and the
+            // last line's down through the bottom one.
+            if frame.any() {
+                let outer = sep + rule;
+                let top_extra = if index == 0 && frame.top { outer } else { 0.0 };
+                let bottom_extra = if index + 1 == count && frame.bottom { outer } else { 0.0 };
+                let left_x = margin - if frame.left { outer } else { 0.0 };
+                let across = linewidth + if frame.left { outer } else { 0.0 } + if frame.right { outer } else { 0.0 };
+                let mut rules: Vec<(f64, f64, f64, f64)> = Vec::new();
+                if frame.left {
+                    rules.push((margin - outer, -strut_ht - top_extra, rule, strut_ht + strut_dp + top_extra + bottom_extra));
+                }
+                if frame.right {
+                    rules.push((margin + linewidth + sep, -strut_ht - top_extra, rule, strut_ht + strut_dp + top_extra + bottom_extra));
+                }
+                if top_extra > 0.0 {
+                    rules.push((left_x, -strut_ht - outer, across, rule));
+                }
+                if bottom_extra > 0.0 {
+                    rules.push((left_x, strut_dp + sep, across, rule));
+                }
+                for (rx, top, width, rheight) in rules {
+                    self.recs.push(BoxRec::Rule { width, height: rheight, top, span: v.span });
+                    let run = pl::GlyphRun {
+                        font: MATH_SENTINEL,
+                        size: self.style.body_size_pt,
+                        glyphs: Vec::new(),
+                        width: 0.0,
+                        height: 0.0,
+                        depth: 0.0,
+                        source: v.span.start..v.span.end,
+                    };
+                    runs.push(position_run(&run, rx, 0.0));
+                    items.push(pl::Item::Box(run));
+                    recs.push(Some(self.recs.len() - 1));
+                }
+            }
+            y += if index == 0 { height } else { baselineskip };
+            for run in &mut runs {
+                run.baseline_y = y;
+            }
+            lines.push(pl::Line {
+                index,
+                runs,
+                baseline_y: y,
+                height,
+                depth,
+                natural_width: x - margin,
+                set_width: linewidth,
+                ratio: 0.0,
+                badness: 0.0,
+                items: first_item..items.len(),
+                hyphenated: false,
+            });
+            extents.push((height, depth));
+        }
+        let mut stats = one_line_stats();
+        stats.lines = lines.len();
+        let height = y + extents.last().map_or(0.0, |e| e.1);
+        let skip = |s: lst::SkipSpec| (s.natural.resolve(base_params.quad, base_params.x_height), s.stretch, s.shrink);
+        let mut above = skip(opts.aboveskip);
+        let mut below = skip(opts.belowskip);
+        // The top frame box (`\lst@frameInit`): `\vskip-\baselineskip` plus its
+        // height and `\vskip\lineskip`, then `\lineskiplimit\maxdimen
+        // \lineskip\z@` stacks the lines under it; the first baseline lands
+        // `\lineskip` + `framesep` + `framerule` + the strut height below the
+        // skip. After the bottom box the next paragraph's interline glue
+        // starts from that box's depth, one strut depth further down.
+        if frame.top {
+            above.0 += self.style.lineskip_pt + sep + rule + strut_ht - baselineskip;
+        }
+        if frame.bottom {
+            below.0 += strut_dp;
+        }
+        let vertical = VBlock {
+            lines: extents,
+            penalty_before: None,
+            space_before: Some(above),
+            parskip: None,
+            interline_penalty: 0,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: Some(below),
+            no_interline_first: false,
+            no_interline_after: false,
+            baselineskip: (size_cpt != 0).then_some(baselineskip),
+            vskip_after: Vec::new(),
+            pre_space_after: None,
+        };
+        BuiltBlock {
+            block: pl::ParagraphBlock::body(pl::Lines {
+                lines,
+                breaks: Vec::new(),
+                stats,
+                diagnostics: Vec::new(),
+                height,
+            }),
+            items,
+            recs,
+            vertical,
+            labels: Vec::new(),
+            cache_key: None,
+        }
+    }
+
     fn rule_block(&mut self, span: Span) -> BuiltBlock {
         const HRULE_HEIGHT: f64 = 0.4;
         self.rule_block_sized(span, self.style.text_width_pt, HRULE_HEIGHT, 0.0)
@@ -2112,7 +2412,7 @@ impl<'a> Context<'a> {
     /// A rule `width` x `height` whose bottom sits on the line's baseline,
     /// `x` from the line's left edge.
     fn rule_block_sized(&mut self, span: Span, width: f64, height: f64, x: f64) -> BuiltBlock {
-        self.recs.push(BoxRec::Rule { width, height, span });
+        self.recs.push(BoxRec::Rule { width, height, top: -height, span });
         let rec = self.recs.len() - 1;
         let run = pl::GlyphRun {
             font: MATH_SENTINEL,
@@ -4743,6 +5043,17 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                     let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
                     vspace += (v.addvspace_before - prev_after).max(0.0);
                 }
+                if let Some(opts) = v.listing.as_deref() {
+                    // listings.sty `\lst@Init`: `\par\penalty-50\vspace\lst@aboveskip`;
+                    // `\lst@DeInit`: `\par\penalty-50\vspace\lst@belowskip`
+                    // (the skips are set by `listing_block`).
+                    let mut b = ctx.listing_block(v, opts);
+                    b.vertical.penalty_before = Some(if v.eject_before { pagebuild::EJECT_PENALTY } else { LISTING_PENALTY });
+                    add_vspace(&mut b.vertical, vspace);
+                    b.vertical.penalty_after = Some(LISTING_PENALTY);
+                    blocks.push(b);
+                    after_heading = false;
+                } else {
                 let mut b = ctx.verbatim_block(v);
                 // `\@trivlist`'s `\@topsepadd`: `\topsep`, plus `\partopsep`
                 // from vertical mode; `\@item` adds it with `\addvspace`
@@ -4770,6 +5081,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 b.vertical.space_after = Some(topsepadd);
                 blocks.push(b);
                 after_heading = false;
+                }
             }
             Block::Rule {
                 span,
@@ -5229,6 +5541,52 @@ fn chrome_tokens(text: &str) -> Vec<ChromeTok> {
 /// article.cls `\@beginparpenalty`/`\@endparpenalty`: `-\@lowpenalty`.
 const LOW_PENALTY_BEGINPAR: i32 = -51;
 
+/// listings.sty `\lst@Init`/`\lst@DeInit`: `\penalty-50`.
+const LISTING_PENALTY: i32 = -50;
+
+/// The text style a listings font state is set in: literal characters.
+fn listing_style(font: crate::listings::FontState) -> TextStyle {
+    TextStyle {
+        mono: font.mono,
+        bold: font.bold,
+        italic: font.italic,
+        size_cpt: font.size_cpt,
+        literal: true,
+        ..TextStyle::default()
+    }
+}
+
+/// Font measurements for [`crate::listings::layout`].
+struct ListingMeasure<'c, 'a> {
+    ctx: &'c mut Context<'a>,
+    span: Span,
+}
+
+impl crate::listings::Measure for ListingMeasure<'_, '_> {
+    fn quad_ex(&mut self, font: crate::listings::FontState) -> (f64, f64) {
+        let p = self.ctx.text_params(listing_style(font), self.ctx.listing_size(font));
+        (p.quad, p.x_height)
+    }
+
+    fn char_widths(&mut self, font: crate::listings::FontState, text: &str) -> Vec<f64> {
+        let style = listing_style(font);
+        let size = self.ctx.listing_size(font);
+        let face = self.ctx.face(style, size, self.span);
+        let shaper = self.ctx.shaper;
+        text.chars()
+            .map(|c| {
+                let mut buf = [0u8; 4];
+                let shaped = shaper.shape_literal(&face, c.encode_utf8(&mut buf));
+                shaped.width_units as f64 * size / shaped.units_per_em as f64
+            })
+            .collect()
+    }
+
+    fn space(&mut self, font: crate::listings::FontState) -> f64 {
+        self.ctx.space_glue(listing_style(font), self.ctx.listing_size(font), 1000).width
+    }
+}
+
 fn one_line_stats() -> pl::Stats {
     pl::Stats {
         algorithm: pl::Algorithm::TotalFit,
@@ -5527,11 +5885,11 @@ fn assemble_block(
                         }));
                     }
                 }
-                BoxRec::Rule { width, height, span } => {
+                BoxRec::Rule { width, height, top, span } => {
                     // Line-local like text: the rule's bottom is the baseline.
                     items.push(display::Item::Rule(Rule {
                         x: Tick::from_tex_pt(local.x),
-                        top: Tick::from_tex_pt(-height),
+                        top: Tick::from_tex_pt(*top),
                         width: Tick::from_tex_pt(*width).max(Tick(1)),
                         height: Tick::from_tex_pt(*height).max(Tick(1)),
                         paint: Paint::BLACK,

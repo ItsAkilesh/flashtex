@@ -116,6 +116,28 @@ pub fn verb_items(source: &str, document: DocumentId, start: usize, end: usize, 
     Some(literal_items(body, document, body_start, size_cpt, starred))
 }
 
+/// `\lstinline[<keys>]<c>...<c>` or `\lstinline{...}` at `start..end`:
+/// its keys, where the code starts and the code (to the span's end when the
+/// compiler reported it unterminated). `None` for anything else.
+pub fn lstinline_parts(source: &str, start: usize, end: usize) -> Option<(Option<&str>, usize, &str)> {
+    source.get(start..end)?.strip_prefix("\\lstinline")?;
+    let mut at = start + "\\lstinline".len();
+    let mut own = None;
+    if let Some((keys, after)) = crate::listings::bracket_after(source, at) {
+        if after <= end {
+            own = Some(keys);
+            at = after;
+        }
+    }
+    while matches!(source.as_bytes().get(at), Some(b' ' | b'\t')) {
+        at += 1;
+    }
+    let delim = source.get(at..end)?.chars().next()?;
+    let (body_start, close) = if delim == '{' { (at + 1, '}') } else { (at + delim.len_utf8(), delim) };
+    let body = source.get(body_start..end)?;
+    Some((own, body_start, body.strip_suffix(close).unwrap_or(body)))
+}
+
 /// Environments whose bodies are read verbatim: braces and comment
 /// characters inside them do not count.
 const VERBATIM_ENVIRONMENTS: [&str; 4] = ["verbatim", "verbatim*", "lstlisting", "comment"];
@@ -309,7 +331,7 @@ fn skip_lstinline(source: &str, mut i: usize) -> usize {
 /// The size a declaration or environment name selects under the class
 /// size (size10/11/12.clo), in hundredths of a point; `Some(0)` for
 /// `normalsize`.
-fn size_of(name: &str, class_size: u32) -> Option<u16> {
+pub(crate) fn size_of(name: &str, class_size: u32) -> Option<u16> {
     use flashtex_compiler::parser::FontSizeLevel as L;
     let level = match name {
         "normalsize" => return Some(0),

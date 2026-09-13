@@ -116,7 +116,7 @@ pub enum Role {
     /// Typewriter text (`\ttfamily`: verbatim, `\verb`, listings): Latin
     /// Modern Mono outlines laid out with the metrics [`MonoMetrics`]
     /// selects ([`FontSet::resolve_mono`]).
-    Mono { bold: bool },
+    Mono { bold: bool, italic: bool },
     /// Math letters, symbols and operators: Latin Modern Math (`MATH`
     /// table) for both families, because `\usepackage{times}` leaves math
     /// in Computer Modern.
@@ -291,8 +291,11 @@ pub fn latin_modern_tfm(otf_stem: &str) -> Option<String> {
         let d: u32 = rest.strip_suffix("-regular")?.parse().ok()?;
         return Some(format!("ec-lmro{d}.tfm"));
     }
-    if otf_stem == "lmmonolt10-bold" {
-        return Some("ec-lmtk10.tfm".to_string());
+    match otf_stem {
+        "lmmonolt10-bold" => return Some("ec-lmtk10.tfm".to_string()),
+        "lmmonolt10-boldoblique" => return Some("ec-lmtko10.tfm".to_string()),
+        "lmmono10-italic" => return Some("ec-lmtti10.tfm".to_string()),
+        _ => {}
     }
     if let Some(rest) = otf_stem.strip_prefix("lmmono") {
         let d: u32 = rest.strip_suffix("-regular")?.parse().ok()?;
@@ -349,10 +352,15 @@ fn mono_design(size_pt: f64) -> u32 {
     }
 }
 
-/// The TFM LaTeX loads for typewriter text at `size_pt` (see [`MonoMetrics`]).
-pub fn mono_tfm_file(metrics: MonoMetrics, bold: bool, size_pt: f64) -> String {
+/// The TFM LaTeX loads for typewriter text at `size_pt` (see
+/// [`MonoMetrics`]); `m/it` is `cmitt10` (ot1cmtt.fd), `ecit` (t1cmtt.fd)
+/// or `ec-lmtti10` (t1lmtt.fd, `b/it` the oblique `ec-lmtko10`).
+pub fn mono_tfm_file(metrics: MonoMetrics, bold: bool, italic: bool, size_pt: f64) -> String {
     match metrics {
+        MonoMetrics::LatinModern if bold && italic => "ec-lmtko10.tfm".to_string(),
+        MonoMetrics::LatinModern if italic => "ec-lmtti10.tfm".to_string(),
         MonoMetrics::LatinModern if bold => "ec-lmtk10.tfm".to_string(),
+        MonoMetrics::CmOt1 if italic => "cmitt10.tfm".to_string(),
         MonoMetrics::LatinModern => format!("ec-lmtt{}.tfm", mono_design(size_pt)),
         MonoMetrics::CmOt1 => {
             // `<5><6><7><8>cmtt8<9>cmtt9<10><10.95>cmtt10<12>...cmtt12`; an
@@ -369,14 +377,15 @@ pub fn mono_tfm_file(metrics: MonoMetrics, bold: bool, size_pt: f64) -> String {
             format!("cmtt{d}.tfm")
         }
         MonoMetrics::EcT1 => {
+            let prefix = if italic { "ecit" } else { "ectt" };
             if size_pt < 8.5 {
-                return "ectt0800.tfm".to_string();
+                return format!("{prefix}0800.tfm");
             }
             let (_, suffix) = EC_SIZES
                 .iter()
                 .min_by(|a, b| (a.0 - size_pt).abs().total_cmp(&(b.0 - size_pt).abs()))
                 .expect("EC sizes");
-            format!("ectt{suffix}.tfm")
+            format!("{prefix}{suffix}.tfm")
         }
     }
 }
@@ -837,8 +846,10 @@ impl FontSet {
                 format!("lmroman{d}-italic.otf")
             }
             Role::Text { bold: true, italic: true } => "lmroman10-bolditalic.otf".to_string(),
-            Role::Mono { bold: true } => "lmmonolt10-bold.otf".to_string(),
-            Role::Mono { bold: false } => format!("lmmono{}-regular.otf", mono_design(s)),
+            Role::Mono { bold: true, italic: false } => "lmmonolt10-bold.otf".to_string(),
+            Role::Mono { bold: true, italic: true } => "lmmonolt10-boldoblique.otf".to_string(),
+            Role::Mono { bold: false, italic: true } => "lmmono10-italic.otf".to_string(),
+            Role::Mono { bold: false, italic: false } => format!("lmmono{}-regular.otf", mono_design(s)),
             // t1lmr.fd `m/sl`: <-8.5> 8, <8.5-9.5> 9, <9.5-11> 10, <11-15> 12, <15-> 17.
             Role::Slanted => {
                 let d = if s < 8.5 {
@@ -874,7 +885,7 @@ impl FontSet {
     /// is missing, reported through `metrics_fallback`); Courier under
     /// `times` (`\ttdefault` pcr). OT1/T1 `cmtt` has no bold: `bx` is the
     /// medium face.
-    pub fn resolve_mono(&self, family: Family, metrics: MonoMetrics, bold: bool, size_pt: f64) -> Resolved {
+    pub fn resolve_mono(&self, family: Family, metrics: MonoMetrics, bold: bool, italic: bool, size_pt: f64) -> Resolved {
         if family == Family::Times {
             return Resolved {
                 face: self.core14(Core14::Courier),
@@ -882,9 +893,9 @@ impl FontSet {
             };
         }
         let bold = bold && metrics == MonoMetrics::LatinModern;
-        let role = Role::Mono { bold };
+        let role = Role::Mono { bold, italic };
         let file = Self::latin_modern_file(role, size_pt);
-        let tfm = mono_tfm_file(metrics, bold, size_pt);
+        let tfm = mono_tfm_file(metrics, bold, italic, size_pt);
         match self.otf_with_tfm(&file, Some(&tfm)) {
             Ok(face) => Resolved { face, substituted: None },
             Err(reason) => Resolved {

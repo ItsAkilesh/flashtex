@@ -126,6 +126,16 @@ pub enum Item {
     /// `tabular`/`tabular*` (compiler `Inline::Tabular`): one box in the
     /// paragraph, laid out by `table.rs`.
     Table(Box<crate::table::TableItem>),
+    /// `\lstinline` (listings.sty `\lstinline`): its code, where the code
+    /// starts and the listings keys in force (`flexiblecolumns` first);
+    /// laid out by `crate::listings`.
+    InlineListing {
+        document: DocumentId,
+        start: usize,
+        text: String,
+        options: Box<crate::listings::Options>,
+        size_cpt: u16,
+    },
 }
 
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
@@ -372,6 +382,8 @@ pub struct VerbatimBlock {
     pub addvspace_before: f64,
     pub endlist_adjust: f64,
     pub span: Span,
+    /// The listings keys in force for `lstlisting`/`\lstinputlisting`.
+    pub listing: Option<Box<crate::listings::Options>>,
 }
 
 /// LaTeX `\list` geometry of one `\item` paragraph (see
@@ -929,9 +941,20 @@ pub fn adapt_cached(
                     }
                     None => (style.topsep, style.partopsep, style.parskip, None),
                 };
+                let kind = crate::verbatim::block_kind(src, span.start);
+                let listing = match kind {
+                    crate::verbatim::BlockKind::Listing => Some("\\begin{lstlisting}".len()),
+                    crate::verbatim::BlockKind::InputListing => Some("\\lstinputlisting".len()),
+                    crate::verbatim::BlockKind::Verbatim { .. } => None,
+                }
+                .map(|len| {
+                    let own = crate::listings::bracket_after(src, span.start + len).map(|(keys, _)| keys);
+                    Box::new(crate::listings::options_at(src, span.start, own))
+                });
                 blocks.push(Block::Verbatim(Box::new(VerbatimBlock {
+                    listing,
                     lines: raw,
-                    kind: crate::verbatim::block_kind(src, span.start),
+                    kind,
                     size_cpt: crate::verbatim::size_at(src, span.start, size),
                     vmode,
                     list,
@@ -3411,6 +3434,16 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                             (_, item) => items.push(item),
                         }
                     }
+                } else if let Some((own, body_start, body)) = crate::verbatim::lstinline_parts(src, span.start, span.end) {
+                    // listings.sty `\lstinline`: `\lstset{flexiblecolumns,#1}`.
+                    let own = format!("flexiblecolumns,{}", own.unwrap_or(""));
+                    items.push(Item::InlineListing {
+                        document: span.document,
+                        start: body_start,
+                        text: body.to_string(),
+                        options: Box::new(crate::listings::options_at(src, span.start, Some(&own))),
+                        size_cpt,
+                    });
                 }
                 prev_end = Some(span.end);
                 prev_span = Some(*span);

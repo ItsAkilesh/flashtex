@@ -206,6 +206,15 @@ fixture("30-lst-lstset-margin", "\\lstset{basicstyle=\\ttfamily\\footnotesize,xl
 lst_fixture("31-lst-t1-lmodern-bold", "language=C," + TT, CODE,
             preamble="\\usepackage[T1]{fontenc}\n\\usepackage{lmodern}\n" + LST)
 
+# microtype protrudes and expands the roman text around the verbatim
+# material but not the typewriter text (its default sets are rm*/sf*).
+fixture("32-verbatim-microtype", f"""{PARA} Inline \\verb|code, here.| ends a line of text that is justified and protruded.
+\\begin{{verbatim}}
+-- line with "quotes", commas, and a hyphen-
+\\end{{verbatim}}
+{AFTER}""", preamble="\\usepackage{microtype}\n")
+
+
 def main():
     for name in list(os.listdir(HERE)):
         if name.endswith(".tex") and name[:2].isdigit() and name[:-4] not in FIXTURES:

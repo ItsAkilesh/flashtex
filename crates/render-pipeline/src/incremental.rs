@@ -249,6 +249,13 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 9u8.hash(h);
                 format!("{t:?}").hash(h);
             }
+            Item::InlineListing { start, text, options, size_cpt, .. } => {
+                10u8.hash(h);
+                start.wrapping_sub(base).hash(h);
+                text.hash(h);
+                format!("{options:?}").hash(h);
+                size_cpt.hash(h);
+            }
         }
     }
 }

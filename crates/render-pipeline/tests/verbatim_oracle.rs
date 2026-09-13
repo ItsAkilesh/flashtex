@@ -21,12 +21,31 @@ use flashtex_render_pipeline::{render, FontSet, RenderOptions};
 
 const TOL: f64 = 0.1;
 
-/// Fixtures that match pdfLaTeX today.
+/// Fixtures that match pdfLaTeX today. `25-lst-java-roman` does not: a
+/// listing in the OT1 roman face sets `"` as cmr's `\char34` (a closing
+/// double quote) and the visible string space as cmr's slot 32, which the
+/// T1 text metrics the pipeline shapes roman text with do not have.
 const PASSING: &[&str] = &[
     "01-verbatim-basic", "02-verbatim-ligatures", "03-verbatim-tabs", "04-verbatim-blank-lines", "05-verbatim-star",
     "06-verb-delimiters", "07-verbatim-t1", "08-verbatim-lmodern", "09-verbatim-vmode", "10-verbatim-itemize",
     "11-verbatim-11pt", "12-verbatim-12pt", "13-verbatim-long-line", "14-verbatim-pagebreak", "15-verbatim-small",
+    "16-lst-default", "17-lst-tt-fixed", "18-lst-tt-flexible", "19-lst-fullflexible", "20-lst-numbers",
+    "21-lst-frame-single", "22-lst-frame-lines-numbers", "23-lst-c-keywords", "24-lst-python-keywords",
+    "26-lst-breaklines", "27-lst-showstringspaces", "29-lst-tabs-gobble", "31-lst-t1-lmodern-bold",
+    "32-verbatim-microtype",
 ];
+
+/// Fixtures that also need the compiler to lex `\lstinline` as one verbatim
+/// token and to set no text for `\lstset` (crates/compiler, branch
+/// agent/kabir-claude/verbatim-fidelity-compiler); they are gated once
+/// `vendor/compiler` carries that.
+const NEEDS_COMPILER: &[&str] = &["28-lstinline", "30-lst-lstset-margin"];
+
+/// Whether the vendored compiler lexes `\lstinline` (see [`NEEDS_COMPILER`]).
+fn compiler_lexes_lstinline() -> bool {
+    use flashtex_compiler::parser::{parse, Block, Inline};
+    parse("\\lstinline|x|").blocks.iter().any(|b| matches!(b, Block::Paragraph(inlines) if inlines.iter().any(|i| matches!(i, Inline::Verbatim { .. }))))
+}
 
 fn num(v: &Value) -> f64 {
     match v {
@@ -206,8 +225,12 @@ fn verbatim_fixtures_match_pdflatex() {
     let names = fixtures(dir);
     assert!(names.len() >= 25, "expected at least 25 verbatim fixtures, found {}", names.len());
     let mut failures = Vec::new();
+    let with_compiler = compiler_lexes_lstinline();
+    if !with_compiler {
+        eprintln!("verbatim_oracle: vendor/compiler does not lex \\lstinline yet; not gating {NEEDS_COMPILER:?}");
+    }
     for name in &names {
-        let passing = PASSING.contains(&name.as_str());
+        let passing = PASSING.contains(&name.as_str()) || (with_compiler && NEEDS_COMPILER.contains(&name.as_str()));
         if !passing && !report {
             continue;
         }
