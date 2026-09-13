@@ -2,6 +2,8 @@
 pub mod context;
 pub mod features;
 pub mod grok;
+pub mod openai;
+pub mod provider;
 pub mod store;
 pub mod validation;
 
@@ -326,8 +328,29 @@ pub struct Context {
     #[serde(default)]
     pub dependencies: Vec<ContextDependency>,
 }
+/// A proposal plus whatever the provider can prove about the call that made it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Converted {
+    pub proposal: Proposal,
+    pub evidence: Option<provider::ProviderEvidence>,
+}
+
+/// The conversion-provider seam. Implementations: `grok::GrokClient` (xAI),
+/// `openai::OpenAiCompatibleClient`, test fakes, and a future on-device model
+/// (docs/design/on-device-conversion.md). Only `convert` is required; providers
+/// that can report a response id / usage override `convert_with_evidence`.
 pub trait Converter {
     fn convert(&self, capture: &CaptureSubmit, context: &Context) -> Result<Proposal>;
+    fn convert_with_evidence(
+        &self,
+        capture: &CaptureSubmit,
+        context: &Context,
+    ) -> Result<Converted> {
+        Ok(Converted {
+            proposal: self.convert(capture, context)?,
+            evidence: None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -401,6 +424,10 @@ pub struct CaptureRecord {
     pub rejected: bool,
     #[serde(default)]
     pub destination_binding: Option<AnchorBinding>,
+    /// Evidence for the call that produced `proposal` (absent for fakes and
+    /// journals written before provider evidence existed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_evidence: Option<provider::ProviderEvidence>,
 }
 
 pub struct Bridge {
@@ -596,6 +623,7 @@ impl Bridge {
             applied: None,
             rejected: false,
             destination_binding,
+            provider_evidence: None,
         };
         self.store.save(&record)?;
         Ok(record)
@@ -644,7 +672,10 @@ impl Bridge {
         {
             return Ok(record);
         }
-        let mut proposal = converter.convert(&record.capture, &context)?;
+        let Converted {
+            mut proposal,
+            evidence,
+        } = converter.convert_with_evidence(&record.capture, &context)?;
         proposal.validate()?;
         // Hard violations already failed above; surface non-fatal but
         // reviewer-worthy findings (e.g. deep nesting, `\loop`/`\repeat`)
@@ -660,6 +691,7 @@ impl Bridge {
         proposal.validate()?;
         record.context = Some(context);
         record.proposal = Some(proposal);
+        record.provider_evidence = evidence;
         self.store.save(&record)?;
         Ok(record)
     }

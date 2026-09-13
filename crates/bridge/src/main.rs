@@ -1,5 +1,5 @@
 use flashtex_bridge::{
-    grok::{GrokClient, DEFAULT_MODEL},
+    provider::{ProviderConfig, ProviderKind},
     store::Store,
     *,
 };
@@ -70,7 +70,7 @@ fn decode<T: serde::de::DeserializeOwned>(payload: Value) -> Result<T> {
 fn dispatch(
     bridge: &mut Bridge,
     message: Envelope,
-    enable_grok: bool,
+    provider: Option<ProviderKind>,
     compiler: Option<&(validation::CompilerValidator, String)>,
 ) -> Result<(&'static str, Value)> {
     if message.protocol_version != 1 {
@@ -132,30 +132,26 @@ fn dispatch(
         }
         "capture_convert" => {
             let request: Convert = decode(message.payload)?;
-            if !enable_grok {
-                return Err(BridgeError::new(
-                    "provider_disabled",
-                    "Grok conversion requires explicitly enabled provider configuration",
-                ));
-            }
-            let key = std::env::var("XAI_API_KEY").map_err(|_| {
+            let kind = provider.ok_or_else(|| {
                 BridgeError::new(
-                    "provider_auth_missing",
-                    "Supply the Mac's authorized Grok key through its credential adapter",
+                    "provider_disabled",
+                    "Capture conversion requires an explicitly enabled provider (--conversion-provider)",
                 )
             })?;
-            let model =
-                std::env::var("FLASHTEX_GROK_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
+            // Resolved per request so a missing key is a request error, not a
+            // startup failure; building the converter sends nothing.
+            let converter =
+                ProviderConfig::resolve(kind, |name| std::env::var(name).ok())?.build()?;
             let record = bridge.convert(
                 &request.capture_id,
                 features::supported_features(),
-                &GrokClient::new(key, model)?,
+                converter.as_ref(),
             )?;
             let proposal = record.proposal.unwrap();
             let insertion_blocked = proposal.blocks_direct_insertion();
             Ok((
                 "capture_proposal",
-                json!({"capture_id":request.capture_id,"latex":proposal.latex,"ambiguities":proposal.ambiguities,"required_dependencies":proposal.required_dependencies,"context_revision":record.context.map(|c|c.revision),"insertion_blocked":insertion_blocked}),
+                json!({"capture_id":request.capture_id,"latex":proposal.latex,"ambiguities":proposal.ambiguities,"required_dependencies":proposal.required_dependencies,"context_revision":record.context.map(|c|c.revision),"insertion_blocked":insertion_blocked,"provider_evidence":record.provider_evidence}),
             ))
         }
         "capture_prepare_insert" => {
@@ -184,7 +180,7 @@ fn dispatch(
             let record = bridge.store.require(&request.capture_id)?;
             Ok((
                 "capture_status",
-                json!({"capture_id":request.capture_id,"proposal":record.proposal,"prepared":record.prepared,"applied":record.applied,"rejected":record.rejected}),
+                json!({"capture_id":request.capture_id,"proposal":record.proposal,"prepared":record.prepared,"applied":record.applied,"rejected":record.rejected,"provider_evidence":record.provider_evidence}),
             ))
         }
         "capture_reject" => {
@@ -207,27 +203,49 @@ fn main() {
 fn run() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let mut store = None;
-    let mut enable_grok = false;
+    // `None` = not given; `Some(None)` = explicitly `none`.
+    let mut provider: Option<Option<ProviderKind>> = None;
     let mut compiler_path = None;
     let mut compiler_entry = None;
+    let choose = |current: &mut Option<Option<ProviderKind>>, kind: Option<ProviderKind>| {
+        if current.is_some_and(|existing| existing != kind) {
+            return Err(BridgeError::new(
+                "invalid_arguments",
+                "--enable-grok and --conversion-provider disagree; pass one provider",
+            ));
+        }
+        *current = Some(kind);
+        Ok(())
+    };
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--store" => store = args.next(),
-            "--enable-grok" => enable_grok = true,
+            "--conversion-provider" => {
+                let name = args.next().ok_or_else(|| {
+                    BridgeError::new(
+                        "invalid_arguments",
+                        "--conversion-provider needs none, xai or openai-compatible",
+                    )
+                })?;
+                choose(&mut provider, ProviderKind::parse(&name)?)?;
+            }
+            // Deprecated alias for `--conversion-provider xai`; kept one release.
+            "--enable-grok" => choose(&mut provider, Some(ProviderKind::Xai))?,
             "--compiler" => compiler_path = args.next(),
             "--compiler-entry" => compiler_entry = args.next(),
             "--help" => {
-                println!("flashtex-bridge --store PRIVATE_APP_DATA_DIRECTORY [--enable-grok] [--compiler ORIGINAL_FLASHTEX_BINARY --compiler-entry main.tex]\nReads runtime-v1 JSONLines from stdin; logs to stderr. No network calls without capture_convert and --enable-grok.");
+                println!("flashtex-bridge --store PRIVATE_APP_DATA_DIRECTORY [--conversion-provider none|xai|openai-compatible] [--compiler ORIGINAL_FLASHTEX_BINARY --compiler-entry main.tex]\nReads runtime-v1 JSONLines from stdin; logs to stderr. No network calls without capture_convert and a --conversion-provider other than none (--enable-grok is a deprecated alias for xai).\nProvider environment: FLASHTEX_AI_API_KEY (xai also XAI_API_KEY), FLASHTEX_CONVERSION_MODEL (xai also FLASHTEX_GROK_MODEL), FLASHTEX_CONVERSION_BASE_URL (https, or http on loopback).");
                 return Ok(());
             }
             _ => {
                 return Err(BridgeError::new(
                     "invalid_arguments",
-                    "Use --store DIRECTORY and optional --enable-grok",
+                    "Use --store DIRECTORY and optional --conversion-provider NAME",
                 ))
             }
         }
     }
+    let provider = provider.flatten();
     let compiler = match (compiler_path, compiler_entry) {
         (None, None) => None,
         (Some(path), Some(entry)) => {
@@ -307,7 +325,7 @@ fn run() -> Result<()> {
                     } else {
                         decode(value).and_then(|message: Envelope| {
                             let _ = &message.id;
-                            dispatch(&mut bridge, message, enable_grok, compiler.as_ref())
+                            dispatch(&mut bridge, message, provider, compiler.as_ref())
                         })
                     }
                 }

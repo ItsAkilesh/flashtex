@@ -1,0 +1,17 @@
+{
+  "id": "chatcmpl-fixture-0001",
+  "object": "chat.completion",
+  "model": "local-vlm-fixture",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "{\"latex\":\"$x^{2}+1$\",\"ambiguities\":[],\"required_dependencies\":[]}",
+        "refusal": null
+      }
+    }
+  ],
+  "usage": {"prompt_tokens": 912, "completion_tokens": 27, "total_tokens": 939}
+}
