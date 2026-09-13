@@ -302,23 +302,29 @@ export mapping, except blackboard bold, `\setminus` and `\Longrightarrow`:
 those are drawn from the pinned Latin Modern Math resource (`lm.math`, see
 `src/lm_math.rs`). Its Unicode-math designs and widths differ from pdfLaTeX's
 msbm10/cmsy10, and the base-14 PDF export reports that it cannot embed them.
-Ordinary math letters and digits use Times-Roman. Unknown math
-commands produce an explicit diagnostic naming the command and are rendered
-literally, never silently dropped.
+A single Latin letter (a math variable) renders in Times-Italic; digits and
+multi-letter names use Times-Roman. Unknown math commands produce an explicit
+diagnostic naming the command and are rendered literally, never silently
+dropped.
 
 Script sizes and shifts and fraction geometry use named classic-proportion
 constants in `src/math.rs`. They approximate TeX's font-parameter-driven values;
 the compiler does not yet read a real math font.
 
 `\hat`, `\bar`, `\vec`, `\tilde`, `\dot`, `\ddot`, `\acute`, and `\grave` place a
-real base-14 accent glyph over `{body}`, symmetrically centered (no skew
-term: this compiler's math letters render upright, never math-italic, and
-Adobe Core 14 AFM metrics have no TeX-style skewchar kern to add one from).
-`\vec` uses the Symbol arrowright glyph and `\dot` uses the middle dot
-`\cdot` already renders with — the closest real glyphs available, not TeX's
-exact short arrow or raised dot. `\widehat`/`\widetilde` reuse the plain
-`\hat`/`\tilde` glyph unstretched (no cmex-style growing glyph exists here),
-which is diagnosed when the base is more than one symbol. `\check` and
+real base-14 accent glyph over `{body}`, symmetrically centered, plus an
+italic-angle skew (shifted right) when `{body}` is a single Latin letter —
+those render in Times-Italic, and TeX's real skewchar-kern skew (TeXbook
+Appendix G, rule 12) has no equivalent in Adobe Core 14 AFM metrics, so
+`crate::layout::italic_skew_pt` derives an equivalent shift from
+Times-Italic's real `ItalicAngle` (-15.5 degrees) instead. Digits,
+multi-letter bodies and Symbol-font Greek stay upright and keep plain
+symmetric centering. `\vec` uses the Symbol arrowright glyph and `\dot` uses
+the middle dot `\cdot` already renders with — the closest real glyphs
+available, not TeX's exact short arrow or raised dot. `\widehat`/`\widetilde`
+reuse the plain `\hat`/`\tilde` glyph unstretched (no cmex-style growing
+glyph exists here), which is diagnosed when the base is more than one
+symbol. `\check` and
 `\breve` have no representable base-14 glyph (no caron or breve in WinAnsi
 or the Symbol encoding) and are diagnosed rather than faked; the base still
 typesets without a mark. `\overline{body}` and `\underline{body}` draw a

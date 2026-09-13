@@ -155,6 +155,31 @@ pub(crate) fn x_height_pt(font: Font, size: f64) -> f64 {
     ratio * size
 }
 
+/// Horizontal displacement, in points, that `font`'s italic slant introduces
+/// at `height_pt` above the baseline (see `math::layout_accent`).
+///
+/// TeX's real accent-skew rule (TeXbook Appendix G, rule 12) shifts an accent
+/// right by the base character's TFM skewchar kern, a per-glyph value that
+/// Adobe Core 14 AFM metrics do not carry (there is no skewchar concept in an
+/// AFM at all). What the AFM does carry is `ItalicAngle`, the whole-font
+/// slant Times-Italic's outlines lean by (-15.5 degrees). Shearing a vertical
+/// stroke by that angle is exactly what produces a skewchar-shaped effect: a
+/// point `height_pt` above the baseline sits `height_pt * tan(|angle|)` to
+/// the right of where the same point would fall in an upright face. Using
+/// one whole-font angle rather than a per-glyph kern cannot reproduce TeX's
+/// letter-by-letter skewchar table exactly, but it is the real metric this
+/// font actually declares, rather than a borrowed constant from a different
+/// font (e.g. cmmi10) applied to Times-Italic's differently-shaped glyphs.
+/// Upright faces declare `ItalicAngle == 0`, so this is a no-op for them.
+pub(crate) fn italic_skew_pt(font: Font, height_pt: f64) -> f64 {
+    use flashtex_font_engine::Face as _;
+    let angle_deg = face(font).italic_angle();
+    if angle_deg == 0.0 {
+        return 0.0;
+    }
+    height_pt * angle_deg.to_radians().tan().abs()
+}
+
 fn source_span(text: &str, span: Span, shaped: &Shaped) -> Span {
     let Some(first) = shaped.clusters.first() else {
         return span;
