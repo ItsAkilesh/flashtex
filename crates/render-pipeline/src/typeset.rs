@@ -331,6 +331,9 @@ pub struct Context<'a> {
     recs: Vec<BoxRec>,
     maths: Vec<MathRec>,
     math_fonts: Option<MathProvider>,
+    /// Providers for formulas set at a text size other than the body's
+    /// (`\footnotesize`, `\Large`), by text size in pt.
+    sized_math_fonts: Vec<(f64, MathProvider)>,
     math_unavailable: bool,
     reported: BTreeSet<String>,
     /// Diagnostics emitted while a cacheable block is being built (with
@@ -364,6 +367,7 @@ impl<'a> Context<'a> {
             recs: Vec::new(),
             maths: Vec::new(),
             math_fonts: None,
+            sized_math_fonts: Vec::new(),
             math_unavailable: false,
             reported: BTreeSet::new(),
             capture: None,
@@ -570,18 +574,47 @@ impl<'a> Context<'a> {
         (Role::Font(terminal), notes)
     }
 
-    fn math_fonts(&mut self, span: Span) -> Option<MathProvider> {
-        if let Some(m) = &self.math_fonts {
+    /// How family 3 (the math extension font) is sized in this document:
+    /// amsmath (loaded by mathtools too) and amsfonts (loaded by amssymb)
+    /// redeclare Computer Modern's `OMX/cmex` at the math size in the cmex7,
+    /// cmex8, cmex9 or cmex10 design (`ExtensionSizing::Designs`); the
+    /// kernel's `cmex10` and lmodern's `lmex10` are `sfixed` at 10pt.
+    fn math_extension(&self) -> ml::cm::ExtensionSizing {
+        let lmodern = matches!(self.style.nfss, crate::nfss::Scheme::LmOt1 | crate::nfss::Scheme::LmT1);
+        let ams = self.texts.iter().any(|t| ["amsmath", "mathtools", "amsfonts", "amssymb"].iter().any(|p| crate::adapter::package_options(t, p).is_some()));
+        if ams && !lmodern {
+            ml::cm::ExtensionSizing::Designs
+        } else {
+            ml::cm::ExtensionSizing::Fixed
+        }
+    }
+
+    /// The math provider for a formula set while the text size is `size`:
+    /// LaTeX selects the math fonts of `\DeclareMathSizes` for the current
+    /// size (`\check@mathfonts`), so a formula in a `\footnotesize` note or
+    /// a `\Large` title uses that size's fonts, not the body's.
+    fn math_fonts_at(&mut self, span: Span, size: f64) -> Option<MathProvider> {
+        let body = (size - self.style.body_size_pt).abs() < 0.005;
+        if body {
+            if let Some(m) = &self.math_fonts {
+                return Some(m.clone());
+            }
+        } else if let Some((_, m)) = self.sized_math_fonts.iter().find(|(s, _)| (s - size).abs() < 0.005) {
             return Some(m.clone());
         }
         if self.math_unavailable {
             return None;
         }
-        let r = self.fonts.resolve(self.style.family, Role::Math, self.style.body_size_pt);
-        let sizes = MathSizes {
-            text: self.style.body_size_pt,
-            script: self.style.script_size_pt,
-            script_script: self.style.scriptscript_size_pt,
+        let r = self.fonts.resolve(self.style.family, Role::Math, size);
+        let sizes = if body {
+            MathSizes {
+                text: self.style.body_size_pt,
+                script: self.style.script_size_pt,
+                script_script: self.style.scriptscript_size_pt,
+            }
+        } else {
+            let [text, script, script_script] = ml::cm::declare_math_sizes(size);
+            MathSizes { text, script, script_script }
         };
         match (r.substituted, MathFonts::new(r.face, sizes)) {
             (None, Some(m)) => {
@@ -604,7 +637,13 @@ impl<'a> Context<'a> {
                     .copied()
                     .filter(|a| self.texts.iter().any(|t| t.contains(a.command())))
                     .collect();
-                let tex = TexMathMetrics::new(base, m.clone(), self.fonts).with_alphabets(self.fonts, &used);
+                let text = match (body, base) {
+                    (true, 10) => 10.0,
+                    (true, 11) => 10.95,
+                    (true, _) => 12.0,
+                    (false, _) => size,
+                };
+                let tex = TexMathMetrics::for_text_size(text, self.math_extension(), m.clone(), self.fonts).with_alphabets(self.fonts, &used);
                 let provider = if tex.roman_available() {
                     MathProvider::Tex(Rc::new(tex))
                 } else {
@@ -630,7 +669,11 @@ impl<'a> Context<'a> {
                     self.report_once("math:no-tfm".into(), diag);
                     MathProvider::Otf(m)
                 };
-                self.math_fonts = Some(provider.clone());
+                if body {
+                    self.math_fonts = Some(provider.clone());
+                } else {
+                    self.sized_math_fonts.push((size, provider.clone()));
+                }
                 Some(provider)
             }
             (subst, _) => {
@@ -734,7 +777,7 @@ impl<'a> Context<'a> {
         let params = self.text_params(style, size);
         let mut epsilon: Option<(usize, f64, f64)> = None;
         if logo == TextLogo::LaTeXe {
-            if let Some(rec) = self.math_box(&flashtex_compiler::math::varepsilon_list(span), span, false) {
+            if let Some(rec) = self.math_box(&flashtex_compiler::math::varepsilon_list(span), span, false, size) {
                 if let BoxRec::Math(mi) = &self.recs[rec] {
                     let root = &self.maths[*mi].root;
                     epsilon = Some((rec, root.width, root.height));
@@ -912,17 +955,20 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool) -> Option<usize> {
-        let fonts = self.math_fonts(span)?;
+    fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool, size: f64) -> Option<usize> {
+        let fonts = self.math_fonts_at(span, size)?;
+        let amsmath = self.texts.iter().any(|t| ["amsmath", "mathtools"].iter().any(|p| crate::adapter::package_options(t, p).is_some()));
+        let rewritten = rewrite_math_spacing(list, self.texts, amsmath, display);
+        let list = &rewritten;
         let mut sink = crate::mathtext::TextSink::default();
         // `\quad` in math is `\hskip1em` of the text font (`\fontdimen6`),
         // not 18 mu of the math symbol font.
         let fam2_quad = ml::MathFontMetrics::params(fonts.metrics(), ml::Style::TEXT.size_class()).quad;
-        let text_quad = self.text_params(TextStyle::default(), self.style.body_size_pt).quad;
+        let text_quad = self.text_params(TextStyle::default(), size).quad;
         if fam2_quad > 0.0 && text_quad > 0.0 {
             sink.text_quad = Some((text_quad, text_quad / fam2_quad));
         }
-        sink.body_size_pt = self.style.body_size_pt;
+        sink.body_size_pt = size;
         sink.amsfonts = self.texts.iter().any(|t| {
             crate::adapter::package_options(t, "amssymb").is_some() || crate::adapter::package_options(t, "amsfonts").is_some()
         });
@@ -1639,7 +1685,7 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::Glue(glue), None);
                 }
                 AItem::Math { list, span } => {
-                    if let Some(rec) = self.math_box(list, *span, false) {
+                    if let Some(rec) = self.math_box(list, *span, false, size) {
                         let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
                         let root = &self.maths[*mi].root;
                         let run = math_run(root, size, *span);
@@ -3005,7 +3051,7 @@ impl<'a> Context<'a> {
         style: ParaStyle,
         list_geom: Option<&ListGeom>,
     ) -> Option<BuiltBlock> {
-        let rec = self.math_box(list, span, true)?;
+        let rec = self.math_box(list, span, true, self.style.body_size_pt)?;
         let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
         let root = &self.maths[*mi].root;
         let size = self.style.body_size_pt;
@@ -3200,7 +3246,7 @@ impl<'a> Context<'a> {
                     list.atoms.insert(0, empty);
                 }
                 let cspan = list.atoms.iter().map(|a| a.span).reduce(Span::merge).unwrap_or(row.span);
-                let run = self.math_box(&list, cspan, true).map(|rec| {
+                let run = self.math_box(&list, cspan, true, size).map(|rec| {
                     let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
                     (math_run(&self.maths[*mi].root, size, cspan), rec)
                 });
@@ -3901,8 +3947,201 @@ pub fn class_override_of(text: &str, at: usize) -> Option<ml::AtomClass> {
         "bigtriangleup" => ml::AtomClass::Bin,
         // amsfonts' dashed arrows: a `\mathrel` group of msam pieces.
         "dashrightarrow" | "dasharrow" | "dashleftarrow" => ml::AtomClass::Rel,
+        // latex.ltx `\mathellipsis`/`\cdots` and amsmath's `\dots` family:
+        // `\mathinner` groups ([`rewrite_math_spacing`] builds them).
+        "dots" | "ldots" | "cdots" | "dotsc" | "dotsb" | "dotsm" | "dotsi" | "dotso" | "mathellipsis" => ml::AtomClass::Inner,
+        // `\mathrm{K}`: an ordinary character of the roman family.
+        "mathrm" => ml::AtomClass::Ord,
         _ => return None,
     })
+}
+
+/// The control word at byte `at` of `text` (without its backslash; empty
+/// when none starts there) and the source after it.
+fn control_word_at(text: &str, at: usize) -> (&str, &str) {
+    let Some(rest) = text.get(at..).and_then(|r| r.strip_prefix('\\')) else {
+        return ("", "");
+    };
+    let len = rest.bytes().take_while(|b| b.is_ascii_alphabetic()).count();
+    (&rest[..len], &rest[len..])
+}
+
+/// What follows a `\dots`-family command, as amsmath's `\mdots@@`,
+/// `\extra@` and `\extrap@` (amsmath.sty 494-627) classify the next token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DotsNext {
+    Comma,
+    SemicolonOrPeriod,
+    /// `+ = < > - * :`, `\not`, a binary/relation math character, or a
+    /// `\DOTSB` command (`\sum`, `\iff`, ...).
+    BinaryOrRelation,
+    /// A `\DOTSI` integral.
+    Integral,
+    /// `)`, `]`, `\}`, `\rangle`, `\right`, `\bigr`, ... (`\rightdelim@`).
+    RightDelimiter,
+    /// `$` ending the formula.
+    MathShift,
+    Other,
+}
+
+/// Classifies the source after a `\dots`-family control word.
+pub fn dots_next(rest: &str) -> DotsNext {
+    let r = rest.trim_start();
+    match r.chars().next() {
+        Some(',') => DotsNext::Comma,
+        Some(';' | '.') => DotsNext::SemicolonOrPeriod,
+        Some('+' | '=' | '<' | '>' | '-' | '*' | ':') => DotsNext::BinaryOrRelation,
+        Some(')' | ']') => DotsNext::RightDelimiter,
+        Some('$') => DotsNext::MathShift,
+        Some('\\') if r.starts_with("\\}") => DotsNext::RightDelimiter,
+        Some('\\') => match control_word_at(r, 0).0 {
+            "rbrack" | "rbrace" | "rangle" | "rceil" | "rfloor" | "rgroup" | "rmoustache" | "right" | "bigr" | "Bigr" | "biggr" | "Biggr" | "rvert" | "rVert" => DotsNext::RightDelimiter,
+            "int" | "oint" | "iint" | "iiint" | "iiiint" | "idotsint" => DotsNext::Integral,
+            "not" | "cdot" | "times" | "pm" | "mp" | "div" | "ast" | "star" | "circ" | "bullet" | "cap" | "cup" | "sqcap" | "sqcup" | "vee" | "wedge" | "land"
+            | "lor" | "oplus" | "ominus" | "otimes" | "oslash" | "odot" | "setminus" | "wr" | "amalg" | "uplus" | "le" | "leq" | "ge" | "geq" | "ne" | "neq"
+            | "equiv" | "sim" | "simeq" | "approx" | "cong" | "subset" | "supset" | "subseteq" | "supseteq" | "sqsubseteq" | "sqsupseteq" | "in" | "ni"
+            | "notin" | "to" | "gets" | "rightarrow" | "leftarrow" | "Rightarrow" | "Leftarrow" | "leftrightarrow" | "Leftrightarrow" | "iff" | "implies"
+            | "impliedby" | "mapsto" | "longrightarrow" | "Longrightarrow" | "longleftarrow" | "Longleftarrow" | "longleftrightarrow"
+            | "Longleftrightarrow" | "longmapsto" | "mid" | "parallel" | "perp" | "prec" | "succ" | "preceq" | "succeq" | "ll" | "gg" | "propto"
+            | "doteq" | "models" | "vdash" | "dashv" | "asymp" | "bowtie" | "smile" | "frown" | "sum" | "prod" | "coprod" | "bigcup" | "bigcap"
+            | "bigvee" | "bigwedge" | "bigoplus" | "bigotimes" | "bigodot" | "biguplus" | "bigsqcup" | "leqslant" | "geqslant" | "lesssim" | "gtrsim"
+            | "subsetneq" | "supsetneq" => DotsNext::BinaryOrRelation,
+            _ => DotsNext::Other,
+        },
+        _ => DotsNext::Other,
+    }
+}
+
+/// How a `\dots`-family command is set: `(centred, thin space before
+/// removed, thin space after)`, where centred is `\@cdots`
+/// (`\mathinner{\cdotp\cdotp\cdotp}`) and otherwise `\@ldots`
+/// (`\mathinner{\ldotp\ldotp\ldotp}`). Without amsmath the kernel's
+/// `\dots`/`\ldots` are `\mathellipsis` and `\cdots` has no context.
+pub fn dots_setting(word: &str, next: DotsNext, amsmath: bool) -> Option<(bool, bool, bool)> {
+    use DotsNext::*;
+    let extra = matches!(next, RightDelimiter | MathShift);
+    let dotsc = (false, false, matches!(next, SemicolonOrPeriod) || extra);
+    let dotso = (false, false, extra);
+    let cdots = (true, false, matches!(next, Comma | SemicolonOrPeriod) || extra);
+    Some(match (word, amsmath) {
+        ("ldots" | "mathellipsis", _) => (false, false, false),
+        ("dots" | "dotsc" | "dotso", false) => (false, false, false),
+        ("cdots" | "dotsb" | "dotsm" | "dotsi", false) => (true, false, false),
+        ("dots", true) => match next {
+            Comma => dotsc,
+            BinaryOrRelation => (true, false, false),
+            Integral => (true, true, false),
+            _ => dotso,
+        },
+        ("dotsc", true) => dotsc,
+        ("dotso", true) => dotso,
+        ("cdots" | "dotsb" | "dotsm", true) => cdots,
+        ("dotsi", true) => (true, true, false),
+        _ => return None,
+    })
+}
+
+/// Rewrites the atoms of commands whose TeX spacing the compiler's atoms do
+/// not carry, from the source at each atom's span:
+/// * `\dots`, `\ldots`, `\cdots` and amsmath's `\dotsc`..`\dotsi` (the
+///   compiler's text `...` and symbol `⋅⋅⋅`) become a group of three periods
+///   (cmmi "3A `\ldotp`) or centred dots (cmsy "01 `\cdotp`) at the
+///   command's span, made Inner by [`class_override_of`] (Inner-Inner and
+///   Punct-Punct spacing are the same nonscript thin space), with the `\,`
+///   or `\!` of [`dots_setting`];
+/// * amsmath.sty 904-911: `\bmod` gets 5 mu on each side, which is what
+///   `\nonscript\mskip-\medmuskip\mkern5mu` around its `\mathbin` comes to
+///   in every style between ordinary atoms; `\mod` 12 mu (18 in display)
+///   before and 6 mu after; `\pmod` 8 mu (18 in display) before its
+///   parenthesis instead of the kernel's 18 mu.
+pub fn rewrite_math_spacing(list: &flashtex_compiler::math::MathList, texts: &[&str], amsmath: bool, display: bool) -> flashtex_compiler::math::MathList {
+    use flashtex_compiler::math::{MathAtom, MathList as CList, Nucleus as N};
+    let recurse = |l: &CList| rewrite_math_spacing(l, texts, amsmath, display);
+    let mut atoms: Vec<MathAtom> = Vec::with_capacity(list.atoms.len());
+    for original in &list.atoms {
+        let mut a = original.clone();
+        a.superscript = a.superscript.as_ref().map(recurse);
+        a.subscript = a.subscript.as_ref().map(recurse);
+        match &mut a.nucleus {
+            N::Framed { body, .. } | N::Radical(body) | N::Accent { body, .. } | N::Group(body) => *body = recurse(body),
+            N::Fraction { numerator, denominator } => {
+                *numerator = recurse(numerator);
+                *denominator = recurse(denominator);
+            }
+            N::Stacked { base, over, under } => {
+                *base = recurse(base);
+                for part in [over, under].into_iter().flatten() {
+                    *part = recurse(part);
+                }
+            }
+            N::Matrix { rows, .. } => {
+                for cell in rows.iter_mut().flatten() {
+                    *cell = recurse(cell);
+                }
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::GenFraction { numerator, denominator, .. } => {
+                *numerator = recurse(numerator);
+                *denominator = recurse(denominator);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::Phantom { body, .. } | N::Operator { body, .. } => *body = recurse(body),
+            #[cfg(feature = "amsmath-inline")]
+            N::SubArray { rows, .. } => {
+                for row in rows.iter_mut() {
+                    *row = recurse(row);
+                }
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::ExtArrow { above, below, .. } => {
+                *above = recurse(above);
+                *below = recurse(below);
+            }
+            _ => {}
+        }
+        let text = texts.get(a.span.document.0).copied().unwrap_or("");
+        let (word, rest) = control_word_at(text, a.span.start);
+        let space = |mu: f64| {
+            let mut s = original.clone();
+            s.nucleus = N::Space { em: mu / 18.0, font_em: false };
+            s.superscript = None;
+            s.subscript = None;
+            s
+        };
+        let dots = match &a.nucleus {
+            N::Text(t) if t == "..." => dots_setting(word, dots_next(rest), amsmath),
+            N::Symbol(s) if s == "\u{22C5}\u{22C5}\u{22C5}" => dots_setting(word, dots_next(rest), amsmath),
+            _ => None,
+        };
+        if let Some((centred, negative_before, thin_after)) = dots {
+            let mut dot = original.clone();
+            dot.nucleus = N::Symbol(if centred { "\u{22C5}" } else { "." }.into());
+            dot.superscript = None;
+            dot.subscript = None;
+            if negative_before {
+                atoms.push(space(-3.0));
+            }
+            a.nucleus = N::Group(CList { atoms: vec![dot.clone(), dot.clone(), dot] });
+            atoms.push(a);
+            if thin_after {
+                atoms.push(space(3.0));
+            }
+            continue;
+        }
+        match (word, &a.nucleus) {
+            ("bmod", N::Text(t)) | ("mod", N::Text(t)) if t == "mod" => {
+                let (before, after) = if word == "mod" && amsmath { (if display { 18.0 } else { 12.0 }, 6.0) } else { (5.0, 5.0) };
+                atoms.push(space(before));
+                atoms.push(a);
+                atoms.push(space(after));
+            }
+            ("pmod", N::Space { em, font_em: false }) if amsmath && !display && (*em - 1.0).abs() < 1e-9 => {
+                atoms.push(space(8.0));
+            }
+            _ => atoms.push(a),
+        }
+    }
+    CList { atoms }
 }
 
 /// [`convert_math_fenced`] with `class` giving the forced class of a
@@ -3920,6 +4159,12 @@ pub fn convert_math_classed(
     for a in &list.atoms {
         let sub = |l: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink| convert_math_classed(l, sink, fence, class);
         let mut out: Vec<ml::Atom> = match &a.nucleus {
+            // `\mathrm{K}`: one upright character is a math character (TeX
+            // §1186 unpacks the one-Ord group), so its scripts are placed as
+            // on a character; the provider boxes it from the roman family.
+            N::Text(text) if text.chars().count() == 1 && class(&a.span) == Some(ml::AtomClass::Ord) => {
+                vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::TextChar(text.chars().next().expect("one character")))]
+            }
             N::Text(text) => vec![sink.atom(text)],
             // Glue inside a sub-formula (`\operatorname*{arg\,max}`, `\;`
             // inside `\left...\right`): math-layout's `Glue` atom, which

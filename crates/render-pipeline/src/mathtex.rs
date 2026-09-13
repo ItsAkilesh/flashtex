@@ -93,24 +93,23 @@ impl TexMathMetrics {
     /// glyph program; `fonts` supplies `rm-lmr<d>.tfm` (digest-bound for
     /// the 12 pt set).
     pub fn new(base: u32, otf: Rc<MathFonts>, fonts: &FontSet) -> TexMathMetrics {
-        let (cm, roman_names) = match base {
-            10 => (CmMathMetrics::latex_10pt(), ["rm-lmr10", "rm-lmr7", "rm-lmr5"]),
-            11 => (
-                // size11.clo: \DeclareMathSizes{\@xipt}{\@xipt}{8}{6} with the
-                // 10pt designs scaled to 10.95pt for text.
-                CmMathMetrics {
-                    sizes: [10.95, 8.0, 6.0],
-                    extension: cm::ExtensionSizing::Fixed,
-                    families: [
-                        [&cm_tfm::CMR10, &cm_tfm::CMR8, &cm_tfm::CMR6],
-                        [&cm_tfm::CMMI10, &cm_tfm::CMMI8, &cm_tfm::CMMI6],
-                        [&cm_tfm::CMSY10, &cm_tfm::CMSY8, &cm_tfm::CMSY6],
-                    ],
-                },
-                ["rm-lmr10", "rm-lmr8", "rm-lmr6"],
-            ),
-            _ => (CmMathMetrics::latex_12pt(), ["rm-lmr12", "rm-lmr8", "rm-lmr6"]),
+        let text = match base {
+            10 => 10.0,
+            11 => 10.95,
+            _ => 12.0,
         };
+        TexMathMetrics::for_text_size(text, cm::ExtensionSizing::Fixed, otf, fonts)
+    }
+
+    /// Math set while the text size is `text_pt` (`\normalsize`, a
+    /// `\footnotesize` note, a `\Large` title): math-layout's
+    /// `CmMathMetrics::for_text_size` (fontmath.ltx `\DeclareMathSizes` and
+    /// the designs the `.fd` files load at each math size), family 3 sized as
+    /// `extension`, and `rm-lmr<design>` for the roman family (`ot1lmr.fd`
+    /// picks the same design sizes as `ot1cmr.fd` there).
+    pub fn for_text_size(text_pt: f64, extension: cm::ExtensionSizing, otf: Rc<MathFonts>, fonts: &FontSet) -> TexMathMetrics {
+        let cm = CmMathMetrics::for_text_size(text_pt).with_extension(extension);
+        let roman_names = cm.families[0].map(|f| f.name.replacen("cm", "rm-lm", 1));
         let sizes = MathSizes {
             text: cm.sizes[0],
             script: cm.sizes[1],
@@ -128,7 +127,7 @@ impl TexMathMetrics {
                 }
             }
         };
-        let roman = [load(roman_names[0]), load(roman_names[1]), load(roman_names[2])];
+        let roman = [load(&roman_names[0]), load(&roman_names[1]), load(&roman_names[2])];
         let text_face = |size: f64| -> Option<Rc<LoadedFace>> {
             let r = fonts.resolve(crate::fonts::Family::LatinModern, Role::Text { bold: false, italic: false }, size);
             if r.substituted.is_some() { None } else { Some(r.face) }
@@ -371,10 +370,12 @@ impl TexMathMetrics {
     /// variants drawn for them sit on the axis relative to their own
     /// origin, so the painter re-centres the drawn ink on this box.
     pub fn extension_box(&self, font: MathFontId, code: u8, size: f64) -> Option<(f64, f64)> {
-        if !self.cm.font_name(font).starts_with("cmex") {
+        let name = self.cm.font_name(font);
+        if !name.starts_with("cmex") {
             return None;
         }
-        let c = cm_tfm::CMEX10.char(code)?;
+        // cmex10, or amsmath's cmex7/8/9 at small math sizes.
+        let c = cm::tfm_by_name(&name)?.char(code)?;
         Some((mtfm::scale(c.height, size), mtfm::scale(c.depth, size)))
     }
 
