@@ -143,6 +143,21 @@ final class NearbyLANInterfaceTests: XCTestCase {
         XCTFail("timed out waiting for \(what)", file: file, line: line)
     }
 
+    /// Response line `index` if it arrived, else nil. `waitUntil` only records
+    /// a failure on timeout — it does not unwind — so a connection that never
+    /// became ready leaves `lines` short. Indexing it directly traps
+    /// ("Index out of range") and takes the whole test process with it, so
+    /// every call site unwraps this instead and fails only its own test.
+    private func responseLine(_ c: LANClient, _ index: Int) -> Data? {
+        let lines = c.allLines
+        return lines.indices.contains(index) ? lines[index] : nil
+    }
+
+    /// What a client's state says, for the message on a missing line.
+    private func describe(_ c: LANClient) -> String {
+        "ready=\(c.isReady) closed=\(c.isClosed) failure=\(String(describing: c.failure)) lines=\(c.lineCount)"
+    }
+
     /// All-interface state (the product default) with one long-term pairing.
     func makeState(name: String, limits: NearbyReceiveLimits = .init()) -> (NearbyState, PairStore, RecordingSink) {
         let store = PairStore(url: tmp.appendingPathComponent("pairs.json"))
@@ -197,7 +212,12 @@ final class NearbyLANInterfaceTests: XCTestCase {
             let nonce = "n-\(a.interface)-\(a.family)"
             hello(c, nonce: nonce)
             try await waitUntil("\(a) hello_ack") { c.lineCount >= 1 }
-            let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: c.allLines[0])
+            guard let ackLine = responseLine(c, 0) else {
+                XCTFail("\(a): no hello_ack line (\(describe(c)))")
+                c.cancel()
+                continue
+            }
+            let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: ackLine)
             XCTAssertEqual(ack.type, "hello_ack", "\(a)")
             XCTAssertEqual(ack.payload.nonce, nonce, "\(a)")
             XCTAssertEqual(ack.payload.macName, state.macName)
@@ -334,8 +354,10 @@ final class NearbyLANInterfaceTests: XCTestCase {
         let right = LANClient(host: a.host, port: port, interface: known[a.interface])
         try await waitUntil("\(a) right key ready (\(String(describing: right.failure)))") { right.isReady || right.isClosed }
         XCTAssertTrue(right.isReady, "\(a): \(String(describing: right.failure))")
-        hello(right, nonce: "after-refusals")
-        try await waitUntil("hello_ack") { right.lineCount >= 1 }
+        if right.isReady {
+            hello(right, nonce: "after-refusals")
+            try await waitUntil("hello_ack") { right.lineCount >= 1 }
+        }
         right.cancel()
 
         // Foreign fingerprint: the reference client's `find` sees this Mac on
@@ -380,11 +402,16 @@ final class NearbyLANInterfaceTests: XCTestCase {
         let a = LANClient(host: first.host, port: port, interface: known[first.interface])
         try await waitUntil("\(first) ready (\(String(describing: a.failure)))") { a.isReady || a.isClosed }
         XCTAssertTrue(a.isReady, "\(first): \(String(describing: a.failure))")
+        guard a.isReady else { return a.cancel() }
         hello(a, nonce: "first")
         try await waitUntil("hello_ack") { a.lineCount >= 1 }
         a.send(NearbyV1.line(id: "s1", type: "capture_submit", submit("cap-lan-1")))
         try await waitUntil("first ack") { a.lineCount >= 2 }
-        XCTAssertEqual(ack(a.allLines[1])?.captureId, "cap-lan-1")
+        guard let firstAck = responseLine(a, 1) else {
+            a.cancel()
+            return XCTFail("\(first): no capture_received line (\(describe(a)))")
+        }
+        XCTAssertEqual(ack(firstAck)?.captureId, "cap-lan-1")
         XCTAssertEqual(sink.count, 1)
         a.cancel()
         try await waitUntil("first session gone") { !state.connectedPairIds.contains(Self.pairId) }
@@ -392,21 +419,28 @@ final class NearbyLANInterfaceTests: XCTestCase {
         let b = LANClient(host: second.host, port: port, interface: known[second.interface])
         try await waitUntil("\(second) ready (\(String(describing: b.failure)))") { b.isReady || b.isClosed }
         XCTAssertTrue(b.isReady, "\(second): \(String(describing: b.failure))")
+        defer { b.cancel() }
+        guard b.isReady else { return }
         hello(b, nonce: "second")
         try await waitUntil("hello_ack 2") { b.lineCount >= 1 }
         b.send(NearbyV1.line(id: "s2", type: "capture_submit", submit("cap-lan-1")))
         try await waitUntil("retry ack") { b.lineCount >= 2 }
-        XCTAssertEqual(ack(b.allLines[1])?.captureId, "cap-lan-1", "acknowledged again on the second address")
+        guard let retryAck = responseLine(b, 1) else {
+            return XCTFail("\(second): no retry capture_received line (\(describe(b)))")
+        }
+        XCTAssertEqual(ack(retryAck)?.captureId, "cap-lan-1", "acknowledged again on the second address")
         XCTAssertEqual(sink.count, 1, "never re-delivered")
         try await waitUntil("duplicate counted") { state.duplicateCaptureCount == 1 }
         XCTAssertEqual(state.lastDuplicateCaptureId, "cap-lan-1")
         // A genuinely new capture on the second address is delivered.
         b.send(NearbyV1.line(id: "s3", type: "capture_submit", submit("cap-lan-2")))
         try await waitUntil("new ack") { b.lineCount >= 3 }
-        XCTAssertEqual(ack(b.allLines[2])?.captureId, "cap-lan-2")
+        guard let newAck = responseLine(b, 2) else {
+            return XCTFail("\(second): no capture_received line for cap-lan-2 (\(describe(b)))")
+        }
+        XCTAssertEqual(ack(newAck)?.captureId, "cap-lan-2")
         XCTAssertEqual(sink.count, 2)
         print("measured: reconnect \(first) -> \(second): retry acknowledged from memory, sink saw 1 then 2")
-        b.cancel()
     }
 
     // MARK: frame timeout on a non-loopback path
@@ -432,6 +466,7 @@ final class NearbyLANInterfaceTests: XCTestCase {
             let c = LANClient(host: a.host, port: port, interface: known[a.interface])
             try await waitUntil("\(a) ready (\(String(describing: c.failure)))") { c.isReady || c.isClosed }
             XCTAssertTrue(c.isReady, "\(a): \(String(describing: c.failure))")
+            guard c.isReady else { c.cancel(); continue }
             hello(c, nonce: "t-\(a.interface)")
             try await waitUntil("hello_ack") { c.lineCount >= 1 }
             let partial = Data(NearbyV1.line(id: "p", type: "capture_submit", submit("cap-partial")).dropLast(40))

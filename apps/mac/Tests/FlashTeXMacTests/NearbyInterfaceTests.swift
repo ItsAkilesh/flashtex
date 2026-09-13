@@ -74,6 +74,21 @@ final class NearbyInterfaceTests: XCTestCase {
         XCTFail("timed out waiting for \(what)", file: file, line: line)
     }
 
+    /// Response line `index` if it arrived, else nil. `waitUntil` only records
+    /// a failure on timeout — it does not unwind — so a connection that never
+    /// became ready leaves `lines` short. Indexing it directly traps
+    /// ("Index out of range") and takes the whole test process with it, so
+    /// every call site unwraps this instead and fails only its own test.
+    private func responseLine(_ c: AddressClient, _ index: Int) -> Data? {
+        let lines = c.allLines
+        return lines.indices.contains(index) ? lines[index] : nil
+    }
+
+    /// What a client's state says, for the message on a missing line.
+    private func describe(_ c: AddressClient) -> String {
+        "ready=\(c.isReady) closed=\(c.isClosed) failure=\(String(describing: c.failure)) lines=\(c.lineCount)"
+    }
+
     func makeState(name: String) -> (NearbyState, PairStore, ShellModel) {
         let store = PairStore(url: tmp.appendingPathComponent("pairs.json"))
         XCTAssertTrue(store.upsert(PairRecord(pairId: Self.pairId, psk: Self.psk.base64EncodedString(), companionName: "v6 iPad",
@@ -107,10 +122,16 @@ final class NearbyInterfaceTests: XCTestCase {
             let c = AddressClient(host: host, port: port)
             try await waitUntil("\(label) ready (\(String(describing: c.failure)))") { c.isReady || c.isClosed }
             XCTAssertTrue(c.isReady, "\(label): \(String(describing: c.failure))")
+            guard c.isReady else { c.cancel(); continue }
             let nonce = "n-\(label)"
             hello(c, nonce: nonce)
             try await waitUntil("\(label) hello_ack") { c.lineCount >= 1 }
-            let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: c.allLines[0])
+            guard let ackLine = responseLine(c, 0) else {
+                XCTFail("\(label): no hello_ack line (\(describe(c)))")
+                c.cancel()
+                continue
+            }
+            let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: ackLine)
             XCTAssertEqual(ack.type, "hello_ack")
             XCTAssertEqual(ack.payload.nonce, nonce, "\(label): nonce echoed")
             XCTAssertEqual(ack.payload.macName, state.macName)
@@ -173,11 +194,13 @@ final class NearbyInterfaceTests: XCTestCase {
         let c = AddressClient(host: resolved.host, port: resolved.port)
         try await waitUntil("connected through the resolved host \(resolved.host) (\(String(describing: c.failure)))") { c.isReady || c.isClosed }
         XCTAssertTrue(c.isReady, "\(resolved.host): \(String(describing: c.failure))")
+        defer { c.cancel() }
+        guard c.isReady else { return }
         hello(c, nonce: "bonjour-1")
         try await waitUntil("hello_ack") { c.lineCount >= 1 }
-        let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: c.allLines[0])
+        guard let ackLine = responseLine(c, 0) else { return XCTFail("no hello_ack line (\(describe(c)))") }
+        let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: ackLine)
         XCTAssertEqual(ack.payload.macName, name)
         XCTAssertEqual(ack.payload.nonce, "bonjour-1")
-        c.cancel()
     }
 }
