@@ -164,6 +164,36 @@ const SOURCE_CASES: &[SourceCase] = &[
         message: "display math is missing its closing delimiter",
     },
     SourceCase {
+        name: "unclosed inline math ends at its paragraph",
+        input: "Visible $x+1\n\nTail $y$.",
+        message: "inline math is missing its closing '$'",
+    },
+    SourceCase {
+        name: "unclosed math group in unclosed inline math ends at its paragraph",
+        input: "Visible $x^2 + \\frac{a\n\nTail $y$.",
+        message: "'{' opened here is not closed before the end of the paragraph",
+    },
+    SourceCase {
+        name: "unclosed display math group ends at its paragraph",
+        input: "Visible \\[x+\\frac{a\n\nTail $y$.",
+        message: "'{' opened here is not closed before the end of the paragraph",
+    },
+    SourceCase {
+        name: "unclosed inline math ends before a block environment",
+        input: "Visible $x\n\\begin{itemize}\\item Tail $y$.\\end{itemize}",
+        message: "inline math is missing its closing '$'",
+    },
+    SourceCase {
+        name: "required argument missing closing brace ends at its paragraph",
+        input: "Visible \\textbf{Tail\n\nNext $y$.",
+        message: r"argument to \textbf is missing its closing brace",
+    },
+    SourceCase {
+        name: "unterminated display environment ends at its paragraph",
+        input: "Visible \\begin{align} x\n\nTail $y$.",
+        message: "unterminated environment 'align'",
+    },
+    SourceCase {
         name: "unmatched math closing brace",
         input: "Visible $a}b$ Tail.",
         message: "unmatched '}' in math mode",
@@ -199,9 +229,12 @@ const SOURCE_CASES: &[SourceCase] = &[
         message: r"\bogus is not supported in math mode",
     },
     SourceCase {
-        name: "missing braced math argument",
-        input: r"Visible $x+\frac a{b}$ Tail.",
-        message: r"\frac requires a braced math argument",
+        // `\frac a{b}` is now valid (TeX takes the next single token as an
+        // undelimited argument, so the numerator is just `a`); a stray `^`
+        // where the denominator belongs is still a real missing-argument error.
+        name: "missing math argument",
+        input: r"Visible $x+\frac{a}^2$ Tail.",
+        message: r"\frac requires an argument",
     },
 ];
 
@@ -571,6 +604,16 @@ fn broken_and_fixed_edits_remain_byte_identical_in_both_directions() {
         ),
         ("inline math", "Lead $x+1\n\nTail.", "Lead $x+1$\n\nTail."),
         (
+            "math group",
+            "Lead $x^2 + \\frac{a\n\nTail $y$.",
+            "Lead $x^2 + \\frac{a}{b}$\n\nTail $y$.",
+        ),
+        (
+            "paragraph argument",
+            "Lead \\textbf{abc\n\nTail.",
+            "Lead \\textbf{abc}\n\nTail.",
+        ),
+        (
             "environment",
             r"\begin{document}Body",
             r"\begin{document}Body\end{document}",
@@ -631,6 +674,7 @@ fn markdown_section(out: &mut String, name: &str, input: &str, response: &Value)
 fn evidence_body() -> String {
     let mut out = String::from("# FlashTeX recovery evidence\n\n");
     out.push_str("Generated from the real compiler by the command above. Status, diagnostics, recovery notes, ranges, and positioned items are observed rather than handwritten.\n\n");
+    out.push_str("Locality policy: recovery stays inside the paragraph that contains the error, mirroring TeX's runaway-argument and `Missing $ inserted` behaviour. An unterminated `$`, `$$` or `\\[` math span, an unterminated display environment (`equation`, `align`, ...) and an unclosed command argument (`\\section{`, `\\label{`, or a `\\textbf{` with no matching `}` anywhere later) are closed at the end of their paragraph: a blank line, `\\par`, `\\item`, `\\section`/`\\subsection`, or `\\begin`/`\\end` of an environment that is not typeset inside math. A math group left open inside math closes at the math delimiter, or with the math at the end of the paragraph; either way one primary diagnostic names the innermost unclosed `{`, and arguments that could not be read because that group swallowed the rest of the math are not reported again. Arguments of `\\newcommand` macros and macro bodies are long, so they may span paragraphs; only when never closed at all are they closed at the end of their first paragraph. A bare `{` group still extends to its matching `}` or the end of input, because groups spanning paragraphs are valid TeX and only scope style and macro definitions. Everything after the paragraph lays out exactly as in the balanced document (`tests/local_recovery.rs`).\n\n");
     for case in SOURCE_CASES {
         let request = compile_request("main.tex", case.input);
         markdown_section(

@@ -310,6 +310,22 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 accent.command().hash(h);
                 hash_math(body, h);
             }
+            // `\big(`..`\Bigg)` and `\left`/`\right` (pin `d416472a`): the
+            // glyph, its cmex10 step and the delimiter role all drive layout.
+            Nucleus::SizedDelimiter { glyph, scale, role } => {
+                10u8.hash(h);
+                glyph.hash(h);
+                scale.to_bits().hash(h);
+                (*role as u8).hash(h);
+            }
+            // `\mathbin{...}` and kin: the forced class lives in the
+            // compiler's crate-private `class_override`, which the pipeline
+            // re-reads from the source bytes (`typeset::class_override_of`);
+            // the block key already covers those bytes.
+            Nucleus::Group(body) => {
+                11u8.hash(h);
+                hash_math(body, h);
+            }
         }
         match &a.superscript {
             Some(s) => {
@@ -445,12 +461,12 @@ fn shift_math(list: &mut MathList, delta: isize) {
     for a in &mut list.atoms {
         shift_span(&mut a.span, delta);
         match &mut a.nucleus {
-            Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Space { .. } | Nucleus::Bold(_) => {}
+            Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Space { .. } | Nucleus::Bold(_) | Nucleus::SizedDelimiter { .. } => {}
             Nucleus::Fraction { numerator, denominator } => {
                 shift_math(numerator, delta);
                 shift_math(denominator, delta);
             }
-            Nucleus::Radical(r) | Nucleus::Framed { body: r, .. } | Nucleus::Accent { body: r, .. } => shift_math(r, delta),
+            Nucleus::Radical(r) | Nucleus::Framed { body: r, .. } | Nucleus::Accent { body: r, .. } | Nucleus::Group(r) => shift_math(r, delta),
             Nucleus::Stacked { base, over, under } => {
                 shift_math(base, delta);
                 for part in [over, under].into_iter().flatten() {

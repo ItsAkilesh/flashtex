@@ -86,9 +86,10 @@ Implemented and tested:
   become an em dash, two hyphens become an en dash, and an exclamation or
   question mark followed by a backtick becomes the inverted exclamation or
   question mark. Conversion runs on ordinary text words only — math is parsed
-  through an entirely separate path and is never touched, and this milestone
-  has no verbatim, `\texttt`, or `\ttfamily` state to exclude in the first
-  place. A converted word's item keeps its exact original source span; only
+  through an entirely separate path and is never touched, and `\verb` and the
+  `verbatim`/`lstlisting` environments capture their raw text separately for
+  the same reason (`\texttt`/`\ttfamily` text is still converted, an accepted
+  simplification). A converted word's item keeps its exact original source span; only
   its rendered text changes, the same rule already used for a
   command-substituted glyph such as `\alpha`. All eight resulting codepoints
   (curly quotes, en/em dash, inverted `!`/`?`) have Times-Roman AFM widths and
@@ -111,6 +112,13 @@ Implemented and tested:
   between items and around the list; other enumitem keys (`leftmargin`,
   `label`, `parsep`, `partopsep`, ...) have no layout equivalent yet and are
   named in a diagnostic instead.
+- `\verb|...|` (any matching delimiter, `\verb*` shows interword spaces as a
+  middle dot) and the `verbatim`/`verbatim*`/`lstlisting` environments: raw
+  source text set in Courier at body size, one output line per source line,
+  tabs expanded, with `%`, `\`, `$`, `{`, and `}` never given their usual
+  meaning. `lstlisting`'s `[options]` are parsed and honestly discarded (no
+  syntax highlighting); an unterminated `\verb` gets a source-located
+  diagnostic and recovers at end of line.
 - `compile` → `compile_result`, and `error` envelopes for unknown protocol
   versions, unknown message types, and malformed JSON.
 - Rejection of absolute paths and parent traversal in document paths.
@@ -125,11 +133,14 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
   implemented.
 - Package declarations are recognised but packages are not loaded: package
   commands, TikZ, bibliographies, and `\cite` remain missing.
-- Image loading (`\includegraphics`), tables, and float placement remain
-  missing. `\includegraphics` emits an explicit unsupported diagnostic; a
-  `figure` is laid out in source order and is not a real LaTeX float.
-- Environments other than `document`, `equation`, `figure`, `itemize`, and
-  `enumerate` warn and typeset as plain text.
+- `tabular`/`tabular*` follow the LaTeX kernel's alignment geometry (see
+  `src/tabular.rs`); `longtable`, the `array` package's column types, image
+  loading (`\includegraphics`), and float placement remain missing.
+  `\includegraphics` emits an explicit unsupported diagnostic; a `figure` is
+  laid out in source order and is not a real LaTeX float.
+- Environments other than `document`, `equation`, `figure`, `itemize`,
+  `enumerate`, `verbatim`/`verbatim*`, and `lstlisting` warn and typeset as
+  plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
 - No bidi, joining, complex-script reordering, hyphenation, or TeX optimal
   paragraph breaking. The font engine reports unsupported shaping and missing
@@ -155,7 +166,9 @@ declarations `\tiny`, `\scriptsize`, `\footnotesize`, `\small`,
 `\normalsize`, `\large`, `\Large`, `\LARGE`, `\huge`, and `\Huge`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
 `enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
-starred or not; `multline` numbers only its last line), `\item`, `\par`,
+starred or not; `multline` numbers only its last line), `verbatim`,
+`verbatim*`, and `lstlisting` (options parsed and discarded), `\verb`
+(any matching delimiter, starred or not), `\item`, `\par`,
 `\hfill`, `\hfil`, `\hspace{<dimen>}`, `\hspace*{<dimen>}`, `\\`,
 `\listfiles`, `\noindent`, `\quad`, `\qquad`, `\bigskip`, `\medskip`, and
 `\smallskip`. Macro
@@ -302,23 +315,29 @@ export mapping, except blackboard bold, `\setminus` and `\Longrightarrow`:
 those are drawn from the pinned Latin Modern Math resource (`lm.math`, see
 `src/lm_math.rs`). Its Unicode-math designs and widths differ from pdfLaTeX's
 msbm10/cmsy10, and the base-14 PDF export reports that it cannot embed them.
-Ordinary math letters and digits use Times-Roman. Unknown math
-commands produce an explicit diagnostic naming the command and are rendered
-literally, never silently dropped.
+A single Latin letter (a math variable) renders in Times-Italic; digits and
+multi-letter names use Times-Roman. Unknown math commands produce an explicit
+diagnostic naming the command and are rendered literally, never silently
+dropped.
 
 Script sizes and shifts and fraction geometry use named classic-proportion
 constants in `src/math.rs`. They approximate TeX's font-parameter-driven values;
 the compiler does not yet read a real math font.
 
 `\hat`, `\bar`, `\vec`, `\tilde`, `\dot`, `\ddot`, `\acute`, and `\grave` place a
-real base-14 accent glyph over `{body}`, symmetrically centered (no skew
-term: this compiler's math letters render upright, never math-italic, and
-Adobe Core 14 AFM metrics have no TeX-style skewchar kern to add one from).
-`\vec` uses the Symbol arrowright glyph and `\dot` uses the middle dot
-`\cdot` already renders with — the closest real glyphs available, not TeX's
-exact short arrow or raised dot. `\widehat`/`\widetilde` reuse the plain
-`\hat`/`\tilde` glyph unstretched (no cmex-style growing glyph exists here),
-which is diagnosed when the base is more than one symbol. `\check` and
+real base-14 accent glyph over `{body}`, symmetrically centered, plus an
+italic-angle skew (shifted right) when `{body}` is a single Latin letter —
+those render in Times-Italic, and TeX's real skewchar-kern skew (TeXbook
+Appendix G, rule 12) has no equivalent in Adobe Core 14 AFM metrics, so
+`crate::layout::italic_skew_pt` derives an equivalent shift from
+Times-Italic's real `ItalicAngle` (-15.5 degrees) instead. Digits,
+multi-letter bodies and Symbol-font Greek stay upright and keep plain
+symmetric centering. `\vec` uses the Symbol arrowright glyph and `\dot` uses
+the middle dot `\cdot` already renders with — the closest real glyphs
+available, not TeX's exact short arrow or raised dot. `\widehat`/`\widetilde`
+reuse the plain `\hat`/`\tilde` glyph unstretched (no cmex-style growing
+glyph exists here), which is diagnosed when the base is more than one
+symbol. `\check` and
 `\breve` have no representable base-14 glyph (no caron or breve in WinAnsi
 or the Symbol encoding) and are diagnosed rather than faked; the base still
 typesets without a mark. `\overline{body}` and `\underline{body}` draw a

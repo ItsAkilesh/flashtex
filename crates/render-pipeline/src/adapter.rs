@@ -283,8 +283,159 @@ fn inlines_of(block: &CBlock) -> &[Inline] {
     match block {
         CBlock::Paragraph(i) => i,
         CBlock::ListItem { content, .. } | CBlock::Heading { content, .. } | CBlock::FigureCaption { content } | CBlock::Styled { content, .. } => content,
-        CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => &[],
+        // `\maketitle`'s parts are lowered to `Styled` paragraphs before
+        // the block walk (`lower_blocks`); only the title is visible here.
+        CBlock::TitleBlock { title, .. } => title,
+        CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak | CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::VFill => &[],
     }
+}
+
+/// Rewrites the compiler blocks the pipeline has no layout for (pin
+/// `d416472a`: `Verbatim`, `TableOfContents`, `TitleBlock`, `VFill`) into
+/// the plain blocks it does set, with one typed `unsupported_block`
+/// limitation each, so their content is never dropped:
+///
+/// - `verbatim`/`lstlisting`: a `flushleft` paragraph, one `Text` per
+///   source line (the compiler's tab-expanded text, `Mono` family) joined
+///   by `\\`; the pipeline sets it in the body face, justified off, so
+///   the lines keep their order but not Courier's fixed pitch.
+/// - `\tableofcontents`: article's own `\section*{\contentsname}` heading
+///   without the entries (the page builder has no contents pass).
+/// - `\maketitle`: three centred paragraphs (title at `\LARGE`, authors
+///   and date at `\large`, the sizes `\@maketitle` declares) carried by the
+///   compiler's `TextStyle::size`, which the pipeline already reads; the
+///   exact `\vskip`s and `\thanks` are not.
+/// - `\vfill`: dropped (the page builder has no stretchable vertical
+///   glue), reported on the next block.
+fn lower_blocks(texts: &[&str], blocks: &[CBlock]) -> (Vec<CBlock>, Vec<(&'static str, Span, String)>) {
+    use flashtex_compiler::parser::{FontSizeLevel, ParagraphStyle, TextFamily, TextStyle as CStyle};
+    let mut out: Vec<CBlock> = Vec::with_capacity(blocks.len());
+    let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
+    let mut pending_vfill = 0usize;
+    let sized = |inlines: &[Inline], size: FontSizeLevel| -> Vec<Inline> {
+        inlines
+            .iter()
+            .map(|i| match i {
+                Inline::Text { text, span, style, space_before } => Inline::Text {
+                    text: text.clone(),
+                    span: *span,
+                    style: CStyle {
+                        size: Some(style.size.unwrap_or(size)),
+                        ..*style
+                    },
+                    space_before: *space_before,
+                },
+                other => other.clone(),
+            })
+            .collect()
+    };
+    for block in blocks {
+        let first = match block {
+            CBlock::Heading { number_span, .. } => Some(*number_span),
+            CBlock::Verbatim { span, .. } | CBlock::TableOfContents { span } | CBlock::Rule { span } => Some(*span),
+            _ => inlines_of(block).iter().map(inline_span).next(),
+        };
+        if pending_vfill > 0 {
+            if let Some(at) = first {
+                limitations.push((
+                    "unsupported_block",
+                    at,
+                    format!("\\vfill ({pending_vfill} before this block) dropped: the page builder has no stretchable vertical glue"),
+                ));
+                pending_vfill = 0;
+            }
+        }
+        match block {
+            CBlock::Verbatim { lines, span } => {
+                let mut content: Vec<Inline> = Vec::with_capacity(lines.len() * 2);
+                for (i, line) in lines.iter().enumerate() {
+                    if i > 0 {
+                        // The break owns the bytes between the lines so no
+                        // interword space is read across it.
+                        let prev = lines[i - 1].span;
+                        content.push(Inline::LineBreak {
+                            span: Span {
+                                document: line.span.document,
+                                start: prev.end.min(line.span.start),
+                                end: line.span.start,
+                            },
+                        });
+                    }
+                    content.push(Inline::Text {
+                        text: line.text.clone(),
+                        span: line.span,
+                        style: CStyle {
+                            family: TextFamily::Mono,
+                            ..CStyle::default()
+                        },
+                        space_before: true,
+                    });
+                }
+                limitations.push((
+                    "unsupported_block",
+                    *span,
+                    format!("verbatim ({} line(s)) set as a flush-left paragraph in the body face with forced line breaks: the pipeline has no monospaced face or literal-text block", lines.len()),
+                ));
+                out.push(CBlock::Styled {
+                    style: ParagraphStyle::FlushLeft,
+                    content,
+                });
+            }
+            CBlock::TableOfContents { span } => {
+                limitations.push((
+                    "unsupported_block",
+                    *span,
+                    "\\tableofcontents set as its `Contents` heading only: the pipeline has no contents pass (entries and page numbers omitted)".to_string(),
+                ));
+                out.push(CBlock::Heading {
+                    level: 1,
+                    number: String::new(),
+                    number_span: *span,
+                    content: vec![Inline::Text {
+                        text: "Contents".to_string(),
+                        span: *span,
+                        style: CStyle::BOLD,
+                        space_before: true,
+                    }],
+                });
+            }
+            CBlock::TitleBlock { title, authors, date } => {
+                if let Some(at) = first {
+                    limitations.push((
+                        "unsupported_block",
+                        at,
+                        "\\maketitle set as centred paragraphs (title \\LARGE, authors/date \\large): article's exact \\@maketitle skips and \\thanks are not applied".to_string(),
+                    ));
+                }
+                for (part, size) in [(Some(title), FontSizeLevel::Large3), (Some(authors), FontSizeLevel::Large1), (date.as_ref(), FontSizeLevel::Large1)] {
+                    let Some(part) = part else { continue };
+                    if part.is_empty() {
+                        continue;
+                    }
+                    out.push(CBlock::Styled {
+                        style: ParagraphStyle::Center,
+                        content: sized(part, size),
+                    });
+                }
+            }
+            CBlock::VFill => pending_vfill += 1,
+            other => out.push(other.clone()),
+        }
+    }
+    if pending_vfill > 0 {
+        let at = out.iter().rev().flat_map(|b| inlines_of(b).iter().map(inline_span).last()).next().unwrap_or(Span {
+            document: DocumentId(0),
+            start: 0,
+            end: 0,
+        });
+        let _ = texts;
+        limitations.push((
+            "unsupported_block",
+            at,
+            format!("\\vfill ({pending_vfill} at the end of the document) dropped: the page builder has no stretchable vertical glue"),
+        ));
+    }
+    (out, limitations)
 }
 
 impl Labels {
@@ -377,9 +528,9 @@ pub fn adapt_cached(
     };
     let items_for = |inlines: &[Inline], heading: bool| -> Vec<Item> { items_cached(texts, inlines, &styles, labels, labels_fp, size, heading, cache) };
     let mut blocks = Vec::new();
-    let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
+    let (lowered, mut limitations) = lower_blocks(texts, &parsed.blocks);
     let mut after_heading = false;
-    for unit in split_at_page_breaks(texts, parsed, size, &style) {
+    for unit in split_at_page_breaks(texts, &lowered, size, &style) {
         let eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
         limitations.extend(unit.limitations);
@@ -439,6 +590,7 @@ pub fn adapt_cached(
                             format!("{env}: {} row(s) set as separate centred displays; `&` alignment points ignored (no multi-row display block yet)", rows.len()),
                         ));
                     }
+                    unsupported_inlines(inline, &mut limitations);
                 }
                 let items = items_for(inlines, false);
                 let mut parts = Vec::new();
@@ -532,7 +684,132 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::Reference { span, .. }
         | Inline::HFill { span }
         | Inline::HSpace { span, .. }
+        | Inline::Footnote { span, .. }
+        | Inline::Verbatim { span, .. }
         | Inline::TextGlue { span, .. } => *span,
+        Inline::Tabular(t) => t.span,
+    }
+}
+
+/// The compiler inlines (pin `d416472a`) the pipeline sets only as plain
+/// text, as `unsupported_block` limitations: `\footnote` (mark and text
+/// inline, no page-bottom note), `tabular` (cells in reading order, no
+/// columns or rules) and `\verb` (body face). Footnote text is scanned too.
+fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, String)>) {
+    match inline {
+        Inline::Footnote { number, span, mark, text, .. } => {
+            out.push((
+                "unsupported_block",
+                *span,
+                format!(
+                    "\\footnote {number}: {}{} set inline in the paragraph (no page-bottom footnote area yet)",
+                    if *mark { "mark as plain text" } else { "no mark" },
+                    if text.is_some() { ", note text" } else { "" }
+                ),
+            ));
+            for i in text.iter().flatten() {
+                unsupported_inlines(i, out);
+            }
+        }
+        Inline::Tabular(t) => {
+            let rows = t.entries.iter().filter(|e| matches!(e, flashtex_compiler::tabular::Entry::Row(_))).count();
+            out.push((
+                "unsupported_block",
+                t.span,
+                format!("tabular ({rows} row(s), {} column(s)) set as its cells' text in reading order: the pipeline has no table layout (columns, rules and alignment omitted)", t.columns.len()),
+            ));
+            for list in t.inline_lists() {
+                for i in list {
+                    unsupported_inlines(i, out);
+                }
+            }
+        }
+        Inline::Verbatim { text, span, .. } => {
+            out.push(("unsupported_block", *span, format!("\\verb {text:?} set in the body face: the pipeline has no monospaced face")));
+        }
+        _ => {}
+    }
+}
+
+/// Lowers one compiler inline into the shapes `items_from_inlines` sets:
+/// `\ref`/`\pageref`/`\eqref` become text from the label table; a
+/// footnote becomes its mark (plain text) followed by its note text; a
+/// tabular becomes its cells' inlines in reading order with `\\` between
+/// rows; `\verb` becomes `Mono` text. Everything else is borrowed.
+fn lower_inline<'a>(inline: &'a Inline, labels: &Labels, reference_spans: &mut Vec<Span>, out: &mut Vec<std::borrow::Cow<'a, Inline>>) {
+    use flashtex_compiler::parser::{TextFamily, TextStyle as CStyle};
+    match inline {
+        Inline::Reference { key, page, equation, span, .. } => {
+            let text = if *page {
+                labels.pages.get(key).map(|p| p.to_string())
+            } else {
+                labels.values.get(key).cloned()
+            }
+            .unwrap_or_else(|| "??".to_string());
+            // amsmath `\eqref`: the value in parentheses (compiler's flag).
+            let text = if *equation { format!("({text})") } else { text };
+            reference_spans.push(*span);
+            out.push(std::borrow::Cow::Owned(Inline::Text {
+                text,
+                span: *span,
+                style: Default::default(),
+                // Interword gaps are read from the source bytes between
+                // spans here, never from the compiler's flag.
+                space_before: true,
+            }));
+        }
+        Inline::Footnote { number, span, mark, text, .. } => {
+            if *mark {
+                reference_spans.push(*span);
+                out.push(std::borrow::Cow::Owned(Inline::Text {
+                    text: number.clone(),
+                    span: *span,
+                    style: Default::default(),
+                    space_before: true,
+                }));
+            }
+            for i in text.iter().flatten() {
+                lower_inline(i, labels, reference_spans, out);
+            }
+        }
+        Inline::Tabular(t) => {
+            use flashtex_compiler::tabular::Entry;
+            let mut prev_row: Option<Span> = None;
+            for entry in &t.entries {
+                let Entry::Row(row) = entry else { continue };
+                let first = row.cells.iter().flat_map(|c| c.content.iter().map(inline_span)).next();
+                if let (Some(prev), Some(first)) = (prev_row, first) {
+                    out.push(std::borrow::Cow::Owned(Inline::LineBreak {
+                        span: Span {
+                            document: first.document,
+                            start: prev.end.min(first.start),
+                            end: first.start,
+                        },
+                    }));
+                }
+                for cell in &row.cells {
+                    for i in &cell.content {
+                        lower_inline(i, labels, reference_spans, out);
+                    }
+                }
+                if let Some(last) = row.cells.iter().flat_map(|c| c.content.iter().map(inline_span)).last() {
+                    prev_row = Some(last);
+                }
+            }
+        }
+        Inline::Verbatim { text, span, space_before } => {
+            reference_spans.push(*span);
+            out.push(std::borrow::Cow::Owned(Inline::Text {
+                text: text.clone(),
+                span: *span,
+                style: CStyle {
+                    family: TextFamily::Mono,
+                    ..CStyle::default()
+                },
+                space_before: *space_before,
+            }));
+        }
+        other => out.push(std::borrow::Cow::Borrowed(other)),
     }
 }
 
@@ -590,7 +867,7 @@ fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
     PAGE_BREAKS.iter().any(|c| find_command(gap, c).is_some())
 }
 
-fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style: &Stylesheet) -> Vec<Unit<'p>> {
+fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, style: &Stylesheet) -> Vec<Unit<'p>> {
     let mut units = Vec::new();
     let mut prev_end: Option<Span> = None;
     // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
@@ -606,7 +883,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
     // for the closing skip too).
     let mut prev_list = false;
     let mut list_vmode = false;
-    for block in &parsed.blocks {
+    for block in blocks {
         match block {
             CBlock::PageBreak => {
                 pending_eject = true;
@@ -842,6 +1119,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
                 });
             }
             CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => unreachable!("handled above"),
+            CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::TitleBlock { .. } | CBlock::VFill => unreachable!("lowered by lower_blocks"),
         }
         if let Some(last) = inlines_of(block).iter().map(inline_span).last() {
             prev_end = Some(last);
@@ -1985,10 +2263,28 @@ fn items_cached(
                 key.hash(&mut h);
                 value.hash(&mut h);
             }
-            Inline::Reference { key, page, .. } => {
+            Inline::Reference { key, page, equation, .. } => {
                 4u8.hash(&mut h);
                 key.hash(&mut h);
                 page.hash(&mut h);
+                equation.hash(&mut h);
+            }
+            // Lowered constructs (pin `d416472a`): their text is in the
+            // source slice already hashed; the structure is hashed here.
+            Inline::Footnote { number, mark, text, .. } => {
+                9u8.hash(&mut h);
+                number.hash(&mut h);
+                mark.hash(&mut h);
+                text.as_ref().map_or(0, Vec::len).hash(&mut h);
+            }
+            Inline::Tabular(t) => {
+                10u8.hash(&mut h);
+                t.entries.len().hash(&mut h);
+                t.inline_lists().iter().map(|l| l.len()).sum::<usize>().hash(&mut h);
+            }
+            Inline::Verbatim { text, .. } => {
+                11u8.hash(&mut h);
+                text.hash(&mut h);
             }
             Inline::HFill { .. } => 6u8.hash(&mut h),
             Inline::HSpace { pt, .. } => {
@@ -2035,26 +2331,7 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
     let mut resolved: Vec<std::borrow::Cow<Inline>> = Vec::with_capacity(inlines.len());
     let mut reference_spans: Vec<Span> = Vec::new();
     for inline in inlines {
-        match inline {
-            Inline::Reference { key, page, span } => {
-                let text = if *page {
-                    labels.pages.get(key).map(|p| p.to_string())
-                } else {
-                    labels.values.get(key).cloned()
-                }
-                .unwrap_or_else(|| "??".to_string());
-                reference_spans.push(*span);
-                resolved.push(std::borrow::Cow::Owned(Inline::Text {
-                    text,
-                    span: *span,
-                    style: Default::default(),
-                    // Interword gaps are read from the source bytes between
-                    // spans here, never from the compiler's flag.
-                    space_before: true,
-                }));
-            }
-            other => resolved.push(std::borrow::Cow::Borrowed(other)),
-        }
+        lower_inline(inline, labels, &mut reference_spans, &mut resolved);
     }
     let mut items: Vec<Item> = Vec::new();
     let mut prev_end: Option<usize> = None;
@@ -2097,7 +2374,7 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
     for inline in resolved.iter() {
         match &**inline {
             Inline::Label { key, .. } => items.push(Item::Label { key: key.clone() }),
-            Inline::Reference { .. } => unreachable!("references were resolved above"),
+            Inline::Reference { .. } | Inline::Footnote { .. } | Inline::Tabular(_) | Inline::Verbatim { .. } => unreachable!("lowered by lower_inline above"),
             Inline::LineBreak { span } => {
                 let skip_pt = line_break_skip(text_of(span.document), span.end, size).unwrap_or(0.0);
                 items.push(Item::LineBreak { skip_pt });

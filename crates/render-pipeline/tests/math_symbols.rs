@@ -53,10 +53,13 @@ fn fences_are_recovered_from_the_source_bytes() {
 
 #[test]
 fn composite_and_extra_symbols_convert_with_texbook_classes() {
-    use flashtex_compiler::math::{MathAtom, MathList, Nucleus as N};
-    use flashtex_compiler::{DocumentId, Span};
-    let sym = |s: &str| MathAtom { nucleus: N::Symbol(s.to_string()), span: Span::in_document(DocumentId(0), 0, 1), superscript: None, subscript: None };
-    let list = MathList { atoms: ["a", "\u{2260}", "b", "\u{00B7}", "c", "\u{22A5}", "d", "\u{2209}", "e"].iter().map(|s| sym(s)).collect() };
+    // Compiler pin d416472a: `MathAtom` carries a crate-private
+    // `class_override`, so the list is built by the compiler's own math
+    // parser from the control words that produce these symbols.
+    let tokens = flashtex_compiler::lexer::tokenize("a \\neq b \\cdot c \\perp d \\notin e");
+    let mut diagnostics = Vec::new();
+    let list = flashtex_compiler::math::parse_tokens(&tokens, &mut diagnostics);
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
     let list = convert_math(&list);
     let classes: Vec<(AtomClass, Option<char>)> = list
         .atoms

@@ -1,0 +1,154 @@
+//! Structured diagnostic codes (issue #76): typos are `unknown_command` with a
+//! did-you-mean suggestion, real-but-unimplemented LaTeX is
+//! `unsupported_feature`, and both survive into runtime-v1 JSON.
+
+use flashtex_compiler::diagnostics::DiagnosticCode;
+use flashtex_compiler::incremental::compile_full;
+use flashtex_compiler::json::{self, Value};
+use flashtex_compiler::layout::LayoutConstraints;
+use flashtex_compiler::protocol::handle_line;
+
+fn diagnostics(text: &str) -> Vec<(String, Option<DiagnosticCode>, Option<String>)> {
+    compile_full(text, LayoutConstraints::default())
+        .diagnostics
+        .into_iter()
+        .map(|d| (d.message, d.code, d.suggestion))
+        .collect()
+}
+
+fn only(text: &str, needle: &str) -> (Option<DiagnosticCode>, Option<String>) {
+    let all = diagnostics(text);
+    let matching: Vec<_> = all.iter().filter(|(m, ..)| m.contains(needle)).collect();
+    assert_eq!(matching.len(), 1, "{text}: {all:?}");
+    (matching[0].1, matching[0].2.clone())
+}
+
+#[test]
+fn typos_are_unknown_commands_with_suggestions() {
+    for (text, needle, suggestion) in [
+        (r"Text \alpah here.", r"\alpah", r"\alpha"),
+        (r"Math $x + \alpah$ here.", r"\alpah", r"\alpha"),
+        (r"Text \textbff{bold} here.", r"\textbff", r"\textbf"),
+        (
+            "\\documentclass{article}\n\\usepackge{amsmath}\n\\begin{document}Body\\end{document}",
+            r"\usepackge",
+            r"\usepackage",
+        ),
+    ] {
+        assert_eq!(
+            only(text, needle),
+            (
+                Some(DiagnosticCode::UnknownCommand),
+                Some(suggestion.to_string())
+            ),
+            "{text}"
+        );
+    }
+    assert_eq!(
+        only(r"Text \frobnicate{x} here.", r"\frobnicate"),
+        (Some(DiagnosticCode::UnknownCommand), None)
+    );
+}
+
+#[test]
+fn real_unimplemented_latex_is_an_unsupported_feature() {
+    for (text, needle) in [
+        (r"Text \tikz here.", r"\tikz"),
+        (r"Math $\mathcal{A}$ here.", r"\mathcal"),
+        (
+            r"\tikz \begin{document}Visible\end{document}",
+            r"\tikz is not supported in the document preamble",
+        ),
+        (
+            r"Visible \begin{tabbing}body\end{tabbing} Tail.",
+            "environment 'tabbing'",
+        ),
+    ] {
+        assert_eq!(
+            only(text, needle),
+            (Some(DiagnosticCode::UnsupportedFeature), None),
+            "{text}"
+        );
+    }
+    assert_eq!(
+        only(
+            r"Visible \begin{itemze}body\end{itemze} Tail.",
+            "environment 'itemze'"
+        )
+        .0,
+        Some(DiagnosticCode::UnknownCommand)
+    );
+}
+
+#[test]
+fn malformed_input_is_a_syntax_error() {
+    for (text, needle) in [
+        ("Visible {tail.", "unmatched '{'"),
+        ("Visible } tail.", "unmatched '}'"),
+        (r"\begin{document}Visible", "unterminated environment"),
+        ("Math $a & b$ here.", "misplaced alignment tab"),
+        (r"Visible \frac{a}{b} Tail.", "requires math mode"),
+    ] {
+        assert_eq!(
+            only(text, needle).0,
+            Some(DiagnosticCode::SyntaxError),
+            "{text}"
+        );
+    }
+    assert_eq!(
+        only(r"See \ref{missing}.", "undefined").0,
+        Some(DiagnosticCode::RecoveredInput)
+    );
+}
+
+#[test]
+fn every_compile_diagnostic_in_a_mixed_document_has_a_code() {
+    let text = "\\documentclass{article}\n\\usepackage{tikz}\n\\setlength{\\parindent}{0pt}\n\
+                \\begin{document}\n\\section{A} {open \\alpah \\tikz $\\bogus x^ & \\hat{ab}$ \
+                \\ref{nope} \\label{k}\\label{k} \\input{missing} \\includegraphics{x} \
+                \\begin{tabbing}t\\end{tabbing} \\end{itemize}\n\\end{document}\n";
+    let all = diagnostics(text);
+    assert!(all.len() >= 8, "{all:?}");
+    for (message, code, _) in &all {
+        assert!(code.is_some(), "no code for {message:?}");
+    }
+}
+
+#[test]
+fn codes_and_suggestions_are_serialized_in_runtime_v1_json() {
+    let mut document = Value::obj();
+    document.set("path", json::str_("main.tex"));
+    document.set("text", json::str_(r"Text \alpah and \tikz here."));
+    let mut payload = Value::obj();
+    payload.set("project_id", json::str_("codes"));
+    payload.set("revision", Value::Num(1.0));
+    payload.set("entry_path", json::str_("main.tex"));
+    payload.set("documents", Value::Arr(vec![document]));
+    let mut envelope = Value::obj();
+    envelope.set("protocol_version", Value::Num(1.0));
+    envelope.set("id", json::str_("codes"));
+    envelope.set("type", json::str_("compile"));
+    envelope.set("payload", payload);
+
+    let response = json::parse(&handle_line(&json::write(&envelope))).expect("valid JSON");
+    let diagnostics = response
+        .get("payload")
+        .and_then(|p| p.get("diagnostics"))
+        .and_then(Value::as_arr)
+        .expect("diagnostics array");
+    let field = |d: &Value, key: &str| d.get(key).and_then(Value::as_str).map(str::to_string);
+    let rows: Vec<_> = diagnostics
+        .iter()
+        .map(|d| (field(d, "code"), field(d, "suggestion")))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            (Some("unknown_command".into()), Some(r"\alpha".into())),
+            (Some("unsupported_feature".into()), None),
+        ]
+    );
+    // Absent, not null, when there is no suggestion: older decoders never see
+    // a new null-valued key.
+    assert!(diagnostics[1].get("suggestion").is_none());
+}

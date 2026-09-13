@@ -646,6 +646,7 @@ impl<'a> Context<'a> {
         let mut sink = crate::mathtext::TextSink::default();
         let texts = self.texts;
         let fence = |sp: &Span| fence_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
+        let class = |sp: &Span| class_override_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
         // `\quad`/`\qquad`/`\,`/`\:`/`\;`/`\!` (compiler `Space { em }`) at
         // the top level of the formula (outside `\left...\right`): math-layout
         // has no kern atom, so the formula is split there into runs laid out
@@ -658,7 +659,7 @@ impl<'a> Context<'a> {
         // each a formula of its own; a grid nested in a sub-formula (a
         // fraction, a script, inside `\left...\right`) stays reported.
         let segments = split_at_spaces(list, &fence);
-        let ml_lists: Vec<ml::MathList> = segments.iter().map(|(atoms, _)| convert_math_fenced(&flashtex_compiler::math::MathList { atoms: atoms.clone() }, &mut sink, &fence)).collect();
+        let ml_lists: Vec<ml::MathList> = segments.iter().map(|(atoms, _)| convert_math_classed(&flashtex_compiler::math::MathList { atoms: atoms.clone() }, &mut sink, &fence, &class)).collect();
         let mut grids = Vec::new();
         for (atoms, _) in &segments {
             for a in atoms {
@@ -709,7 +710,7 @@ impl<'a> Context<'a> {
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
         let has_grid = segments.iter().flat_map(|(atoms, _)| atoms.iter()).any(|a| matches!(a.nucleus, flashtex_compiler::math::Nucleus::Matrix { .. }) && a.superscript.is_none() && a.subscript.is_none());
         // Every `\text` must be collected before the metrics borrow the sink.
-        let grid_pieces = if has_grid { grid_pieces(&segments, &mut sink, &fence) } else { Vec::new() };
+        let grid_pieces = if has_grid { grid_pieces(&segments, &mut sink, &fence, &class) } else { Vec::new() };
         let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts);
         let mut laid = if has_grid {
             self.grid_formula(&grid_pieces, style, &text_metrics, span)
@@ -1823,12 +1824,45 @@ pub fn fence_before(text: &str, at: usize) -> Option<Fence> {
 /// (Appendix G Rule 19: sized to the body, `Inner` class). An unmatched
 /// fence stays a plain symbol, as the compiler already reports it.
 pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink, fence: &dyn Fn(&Span) -> Option<Fence>) -> ml::MathList {
-    use flashtex_compiler::math::Nucleus as N;
+    convert_math_classed(list, sink, fence, &|_| None)
+}
+
+/// The atom class a `\mathbin`/`\mathrel`/`\mathord`/`\mathop`/`\mathopen`/
+/// `\mathclose`/`\mathpunct` command, or `\bot`/`\bigtriangleup`, forces on
+/// the atom whose span starts at `at` (pin `d416472a` carries it as the
+/// compiler's crate-private `MathAtom::class_override`, so it is re-read
+/// from the control word at the span, like [`fence_of`]).
+pub fn class_override_of(text: &str, at: usize) -> Option<ml::AtomClass> {
+    let rest = text.get(at..)?.strip_prefix('\\')?;
+    let word_len = rest.chars().take_while(|c| c.is_ascii_alphabetic()).map(char::len_utf8).sum::<usize>();
+    Some(match &rest[..word_len] {
+        "mathbin" => ml::AtomClass::Bin,
+        "mathrel" => ml::AtomClass::Rel,
+        "mathord" => ml::AtomClass::Ord,
+        "mathop" => ml::AtomClass::Op,
+        "mathopen" => ml::AtomClass::Open,
+        "mathclose" => ml::AtomClass::Close,
+        "mathpunct" => ml::AtomClass::Punct,
+        "bot" => ml::AtomClass::Ord,
+        "bigtriangleup" => ml::AtomClass::Bin,
+        _ => return None,
+    })
+}
+
+/// [`convert_math_fenced`] with `class` giving the forced class of a
+/// `Group` (`\mathbin{...}`) or class-overridden symbol atom at a span.
+pub fn convert_math_classed(
+    list: &flashtex_compiler::math::MathList,
+    sink: &mut crate::mathtext::TextSink,
+    fence: &dyn Fn(&Span) -> Option<Fence>,
+    class: &dyn Fn(&Span) -> Option<ml::AtomClass>,
+) -> ml::MathList {
+    use flashtex_compiler::math::{DelimiterRole, Nucleus as N};
     // Open fences: (left delimiter, atoms converted since it).
     let mut stack: Vec<(Option<char>, Vec<ml::Atom>)> = Vec::new();
     let mut atoms = Vec::new();
     for a in &list.atoms {
-        let sub = |l: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink| convert_math_fenced(l, sink, fence);
+        let sub = |l: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink| convert_math_classed(l, sink, fence, class);
         let mut out: Vec<ml::Atom> = match &a.nucleus {
             N::Text(text) => vec![sink.atom(text)],
             // `\quad`/`\qquad` (compiler `Space { em }`): TeX glue in the
@@ -1837,6 +1871,44 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
             // does too, since glue does not reset r_type) and reported once per
             // formula by `math_box` as a typed math_limitation.
             N::Space { .. } => continue,
+            // `\left`/`\right` (pin `d416472a`: the compiler now pairs them
+            // itself and emits each as a `SizedDelimiter` with the `Left`/
+            // `Right` role; an empty glyph is the null delimiter `.`), matched
+            // here exactly like the source-derived fences below.
+            N::SizedDelimiter { glyph, role: DelimiterRole::Left, .. } => {
+                stack.push((glyph.chars().next(), Vec::new()));
+                continue;
+            }
+            N::SizedDelimiter { glyph, role: DelimiterRole::Right, .. } if !stack.is_empty() => {
+                let (left, body) = stack.pop().expect("checked non-empty");
+                vec![ml::Atom::left_right(left, glyph.chars().next(), ml::MathList::new(body))]
+            }
+            // `\big(`..`\Bigg]` (and an unmatched `\right`): math-layout has
+            // no fixed-step delimiter atom, so the glyph is set at text size
+            // with plain TeX's class for the command (`\bigl` Open, `\bigr`
+            // Close, `\bigm` Rel, bare `\big` Ord); `math_approximations`
+            // reports the dropped scale once per formula.
+            N::SizedDelimiter { glyph, role, .. } => match glyph.chars().next() {
+                Some(c) => {
+                    let class = match role {
+                        DelimiterRole::Open | DelimiterRole::Left => ml::AtomClass::Open,
+                        DelimiterRole::Close | DelimiterRole::Right => ml::AtomClass::Close,
+                        DelimiterRole::Rel => ml::AtomClass::Rel,
+                        DelimiterRole::Ord => ml::AtomClass::Ord,
+                    };
+                    vec![ml::Atom::new(class, ml::Nucleus::Symbol(c))]
+                }
+                None => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)],
+            },
+            // `\mathbin{...}`/`\mathrel{...}`/...: one atom of the forced
+            // class (TeXbook Chapter 17). The compiler keeps the class in a
+            // crate-private field, so it is re-read from the command at the
+            // atom's span (`class_override_of`); without a source the group
+            // is ordinary.
+            N::Group(body) => {
+                let class = class(&a.span).unwrap_or(ml::AtomClass::Ord);
+                vec![ml::Atom::new(class, ml::Nucleus::List(sub(body, sink)))]
+            }
             N::Symbol(s) => {
                 let mut chars = s.chars();
                 let single = match (chars.next(), chars.next()) {
@@ -1854,7 +1926,12 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
                         vec![ml::Atom::left_right(left, delim, ml::MathList::new(body))]
                     }
                     _ => match single {
-                        Some(Some(c)) => symbol_atoms(c),
+                        Some(Some(c)) => match class(&a.span) {
+                            // `\bot` (Ord, same glyph as `\perp`) and
+                            // `\bigtriangleup` (Bin, same glyph as `\triangle`).
+                            Some(forced) => vec![ml::Atom::new(forced, ml::Nucleus::Symbol(c))],
+                            None => symbol_atoms(c),
+                        },
                         Some(None) => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)],
                         None => {
                             // Multi-character symbol (e.g. a literal "\foo"): the
@@ -2005,14 +2082,19 @@ pub enum GridPiece {
 
 /// Converts the kern-split segments of a formula into [`GridPiece`]s,
 /// collecting every `\text` into `sink` (runs and cells alike).
-fn grid_pieces(segments: &[(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)], sink: &mut crate::mathtext::TextSink, fence: &dyn Fn(&Span) -> Option<Fence>) -> Vec<GridPiece> {
+fn grid_pieces(
+    segments: &[(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)],
+    sink: &mut crate::mathtext::TextSink,
+    fence: &dyn Fn(&Span) -> Option<Fence>,
+    class: &dyn Fn(&Span) -> Option<ml::AtomClass>,
+) -> Vec<GridPiece> {
     use flashtex_compiler::math::{MathAtom, MathList as CList, Nucleus as N};
     let mut pieces = Vec::new();
     for (atoms, em) in segments {
         let mut run: Vec<MathAtom> = Vec::new();
         let flush = |run: &mut Vec<MathAtom>, pieces: &mut Vec<GridPiece>, sink: &mut crate::mathtext::TextSink| {
             if !run.is_empty() {
-                pieces.push(GridPiece::Run(convert_math_fenced(&CList { atoms: std::mem::take(run) }, sink, fence)));
+                pieces.push(GridPiece::Run(convert_math_classed(&CList { atoms: std::mem::take(run) }, sink, fence, class)));
             }
         };
         for a in atoms {
@@ -2021,7 +2103,7 @@ fn grid_pieces(segments: &[(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)
                     flush(&mut run, &mut pieces, sink);
                     let cell_runs = |cell: &CList, sink: &mut crate::mathtext::TextSink| {
                         let parts = split_at_spaces(cell, fence);
-                        let runs = parts.iter().map(|(atoms, _)| convert_math_fenced(&CList { atoms: atoms.clone() }, sink, fence)).collect();
+                        let runs = parts.iter().map(|(atoms, _)| convert_math_classed(&CList { atoms: atoms.clone() }, sink, fence, class)).collect();
                         let glue = parts.iter().map(|(_, em)| *em).collect();
                         (runs, glue)
                     };
@@ -2072,6 +2154,14 @@ fn split_at_spaces(list: &flashtex_compiler::math::MathList, fence: &dyn Fn(&Spa
                 }
                 current.push(a.clone());
             }
+            N::SizedDelimiter { role, .. } => {
+                match role {
+                    flashtex_compiler::math::DelimiterRole::Left => depth += 1,
+                    flashtex_compiler::math::DelimiterRole::Right => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+                current.push(a.clone());
+            }
             _ => current.push(a.clone()),
         }
     }
@@ -2097,14 +2187,14 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
                 math_grids(numerator, out);
                 math_grids(denominator, out);
             }
-            N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } => math_grids(r, out),
+            N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } | N::Group(r) => math_grids(r, out),
             N::Stacked { base, over, under } => {
                 math_grids(base, out);
                 for part in [over, under].into_iter().flatten() {
                     math_grids(part, out);
                 }
             }
-            N::Symbol(_) | N::Text(_) | N::Space { .. } | N::Bold(_) => {}
+            N::Symbol(_) | N::Text(_) | N::Space { .. } | N::Bold(_) | N::SizedDelimiter { .. } => {}
         }
         if let Some(s) = &a.superscript {
             math_grids(s, out);
@@ -2125,12 +2215,12 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
             let own = match &a.nucleus {
                 N::Space { em } => *em,
                 N::Fraction { numerator, denominator } => math_glue_em(numerator) + math_glue_em(denominator),
-                N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } => math_glue_em(r),
+                N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } | N::Group(r) => math_glue_em(r),
                 N::Stacked { base, over, under } => {
                     math_glue_em(base) + [over, under].into_iter().flatten().map(math_glue_em).sum::<f64>()
                 }
                 N::Matrix { rows, .. } => rows.iter().flatten().map(math_glue_em).sum(),
-                N::Symbol(_) | N::Text(_) | N::Bold(_) => 0.0,
+                N::Symbol(_) | N::Text(_) | N::Bold(_) | N::SizedDelimiter { .. } => 0.0,
             };
             own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
         })
@@ -2174,7 +2264,7 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
                 math_approximations(numerator, out);
                 math_approximations(denominator, out);
             }
-            N::Radical(r) | N::Accent { body: r, .. } => math_approximations(r, out),
+            N::Radical(r) | N::Accent { body: r, .. } | N::Group(r) => math_approximations(r, out),
             N::Stacked { base, over, under } => {
                 math_approximations(base, out);
                 for part in [over, under].into_iter().flatten() {
@@ -2184,6 +2274,15 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
             N::Matrix { rows, .. } => {
                 for cell in rows.iter().flatten() {
                     math_approximations(cell, out);
+                }
+            }
+            // `\big`..`\Bigg` (scale > 1 with a fixed role): the glyph is set
+            // at text size. `\left`/`\right` arrive at scale 1 and are
+            // stretched by math-layout's own Rule 19, so they are exact.
+            N::SizedDelimiter { glyph, scale, role } => {
+                use flashtex_compiler::math::DelimiterRole;
+                if !matches!(role, DelimiterRole::Left | DelimiterRole::Right) && *scale != 1.0 {
+                    out.push(format!("\\big-family delimiter {glyph:?} (scale {scale}) set at text size: math-layout has no fixed-step delimiter atom"));
                 }
             }
             N::Symbol(_) | N::Text(_) | N::Space { .. } => {}
