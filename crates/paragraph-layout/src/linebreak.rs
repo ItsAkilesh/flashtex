@@ -28,6 +28,7 @@ use std::ops::Range;
 use crate::adapter::LayoutError;
 use crate::items::{FORCED_BREAK, Glue, GlueOrder, GlyphRun, INFINITE_PENALTY, Item};
 use crate::metrics::FontId;
+use crate::microtype::{MicroLine, Microtype, MtCtx, pt as mtpt};
 
 /// TeX's `inf_bad`: badness of an unstretchable line that must stretch.
 pub const INF_BAD: f64 = 10_000.0;
@@ -498,6 +499,62 @@ fn measure(
     }
 }
 
+/// [`measure`], or its integer pdfTeX counterpart when microtype is active.
+#[allow(clippy::too_many_arguments)]
+fn measure_any(
+    items: &[Item],
+    p: &Prefix,
+    params: &LineBreakParams,
+    ctx: Option<&MtCtx<'_>>,
+    after: Option<usize>,
+    brk: usize,
+    line_no: usize,
+    extra_stretch: f64,
+) -> Measure {
+    let Some(c) = ctx else {
+        return measure(items, p, params, after, brk, line_no, extra_stretch);
+    };
+    let start = line_start(items, after).min(brk);
+    let right = params.effective_right_skip();
+    let m = c.measure(
+        after,
+        start,
+        brk,
+        line_no,
+        extra_stretch,
+        &params.left_skip,
+        &right,
+        params.parindent,
+        params.line_width,
+    );
+    let order = (0..4).rev().find(|&o| m.stretch[o] > 0).unwrap_or(0);
+    let ratio = if m.shortfall > 0 {
+        if m.stretch[order] > 0 {
+            m.shortfall as f64 / m.stretch[order] as f64
+        } else {
+            f64::INFINITY
+        }
+    } else if m.shortfall < 0 {
+        if m.shrink > 0 {
+            m.shortfall as f64 / m.shrink as f64
+        } else {
+            f64::NEG_INFINITY
+        }
+    } else {
+        0.0
+    };
+    // `natural < target` exactly when the (adjusted) shortfall is positive,
+    // which is what TeX's fitness classes and first-fit's test read.
+    Measure {
+        natural: params.line_width - mtpt(m.shortfall),
+        target: params.line_width,
+        ratio,
+        badness: m.badness,
+        stretch_order: order,
+        stretch: mtpt(m.stretch[order]),
+    }
+}
+
 fn fitness_of(m: &Measure) -> Fitness {
     if m.natural < m.target {
         if m.badness > 99.0 {
@@ -544,6 +601,7 @@ fn total_fit_pass(
     use_automatic: bool,
     extra_stretch: f64,
     final_pass: bool,
+    ctx: Option<&MtCtx<'_>>,
 ) -> Option<Chosen> {
     let mut arena: Vec<Node> = vec![Node {
         pos: None,
@@ -572,7 +630,7 @@ fn total_fit_pass(
         let n_active = active.len();
         for (k, &a) in active.iter().enumerate() {
             let node = &arena[a];
-            let m = measure(items, p, params, node.pos, b, node.line, extra_stretch);
+            let m = measure_any(items, p, params, ctx, node.pos, b, node.line, extra_stretch);
             let overfull = m.badness >= AWFUL_BAD;
             // TeX deactivates a node once the line from it is overfull (later
             // breaks only make it longer) or when the break is forced.
@@ -710,7 +768,7 @@ fn total_fit_pass(
 // First-fit
 // ---------------------------------------------------------------------------
 
-fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
+fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams, ctx: Option<&MtCtx<'_>>) -> Chosen {
     let mut breaks = Vec::new();
     let mut line_no = 0;
     let mut start = 0;
@@ -723,7 +781,7 @@ fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
                breaks: &mut Vec<BreakPoint>,
                start: &mut usize,
                after: &mut Option<usize>| {
-        let m = measure(items, p, params, *after, at, *line_no, 0.0);
+        let m = measure_any(items, p, params, ctx, *after, at, *line_no, 0.0);
         push_break(breaks, items, at, &m);
         *after = Some(at);
         *start = line_start(items, Some(at));
@@ -732,7 +790,7 @@ fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
     while b < items.len() {
         if is_legal_break(items, b, true) {
             let forced = penalty_value(items, b) <= FORCED_BREAK;
-            let m = measure(items, p, params, after, b, line_no, 0.0);
+            let m = measure_any(items, p, params, ctx, after, b, line_no, 0.0);
             let fits = m.natural <= m.target + 1e-9;
             if forced {
                 if !fits && let Some(lb) = last_legal {
@@ -814,6 +872,29 @@ fn push_break(breaks: &mut Vec<BreakPoint>, items: &[Item], at: usize, m: &Measu
 /// validation instead of duplicating it — one validation path, so the two
 /// entry points cannot disagree about what counts as valid input.
 pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Lines, LayoutError> {
+    layout_impl(items, params, None).map(|(lines, _)| lines)
+}
+
+/// [`layout_paragraph`] with pdfTeX character protrusion and font expansion
+/// (`crate::microtype`): breaks are chosen and lines packed in integer
+/// scaled points by pdfTeX's rules, and each line's margin kerns and
+/// per-glyph expansion are returned alongside (one [`MicroLine`] per line;
+/// run and glyph positions already include both). With
+/// `protrude_chars <= 0 && adjust_spacing <= 0` the breaks are TeX's
+/// without microtype, still measured in sp.
+pub fn layout_paragraph_microtype(
+    items: &[Item],
+    params: &LineBreakParams,
+    microtype: &Microtype,
+) -> Result<(Lines, Vec<MicroLine>), LayoutError> {
+    layout_impl(items, params, Some(microtype))
+}
+
+fn layout_impl(
+    items: &[Item],
+    params: &LineBreakParams,
+    microtype: Option<&Microtype>,
+) -> Result<(Lines, Vec<MicroLine>), LayoutError> {
     crate::adapter::validate_params(params)?;
     crate::adapter::validate_items(items)?;
     let owned;
@@ -828,15 +909,17 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Line
         &owned
     };
     let p = prefix_sums(items);
+    let ctx = microtype.map(|m| MtCtx::new(items, m));
+    let ctx = ctx.as_ref();
 
     let (chosen, pass) = match params.algorithm {
-        Algorithm::FirstFit => (first_fit(items, &p, params), 0u8),
+        Algorithm::FirstFit => (first_fit(items, &p, params, ctx), 0u8),
         Algorithm::TotalFit => {
             let has_emergency = params.emergency_stretch > 0.0;
             let mut result = None;
             if params.pretolerance >= 0.0
                 && let Some(c) =
-                    total_fit_pass(items, &p, params, params.pretolerance, false, 0.0, false)
+                    total_fit_pass(items, &p, params, params.pretolerance, false, 0.0, false, ctx)
             {
                 result = Some((c, 1u8));
             }
@@ -849,6 +932,7 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Line
                     true,
                     0.0,
                     !has_emergency,
+                    ctx,
                 )
             {
                 result = Some((c, 2u8));
@@ -863,6 +947,7 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Line
                     true,
                     params.emergency_stretch,
                     true,
+                    ctx,
                 )
             {
                 result = Some((c, 3u8));
@@ -895,11 +980,19 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Line
         emergency_pass_used: pass == 3,
     };
     let mut diagnostics = Vec::new();
+    let mut micro_lines = Vec::new();
     let mut y = 0.0;
     let mut prev_depth = 0.0;
     for (li, bp) in chosen.breaks.iter().enumerate() {
-        let m = measure(items, &p, params, prev, bp.item, li, extra);
-        let mut line = set_line(items, params, prev, bp.item, li, &m);
+        let m = measure_any(items, &p, params, ctx, prev, bp.item, li, extra);
+        let mut line = match ctx {
+            None => set_line(items, params, prev, bp.item, li, &m),
+            Some(c) => {
+                let (line, micro) = set_line_mt(c, params, prev, bp.item, li, &m);
+                micro_lines.push(micro);
+                line
+            }
+        };
         if m.badness >= AWFUL_BAD || line.set_width > params.line_width + 1e-9 {
             let excess = line.set_width - params.line_width;
             stats.overfull.push(Overfull { line: li, excess });
@@ -922,7 +1015,7 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Line
         // line: emergency stretch only helps the breaker choose, so a line
         // chosen in pass 3 is usually reported underfull afterwards.
         let real = if extra > 0.0 {
-            measure(items, &p, params, prev, bp.item, li, 0.0)
+            measure_any(items, &p, params, ctx, prev, bp.item, li, 0.0)
         } else {
             m
         };
@@ -964,13 +1057,54 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Line
         lines.push(line);
     }
     let height = lines.last().map_or(0.0, |l| l.baseline_y + l.depth);
-    Ok(Lines {
-        lines,
-        breaks: chosen.breaks,
-        stats,
-        diagnostics,
-        height,
-    })
+    Ok((
+        Lines {
+            lines,
+            breaks: chosen.breaks,
+            stats,
+            diagnostics,
+            height,
+        },
+        micro_lines,
+    ))
+}
+
+/// [`set_line`] through pdfTeX's `post_line_break` + `hpack` + `hlist_out`.
+fn set_line_mt(
+    c: &MtCtx<'_>,
+    params: &LineBreakParams,
+    after: Option<usize>,
+    brk: usize,
+    index: usize,
+    m: &Measure,
+) -> (Line, MicroLine) {
+    let items = c.items;
+    let start = line_start(items, after).min(brk);
+    let right = params.effective_right_skip();
+    let pk = c.pack(
+        after,
+        start,
+        brk,
+        index,
+        &params.left_skip,
+        &right,
+        params.parindent,
+        params.line_width,
+    );
+    let line = Line {
+        index,
+        runs: pk.runs,
+        baseline_y: 0.0,
+        height: pk.height,
+        depth: pk.depth,
+        natural_width: pk.natural,
+        set_width: pk.set_width,
+        ratio: pk.ratio,
+        badness: m.badness,
+        items: start..brk,
+        hyphenated: is_flagged(items, brk),
+    };
+    (line, pk.micro)
 }
 
 fn diagnose(
