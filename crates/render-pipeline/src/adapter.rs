@@ -204,6 +204,17 @@ pub enum Block {
         eject_before: bool,
         vspace_before: f64,
     },
+    /// A `tikzpicture`, found from the source bytes (the compiler reports the
+    /// environment as unknown and sets its body as text, which is dropped
+    /// here): its bounding box as one box on a line of its own, flush left
+    /// (centred inside `center`).
+    Picture {
+        document: flashtex_compiler::DocumentId,
+        picture: flashtex_vector_graphics::tikz::PictureSource,
+        centered: bool,
+        eject_before: bool,
+        vspace_before: f64,
+    },
     /// `\hrule` in vertical mode: a full-measure rule 0.4pt high with no
     /// interline glue on either side (TeX §1056 sets `prev_depth` to
     /// `ignore_depth`).
@@ -573,6 +584,16 @@ pub fn adapt_cached(
                 });
                 after_heading = false;
             }
+            UnitKind::Picture { document, picture, centered } => {
+                blocks.push(Block::Picture {
+                    document,
+                    picture,
+                    centered,
+                    eject_before,
+                    vspace_before,
+                });
+                after_heading = false;
+            }
             UnitKind::Paragraph {
                 inlines,
                 caption,
@@ -853,6 +874,11 @@ enum UnitKind<'p> {
     Rule {
         span: Span,
     },
+    Picture {
+        document: flashtex_compiler::DocumentId,
+        picture: flashtex_vector_graphics::tikz::PictureSource,
+        centered: bool,
+    },
 }
 
 const PAGE_BREAKS: [&str; 3] = ["newpage", "clearpage", "pagebreak"];
@@ -883,6 +909,9 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
     // for the closing skip too).
     let mut prev_list = false;
     let mut list_vmode = false;
+    // `tikzpicture` environments per document, and those already emitted.
+    let pictures: Vec<Vec<flashtex_vector_graphics::tikz::PictureSource>> = texts.iter().map(|t| flashtex_vector_graphics::tikz::find_pictures(t)).collect();
+    let mut emitted_pictures: std::collections::BTreeSet<(usize, usize)> = std::collections::BTreeSet::new();
     for block in blocks {
         match block {
             CBlock::PageBreak => {
@@ -1078,45 +1107,85 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
             CBlock::Paragraph(inlines) | CBlock::ListItem { content: inlines, .. } | CBlock::FigureCaption { content: inlines } | CBlock::Styled { content: inlines, .. } => {
                 let caption = matches!(block, CBlock::FigureCaption { .. });
                 let mut env_open = env_open;
-                let mut start = 0usize;
                 let mut vspace_before = vspace_before;
                 let mut limitations = limitations;
-                for i in 1..inlines.len() {
-                    if gap_has_page_break(texts, inline_span(&inlines[i - 1]), inline_span(&inlines[i])) {
-                        units.push(Unit {
-                            kind: UnitKind::Paragraph {
-                                inlines: &inlines[start..i],
-                                caption,
-                                styled,
-                                env_open: env_open.take(),
-                                after_env,
-                                list: list.clone(),
-                            },
-                            eject_before: eject,
-                            vspace_before: std::mem::take(&mut vspace_before),
-                            addvspace_before: std::mem::take(&mut addvspace_before),
-                            endlist_adjust: std::mem::take(&mut endlist_adjust),
-                            limitations: std::mem::take(&mut limitations),
-                        });
-                        eject = true;
-                        start = i;
+                let centered = matches!(block, CBlock::Styled { style: flashtex_compiler::parser::ParagraphStyle::Center, .. });
+                // Runs of inlines outside / inside one `tikzpicture`.
+                let picture_of = |i: &Inline| -> Option<usize> {
+                    let s = inline_span(i);
+                    pictures.get(s.document.0)?.iter().position(|p| s.start >= p.start && s.start < p.end)
+                };
+                let mut segments: Vec<(usize, usize, Option<usize>)> = Vec::new();
+                for (i, inline) in inlines.iter().enumerate() {
+                    let pic = picture_of(inline);
+                    match segments.last_mut() {
+                        Some(last) if last.2 == pic => last.1 = i + 1,
+                        _ => segments.push((i, i + 1, pic)),
                     }
                 }
-                units.push(Unit {
-                    kind: UnitKind::Paragraph {
-                        inlines: &inlines[start..],
-                        caption,
-                        styled,
-                        env_open,
-                        after_env,
-                        list,
-                    },
-                    eject_before: eject,
-                    vspace_before,
-                    addvspace_before,
-                    endlist_adjust,
-                    limitations,
-                });
+                if segments.is_empty() {
+                    segments.push((0, 0, None));
+                }
+                for (seg_start, seg_end, pic) in segments {
+                    if let Some(k) = pic {
+                        let document = inline_span(&inlines[seg_start]).document;
+                        if emitted_pictures.insert((document.0, k)) {
+                            units.push(Unit {
+                                kind: UnitKind::Picture {
+                                    document,
+                                    picture: pictures[document.0][k].clone(),
+                                    centered,
+                                },
+                                eject_before: eject,
+                                vspace_before: std::mem::take(&mut vspace_before),
+                                addvspace_before: std::mem::take(&mut addvspace_before),
+                                endlist_adjust: std::mem::take(&mut endlist_adjust),
+                                limitations: std::mem::take(&mut limitations),
+                            });
+                            eject = false;
+                        }
+                        continue;
+                    }
+                    let seg = &inlines[seg_start..seg_end];
+                    let mut start = 0usize;
+                    for i in 1..seg.len() {
+                        if gap_has_page_break(texts, inline_span(&seg[i - 1]), inline_span(&seg[i])) {
+                            units.push(Unit {
+                                kind: UnitKind::Paragraph {
+                                    inlines: &seg[start..i],
+                                    caption,
+                                    styled,
+                                    env_open: env_open.take(),
+                                    after_env,
+                                    list: list.clone(),
+                                },
+                                eject_before: eject,
+                                vspace_before: std::mem::take(&mut vspace_before),
+                                addvspace_before: std::mem::take(&mut addvspace_before),
+                                endlist_adjust: std::mem::take(&mut endlist_adjust),
+                                limitations: std::mem::take(&mut limitations),
+                            });
+                            eject = true;
+                            start = i;
+                        }
+                    }
+                    units.push(Unit {
+                        kind: UnitKind::Paragraph {
+                            inlines: &seg[start..],
+                            caption,
+                            styled,
+                            env_open: env_open.take(),
+                            after_env,
+                            list: list.clone(),
+                        },
+                        eject_before: eject,
+                        vspace_before: std::mem::take(&mut vspace_before),
+                        addvspace_before: std::mem::take(&mut addvspace_before),
+                        endlist_adjust: std::mem::take(&mut endlist_adjust),
+                        limitations: std::mem::take(&mut limitations),
+                    });
+                    eject = false;
+                }
             }
             CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => unreachable!("handled above"),
             CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::TitleBlock { .. } | CBlock::VFill => unreachable!("lowered by lower_blocks"),
@@ -2708,7 +2777,7 @@ mod tests {
                 _ => panic!(),
             },
             Block::Heading { items, .. } => items.clone(),
-            Block::Rule { .. } => panic!("a rule holds no items"),
+            Block::Rule { .. } | Block::Picture { .. } => panic!("a rule or picture holds no items"),
         }
     }
 
@@ -2820,6 +2889,7 @@ mod tests {
                     })
                     .collect(),
                 Block::Rule { .. } => "R".to_string(),
+                Block::Picture { .. } => "P".to_string(),
             })
             .collect();
         // `Problem 1 \hfill \normalfont[4 points]`: one fill, no space after it.

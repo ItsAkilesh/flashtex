@@ -52,6 +52,7 @@ fn v1_items_are_positioned_exactly_where_v2_glyph_runs_start() {
                     assert!(rule.width.0 > 0 && rule.height.0 > 0);
                     assert!(matches!(rule.provenance.sources(), [s] if &*s.path == "main.tex"));
                 }
+                Item::Path(_) => panic!("this document has no pictures"),
             }
         }
     }

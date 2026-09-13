@@ -108,7 +108,12 @@ dependencies = [
  "flashtex-paragraph-layout",
  "flashtex-pdf",
  "flashtex-project-files",
+ "flashtex-vector-graphics",
 ]
+
+[[package]]
+name = "flashtex-vector-graphics"
+version = "0.1.0"
 
 [[package]]
 name = "generic-array"
