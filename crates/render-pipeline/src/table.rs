@@ -687,14 +687,18 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
                     }
                     let mut place = |piece: &MPiece, x: f64, slot: Slot, placed: &mut Vec<Placed>| match piece {
                         MPiece::Space(_) => {}
-                        // colortbl `\@classvi`: `{\CT@drsc@\vrule\@width\doublerulesep}`.
+                        // colortbl `\@classvi` and `\@arrayrule` (colortbl.sty
+                        // 146-166) put `{\CT@drsc@\vrule\@width\doublerulesep}`
+                        // and `{\CT@arc@\vline}` into the preamble with
+                        // `\@addtopreamble`'s `\edef`: the colours in force at
+                        // `\begin` are baked in, whatever changes mid-table.
                         MPiece::DoubleRuleGap(width) => {
-                            if gap_color.is_some() {
-                                vrules.push((x, *width, top, top + height + depth, table.span, gap_color.clone()))
+                            if table.double_rule_sep_color.is_some() {
+                                vrules.push((x, *width, top, top + height + depth, table.span, table.double_rule_sep_color.clone()))
                             }
                         }
-                        MPiece::Rule(span) => vrules.push((x - arw / 2.0, arw, top, top + height + depth, *span, rule_color.clone())),
-                        MPiece::VLine(span, width) => vrules.push((x, *width, top, top + height + depth, *span, rule_color.clone())),
+                        MPiece::Rule(span) => vrules.push((x - arw / 2.0, arw, top, top + height + depth, *span, table.rule_color.clone())),
+                        MPiece::VLine(span, width) => vrules.push((x, *width, top, top + height + depth, *span, table.rule_color.clone())),
                         MPiece::Text(_) => placed.push(Placed { row: ri, cell: ci, slot, x, baseline }),
                     };
                     let mut x = left;
