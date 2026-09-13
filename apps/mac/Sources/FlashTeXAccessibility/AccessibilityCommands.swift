@@ -20,6 +20,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case accessibilityHelp
     case durableHistory, findInProject, nextSearchMatch, renameCitation
     case askGrok
+    case find, findAndReplace, findNext, findPrevious, useSelectionForFind, jumpToSelection
 
     public struct Entry: Equatable {
         public var command: AccessibilityCommand
@@ -241,6 +242,30 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Rename citation window", shortcuts: ["Edit > Rename Citation…"], menu: "Edit",
                          description: "Opens the reviewed citation rename: the helper plans every \\cite occurrence across the project (plan_citation_rename), the plan is shown for review, and Apply sends one apply_group; also in the toolbar.",
                          menuItem: "Rename Citation…")
+        case .find:
+            return Entry(command: self, title: "Find", shortcuts: ["⌘F"], menu: "Edit",
+                         description: "Opens the source editor's find bar (AppKit's built-in incremental search) over the focused document.",
+                         menuItem: "Find…")
+        case .findAndReplace:
+            return Entry(command: self, title: "Find and Replace", shortcuts: ["⌘⌥F"], menu: "Edit",
+                         description: "Opens the find bar already showing its Replace row; a replacement goes through the editor's normal undoable edit path, so ⌘Z undoes it and the preview recompiles.",
+                         menuItem: "Find and Replace…")
+        case .findNext:
+            return Entry(command: self, title: "Find Next", shortcuts: ["Edit > Find Next"], menu: "Edit",
+                         description: "Selects the next find-bar match in the focused editor. No key equivalent: ⌘G is Find in Project's Next match and ⇧⌘G is Convert Capture, so Return in the find bar's search field is the keyboard way to find next.",
+                         menuItem: "Find Next")
+        case .findPrevious:
+            return Entry(command: self, title: "Find Previous", shortcuts: ["Edit > Find Previous"], menu: "Edit",
+                         description: "Selects the previous find-bar match in the focused editor. No key equivalent, for the same reason as Find Next: Shift-Return in the find bar's search field is the keyboard way to find previous.",
+                         menuItem: "Find Previous")
+        case .useSelectionForFind:
+            return Entry(command: self, title: "Use Selection for Find", shortcuts: ["⌘E"], menu: "Edit",
+                         description: "Sets the focused editor's current selection as the find bar's search string.",
+                         menuItem: "Use Selection for Find")
+        case .jumpToSelection:
+            return Entry(command: self, title: "Jump to Selection", shortcuts: ["⌘J"], menu: "Edit",
+                         description: "Scrolls the focused editor's current selection into view and centers it.",
+                         menuItem: "Jump to Selection")
         }
     }
 

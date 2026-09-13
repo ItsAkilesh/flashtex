@@ -814,6 +814,12 @@ explain that nothing is loaded.
 | ⌘⌥0 | Reset editor font size (View): back to the default 13 pt |
 | ⌘⇧M | Toggle Problems panel (View): the grouped diagnostics list under the editor and preview with a severity filter, jump, explanations and Fix…; the sidebar's Problems rows and the status bar counts open it too |
 | Edit > Durable History… | Durable History window (undo/redo on the helper's edit ledger: Refresh, Undo, Redo, Retry/Discard after an uncertain reply, retention gauge, both stacks) |
+| ⌘F | Find… (opens the source editor's find bar; AppKit's built-in incremental search) |
+| ⌘⌥F | Find and Replace… (opens the find bar already showing its Replace row; a replacement is one undoable edit, so ⌘Z undoes it and the preview recompiles) |
+| Edit > Find Next | Find Next (selects the next find-bar match; no key equivalent — ⌘G is Find in Project's Next match, ⇧⌘G is Convert Capture — Return in the find bar's search field does the same) |
+| Edit > Find Previous | Find Previous (selects the previous find-bar match; no key equivalent for the same reason — Shift-Return in the find bar's search field does the same) |
+| ⌘E | Use Selection for Find (sets the focused editor's selection as the find bar's search string) |
+| ⌘J | Jump to Selection (scrolls the focused editor's current selection into view and centers it) |
 | ⌘⇧F | Find in Project… window (case-sensitive literal search of the durable project source; Return searches or goes to the selected match, ↑/↓ move the selection, Esc closes; Plan Replacement / Apply for reviewed replacement) |
 | ⌘G | Next match (while the Find in Project window is key: selects the next match, wrapping, and goes there) |
 | ⌘Z | Undo (including an approved capture insertion) |
