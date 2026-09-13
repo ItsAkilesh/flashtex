@@ -85,7 +85,7 @@ pub fn changed_bytes(old: &str, new: &str) -> ChangedBytes {
 
 #[derive(Debug, Clone)]
 struct CachedBlock {
-    block: Block,
+    /// The block itself is `Revision::output.blocks` at the same index.
     dependencies: Vec<MacroDependency>,
     prepared_state: FlowState,
     end_state: FlowState,
@@ -150,7 +150,7 @@ impl Session {
             }
         }
 
-        let parsed = parser::parse_project(documents, entry_path);
+        let mut parsed = parser::parse_project(documents, entry_path);
         let constraints = parsed.preamble_constraints(constraints);
         let same_document_set = self.previous.as_ref().is_some_and(|previous| {
             previous.entry_path == entry_path
@@ -241,57 +241,74 @@ impl Session {
         // signature hit is still shifted and compared structurally below, and
         // every reused placed item still needs a current-revision source span;
         // those confirmation/output walks are linear in reused content.
+        //
+        // Issue #65: the previous revision is consumed, so its blocks, placed
+        // items and diagnostics are shifted IN PLACE exactly once (no clone of
+        // every word's text per comparison), and a reused fragment is moved into
+        // the new cache instead of being copied again. A slot whose spans cannot
+        // all be mapped is never indexed, and a slot is consumed by its first
+        // reuse; either case only falls back to recomputation.
+        let mut previous = if can_reuse {
+            self.previous.take()
+        } else {
+            None
+        };
+        let mut available = Vec::new();
         let mut candidate_index: HashMap<BlockSignature, Vec<usize>> = HashMap::new();
-        if can_reuse {
-            if let Some(previous) = self.previous.as_ref() {
-                for (slot, cached) in previous.blocks.iter().enumerate() {
-                    if let Some(signature) = shifted_signature(&cached.block, &changes, &deltas) {
-                        candidate_index.entry(signature).or_default().push(slot);
-                    }
+        if let Some(previous) = previous.as_mut() {
+            available.resize(previous.blocks.len(), false);
+            for (slot, (block, cached)) in previous
+                .output
+                .blocks
+                .iter_mut()
+                .zip(previous.blocks.iter_mut())
+                .enumerate()
+            {
+                if shift_block(block, &changes, &deltas).is_some()
+                    && shift_placed(&mut cached.placed, &changes, &deltas).is_some()
+                    && shift_diagnostics(&mut cached.diagnostics, &changes, &deltas).is_some()
+                {
+                    available[slot] = true;
+                    candidate_index
+                        .entry(block_signature(block))
+                        .or_default()
+                        .push(slot);
                 }
             }
         }
 
+        let mut block_dependencies = std::mem::take(&mut parsed.block_dependencies);
         for (index, block) in parsed.blocks.iter().enumerate() {
-            let dependencies = parsed.block_dependencies[index].clone();
+            let dependencies = std::mem::take(&mut block_dependencies[index]);
             let prepared_state = cursor.prepare_block(block);
             let diagnostics_start = cursor.diagnostics_len();
-            let candidate = if can_reuse {
-                self.previous.as_ref().and_then(|previous| {
-                    candidate_index
-                        .get(&block_signature(block))
-                        .into_iter()
-                        .flatten()
-                        .find(|slot| {
-                            stats.candidate_comparisons += 1;
-                            let cached = &previous.blocks[**slot];
-                            // Full equality still decides: the signature only
-                            // narrows the search, it never authorises a reuse.
-                            // The shift happens here, for this one candidate.
-                            cached.dependencies == dependencies
-                                && shift_block(&cached.block, &changes, &deltas).as_ref()
-                                    == Some(block)
-                        })
-                        .map(|slot| &previous.blocks[*slot])
-                })
-            } else {
-                None
-            };
+            let candidate = previous.as_ref().and_then(|previous| {
+                candidate_index
+                    .get(&block_signature(block))
+                    .into_iter()
+                    .flatten()
+                    .copied()
+                    .find(|&slot| {
+                        if !available[slot] {
+                            return false;
+                        }
+                        stats.candidate_comparisons += 1;
+                        // Full equality still decides: the signature only
+                        // narrows the search, it never authorises a reuse.
+                        previous.blocks[slot].dependencies == dependencies
+                            && previous.output.blocks[slot] == *block
+                    })
+            });
 
-            let placed = if let Some(cached) = candidate {
-                if prepared_state.same_geometry(cached.prepared_state) {
-                    let shifted = shift_placed(&cached.placed, &changes, &deltas)
-                        .expect("candidate spans were already validated");
-                    let shifted_diagnostics =
-                        shift_diagnostics(&cached.diagnostics, &changes, &deltas)
-                            .expect("candidate diagnostic spans were already validated");
-                    cursor.append_reused(&shifted, &shifted_diagnostics, cached.end_state);
-                    stats.blocks_reused += 1;
-                    shifted
-                } else {
-                    stats.blocks_recomputed += 1;
-                    cursor.render_prepared_block(block)
-                }
+            let reusable = candidate.zip(previous.as_mut()).filter(|(slot, previous)| {
+                prepared_state.same_geometry(previous.blocks[*slot].prepared_state)
+            });
+            let placed = if let Some((slot, previous)) = reusable {
+                let cached = &mut previous.blocks[slot];
+                available[slot] = false;
+                cursor.append_reused(&cached.placed, &cached.diagnostics, cached.end_state);
+                stats.blocks_reused += 1;
+                std::mem::take(&mut cached.placed)
             } else {
                 stats.blocks_recomputed += 1;
                 cursor.render_prepared_block(block)
@@ -299,7 +316,6 @@ impl Session {
             let end_state = cursor.state();
             let block_diagnostics = cursor.diagnostics_since(diagnostics_start).to_vec();
             cache.push(CachedBlock {
-                block: block.clone(),
                 dependencies,
                 prepared_state,
                 end_state,
@@ -307,6 +323,7 @@ impl Session {
                 diagnostics: block_diagnostics,
             });
         }
+        drop(previous);
 
         let (pages, mut layout_diagnostics) = cursor.into_pages_and_diagnostics();
         let mut diagnostics = parsed.diagnostics;
@@ -377,340 +394,263 @@ fn shift_span(span: Span, delta: isize) -> Span {
     )
 }
 
-fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Option<Block> {
-    Some(match block {
-        Block::Paragraph(inlines) => Block::Paragraph(shift_inlines(inlines, changes, deltas)?),
+/// Map one span in place; `None` when it overlaps the changed range.
+///
+/// Every `shift_*` below destructures each variant's fields explicitly (no
+/// `..`), so a new span-carrying field fails to compile until it is mapped.
+/// A `None` may leave the value partially shifted; callers then never reuse it.
+fn map_span(span: &mut Span, changes: &[ChangedBytes], deltas: &[isize]) -> Option<()> {
+    *span = mapped_span(*span, changes, deltas)?;
+    Some(())
+}
+
+fn shift_block(block: &mut Block, changes: &[ChangedBytes], deltas: &[isize]) -> Option<()> {
+    match block {
+        Block::Paragraph(inlines) => shift_inlines(inlines, changes, deltas),
         Block::Heading {
-            level,
-            number,
+            level: _,
+            number: _,
             number_span,
             content,
-        } => Block::Heading {
-            level: *level,
-            number: number.clone(),
-            number_span: mapped_span(*number_span, changes, deltas)?,
-            content: shift_inlines(content, changes, deltas)?,
-        },
-        Block::FigureCaption { content } => Block::FigureCaption {
-            content: shift_inlines(content, changes, deltas)?,
-        },
-        Block::Styled { style, content } => Block::Styled {
-            style: *style,
-            content: shift_inlines(content, changes, deltas)?,
-        },
+        } => {
+            map_span(number_span, changes, deltas)?;
+            shift_inlines(content, changes, deltas)
+        }
+        Block::FigureCaption { content } => shift_inlines(content, changes, deltas),
+        Block::Styled { style: _, content } => shift_inlines(content, changes, deltas),
         Block::ListItem {
-            level,
+            level: _,
             label,
             content,
-            extra_gap_before_pt,
-            extra_gap_after_pt,
-            leftmargin,
-            widest_label,
-        } => Block::ListItem {
-            level: *level,
-            label: match label {
-                Some((text, span)) => Some((text.clone(), mapped_span(*span, changes, deltas)?)),
-                None => None,
-            },
-            content: shift_inlines(content, changes, deltas)?,
-            extra_gap_before_pt: *extra_gap_before_pt,
-            extra_gap_after_pt: *extra_gap_after_pt,
-            leftmargin: leftmargin.clone(),
-            widest_label: widest_label.clone(),
-        },
-        Block::VSpace { pt } => Block::VSpace { pt: *pt },
-        Block::Rule { span } => Block::Rule {
-            span: mapped_span(*span, changes, deltas)?,
-        },
-        Block::PageBreak => Block::PageBreak,
-        Block::Verbatim { lines, span } => Block::Verbatim {
-            lines: lines
-                .iter()
-                .map(|line| {
-                    Some(VerbatimLine {
-                        text: line.text.clone(),
-                        span: mapped_span(line.span, changes, deltas)?,
-                    })
-                })
-                .collect::<Option<Vec<_>>>()?,
-            span: mapped_span(*span, changes, deltas)?,
-        },
-        Block::TableOfContents { span } => Block::TableOfContents {
-            span: mapped_span(*span, changes, deltas)?,
-        },
+            extra_gap_before_pt: _,
+            extra_gap_after_pt: _,
+            leftmargin: _,
+            widest_label: _,
+        } => {
+            if let Some((_, span)) = label {
+                map_span(span, changes, deltas)?;
+            }
+            shift_inlines(content, changes, deltas)
+        }
+        Block::VSpace { pt: _ } => Some(()),
+        Block::Rule { span } => map_span(span, changes, deltas),
+        Block::PageBreak => Some(()),
+        Block::Verbatim { lines, span } => {
+            for VerbatimLine { text: _, span } in lines.iter_mut() {
+                map_span(span, changes, deltas)?;
+            }
+            map_span(span, changes, deltas)
+        }
+        Block::TableOfContents { span } => map_span(span, changes, deltas),
         Block::TitleBlock {
             title,
             authors,
             date,
-        } => Block::TitleBlock {
-            title: shift_inlines(title, changes, deltas)?,
-            authors: shift_inlines(authors, changes, deltas)?,
-            date: match date {
-                Some(date) => Some(shift_inlines(date, changes, deltas)?),
-                None => None,
-            },
-        },
-        Block::VFill => Block::VFill,
-    })
+        } => {
+            shift_inlines(title, changes, deltas)?;
+            shift_inlines(authors, changes, deltas)?;
+            if let Some(date) = date {
+                shift_inlines(date, changes, deltas)?;
+            }
+            Some(())
+        }
+        Block::VFill => Some(()),
+    }
 }
 
-fn shift_inlines(
-    inlines: &[Inline],
-    changes: &[ChangedBytes],
-    deltas: &[isize],
-) -> Option<Vec<Inline>> {
-    inlines
-        .iter()
-        .map(|inline| match inline {
+fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isize]) -> Option<()> {
+    for inline in inlines {
+        match inline {
             Inline::Text {
-                text,
+                text: _,
                 span,
-                style,
-                space_before,
-            } => Some(Inline::Text {
-                style: *style,
-                text: text.clone(),
-                span: mapped_span(*span, changes, deltas)?,
-                space_before: *space_before,
-            }),
-            Inline::LineBreak { span } => Some(Inline::LineBreak {
-                span: mapped_span(*span, changes, deltas)?,
-            }),
-            Inline::TextGlue { em, span } => Some(Inline::TextGlue {
-                em: *em,
-                span: mapped_span(*span, changes, deltas)?,
-            }),
+                style: _,
+                space_before: _,
+            } => map_span(span, changes, deltas)?,
+            Inline::LineBreak { span } => map_span(span, changes, deltas)?,
+            Inline::TextGlue { em: _, span } => map_span(span, changes, deltas)?,
             Inline::Math {
                 list,
-                display,
-                number,
+                display: _,
+                number: _,
                 number_span,
                 span,
-                space_before,
-            } => Some(Inline::Math {
-                list: shift_math_list(list, changes, deltas)?,
-                display: *display,
-                number: number.clone(),
-                number_span: match number_span {
-                    Some(span) => Some(mapped_span(*span, changes, deltas)?),
-                    None => None,
-                },
-                span: mapped_span(*span, changes, deltas)?,
-                space_before: *space_before,
-            }),
+                space_before: _,
+            } => {
+                shift_math_list(list, changes, deltas)?;
+                if let Some(number_span) = number_span {
+                    map_span(number_span, changes, deltas)?;
+                }
+                map_span(span, changes, deltas)?;
+            }
             Inline::MathRows {
                 rows,
-                aligned,
+                aligned: _,
                 span,
-            } => Some(Inline::MathRows {
-                rows: rows
-                    .iter()
-                    .map(|row| {
-                        Some(MathRow {
-                            cells: row
-                                .cells
-                                .iter()
-                                .map(|cell| shift_math_list(cell, changes, deltas))
-                                .collect::<Option<Vec<_>>>()?,
-                            number: row.number.clone(),
-                            span: mapped_span(row.span, changes, deltas)?,
-                        })
-                    })
-                    .collect::<Option<Vec<_>>>()?,
-                aligned: *aligned,
-                span: mapped_span(*span, changes, deltas)?,
-            }),
-            Inline::Label { key, value, span } => Some(Inline::Label {
-                key: key.clone(),
-                value: value.clone(),
-                span: mapped_span(*span, changes, deltas)?,
-            }),
+            } => {
+                for MathRow {
+                    cells,
+                    number: _,
+                    span,
+                } in rows
+                {
+                    for cell in cells {
+                        shift_math_list(cell, changes, deltas)?;
+                    }
+                    map_span(span, changes, deltas)?;
+                }
+                map_span(span, changes, deltas)?;
+            }
+            Inline::Label {
+                key: _,
+                value: _,
+                span,
+            } => map_span(span, changes, deltas)?,
             Inline::Reference {
-                key,
-                page,
-                equation,
+                key: _,
+                page: _,
+                equation: _,
                 span,
-                space_before,
-            } => Some(Inline::Reference {
-                key: key.clone(),
-                page: *page,
-                equation: *equation,
-                span: mapped_span(*span, changes, deltas)?,
-                space_before: *space_before,
-            }),
-            Inline::HFill { span } => Some(Inline::HFill {
-                span: mapped_span(*span, changes, deltas)?,
-            }),
-            Inline::HSpace { pt, span } => Some(Inline::HSpace {
-                pt: *pt,
-                span: mapped_span(*span, changes, deltas)?,
-            }),
+                space_before: _,
+            } => map_span(span, changes, deltas)?,
+            Inline::HFill { span } => map_span(span, changes, deltas)?,
+            Inline::HSpace { pt: _, span } => map_span(span, changes, deltas)?,
             Inline::Footnote {
-                number,
+                number: _,
                 span,
-                mark,
+                mark: _,
                 text,
-                space_before,
-            } => Some(Inline::Footnote {
-                number: number.clone(),
-                span: mapped_span(*span, changes, deltas)?,
-                mark: *mark,
-                text: match text {
-                    Some(text) => Some(shift_inlines(text, changes, deltas)?),
-                    None => None,
-                },
-                space_before: *space_before,
-            }),
-            Inline::Tabular(table) => Some(Inline::Tabular(Box::new(table.try_map_spans(
-                &mut |span| mapped_span(span, changes, deltas),
-                &mut |inlines| shift_inlines(inlines, changes, deltas),
-            )?))),
+                space_before: _,
+            } => {
+                map_span(span, changes, deltas)?;
+                if let Some(text) = text {
+                    shift_inlines(text, changes, deltas)?;
+                }
+            }
+            Inline::Tabular(table) => {
+                // `Tabular` only offers a mapping copy; its nested inlines are
+                // shifted through the same in-place walk.
+                let shifted = table.try_map_spans(
+                    &mut |span| mapped_span(span, changes, deltas),
+                    &mut |inlines| {
+                        let mut owned = inlines.to_vec();
+                        shift_inlines(&mut owned, changes, deltas)?;
+                        Some(owned)
+                    },
+                )?;
+                **table = shifted;
+            }
             Inline::Verbatim {
-                text,
+                text: _,
                 span,
-                space_before,
-            } => Some(Inline::Verbatim {
-                text: text.clone(),
-                span: mapped_span(*span, changes, deltas)?,
-                space_before: *space_before,
-            }),
-        })
-        .collect()
+                space_before: _,
+            } => map_span(span, changes, deltas)?,
+        }
+    }
+    Some(())
 }
 
-fn shift_math_list(
-    list: &MathList,
-    changes: &[ChangedBytes],
-    deltas: &[isize],
-) -> Option<MathList> {
-    Some(MathList {
-        atoms: list
-            .atoms
-            .iter()
-            .map(|atom| {
-                Some(MathAtom {
-                    nucleus: match &atom.nucleus {
-                        Nucleus::Symbol(text) => Nucleus::Symbol(text.clone()),
-                        Nucleus::SizedDelimiter { .. } => atom.nucleus.clone(),
-                        Nucleus::Text(text) => Nucleus::Text(text.clone()),
-                        Nucleus::Space { em } => Nucleus::Space { em: *em },
-                        Nucleus::Fraction {
-                            numerator,
-                            denominator,
-                        } => Nucleus::Fraction {
-                            numerator: shift_math_list(numerator, changes, deltas)?,
-                            denominator: shift_math_list(denominator, changes, deltas)?,
-                        },
-                        Nucleus::Radical(list) => {
-                            Nucleus::Radical(shift_math_list(list, changes, deltas)?)
-                        }
-                        Nucleus::Bold(text) => Nucleus::Bold(text.clone()),
-                        Nucleus::Framed { body, frame } => Nucleus::Framed {
-                            body: shift_math_list(body, changes, deltas)?,
-                            frame: *frame,
-                        },
-                        Nucleus::Stacked { base, over, under } => Nucleus::Stacked {
-                            base: shift_math_list(base, changes, deltas)?,
-                            over: match over {
-                                Some(list) => Some(shift_math_list(list, changes, deltas)?),
-                                None => None,
-                            },
-                            under: match under {
-                                Some(list) => Some(shift_math_list(list, changes, deltas)?),
-                                None => None,
-                            },
-                        },
-                        Nucleus::Matrix {
-                            rows,
-                            columns,
-                            left,
-                            right,
-                        } => Nucleus::Matrix {
-                            rows: rows
-                                .iter()
-                                .map(|row| {
-                                    row.iter()
-                                        .map(|cell| shift_math_list(cell, changes, deltas))
-                                        .collect::<Option<Vec<_>>>()
-                                })
-                                .collect::<Option<Vec<_>>>()?,
-                            columns: columns.clone(),
-                            left: left.clone(),
-                            right: right.clone(),
-                        },
-                        Nucleus::Accent { accent, body } => Nucleus::Accent {
-                            accent: *accent,
-                            body: shift_math_list(body, changes, deltas)?,
-                        },
-                        Nucleus::Group(inner) => {
-                            Nucleus::Group(shift_math_list(inner, changes, deltas)?)
-                        }
-                    },
-                    class_override: atom.class_override,
-                    width_em: atom.width_em,
-                    span: mapped_span(atom.span, changes, deltas)?,
-                    // An absent script stays absent; a present one that cannot be
-                    // shifted fails the whole mapping, so the caller falls back to a
-                    // full recompile rather than emitting a stale span.
-                    superscript: match atom.superscript.as_ref() {
-                        Some(list) => Some(shift_math_list(list, changes, deltas)?),
-                        None => None,
-                    },
-                    subscript: match atom.subscript.as_ref() {
-                        Some(list) => Some(shift_math_list(list, changes, deltas)?),
-                        None => None,
-                    },
-                })
-            })
-            .collect::<Option<Vec<_>>>()?,
-    })
+fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isize]) -> Option<()> {
+    for MathAtom {
+        nucleus,
+        span,
+        superscript,
+        subscript,
+        class_override: _,
+        width_em: _,
+    } in &mut list.atoms
+    {
+        match nucleus {
+            Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Bold(_) => {}
+            Nucleus::SizedDelimiter { .. } => {}
+            Nucleus::Space { em: _ } => {}
+            Nucleus::Fraction {
+                numerator,
+                denominator,
+            } => {
+                shift_math_list(numerator, changes, deltas)?;
+                shift_math_list(denominator, changes, deltas)?;
+            }
+            Nucleus::Radical(list) => shift_math_list(list, changes, deltas)?,
+            Nucleus::Framed { body, frame: _ } => shift_math_list(body, changes, deltas)?,
+            Nucleus::Stacked { base, over, under } => {
+                shift_math_list(base, changes, deltas)?;
+                if let Some(list) = over {
+                    shift_math_list(list, changes, deltas)?;
+                }
+                if let Some(list) = under {
+                    shift_math_list(list, changes, deltas)?;
+                }
+            }
+            Nucleus::Matrix {
+                rows,
+                columns: _,
+                left: _,
+                right: _,
+            } => {
+                for cell in rows.iter_mut().flatten() {
+                    shift_math_list(cell, changes, deltas)?;
+                }
+            }
+            Nucleus::Accent { accent: _, body } => shift_math_list(body, changes, deltas)?,
+            Nucleus::Group(inner) => shift_math_list(inner, changes, deltas)?,
+        }
+        map_span(span, changes, deltas)?;
+        // A present script that cannot be shifted fails the whole mapping, so
+        // the block is recomputed rather than emitting a stale span.
+        if let Some(list) = superscript {
+            shift_math_list(list, changes, deltas)?;
+        }
+        if let Some(list) = subscript {
+            shift_math_list(list, changes, deltas)?;
+        }
+    }
+    Some(())
 }
 
 fn shift_placed(
-    items: &[PlacedItem],
+    items: &mut [PlacedItem],
     changes: &[ChangedBytes],
     deltas: &[isize],
-) -> Option<Vec<PlacedItem>> {
-    items
-        .iter()
-        .map(|placed| {
-            Some(PlacedItem {
-                page_index: placed.page_index,
-                item: TextItem {
-                    text: placed.item.text.clone(),
-                    x_pt: placed.item.x_pt,
-                    baseline_y_pt: placed.item.baseline_y_pt,
-                    font_size_pt: placed.item.font_size_pt,
-                    span: mapped_span(placed.item.span, changes, deltas)?,
-                    font: placed.item.font,
-                    rule: placed.item.rule,
-                },
-            })
-        })
-        .collect()
+) -> Option<()> {
+    for PlacedItem {
+        page_index: _,
+        item:
+            TextItem {
+                text: _,
+                x_pt: _,
+                baseline_y_pt: _,
+                font_size_pt: _,
+                span,
+                font: _,
+                rule: _,
+            },
+    } in items
+    {
+        map_span(span, changes, deltas)?;
+    }
+    Some(())
 }
 
 fn shift_diagnostics(
-    diagnostics: &[Diagnostic],
+    diagnostics: &mut [Diagnostic],
     changes: &[ChangedBytes],
     deltas: &[isize],
-) -> Option<Vec<Diagnostic>> {
-    diagnostics
-        .iter()
-        .map(|diagnostic| {
-            Some(Diagnostic {
-                severity: diagnostic.severity,
-                message: diagnostic.message.clone(),
-                span: match diagnostic.span {
-                    Some(span) => Some(mapped_span(span, changes, deltas)?),
-                    None => None,
-                },
-                recovery: diagnostic.recovery.clone(),
-                code: diagnostic.code,
-                suggestion: diagnostic.suggestion.clone(),
-            })
-        })
-        .collect()
+) -> Option<()> {
+    for Diagnostic {
+        severity: _,
+        message: _,
+        span,
+        recovery: _,
+        code: _,
+        suggestion: _,
+    } in diagnostics
+    {
+        if let Some(span) = span {
+            map_span(span, changes, deltas)?;
+        }
+    }
+    Some(())
 }
 
 /// A cheap, collision-tolerant signature used only to narrow candidate search.
@@ -762,67 +702,6 @@ fn block_signature(block: &Block) -> BlockSignature {
         last.map_or(usize::MAX, |s| s.end),
         inlines.len(),
     )
-}
-
-/// Signature a cached block WOULD have after shifting, computed from its spans
-/// and the byte delta without cloning or shifting the block.
-///
-/// Returns `None` when the block overlaps the changed range, which is exactly
-/// when it cannot be reused anyway.
-fn shifted_signature(
-    block: &Block,
-    changes: &[ChangedBytes],
-    deltas: &[isize],
-) -> Option<BlockSignature> {
-    let inlines: &[Inline] = match block {
-        Block::Paragraph(inlines) => inlines,
-        Block::ListItem { content, .. } => content,
-        Block::Heading { content, .. } => content,
-        Block::FigureCaption { content } => content,
-        Block::Styled { content, .. } => content,
-        Block::VSpace { .. }
-        | Block::Rule { .. }
-        | Block::PageBreak
-        | Block::Verbatim { .. }
-        | Block::TableOfContents { .. }
-        | Block::VFill => &[],
-        // Signature only, not identity (see the doc comment above): using
-        // just `title` here (never `authors`/`date`) can only widen the
-        // candidate set on an author/date-only edit, never produce a wrong
-        // reuse, since `shift_block`'s full equality check still gates that.
-        Block::TitleBlock { title, .. } => title,
-    };
-    let span_of = |inline: &Inline| match inline {
-        Inline::Text { span, .. } => *span,
-        Inline::LineBreak { span } => *span,
-        Inline::TextGlue { span, .. } => *span,
-        Inline::Math { span, .. } => *span,
-        Inline::MathRows { span, .. } => *span,
-        Inline::Label { span, .. } => *span,
-        Inline::Reference { span, .. } => *span,
-        Inline::HFill { span } => *span,
-        Inline::HSpace { span, .. } => *span,
-        Inline::Footnote { span, .. } => *span,
-        Inline::Tabular(table) => table.span,
-        Inline::Verbatim { span, .. } => *span,
-    };
-    let first = inlines.first().map(span_of);
-    let last = inlines.last().map(span_of);
-    let start = match first {
-        Some(span) => mapped_span(span, changes, deltas)?.start,
-        None => usize::MAX,
-    };
-    let end = match last {
-        Some(span) => mapped_span(span, changes, deltas)?.end,
-        None => usize::MAX,
-    };
-    Some((
-        first.map_or(usize::MAX, |s| s.document.0),
-        start,
-        last.map_or(usize::MAX, |s| s.document.0),
-        end,
-        inlines.len(),
-    ))
 }
 
 #[cfg(test)]

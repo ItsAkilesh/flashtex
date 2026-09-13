@@ -1,0 +1,14 @@
+perf_bench: HW2 skipped (/Users/kubar/code/flashtex/.claude/worktrees/agent-ae8c40d8210f8929f/crates/render-pipeline/../../fixtures/real-world/hw2/HW2.tex: No such file or directory (os error 2))
+# machine: Apple M5 Pro, 15 logical CPUs | load(1,5,15): 4.11 5.96 5.24 | font set + first HW1 request: 16.8 ms
+scenario                           steps    p50 ms    p95 ms    max ms  first ms  digest           load
+500KB full                             5    163.24    181.14    181.14    181.14  f91df8d11dc7c058 4.11 5.96 5.24 -> 4.11 5.96 5.24
+500KB type-paragraph                   6     97.65    100.26    100.26    100.26  07e400ee20887cf2 4.11 5.96 5.24 -> 4.11 5.96 5.24
+500KB type-inline-math                 6     96.65     97.50     97.50     97.50  ac0296741ea5f0c9 4.11 5.96 5.24 -> 4.11 5.96 5.24
+500KB type-display-eq                  6     96.89     99.27     99.27     97.64  763c12f94b4b554b 4.11 5.96 5.24 -> 4.02 5.91 5.23
+500KB delete-restore-line              6     98.34    100.11    100.11    100.11  55a32024e6f203f4 4.02 5.91 5.23 -> 4.02 5.91 5.23
+500KB full +v2                         5    152.20    166.04    166.04    152.15  8ec86741e92c0083 4.02 5.91 5.23 -> 4.02 5.91 5.23
+500KB type-paragraph +v2               6     98.48     99.02     99.02     98.98  333b1695e2279f31 4.02 5.91 5.23 -> 4.02 5.91 5.23
+500KB type-inline-math +v2             6     99.47    100.35    100.35    100.25  17c1587417ca639d 4.02 5.91 5.23 -> 4.02 5.91 5.23
+500KB type-display-eq +v2              6     97.20    101.05    101.05     97.60  fb9ed08033f874c7 4.02 5.91 5.23 -> 4.02 5.91 5.23
+500KB delete-restore-line +v2          6     97.44    100.96    100.96    100.96  500eab56ecad1692 4.02 5.91 5.23 -> 3.78 5.82 5.20
+# digest check against /private/tmp/claude-501/-Users-kubar-code-flashtex/725966af-c852-4dd0-a718-6ce11942557d/scratchpad/digests-500-base.txt: identical
