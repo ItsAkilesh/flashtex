@@ -37,6 +37,11 @@ final class ShellModel {
     var problemsSeverityFilter: RuntimeV1.Severity?
     var commandPaletteShown = false
     let problemsPanel = DiagnosticsPanelState()
+    /// Debounced, background word/document-statistics scan (GH68), read by
+    /// the status bar's word count item (DocumentStatistics.swift). Kicked
+    /// off by that view itself on appear/edit/document-set change — no
+    /// scheduling logic lives here.
+    let wordCount = WordCountModel()
     /// Ask Grok on the live document (ShellModel+GrokAssistant.swift, GrokAssistantView.swift).
     @ObservationIgnored let grokAssistant = GrokAssistant()
     /// The display-list-v2 pane (PreviewV2View.swift) is the default; `FLASHTEX_PREVIEW_V2=0` selects the v1 pane.

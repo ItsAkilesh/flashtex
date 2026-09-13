@@ -408,6 +408,7 @@ private struct StatusBar: View {
             }
             Label(route, systemImage: routeIcon)
                 .help(model.isFixture ? "Not a real compile." : (model.controllerAttached ? model.controllerStatus : model.workerStatus))
+            WordCountStatusItem() // GH68: live word count + breakdown popover (WordCountStatusView.swift)
             Label(grokStatus.text, systemImage: grokStatus.on ? "sparkles" : "sparkles.slash")
                 .foregroundStyle(grokStatus.on ? Color.primary : Color.secondary)
                 .help(grokStatus.help)
