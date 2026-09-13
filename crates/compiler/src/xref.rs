@@ -40,6 +40,18 @@ impl Counters {
         counters
     }
 
+    /// report.cls/book.cls: `chapter`, `section` numbered within it
+    /// (`\thesection` is `\thechapter.\@arabic\c@section`), then
+    /// `subsection` and `subsubsection` as in article.
+    pub fn report() -> Self {
+        let mut counters = Counters::default();
+        counters.define("chapter", None);
+        counters.number_within("section", "chapter");
+        counters.number_within("subsection", "section");
+        counters.number_within("subsubsection", "subsection");
+        counters
+    }
+
     fn index(&self, name: &str) -> Option<usize> {
         self.counters
             .iter()

@@ -610,7 +610,12 @@ impl P<'_> {
         let width = self.box_dimen(name, &dimen_source(&width_tokens), width_span).unwrap_or_else(zero);
         let (body, end) = self.environment_body(name, open);
         let full = open.merge(end);
+        // `\@iiiminipage`: `\c@mpfootnote\z@`, and footnotes inside number
+        // `mpfootnote` (#153), which reads the open environments.
+        self.mpfootnote_counter = 0;
+        self.env_stack.push((name.to_string(), open));
         let paragraphs = self.box_paragraphs(body, name, full);
+        self.env_stack.pop();
         para.push(Inline::Box(Box::new(TextBox {
             kind: TextBoxKind::Par { pos, height, inner, width, minipage: true },
             content: Vec::new(),
