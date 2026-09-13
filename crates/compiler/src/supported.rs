@@ -321,6 +321,12 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["mathfrak"],
+        "{letters}",
+        "Euler Fraktur letters as Unicode mathematical fraktur; digits and other characters unchanged",
+        true,
+    ),
+    (
         &["mathcal"],
         "{A-Z}",
         "script capitals from New Computer Modern Math at cmsy10 metrics; other arguments are diagnosed",
@@ -365,11 +371,14 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["mathit", "mathsf", "mathtt"],
+        "{...}",
+        "letters and digits of a plain argument as Unicode mathematical italic, sans-serif or monospace; any other argument stays in the current math face",
+        true,
+    ),
+    (
         &[
             "mathrm",
-            "mathit",
-            "mathsf",
-            "mathtt",
             "mathnormal",
             "boldsymbol",
             "bm",

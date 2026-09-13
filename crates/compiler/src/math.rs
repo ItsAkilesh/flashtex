@@ -791,8 +791,29 @@ impl MathParser<'_> {
             // argument's content rather than dropping or garbling it.
             "mathrm" | "mathit" | "mathsf" | "mathtt" | "mathnormal" | "boldsymbol" | "bm"
             | "mbox" | "hbox" | "textrm" | "textit" | "textnormal" => {
-                let body = self.required_group(&name, span);
-                self.group_atom(body, span)
+                // `\mathsf{AB}`, `\mathtt{T}`, `\mathit{diff}` with a plain
+                // argument: the letters of that math alphabet (fontmath.ltx
+                // `\DeclareMathAlphabet`: OT1 cmss/m/n, cmtt/m/n, cmr/m/it)
+                // as Unicode mathematical alphanumerics in one atom, like
+                // `\mathbb`. Any other argument keeps the surrounding math
+                // letters.
+                if matches!(&*name, "mathit" | "mathsf" | "mathtt") && self.plain_text_argument() {
+                    let (text, argument_span) = self.required_text_group(&name, span);
+                    let span = span.merge(argument_span);
+                    let glyphs: String = text
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .map(|c| math_alphabet_char(&name, c))
+                        .collect();
+                    if glyphs.is_empty() {
+                        space(0.0, span)
+                    } else {
+                        symbol(glyphs, span)
+                    }
+                } else {
+                    let body = self.required_group(&name, span);
+                    self.group_atom(body, span)
+                }
             }
             "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "nonumber"
             | "notag" | "middle" => space(0.0, span),
@@ -1023,6 +1044,23 @@ impl MathParser<'_> {
                     }
                 }
             }
+            // amsfonts.sty `\DeclareMathAlphabet{\mathfrak}{U}{euf}{m}{n}`:
+            // Euler Fraktur letters as Unicode mathematical fraktur; digits
+            // and other characters are kept as they are.
+            "mathfrak" => {
+                let (text, argument_span) = self.required_text_group("mathfrak", span);
+                let span = span.merge(argument_span);
+                let glyphs: String = text
+                    .chars()
+                    .filter(|c| !c.is_whitespace())
+                    .map(|c| math_alphabet_char("mathfrak", c))
+                    .collect();
+                if glyphs.is_empty() {
+                    space(0.0, span)
+                } else {
+                    symbol(glyphs, span)
+                }
+            }
             "mathcal" => {
                 let (text, argument_span) = self.required_text_group("mathcal", span);
                 let span = span.merge(argument_span);
@@ -1241,6 +1279,29 @@ impl MathParser<'_> {
         }
         self.i += 1;
         symbol(delimiter.clone(), span.merge(token.span))
+    }
+
+    /// Whether the next argument is plain text: one word token, or a brace
+    /// group of words and spaces only (no commands, scripts or groups).
+    fn plain_text_argument(&self) -> bool {
+        let mut i = self.i;
+        while matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::Space)) {
+            i += 1;
+        }
+        match self.tokens.get(i).map(|t| &t.kind) {
+            Some(TokenKind::Word(_)) => true,
+            Some(TokenKind::LBrace) => {
+                i += 1;
+                loop {
+                    match self.tokens.get(i).map(|t| &t.kind) {
+                        Some(TokenKind::Word(_) | TokenKind::Space) => i += 1,
+                        Some(TokenKind::RBrace) => return true,
+                        _ => return false,
+                    }
+                }
+            }
+            _ => false,
+        }
     }
 
     fn required_text_group(&mut self, command: &str, span: Span) -> (String, Span) {
@@ -1703,6 +1764,38 @@ fn operator_body(list: MathList) -> MathList {
 
 /// `\varnothing`'s advance in ems: msbm10.tfm character "3F (CHARWD R 0.777781).
 pub(crate) const VARNOTHING_MSBM_EM: f64 = 0.777781;
+
+/// The Unicode mathematical alphanumeric symbol that stands for `ch` in the
+/// math alphabet of `command`: `\mathsf` sans-serif (U+1D5A0, digits
+/// U+1D7E2), `\mathtt` monospace (U+1D670, digits U+1D7F6), `\mathit`
+/// italic (U+1D434, `h` is U+210E) and `\mathfrak` fraktur (U+1D504, with
+/// the Letterlike Symbols `C` U+212D, `H` U+210C, `I` U+2111, `R` U+211C,
+/// `Z` U+2128). Characters the alphabet block has no code point for (italic
+/// and fraktur digits, punctuation) are returned unchanged. The render
+/// pipeline maps these back to the TeX fonts' slots.
+pub fn math_alphabet_char(command: &str, ch: char) -> char {
+    let offset = |base: u32, first: char| char::from_u32(base + (ch as u32 - first as u32));
+    let mapped = match (command, ch) {
+        ("mathsf", 'A'..='Z') => offset(0x1D5A0, 'A'),
+        ("mathsf", 'a'..='z') => offset(0x1D5BA, 'a'),
+        ("mathsf", '0'..='9') => offset(0x1D7E2, '0'),
+        ("mathtt", 'A'..='Z') => offset(0x1D670, 'A'),
+        ("mathtt", 'a'..='z') => offset(0x1D68A, 'a'),
+        ("mathtt", '0'..='9') => offset(0x1D7F6, '0'),
+        ("mathit", 'h') => Some('\u{210E}'),
+        ("mathit", 'A'..='Z') => offset(0x1D434, 'A'),
+        ("mathit", 'a'..='z') => offset(0x1D44E, 'a'),
+        ("mathfrak", 'C') => Some('\u{212D}'),
+        ("mathfrak", 'H') => Some('\u{210C}'),
+        ("mathfrak", 'I') => Some('\u{2111}'),
+        ("mathfrak", 'R') => Some('\u{211C}'),
+        ("mathfrak", 'Z') => Some('\u{2128}'),
+        ("mathfrak", 'A'..='Z') => offset(0x1D504, 'A'),
+        ("mathfrak", 'a'..='z') => offset(0x1D51E, 'a'),
+        _ => None,
+    };
+    mapped.unwrap_or(ch)
+}
 
 fn symbol(text: String, span: Span) -> MathAtom {
     MathAtom {
@@ -3843,6 +3936,29 @@ mod unbraced_argument_tests {
                 other => panic!("{source}: expected a generalized fraction, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn math_alphabets_map_plain_letters_to_unicode_alphanumerics() {
+        for (source, expected) in [
+            (r"\mathsf{Ab1}", "\u{1D5A0}\u{1D5BB}\u{1D7E3}"),
+            (r"\mathtt{T}", "\u{1D683}"),
+            (r"\mathit{diff}", "\u{1D451}\u{1D456}\u{1D453}\u{1D453}"),
+            (r"\mathit{h}", "\u{210E}"),
+            (r"\mathfrak{gRA}", "\u{1D524}\u{211C}\u{1D504}"),
+            (r"\mathfrak{g1}", "\u{1D524}1"),
+        ] {
+            let mut diagnostics = Vec::new();
+            let list = parse_tokens(&crate::lexer::tokenize(source), &mut diagnostics);
+            assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+            assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
+            assert_eq!(list.atoms[0].nucleus, Nucleus::Symbol(expected.into()), "{source}");
+        }
+        // Any other argument keeps the surrounding math letters.
+        let mut diagnostics = Vec::new();
+        let list = parse_tokens(&crate::lexer::tokenize(r"\mathsf{x^2}"), &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(list.atoms[0].nucleus, Nucleus::Symbol("x".into()));
     }
 
     #[test]

@@ -149,6 +149,7 @@
     {"name": "mod", "mode": "math", "origin": "math_structure", "arguments": "", "description": "upright mod", "renders": true},
     {"name": "pmod", "mode": "math", "origin": "math_structure", "arguments": "{n}", "description": "parenthesised (mod n)", "renders": true},
     {"name": "mathbb", "mode": "math", "origin": "math_structure", "arguments": "{A-Z}", "description": "double-struck capitals from Latin Modern Math; other arguments are diagnosed", "renders": true},
+    {"name": "mathfrak", "mode": "math", "origin": "math_structure", "arguments": "{letters}", "description": "Euler Fraktur letters as Unicode mathematical fraktur; digits and other characters unchanged", "renders": true},
     {"name": "mathcal", "mode": "math", "origin": "math_structure", "arguments": "{A-Z}", "description": "script capitals from New Computer Modern Math at cmsy10 metrics; other arguments are diagnosed", "renders": true},
     {"name": "varnothing", "mode": "math", "origin": "math_structure", "arguments": "", "description": "empty set at msbm10's 0.7778em advance (\\emptyset's glyph)", "renders": true},
     {"name": "iff", "mode": "math", "origin": "math_structure", "arguments": "", "description": "long double arrow between thick (5mu) spaces", "renders": true},
@@ -165,10 +166,10 @@
     {"name": "mathpunct", "mode": "math", "origin": "math_structure", "arguments": "{math}", "description": "argument boxed as one atom of the forced class", "renders": true},
     {"name": "mathbf", "mode": "math", "origin": "math_structure", "arguments": "{text}", "description": "literal text in Times-Bold", "renders": true},
     {"name": "textbf", "mode": "math", "origin": "math_structure", "arguments": "{text}", "description": "literal text in Times-Bold", "renders": true},
+    {"name": "mathit", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "letters and digits of a plain argument as Unicode mathematical italic, sans-serif or monospace; any other argument stays in the current math face", "renders": true},
+    {"name": "mathsf", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "letters and digits of a plain argument as Unicode mathematical italic, sans-serif or monospace; any other argument stays in the current math face", "renders": true},
+    {"name": "mathtt", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "letters and digits of a plain argument as Unicode mathematical italic, sans-serif or monospace; any other argument stays in the current math face", "renders": true},
     {"name": "mathrm", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "keeps its argument in the current math face (no distinct face yet)", "renders": true},
-    {"name": "mathit", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "keeps its argument in the current math face (no distinct face yet)", "renders": true},
-    {"name": "mathsf", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "keeps its argument in the current math face (no distinct face yet)", "renders": true},
-    {"name": "mathtt", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "keeps its argument in the current math face (no distinct face yet)", "renders": true},
     {"name": "mathnormal", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "keeps its argument in the current math face (no distinct face yet)", "renders": true},
     {"name": "boldsymbol", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "keeps its argument in the current math face (no distinct face yet)", "renders": true},
     {"name": "bm", "mode": "math", "origin": "math_structure", "arguments": "{...}", "description": "keeps its argument in the current math face (no distinct face yet)", "renders": true},
@@ -494,7 +495,7 @@
       {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
       {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 35, "percent": 34.3},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
-      {"set": "amssymb", "kind": "command", "canonical": 229, "supported": 20, "percent": 8.7},
+      {"set": "amssymb", "kind": "command", "canonical": 229, "supported": 21, "percent": 9.2},
       {"set": "enumitem", "kind": "command", "canonical": 17, "supported": 1, "percent": 5.9},
       {"set": "geometry", "kind": "command", "canonical": 7, "supported": 0, "percent": 0},
       {"set": "graphicx", "kind": "command", "canonical": 8, "supported": 0, "percent": 0},
@@ -503,6 +504,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 196, "percent": 19.5}
+    "total": {"canonical": 1003, "supported": 197, "percent": 19.6}
   }
 }

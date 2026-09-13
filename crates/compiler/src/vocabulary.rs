@@ -65,7 +65,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "subcaption", "captionof", "listoflistings", "lstinline", "mintinline",
     // amsmath and amssymb.
     "intertext", "shortintertext", "substack", "sideset", "xrightarrow", "xleftarrow", "overbrace",
-    "underbrace", "overleftarrow", "overrightarrow", "mathcal", "mathfrak", "mathscr", "pmb",
+    "underbrace", "overleftarrow", "overrightarrow", "mathcal", "mathscr", "pmb",
     "limits", "nolimits", "displaylimits", "colon", "vdots", "ddots", "iff", "implies", "impliedby",
     "genfrac", "operatornamewithlimits", "dddot", "ddddot", "cancel", "bcancel", "xcancel",
     "cancelto", "numberwithin", "allowdisplaybreaks", "mathring", "lvert", "rvert", "lVert",
