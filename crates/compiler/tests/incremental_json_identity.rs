@@ -185,3 +185,86 @@ fn scaling_document_edits_serialise_identically_to_fresh_compiles() {
         vec![("main.tex".into(), scaling_document(500_000))],
     );
 }
+
+/// `export::unrepresentable` skips printable ASCII without consulting the
+/// tables; that is only sound while every such character maps as encodable.
+#[test]
+fn printable_ascii_is_always_exportable() {
+    use flashtex_compiler::export::{map_char, unrepresentable, Glyph};
+    for c in ' '..='~' {
+        assert!(
+            matches!(map_char(c), Glyph::Encodable { .. }),
+            "{c:?} is no longer exportable; remove the ASCII fast path"
+        );
+    }
+    let all: String = (' '..='~').collect();
+    assert!(unrepresentable(&all).is_empty());
+}
+
+/// The reply writers' integer and no-escape fast paths keep the exact bytes.
+#[test]
+fn json_fast_paths_match_the_formatting_machinery() {
+    for n in [
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        9.0,
+        10.0,
+        612.0,
+        -792.0,
+        123_456_789.0,
+        999_999_999_999_999.0,
+        -999_999_999_999_999.0,
+        1e15,
+        12.34,
+        -0.5,
+    ] {
+        let mut fast = String::new();
+        json::write_number_into(n, &mut fast);
+        let expected = if n == n.trunc() && n.abs() < 1e15 {
+            format!("{}", n as i64)
+        } else {
+            format!("{n}")
+        };
+        assert_eq!(fast, expected, "{n}");
+    }
+    // Exhaustive over the hundredths fast path's whole domain and just past it.
+    for k in -1_000_100..=1_000_100_i64 {
+        let n = k as f64 / 100.0;
+        let mut fast = String::new();
+        json::write_number_into(n, &mut fast);
+        let expected = if k % 100 == 0 {
+            format!("{}", n as i64)
+        } else {
+            format!("{n}")
+        };
+        assert_eq!(fast, expected, "{k} hundredths");
+    }
+    for text in [
+        "plain",
+        "",
+        "caf\u{e9} \u{2211}",
+        "q\"uote",
+        "back\\slash",
+        "tab\tnl\n",
+        "\u{1}",
+    ] {
+        let mut fast = String::new();
+        json::write_string_into(text, &mut fast);
+        let mut slow = String::from('"');
+        for c in text.chars() {
+            match c {
+                '"' => slow.push_str("\\\""),
+                '\\' => slow.push_str("\\\\"),
+                '\n' => slow.push_str("\\n"),
+                '\r' => slow.push_str("\\r"),
+                '\t' => slow.push_str("\\t"),
+                c if (c as u32) < 0x20 => slow.push_str(&format!("\\u{:04x}", c as u32)),
+                c => slow.push(c),
+            }
+        }
+        slow.push('"');
+        assert_eq!(fast, slow);
+    }
+}
