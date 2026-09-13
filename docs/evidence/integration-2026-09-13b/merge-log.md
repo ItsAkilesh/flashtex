@@ -660,6 +660,158 @@ than picked. `typeset.rs` (9 conflicts) and `adapter.rs` (6) still to do.
 Recommendation: land part 1 as its own commit, then reconstruct part 2 from
 the three merge stages (`git show :1:`/`:2:`/`:3:`) as #154 was done.
 
+### #170 inline-graphics (render-pipeline) @ da3fb1bf — MERGED as `4ffe8445`
+
+Landed as one merge commit rather than the two the note above suggested: part
+1 alone does not make the crate build (the `Inline::Graphic`/`Transform` arms
+are part 2), so splitting would only have published a still-broken tip. The
+38 conflicts were resolved, not textually merged.
+
+- **Part 1, the display wire.** Exactly as worked out above: `transforms`
+  joined main's `display::Wire`, the parallel `required_features_caps`/
+  `to_json_caps`/`write_json_caps` family was dropped, the three `*_with`
+  shims pass `transforms: false`, and `required_features_wire`, `write_page`
+  and `page_json` destructure `let (images, transforms) = (wire.images,
+  wire.transforms);`. Both feature blocks were kept — main's `device-color`
+  and #170's `glyph_transform`/`image_clip` — which needed the brace between
+  them restored, since git had shared one. `protocol.rs` builds the struct
+  from all three negotiated capabilities; `lib.rs` kept main's
+  original-source context plus both `set_math_colors` and `set_graphics`.
+  `tests/graphics_oracle.rs` moved off the `*_caps` names onto `Wire`.
+- **Part 2, float bodies and the item arms.** Reconstructed from the three
+  merge stages. `git diff c40d2a6c da3fb1bf -- <file>` is the honest statement
+  of what #170 actually changes; for `floatpage.rs`, `adapter.rs` and
+  `typeset.rs` that delta is entirely *additive*, so every conflict there was
+  a misalignment, never a real disagreement:
+  - `floats.rs`: kept #135's `Prep`, and re-applied #170's improvement inside
+    `Prep::parts` — `graphics::place_image(.., false, false, &env)` carrying
+    `placed.clip` in place of `graphics::size_box`, with `clip: None` on the
+    `demo` and image-unavailable paths.
+  - `typeset/floatpage.rs`: `Elem::Image` keeps main's `demo` *and* gains
+    #170's `clip`; the `addvspace`/`flush` hunk was pure misalignment (main's
+    `\addvspace` helper aligned against #170's `flush` closure) and was
+    resolved by taking main's side and re-applying `clip: g.clip` at the two
+    `Elem::Image` constructions.
+  - `adapter.rs`: git shared the common tail (`let gap` … `push_gap`) between
+    main's `ColorBox`/`SetLength` arms and #170's `Graphic`/`Transform` arms.
+    Rebuilt as six complete arms, each with its own copy of that tail.
+  - `typeset.rs`: the same shape between main's `BoxRec::ColorBox` painting
+    and #170's `BoxRec::Transform`, which share `for f in a.faces`/
+    `resources.extend`/`unmapped.extend`. Rebuilt as two complete arms.
+- **Discriminant collision, fixed.** #170 numbered `Item::Graphic`/
+  `Item::Transform` 12 and 13 in `incremental::hash_items`, which main already
+  uses for #138's `TextBox` and `SetLength`. Renumbered to 17 and 18 — the
+  same bug #138 hit, and these tags are incremental-cache keys. (`adapter.rs`'s
+  own `items_cached` tags 23/24 were free and were left alone.)
+- **Follow-on fixes**, where #170's code met main's newer APIs:
+  - `graphics::LengthEnv` gained `line_width` on main. `graphics_boxes`'
+    `graphics_lengths` passes `self.hsize_override.unwrap_or(text_width_pt)`,
+    main's own convention, so `\linewidth` in an `\includegraphics` key is the
+    box being set and not the page; `size_box`'s `NO_LENGTHS` got `0.0`.
+  - `typeset::text_item` gained a `Paint` argument; the `draft` placeholder's
+    filename text now passes `Paint::of(style.color)` like main's call site.
+  - `src/bin/flashtex-render.rs` needed the new `Wire` field: added a
+    `--transforms` flag beside `--device-color`, defaulting **off**, so the
+    wire is unchanged unless asked for.
+- **Checks.** `crates/render-pipeline` builds, and so does `flashtex-render`,
+  for the first time since stage 2 began. `graphics_oracle` **24/24** against
+  the MacTeX references (max word diff 0.479 bp, max transform/clip diff
+  0.0065 bp, every fixture's line starts `same`), and
+  `transform_fields_are_only_serialised_when_negotiated` passes, which is what
+  makes the part-1 reconstruction safe. `floats_oracle`, `tabular_oracle` and
+  `toc_oracle` pass.
+
+## Gates — first measurement since stage 2
+
+Run on the NixOS PC, `CARGO_BUILD_JOBS=8`, at `4ffe8445`.
+
+**Font environment — read this before trusting any number here.** This box has
+no usable system texmf for the renderer. With no override `flashtex-render`
+finds none of its 21 default directories and substitutes **Times** metrics with
+`error[font_unavailable]`; pointing it at NixOS's `texmf-dist` instead gives
+`required_metrics_unavailable`, because the rooted TFM loader refuses symlinked
+path components and every NixOS texmf directory is a symlink. In **both** cases
+it still exits `recovered, N pages` with 0 overfull, so a harness that only
+counts overfull boxes scores completely wrong geometry as a pass. Measured
+proof: the amsmath corpus scores **0/59** on the fallback and **59/59** with
+real metrics, from the same binary.
+
+What was used, all symlink-free:
+
+```sh
+F=/home/kubar/code/flashtex/apps/mac/Fonts
+EC=/nix/store/ixjcn8fbciq57zlrrlas3bxych7dd4fm-ec-1.0-tex/fonts/tfm/jknappen/ec
+FLASHTEX_FONT_DIRS=$F
+FLASHTEX_TFM_DIRS=$F/texmf/fonts/tfm/public/lm:$EC:$F/texmf/fonts/tfm/public/amsfonts/symbols
+```
+
+`$EC` is the complete `ec` from the nix store (565 files, 11 `ectt*`) because
+the bundled `apps/mac/Fonts/texmf/.../jknappen/ec` has only 70 files and **no
+`ectt*`** (T1 typewriter); without it every `\texttt` fixture emits
+`ec_metrics_unavailable` and silently gets substituted roman metrics.
+
+Every gate below was additionally asserted to emit **no**
+`font_unavailable` / `required_metrics_unavailable` / `ec_metrics_unavailable`
+diagnostic. Comparing branch against main is *not* sufficient on its own: two
+builds sharing a fallback agree perfectly on wrong geometry.
+
+| gate | result |
+|---|---|
+| amsmath corpus | **59/59** within 0.5 bp, 0 unaligned words |
+| HW1 | 3 pages, exit 0, **0 overfull**, 0 errors |
+| HW2 | 3 pages, exit 0, **0 overfull**, 0 errors |
+| real-world corpus (9 fixtures) | 9/9 render `recovered`; page count equals the committed MacTeX reference for every fixture; **0** font/metric diagnostics corpus-wide |
+
+`oracle.py check` hard-sets `FLASHTEX_TFM_DIRS=<--fonts>`, overriding the
+environment, so the TFM directories have to be passed *through* `--fonts` as a
+colon list. Nothing in the harness was edited and no committed oracle data was
+regenerated.
+
+HW1/HW2 per-word residuals vs pdflatex (threshold 0.1 pt), against the main
+`bffd168a` baseline recorded in the PR description:
+
+| doc | page | baseline | now |
+|---|---|---|---|
+| HW1 | 1 | 4 of 224 | 4 of 224 |
+| HW1 | 2 | 2 of 174 | 2 of 174 |
+| HW1 | 3 | 12 of 144 | **2 of 144** |
+| HW2 | 1 | 11 of 176 | 11 of 176 |
+| HW2 | 2 | 48 of 255 | **38 of 255** |
+| HW2 | 3 | 41 of 96 | **30 of 96** |
+
+No page is worse and three improve. **Caveat:** the reference PDFs for this run
+were produced by this box's TeX Live 2025 pdflatex, not the MacTeX that
+produced the recorded baseline, so the improvements are indicative and should
+be re-measured on a MacTeX host before being claimed as fixes.
+
+### Pre-existing failures on this machine — NOT caused by this merge
+
+Controlled by building the branch's own base `bffd168a` and running the same
+suites with the same fonts. Identical failures on both sides:
+
+| suite | base `bffd168a` | branch `4ffe8445` |
+|---|---|---|
+| `font_families_oracle` | FAILED | FAILED |
+| `footnotes_oracle` | FAILED | FAILED |
+| `math_symbols` | 6 passed / 4 failed | 6 passed / 4 failed (same 4) |
+| `metrics_provenance` | 1 failed | 1 failed |
+
+`metrics_provenance`'s `missing_required_metrics_are_a_blocking_diagnostic_not_a_silent_fallback`
+fails *because* `FLASHTEX_TFM_DIRS` is set: it builds a deliberately bare
+`FontSet` and asserts `required_metrics()` is an error, which the environment
+override defeats. It passes with the variable unset. The four `math_symbols`
+failures want New Computer Modern as a metrics/outline resource, which this
+box does not resolve (`NewCMMath-Regular substituted by Latin Modern`).
+
+`float_bodies_oracle`, `headings_oracle` and `list_oracle` **have no baseline**:
+those test targets do not exist at `bffd168a`; they arrived with #135, #151 and
+#152 earlier in this queue and have never been runnable, because the crate has
+not compiled since stage 2. Their current state at `4ffe8445`:
+`float_bodies_oracle` has 2 mismatches, both in `01-itemize-in-figure`, both
+reported as `no glyph at word "?"` — the itemize bullet, i.e. the same
+missing-glyph substitution this box reports for `ℚ ℝ ℤ ∖ ⟹`, not a geometry
+error. They need a MacTeX host to judge and are left for the owner.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.
