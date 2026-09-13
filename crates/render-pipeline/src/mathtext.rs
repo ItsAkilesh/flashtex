@@ -77,6 +77,10 @@ fn handle_index(ch: char) -> Option<usize> {
 #[derive(Default, Debug)]
 pub struct TextSink {
     pub texts: Vec<String>,
+    /// Per text: `None` for `\text` (the document's text font), or the
+    /// NFSS shape of a math alphabet run (`\mathbf`, `\mathsf`, ...; see
+    /// `crate::mathalpha`).
+    pub keys: Vec<Option<crate::nfss::FontKey>>,
     /// Arguments beyond [`MAX_TEXT_ATOMS`], in order: refused before any
     /// state changed, reported by the caller as `math_text_overflow`.
     pub refused: Vec<String>,
@@ -88,6 +92,12 @@ pub struct TextSink {
     /// [`TextSink::grid_atom`]); each reserves a handle (an empty entry of
     /// `texts`).
     pub grids: Vec<GridCells>,
+    /// The document's body font size in pt (`\f@size`), for size-dependent
+    /// kerns such as amsmath's `\ex@`; 0 when unknown.
+    pub body_size_pt: f64,
+    /// Whether `amsfonts` (or `amssymb`, which loads it) is loaded: its
+    /// `\widehat`/`\widetilde` switch to msbm's extra-wide accents past 2em.
+    pub amsfonts: bool,
 }
 
 /// An `array`/`cases`/matrix/`aligned` grid met inside a sub-formula (a
@@ -163,9 +173,21 @@ impl TextSink {
     /// An `Ord` atom for `text` (TeX §1076: an hbox in math is an Ord); an
     /// empty Ord (scripts still attach) once the handle space is exhausted.
     pub fn atom(&mut self, text: &str) -> ml::Atom {
+        self.atom_keyed(text, None)
+    }
+
+    /// An `Ord` atom for a run of math-alphabet characters set in the text
+    /// font `key` (TeX §752: consecutive characters of one text font are
+    /// kerned and ligatured, with the last one's italic correction).
+    pub fn atom_in(&mut self, text: &str, key: crate::nfss::FontKey) -> ml::Atom {
+        self.atom_keyed(text, Some(key))
+    }
+
+    fn atom_keyed(&mut self, text: &str, key: Option<crate::nfss::FontKey>) -> ml::Atom {
         match handle_char(self.texts.len()) {
             Some(handle) => {
                 self.texts.push(text.to_string());
+                self.keys.push(key);
                 ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Text(handle.to_string()))
             }
             None => {
@@ -206,6 +228,12 @@ pub struct TextRun {
     pub hbox: ml::MathBox,
     /// True when the TFM produced the advances (TeX's geometry).
     pub tfm_metrics: bool,
+    /// The math-alphabet shape of the run, `None` for `\text`.
+    pub key: Option<crate::nfss::FontKey>,
+    /// The italic correction of the run's last character (pt) for a math
+    /// alphabet run, which math-layout applies as the nucleus' δ; 0 for
+    /// `\text` (an hbox has none).
+    pub italic: f64,
 }
 
 impl TextRun {
@@ -262,6 +290,7 @@ pub struct TextRunMetrics<'a> {
     shaper: &'a Shaper,
     family: Family,
     texts: &'a [String],
+    keys: &'a [Option<crate::nfss::FontKey>],
     runs: RefCell<Vec<TextRun>>,
     notices: RefCell<Vec<Notice>>,
     grids: &'a [NestedGrid],
@@ -270,13 +299,23 @@ pub struct TextRunMetrics<'a> {
 }
 
 impl<'a> TextRunMetrics<'a> {
-    pub fn new(inner: &'a dyn MathFontMetrics, fonts: &'a FontSet, shaper: &'a Shaper, family: Family, texts: &'a [String]) -> TextRunMetrics<'a> {
+    /// `keys` parallels `texts` ([`TextSink::keys`]); a missing entry is a
+    /// `\text` run.
+    pub fn new(
+        inner: &'a dyn MathFontMetrics,
+        fonts: &'a FontSet,
+        shaper: &'a Shaper,
+        family: Family,
+        texts: &'a [String],
+        keys: &'a [Option<crate::nfss::FontKey>],
+    ) -> TextRunMetrics<'a> {
         TextRunMetrics {
             inner,
             fonts,
             shaper,
             family,
             texts,
+            keys,
             runs: RefCell::new(Vec::new()),
             notices: RefCell::new(Vec::new()),
             grids: &[],
@@ -375,14 +414,15 @@ impl<'a> TextRunMetrics<'a> {
 
     fn run_for(&self, text_index: usize, size: f64) -> Option<usize> {
         let text = self.texts.get(text_index)?;
-        if let Some(i) = self.runs.borrow().iter().position(|r| r.text == *text && r.size == size) {
+        let key = self.keys.get(text_index).copied().flatten();
+        if let Some(i) = self.runs.borrow().iter().position(|r| r.text == *text && r.size == size && r.key == key) {
             return Some(i);
         }
         let (index, first_slot) = {
             let runs = self.runs.borrow();
             (runs.len(), runs.last().map_or(0, |r| r.first_slot + r.slots()))
         };
-        let run = shape_run(self.fonts, self.shaper, self.family, text, size, first_slot, &mut self.notices.borrow_mut())?;
+        let run = shape_run(self.fonts, self.shaper, self.family, key, text, size, first_slot, &mut self.notices.borrow_mut())?;
         self.runs.borrow_mut().push(run);
         Some(index)
     }
@@ -428,6 +468,10 @@ impl MathFontMetrics for TextRunMetrics<'_> {
         self.inner.radical_extensible(size)
     }
 
+    fn extension_glyph(&self, code: u8, ch: char) -> Option<Glyph> {
+        self.inner.extension_glyph(code, ch)
+    }
+
     fn text_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
         let Some(text_index) = handle_index(ch) else {
             return self.inner.text_glyph(ch, size);
@@ -458,7 +502,7 @@ impl MathFontMetrics for TextRunMetrics<'_> {
             width: run.hbox.width,
             height: run.hbox.height,
             depth: run.hbox.depth,
-            italic: 0.0,
+            italic: run.italic,
             skew: 0.0,
         })
     }
@@ -531,15 +575,33 @@ fn space_dimens(fonts: &FontSet, family: Family, face: &LoadedFace, size: f64) -
 /// space factor (1000 at the start of the box, §1034 per character).
 /// `None` when the run cannot be addressed (more than `MAX_SLOTS` chunks of
 /// entries from `first_slot`): a `TooLarge` notice is recorded instead.
-fn shape_run(fonts: &FontSet, shaper: &Shaper, family: Family, text: &str, size: f64, first_slot: usize, notices: &mut Vec<Notice>) -> Option<TextRun> {
+#[allow(clippy::too_many_arguments)]
+fn shape_run(
+    fonts: &FontSet,
+    shaper: &Shaper,
+    family: Family,
+    key: Option<crate::nfss::FontKey>,
+    text: &str,
+    size: f64,
+    first_slot: usize,
+    notices: &mut Vec<Notice>,
+) -> Option<TextRun> {
     // Every shaped entry (space or glyph) gets its own index; chunk `k` of
     // `SLOT_GLYPHS` entries is addressed through slot `first_slot + k`.
     let address = |entry: usize| -> (MathFontId, u16) {
         let slot = first_slot + entry / SLOT_GLYPHS;
         (MathFontId(RUN_FONT_BASE + slot as u32), (entry % SLOT_GLYPHS) as u16)
     };
-    let face = fonts.resolve(family, Role::Text { bold: false, italic: false }, size).face;
+    let face = match key {
+        None => fonts.resolve(family, Role::Text { bold: false, italic: false }, size).face,
+        // A math alphabet is an OT1 cmr/cmss/cmtt shape in pdfLaTeX
+        // (fontmath.ltx), whatever the text encoding: Latin Modern's metrics
+        // of the same design (`ec-lm*`, whose letters and digits equal
+        // `rm-lm*`'s) at the `.fd` optical size.
+        Some(k) => fonts.resolve(Family::LatinModern, Role::Font(k), size).face,
+    };
     notices.push(Notice::FaceUsed { size });
+    let mut last_italic = 0.0;
     let (space, extra) = space_dimens(fonts, family, &face, size);
     let mut glyphs: Vec<RunGlyph> = Vec::new();
     let mut boxes: Vec<ml::MathBox> = Vec::new();
@@ -595,6 +657,9 @@ fn shape_run(fonts: &FontSet, shaper: &Shaper, family: Family, text: &str, size:
                 let text = if k == 0 { c.text.clone() } else { String::new() };
                 glyphs.push(RunGlyph { gid: g.gid, ch, text });
                 let width = g.advance as f64 * size / shaped.units_per_em as f64;
+                if !g.empty {
+                    last_italic = if shaped.tfm_metrics { crate::tfm::Tfm::pt(g.italic, size) } else { 0.0 };
+                }
                 boxes.push(ml::MathBox {
                     kind: ml::BoxKind::Glyph { font_id, gid, ch, size },
                     width,
@@ -611,7 +676,8 @@ fn shape_run(fonts: &FontSet, shaper: &Shaper, family: Family, text: &str, size:
     // font-engine clusters map one char to at most one glyph per char).
     debug_assert!(glyphs.len() <= max_entries.max(1));
     let hbox = ml::MathBox::hlist(boxes);
-    Some(TextRun { text: text.to_string(), size, face, first_slot, glyphs, hbox, tfm_metrics })
+    let italic = if key.is_some() { last_italic } else { 0.0 };
+    Some(TextRun { text: text.to_string(), size, face, first_slot, glyphs, hbox, tfm_metrics, key, italic })
 }
 
 #[cfg(test)]
@@ -662,7 +728,7 @@ mod tests {
             .resolve(Family::Times, Role::Text { bold: false, italic: false }, 10.0)
             .face;
         let glyphs: Vec<RunGlyph> = (0..(2 * SLOT_GLYPHS + 2)).map(|i| RunGlyph { gid: GlyphId(i as u16), ch: 'x', text: i.to_string() }).collect();
-        let run = TextRun { text: String::new(), size: 10.0, face, first_slot: 3, glyphs, hbox: ml::MathBox::empty(), tfm_metrics: false };
+        let run = TextRun { text: String::new(), size: 10.0, face, first_slot: 3, glyphs, hbox: ml::MathBox::empty(), tfm_metrics: false, key: None, italic: 0.0 };
         assert_eq!(run.slots(), 3);
         let at = |entry: usize| {
             let slot = 3 + entry / SLOT_GLYPHS;

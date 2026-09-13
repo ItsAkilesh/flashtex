@@ -69,6 +69,10 @@ pub struct MathFonts {
     constants: OpenTypeMathConstants,
     x_height_units: i16,
     vert_variants: BTreeMap<u16, Vec<VertVariant>>,
+    /// Horizontal constructions from `MathVariants`: each base glyph's
+    /// variants (advance widths) and its assembly's part glyph ids, in
+    /// left-to-right order (wide accents, `\overbrace` pieces).
+    horiz: BTreeMap<u16, (Vec<VertVariant>, Vec<u16>)>,
     /// Characters with no glyph in the math font, recorded for diagnostics.
     missing: RefCell<Vec<char>>,
 }
@@ -116,7 +120,47 @@ pub const VARNOTHING_SENTINEL: char = '\u{F8FF}';
 /// Whether `ch` is drawn from the secondary face ([`BB_FONT`]) when it is
 /// loaded: `\mathbb` and `\mathcal` letters, and [`VARNOTHING_SENTINEL`].
 pub fn is_secondary_face(ch: char) -> bool {
-    is_double_struck(ch) || is_script_capital(ch) || ch == VARNOTHING_SENTINEL
+    is_double_struck(ch) || is_script_capital(ch) || ch == VARNOTHING_SENTINEL || ams_of(ch).is_some()
+}
+
+/// First code point of the plane-15 private-use range [`ams_sentinel`] maps
+/// AMS symbol font slots into (never compiler text).
+const AMS_SENTINEL_BASE: u32 = 0xF_0000;
+
+/// The sentinel `typeset` substitutes for an amssymb/amsfonts symbol atom
+/// (compiler `MathAtom.ams_symbol`). It carries the msam/msbm font and slot to
+/// the metrics providers, which box it from the AMS TFMs (math-layout `ams`)
+/// and paint the symbol's `text` from the secondary face (New Computer Modern
+/// Math, whose symbol designs track the AMS fonts) when it carries it, else
+/// from Latin Modern Math; [`math_char`](MathFonts::math_char) and text
+/// extraction map it back to that text.
+pub fn ams_sentinel(ams: &flashtex_compiler::amssymb::AmsSymbol) -> char {
+    use flashtex_compiler::amssymb::SymbolFont;
+    let font = match ams.font {
+        SymbolFont::Msam => 0,
+        SymbolFont::Msbm => 1,
+    };
+    char::from_u32(AMS_SENTINEL_BASE + font * 256 + u32::from(ams.slot)).expect("plane-15 private use")
+}
+
+/// The amssymb symbol an [`ams_sentinel`] stands for.
+pub fn ams_of(ch: char) -> Option<&'static flashtex_compiler::amssymb::AmsSymbol> {
+    use flashtex_compiler::amssymb::{by_slot, SymbolFont};
+    let v = (ch as u32).checked_sub(AMS_SENTINEL_BASE)?;
+    let font = match v >> 8 {
+        0 => SymbolFont::Msam,
+        1 => SymbolFont::Msbm,
+        _ => return None,
+    };
+    by_slot(font, (v & 0xFF) as u8)
+}
+
+/// math-layout's AMS font for a compiler symbol font.
+pub fn ams_font(font: flashtex_compiler::amssymb::SymbolFont) -> flashtex_math_layout::ams::AmsFont {
+    match font {
+        flashtex_compiler::amssymb::SymbolFont::Msam => flashtex_math_layout::ams::AmsFont::Msam,
+        flashtex_compiler::amssymb::SymbolFont::Msbm => flashtex_math_layout::ams::AmsFont::Msbm,
+    }
 }
 
 impl MathFonts {
@@ -151,6 +195,11 @@ impl MathFonts {
             .and_then(|f| f.table(b"MATH"))
             .and_then(|t| parse_vertical_variants(t).ok())
             .unwrap_or_default();
+        let horiz = face
+            .otf()
+            .and_then(|f| f.table(b"MATH"))
+            .and_then(|t| parse_horizontal_constructions(t).ok())
+            .unwrap_or_default();
         Some(MathFonts {
             face,
             bb: None,
@@ -160,6 +209,7 @@ impl MathFonts {
             constants,
             x_height_units,
             vert_variants,
+            horiz,
             missing: RefCell::new(Vec::new()),
         })
     }
@@ -237,6 +287,32 @@ impl MathFonts {
             .map(|(gid, _)| gid)
     }
 
+    /// The horizontal variant of `ch` (base glyph included) whose advance at
+    /// `size_pt` is nearest `wanted` pt: what paints a cmex/msbm wide accent
+    /// laid out at its TFM width.
+    pub fn hvariant_nearest(&self, ch: char, size_pt: f64, wanted: f64) -> Option<u16> {
+        let base = self.face.face().glyph_id(ch)?.0;
+        let (variants, _) = self.horiz.get(&base)?;
+        let upem = f64::from(self.face.units_per_em);
+        variants
+            .iter()
+            .map(|v| (v.gid, (f64::from(v.advance) * size_pt / upem - wanted).abs()))
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(gid, _)| gid)
+    }
+
+    /// The assembly parts of `ch`'s horizontal construction, left to right
+    /// (Latin Modern Math's U+23DE: left end, extender, middle, extender,
+    /// right end); empty when it has none.
+    pub fn hassembly_parts(&self, ch: char) -> Vec<u16> {
+        self.face
+            .face()
+            .glyph_id(ch)
+            .and_then(|g| self.horiz.get(&g.0))
+            .map(|(_, parts)| parts.clone())
+            .unwrap_or_default()
+    }
+
     /// The character actually drawn for a math symbol: letters and lower-case
     /// Greek go to the Unicode mathematical-italic block (what `cmmi` is to
     /// `cmr`), everything else is itself.
@@ -254,7 +330,10 @@ impl MathFonts {
             '\u{3F1}' => '\u{1D71A}',  // rho variant
             '\u{3D6}' => '\u{1D71B}',  // pi variant
             VARNOTHING_SENTINEL => '\u{2205}',
-            _ => ch,
+            _ => match ams_of(ch) {
+                Some(ams) => ams.text.chars().next().unwrap_or(ch),
+                None => ch,
+            },
         }
     }
 
@@ -406,6 +485,51 @@ fn parse_vertical_variants(m: &[u8]) -> Result<BTreeMap<u16, Vec<VertVariant>>, 
             });
         }
         out.insert(*gid, list);
+    }
+    Ok(out)
+}
+
+/// `MathVariants` horizontal constructions: base glyph -> (variants with
+/// their advance widths, assembly part glyph ids left to right). OpenType
+/// `MathVariants`: `minConnectorOverlap`, `vertGlyphCoverage`,
+/// `horizGlyphCoverage`, `vertGlyphCount`, `horizGlyphCount`, then the
+/// vertical and horizontal construction offsets; a construction is
+/// `glyphAssemblyOffset`, `variantCount`, `(variantGlyph, advance)` records;
+/// an assembly is a 4-byte italics correction, `partCount` and 10-byte parts.
+fn parse_horizontal_constructions(m: &[u8]) -> Result<BTreeMap<u16, (Vec<VertVariant>, Vec<u16>)>, flashtex_font_engine::Error> {
+    let mut out = BTreeMap::new();
+    let v = usize::from(u16_at(m, 8)?);
+    if v == 0 {
+        return Ok(out);
+    }
+    let horiz_cov = usize::from(u16_at(m, v + 4)?);
+    let vert_count = usize::from(u16_at(m, v + 6)?);
+    let horiz_count = usize::from(u16_at(m, v + 8)?);
+    if horiz_cov == 0 {
+        return Ok(out);
+    }
+    let gids = parse_coverage(m, v + horiz_cov)?;
+    for (i, gid) in gids.iter().enumerate().take(horiz_count) {
+        let cons = v + usize::from(u16_at(m, v + 10 + 2 * vert_count + 2 * i)?);
+        let assembly = usize::from(u16_at(m, cons)?);
+        let n = usize::from(u16_at(m, cons + 2)?);
+        let mut variants = Vec::with_capacity(n);
+        for j in 0..n {
+            let rec = cons + 4 + 4 * j;
+            variants.push(VertVariant {
+                gid: u16_at(m, rec)?,
+                advance: u16_at(m, rec + 2)?,
+            });
+        }
+        let mut parts = Vec::new();
+        if assembly != 0 {
+            let a = cons + assembly;
+            let count = usize::from(u16_at(m, a + 4)?);
+            for k in 0..count {
+                parts.push(u16_at(m, a + 6 + 10 * k)?);
+            }
+        }
+        out.insert(*gid, (variants, parts));
     }
     Ok(out)
 }

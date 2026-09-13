@@ -80,21 +80,4 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\cite is not supported by this compiler version; unrestricted TeX math mode is not implemented` — recovery: skipped the command; any braced argument was typeset as plain text
-## \def, \let and category codes
-
-Only \newcommand-style macros exist; raw TeX programmability does not.
-
-Input:
-
-```text
-\def\x{y}\x
-```
-
-Status: `recovered`
-
-Diagnostics:
-
-- `\def is not supported by this compiler version; unrestricted TeX math mode is not implemented` — recovery: skipped the command; any braced argument was typeset as plain text
-- `\x is not supported by this compiler version; unrestricted TeX math mode is not implemented` — recovery: skipped the command; any braced argument was typeset as plain text
-- `\x is not supported by this compiler version; unrestricted TeX math mode is not implemented` — recovery: skipped the command; any braced argument was typeset as plain text
+- `citation 'knuth1984' is undefined` — recovery: rendered '?' in place of the undefined citation

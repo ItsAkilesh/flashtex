@@ -55,7 +55,8 @@ fn real_unimplemented_latex_is_an_unsupported_feature() {
     for (text, needle) in [
         (r"Text \tikz here.", r"\tikz"),
         // `\mathcal` is supported since FT-060 (New Computer Modern Math).
-        (r"Math $\mathfrak{A}$ here.", r"\mathfrak"),
+        // `\mathfrak` is supported too (Unicode mathematical fraktur).
+        (r"Math $\mathscr{A}$ here.", r"\mathscr"),
         (
             r"\tikz \begin{document}Visible\end{document}",
             r"\tikz is not supported in the document preamble",

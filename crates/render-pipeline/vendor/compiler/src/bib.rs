@@ -4,7 +4,7 @@
 //! precede it (or its own optional-label override) — never on page numbers or
 //! line breaks. That makes it fundamentally simpler than `\label`/`\ref`,
 //! which need the page-aware two-pass resolution in `layout.rs`: a
-//! [`prescan`] of the literal, pre-macro-expansion token stream is enough to
+//! [`prescan`] of the token stream the parser walks (after macro expansion) is enough to
 //! resolve every `\cite` in one pass, even one that appears (as citations
 //! normally do) before the `thebibliography` it points into. This module is
 //! deliberately self-contained and does not touch that separate label/ref
@@ -14,6 +14,7 @@
 //! `\bibliographystyle` in `parser.rs` report that honestly instead of
 //! silently doing nothing.
 
+use std::borrow::Borrow;
 use std::collections::HashMap;
 
 use crate::diagnostics::Diagnostic;
@@ -68,21 +69,20 @@ impl Bibliography {
     }
 }
 
-/// Scans the raw, pre-macro-expansion token stream for every `\bibitem`
-/// lexically inside a `thebibliography` environment, in source order, and
-/// assigns each one's citation label (a plain `\bibitem{key}` numbers
-/// sequentially; `\bibitem[label]{key}` uses `label` verbatim and does not
-/// consume a number, mirroring real LaTeX's `\@lbibitem`). Deliberately
-/// literal: a `\bibitem` produced by a user macro is out of scope, the same
-/// boundary this compiler already draws elsewhere for macro-generated
-/// structure.
-pub fn prescan(tokens: &[Token], diags: &mut Vec<Diagnostic>) -> Bibliography {
+/// Scans a token stream for every `\bibitem` inside a `thebibliography`
+/// environment, in order, and assigns each one's citation label (a plain
+/// `\bibitem{key}` numbers sequentially; `\bibitem[label]{key}` uses `label`
+/// verbatim and does not consume a number, mirroring real LaTeX's
+/// `\@lbibitem`). The parser passes the same expanded stream it walks, so
+/// `P::bib_cursor` meets exactly these `\bibitem`s (including one a macro
+/// produced, and never one under `\iffalse`).
+pub fn prescan<T: Borrow<Token>>(tokens: &[T], diags: &mut Vec<Diagnostic>) -> Bibliography {
     let mut bibliography = Bibliography::default();
     let mut in_bibliography = false;
     let mut next_number: u32 = 1;
     let mut i = 0;
     while i < tokens.len() {
-        match &tokens[i].kind {
+        match &tokens[i].borrow().kind {
             TokenKind::Command(name) if name == "begin" || name == "end" => {
                 let is_begin = name == "begin";
                 match group_text(tokens, i + 1) {
@@ -96,7 +96,7 @@ pub fn prescan(tokens: &[Token], diags: &mut Vec<Diagnostic>) -> Bibliography {
                 }
             }
             TokenKind::Command(name) if name == "bibitem" && in_bibliography => {
-                let span = tokens[i].span;
+                let span = tokens[i].borrow().span;
                 let mut cursor = i + 1;
                 let mut label_override = None;
                 if let Some((text, after)) = optional_bracket_text(tokens, cursor) {
@@ -124,21 +124,21 @@ pub fn prescan(tokens: &[Token], diags: &mut Vec<Diagnostic>) -> Bibliography {
 /// spaces/comments from) `i`, and the index just past its closing brace.
 /// `None` if `i` is not followed by a brace group — a malformed `\bibitem`
 /// or `\begin`/`\end` is left for the real parse's own diagnostics.
-fn group_text(tokens: &[Token], mut i: usize) -> Option<(String, usize)> {
+fn group_text<T: Borrow<Token>>(tokens: &[T], mut i: usize) -> Option<(String, usize)> {
     while matches!(
-        tokens.get(i).map(|t| &t.kind),
+        tokens.get(i).map(|t| &t.borrow().kind),
         Some(TokenKind::Space | TokenKind::Comment)
     ) {
         i += 1;
     }
-    if !matches!(tokens.get(i).map(|t| &t.kind), Some(TokenKind::LBrace)) {
+    if !matches!(tokens.get(i).map(|t| &t.borrow().kind), Some(TokenKind::LBrace)) {
         return None;
     }
     i += 1;
     let mut depth = 1usize;
     let mut text = String::new();
     while i < tokens.len() {
-        match &tokens[i].kind {
+        match &tokens[i].borrow().kind {
             TokenKind::LBrace => depth += 1,
             TokenKind::RBrace => {
                 depth -= 1;
@@ -160,14 +160,14 @@ fn group_text(tokens: &[Token], mut i: usize) -> Option<(String, usize)> {
 /// bracket matching (brackets are ordinary lexer word characters, never
 /// their own token kind) against a plain token slice instead of the live
 /// parse cursor.
-fn optional_bracket_text(tokens: &[Token], mut i: usize) -> Option<(String, usize)> {
+fn optional_bracket_text<T: Borrow<Token>>(tokens: &[T], mut i: usize) -> Option<(String, usize)> {
     while matches!(
-        tokens.get(i).map(|t| &t.kind),
+        tokens.get(i).map(|t| &t.borrow().kind),
         Some(TokenKind::Space | TokenKind::Comment)
     ) {
         i += 1;
     }
-    let TokenKind::Word(first) = &tokens.get(i)?.kind else {
+    let TokenKind::Word(first) = &tokens.get(i)?.borrow().kind else {
         return None;
     };
     if !first.starts_with('[') {
@@ -177,7 +177,7 @@ fn optional_bracket_text(tokens: &[Token], mut i: usize) -> Option<(String, usiz
     let mut found = raw.contains(']');
     i += 1;
     while !found && i < tokens.len() {
-        match &tokens[i].kind {
+        match &tokens[i].borrow().kind {
             TokenKind::Word(word) => {
                 raw.push_str(word);
                 found = word.contains(']');

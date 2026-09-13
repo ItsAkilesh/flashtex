@@ -21,7 +21,9 @@ final class CompletionTests: XCTestCase {
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)
         // The label shows the argument shape; the inserted text is the command alone.
         // Text-mode entries precede math ones (table order); nothing is spelled `se`.
-        XCTAssertEqual(labels(s), ["\\section{...}", "\\setlength{\\length}{dimension}", "\\setlist[list]{options}", "\\sec", "\\setminus"])
+        XCTAssertEqual(labels(s), ["\\section{...}", "\\setlength{\\length}{dimension}", "\\setlist[list]{options}",
+                                    "\\setcounter{counter}{number}", "\\settowidth{\\name}{text}", "\\settoheight{\\name}{text}",
+                                    "\\settodepth{\\name}{text}", "\\sec", "\\setminus"])
         XCTAssertTrue(s.allSatisfy { $0.kind == .command && $0.insertText.hasPrefix("\\se") })
         XCTAssertEqual(s.first?.insertText, "\\section")
         XCTAssertEqual(s.first?.detail, "numbered section heading; starred form unnumbered")
@@ -30,7 +32,9 @@ final class CompletionTests: XCTestCase {
         // The command spelled exactly as typed ranks first; the rest keep table order.
         XCTAssertEqual(labels(Completion.suggestions(in: "x \\sec", caretUTF16: 6, result: nil)), ["\\sec", "\\section{...}"])
         XCTAssertEqual(labels(Completion.suggestions(in: "x \\it", caretUTF16: 5, result: nil)), ["\\it", "\\item", "\\itshape"])
-        XCTAssertEqual(labels(Completion.suggestions(in: "x \\sub", caretUTF16: 6, result: nil)), ["\\subsection{...}", "\\subsubsection{...}", "\\subset", "\\subseteq", "\\subsetneq"])
+        XCTAssertEqual(labels(Completion.suggestions(in: "x \\sub", caretUTF16: 6, result: nil)),
+                       ["\\subsection{...}", "\\subsubsection{...}", "\\substack{a \\\\ b}", "\\subset", "\\subseteq",
+                        "\\subseteqq", "\\subsetneqq", "\\subsetneq"])
 
         // A lone backslash lists every supported command (capped at 12).
         let all = Completion.suggestions(in: "x \\", caretUTF16: 3, result: nil)
@@ -53,7 +57,7 @@ final class CompletionTests: XCTestCase {
         let frac = Completion.suggestions(in: "\\fr", caretUTF16: 3, result: nil)
         XCTAssertEqual(labels(frac), ["\\frac{num}{den}"])
         XCTAssertEqual(frac.first?.insertText, "\\frac")
-        XCTAssertEqual(frac.first?.detail, "math · fraction; the d/t/c forms lay out as \\frac")
+        XCTAssertEqual(frac.first?.detail, "math · fraction; \\cfrac lays out as \\frac")
         XCTAssertTrue(Completion.Vocabulary.entries.allSatisfy { !$0.description.contains("math mode only") },
                       "the mode is stated by the detail prefix, never repeated in the description")
         XCTAssertTrue(Completion.Vocabulary.entries.allSatisfy { ($0.mode == .math) == $0.detail.hasPrefix("math · ") })
@@ -90,8 +94,11 @@ final class CompletionTests: XCTestCase {
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)
         // Innermost closer first, then the vocabulary's `e` commands in table
         // order (text entries, then math entries).
-        XCTAssertEqual(Array(labels(s).prefix(7)), ["\\end{itemize}", "\\end{document}", "\\emph{...}", "\\end{env}", "\\eqref{key}", "\\em", "\\exp"])
-        XCTAssertTrue(s.dropFirst(6).allSatisfy { $0.detail.hasPrefix("math · ") }, "\(labels(s))")
+        XCTAssertEqual(Array(labels(s).prefix(7)), ["\\end{itemize}", "\\end{document}", "\\emph{...}", "\\end{env}", "\\eqref{key}", "\\em", "\\enspace"])
+        // `\enspace`/`\enskip` are dual-mode entries (like `\quad`/`\qquad`): text
+        // entries whose detail states their math behaviour without a `math ·`
+        // prefix, so only the entries after them are math-only.
+        XCTAssertTrue(s.dropFirst(8).allSatisfy { $0.detail.hasPrefix("math · ") }, "\(labels(s))")
         XCTAssertEqual(s[0].kind, .environment)
         XCTAssertEqual(s[0].detail, "closes \\begin{itemize} at byte 17")
         XCTAssertEqual(s[0].insertText, "\\end{itemize}")
@@ -100,7 +107,7 @@ final class CompletionTests: XCTestCase {
         // spelling still ranks behind the closer it would have to name.
         let closed = text + "nd{itemize}\n\\en"
         let s2 = Completion.suggestions(in: closed, caretUTF16: (closed as NSString).length, result: nil)
-        XCTAssertEqual(labels(s2), ["\\end{document}", "\\end{env}"])
+        XCTAssertEqual(labels(s2), ["\\end{document}", "\\end{env}", "\\enspace", "\\enskip"])
         let typed = closed + "d"
         XCTAssertEqual(labels(Completion.suggestions(in: typed, caretUTF16: (typed as NSString).length, result: nil)), ["\\end{document}", "\\end{env}"])
 
@@ -112,7 +119,7 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(env.first?.kind, .environment)
         let beginCtx = "\\begin{itemize}\\end{itemize}\\begin{d"
         let b = Completion.suggestions(in: beginCtx, caretUTF16: (beginCtx as NSString).length, result: nil)
-        XCTAssertEqual(labels(b), ["document", "displaymath"])
+        XCTAssertEqual(labels(b), ["document", "displaymath", "dcases"])
         XCTAssertEqual(b.first?.detail, "supported by this compiler")
     }
 
@@ -122,14 +129,18 @@ final class CompletionTests: XCTestCase {
                                         message: "\\newwidget is not supported by this compiler version; unrestricted TeX math mode is not implemented",
                                         source: nil, recovery: nil)
         let result = RuntimeV1.CompileResult(projectId: "p", revision: 1, status: .recovered, pages: [], diagnostics: [diag], pdfPath: nil)
-        let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: result)
+        // A handful of real `ne`-prefixed vocabulary entries, named explicitly
+        // so the cap (maxSuggestions) has room left for the unsupported typed
+        // command regardless of how many `\ne*` commands the inventory grows to.
+        let neSupported = ["newcommand", "newpage", "neq"]
+        let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: result, supported: neSupported)
         XCTAssertTrue(labels(s).contains("\\newcommand{\\name}[n]{body}"))
         XCTAssertTrue(labels(s).contains("\\newpage"), "a real compiler command must not be marked unsupported")
         XCTAssertEqual(s.first { $0.label == "\\neq" }?.detail, "math · symbol ≠")
         XCTAssertEqual(s.first { $0.label == "\\newwidget" }?.detail, "not supported by the compiler — " + diag.message)
 
         // Without a diagnostic naming it the mark is still there, without a message.
-        let s2 = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)
+        let s2 = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil, supported: neSupported)
         XCTAssertEqual(s2.first { $0.label == "\\newwidget" }?.detail, "not supported by the compiler")
 
         // The command being typed is not offered as its own completion (only the
@@ -203,7 +214,8 @@ final class CompletionTests: XCTestCase {
         var index = -1
         let items = tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index)
         // AppKit's list carries the insert texts (no argument shapes), in the pure function's order.
-        XCTAssertEqual(items, ["\\section", "\\setlength", "\\setlist", "\\sec", "\\setminus"])
+        XCTAssertEqual(items, ["\\section", "\\setlength", "\\setlist", "\\setcounter", "\\settowidth", "\\settoheight",
+                               "\\settodepth", "\\sec", "\\setminus"])
         XCTAssertEqual(items, Completion.suggestions(in: tv.string, caretUTF16: end, result: nil).map(\.insertText))
         XCTAssertEqual(index, 0)
         // `\e` offers the unclosed environment first.
@@ -900,7 +912,9 @@ final class CompletionTests: XCTestCase {
         spin("second refusal") { scheduler.statistics.refusedStale == 2 }
         XCTAssertEqual(delivered.count, 1)
         XCTAssertEqual(delivered[0].generation, g3)
-        XCTAssertEqual(delivered[0].items.map(\.label), ["\\subsection{...}", "\\subsubsection{...}", "\\subset", "\\subseteq", "\\subsetneq"])
+        XCTAssertEqual(delivered[0].items.map(\.label),
+                       ["\\subsection{...}", "\\subsubsection{...}", "\\substack{a \\\\ b}", "\\subset", "\\subseteq",
+                        "\\subseteqq", "\\subsetneqq", "\\subsetneq"])
         XCTAssertEqual(delivered[0].range, NSRange(location: 2, length: 4))
         XCTAssertEqual(delivered[0].caretUTF16, 6)
         XCTAssertNil(scheduler.pending)
@@ -1034,14 +1048,16 @@ final class CompletionTests: XCTestCase {
         window.makeFirstResponder(tv)
         defer { window.orderOut(nil) }
         tv.allowsUndo = true
-        // `\su` lists ten vocabulary commands, under the cap, so narrowing
-        // and widening have exact counts: the text entries, then the operator,
-        // then the symbols in inventory (math_symbol) order.
-        let suItems = ["\\subsection{...}", "\\subsubsection{...}", "\\sup", "\\subset", "\\subseteq", "\\supset", "\\supseteq",
-                       "\\sum", "\\subsetneq", "\\supsetneq"]
         tv.string = "\\begin{document}\nx \\su"
         let end = (tv.string as NSString).length
         tv.setSelectedRange(NSRange(location: end, length: 0))
+        // `\su`'s vocabulary commands, in table order (text entries, then the
+        // operator, then the symbols in inventory order) — computed from the
+        // same pure function the session uses, so this test tracks the
+        // compiler's inventory instead of a hand-copied snapshot of it.
+        let suItems = Completion.suggestions(in: tv.string, caretUTF16: end, result: nil).map(\.label)
+        let subsetIndex = try XCTUnwrap(suItems.firstIndex(of: "\\subset"))
+        let lastIndex = suItems.count - 1
 
         // ⌃Space opens the list (computed off-main, delivered on the run loop).
         key(tv, " ", code: 49, flags: .control)
@@ -1054,23 +1070,24 @@ final class CompletionTests: XCTestCase {
         // ↓ ↓ ↑ choose; the text and caret are untouched while choosing.
         key(tv, "\u{F701}", code: 125)
         key(tv, "\u{F701}", code: 125)
-        XCTAssertEqual(tv.session?.selected?.label, "\\sup")
+        XCTAssertEqual(tv.session?.selected?.label, suItems[2])
         key(tv, "\u{F700}", code: 126)
-        XCTAssertEqual(tv.session?.selected?.label, "\\subsubsection{...}")
+        XCTAssertEqual(tv.session?.selected?.label, suItems[1])
         XCTAssertEqual(tv.selectedRange(), NSRange(location: end, length: 0))
         // ↑ from the top wraps to the bottom.
         key(tv, "\u{F700}", code: 126); key(tv, "\u{F700}", code: 126)
-        XCTAssertEqual(tv.session?.selected?.label, "\\supsetneq")
+        XCTAssertEqual(tv.session?.selected?.label, suItems[lastIndex])
         key(tv, "\u{F701}", code: 125)
-        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
+        XCTAssertEqual(tv.session?.selected?.label, suItems[0])
 
         // Typing through the list narrows it and keeps the chosen item when it survives.
-        key(tv, "\u{F701}", code: 125); key(tv, "\u{F701}", code: 125); key(tv, "\u{F701}", code: 125) // \subset
+        for _ in 0..<subsetIndex { key(tv, "\u{F701}", code: 125) } // walk down to \subset
         XCTAssertEqual(tv.session?.selected?.label, "\\subset")
         key(tv, "b", code: 11)
         XCTAssertEqual(tv.string, "\\begin{document}\nx \\sub")
-        try await waitUntil("narrowed") { tv.session?.items.count == 5 }
-        XCTAssertEqual(tv.session?.items.map(\.label), ["\\subsection{...}", "\\subsubsection{...}", "\\subset", "\\subseteq", "\\subsetneq"])
+        let subItems = Completion.suggestions(in: tv.string, caretUTF16: end + 1, result: nil).map(\.label)
+        try await waitUntil("narrowed") { tv.session?.items.count == subItems.count }
+        XCTAssertEqual(tv.session?.items.map(\.label), subItems)
         XCTAssertEqual(tv.session?.selected?.label, "\\subset")
         XCTAssertEqual(tv.session?.range, NSRange(location: end - 3, length: 4))
         // Delete widens it again.
@@ -1078,8 +1095,8 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(tv.string, "\\begin{document}\nx \\su")
         try await waitUntil("widened") { tv.session?.items.count == suItems.count }
         XCTAssertEqual(tv.session?.selected?.label, "\\subset")
-        key(tv, "\u{F700}", code: 126); key(tv, "\u{F700}", code: 126); key(tv, "\u{F700}", code: 126)
-        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
+        for _ in 0..<subsetIndex { key(tv, "\u{F700}", code: 126) } // walk back up to the top
+        XCTAssertEqual(tv.session?.selected?.label, suItems[0])
 
         // Return inserts the chosen item over the partial token (its argument
         // braces with the caret inside), as one undoable edit, and closes.
@@ -1108,9 +1125,9 @@ final class CompletionTests: XCTestCase {
         // Tab chooses the next candidate (never inserts a tab); Enter inserts; ← closes (the caret leaves the token).
         key(tv, "\t", code: 48)
         XCTAssertEqual(tv.string, "\\begin{document}\nx \\su", "Tab moved the choice, the text is untouched")
-        XCTAssertEqual(tv.session?.selected?.label, "\\subsubsection{...}")
+        XCTAssertEqual(tv.session?.selected?.label, suItems[1])
         key(tv, "\t", code: 48, flags: .shift)
-        XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
+        XCTAssertEqual(tv.session?.selected?.label, suItems[0])
         key(tv, "\u{3}", code: 76) // Enter (keypad)
         XCTAssertEqual(tv.string, "\\begin{document}\nx \\subsection{}")
         XCTAssertNil(tv.session)
@@ -1143,12 +1160,12 @@ final class CompletionTests: XCTestCase {
         XCTAssertFalse(popup.canBecomeKey)
         XCTAssertTrue(popup.parent === window)
         XCTAssertEqual(popup.items.count, suItems.count)
-        popup.click(row: 3)
+        popup.click(row: subsetIndex)
         XCTAssertEqual(tv.session?.selected?.label, "\\subset")
-        popup.click(row: 10) // out of range: ignored
-        XCTAssertEqual(tv.session?.selectedIndex, 3)
-        popup.click(row: 4, double: true)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx \\subseteq")
+        popup.click(row: suItems.count + 10) // out of range: ignored
+        XCTAssertEqual(tv.session?.selectedIndex, subsetIndex)
+        popup.click(row: subsetIndex + 1, double: true)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx " + suItems[subsetIndex + 1])
         XCTAssertNil(tv.session)
         XCTAssertFalse(popup.isVisible)
         // ⌘-shortcuts with the list open act on the editor (undo) and close the list.
@@ -1195,8 +1212,8 @@ final class CompletionTests: XCTestCase {
         try await waitUntil("popup") { tv.session != nil }
         let items = try XCTUnwrap(tv.session?.items)
         let labels = items.map(\.label)
-        XCTAssertEqual(labels, ["\\subsection{...}", "\\subsubsection{...}", "\\sup", "\\subset", "\\subseteq", "\\supset", "\\supseteq",
-                                "\\sum", "\\subsetneq", "\\supsetneq"])
+        XCTAssertEqual(labels, ["\\subsection{...}", "\\subsubsection{...}", "\\substack{a \\\\ b}", "\\sup", "\\subset", "\\subseteq",
+                                "\\supset", "\\supseteq", "\\sum", "\\succsim", "\\succcurlyeq", "\\subseteqq"])
         let back = labels.count - 2 // where two ⇧Tab from the top land
         let popup = tv.completionPopup
         let table = popup.accessibilityTable
@@ -1242,7 +1259,7 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(selectedRows.first.flatMap { legacy($0, .index) as? Int }, back)
         let announcement = CompletionAccessibility.selectionAnnouncement(index: back, total: labels.count, label: items[back].label,
                                                                           kind: items[back].kind.accessibilityKind, detail: items[back].detail)
-        XCTAssertTrue(announcement.hasPrefix("9 of 10: \(labels[back]), command, "), announcement)
+        XCTAssertTrue(announcement.hasPrefix("\(back + 1) of \(labels.count): \(labels[back]), command, "), announcement)
 
         // Return inserts the walked-to candidate over the token and closes.
         key(tv, "\r", code: 36)
