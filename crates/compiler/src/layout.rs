@@ -11,7 +11,9 @@
 use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
-use crate::parser::{Block, FontSizeLevel, Inline, MathRow, ParagraphStyle, TextFamily, TextStyle};
+use crate::parser::{
+    Block, FontSizeLevel, Inline, ListLeftMargin, MathRow, ParagraphStyle, TextFamily, TextStyle,
+};
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
 use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
@@ -821,9 +823,11 @@ impl LayoutCursor {
                 label,
                 content,
                 extra_gap_after_pt,
+                leftmargin,
                 ..
             } => {
-                self.list_margin_pt = list_margin_pt(*level, body_size);
+                let override_pt = list_leftmargin_override_pt(leftmargin, body_size);
+                self.list_margin_pt = list_margin_pt(*level, body_size, override_pt);
                 if let Some((text, span)) = label {
                     self.place_list_label(text, *span, self.list_margin_pt, body_size);
                 }
@@ -1049,13 +1053,35 @@ fn round2(v: f64) -> f64 {
 }
 
 /// Cumulative left margin, in points, for an `itemize`/`enumerate` item at
-/// `level` (1 = outermost), scaled by the document body size.
-fn list_margin_pt(level: u8, body_size_pt: f64) -> f64 {
+/// `level` (1 = outermost), scaled by the document body size. Enclosing
+/// levels always use their `LIST_LEFTMARGIN_EM` default; `own_override_pt`,
+/// when given, replaces only `level`'s own share (a `\setlist{leftmargin=...}`
+/// override on the item's own list — see `list_leftmargin_override_pt`).
+fn list_margin_pt(level: u8, body_size_pt: f64, own_override_pt: Option<f64>) -> f64 {
     let depth = level.max(1) as usize;
-    let em: f64 = (1..=depth)
+    let outer_em: f64 = (1..depth)
         .map(|l| LIST_LEFTMARGIN_EM[(l - 1).min(LIST_LEFTMARGIN_EM.len() - 1)])
         .sum();
-    em * body_size_pt
+    let own_pt = own_override_pt.unwrap_or_else(|| {
+        LIST_LEFTMARGIN_EM[(depth - 1).min(LIST_LEFTMARGIN_EM.len() - 1)] * body_size_pt
+    });
+    outer_em * body_size_pt + own_pt
+}
+
+/// Resolves a `Block::ListItem`'s `leftmargin` into the absolute point value
+/// `list_margin_pt` should use for that item's own level, or `None` to keep
+/// the level's `LIST_LEFTMARGIN_EM` default (no `\setlist{leftmargin=...}`
+/// override, or a `leftmargin=*` list with no items to measure).
+fn list_leftmargin_override_pt(leftmargin: &ListLeftMargin, body_size_pt: f64) -> Option<f64> {
+    match leftmargin {
+        ListLeftMargin::Default => None,
+        ListLeftMargin::Explicit(pt) => Some(*pt),
+        ListLeftMargin::Widest(labels) => labels
+            .iter()
+            .map(|label| glyph_width(label, body_size_pt, Font::TimesRoman))
+            .reduce(f64::max)
+            .map(|widest_pt| widest_pt + LIST_LABELSEP_EM * body_size_pt),
+    }
 }
 
 pub fn layout(blocks: &[Block]) -> Vec<Page> {
@@ -1463,7 +1489,7 @@ mod tests {
             .iter()
             .find(|item| item.text == "Text")
             .expect("item text");
-        let text_x = MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT);
+        let text_x = MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None);
         let label_sep = LIST_LABELSEP_EM * BODY_SIZE_PT;
         let label_width = glyph_width("•", BODY_SIZE_PT, Font::TimesRoman);
         assert_eq!(text.x_pt, round2(text_x));
@@ -1496,7 +1522,7 @@ mod tests {
             .expect("an item on the wrapped line");
         assert_eq!(
             first_on_wrapped_line.x_pt,
-            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT))
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None))
         );
     }
 
@@ -1511,11 +1537,11 @@ mod tests {
         let inner = items.iter().find(|item| item.text == "Inner").unwrap();
         assert_eq!(
             outer.x_pt,
-            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT))
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None))
         );
         assert_eq!(
             inner.x_pt,
-            round2(MARGIN_PT + list_margin_pt(2, BODY_SIZE_PT))
+            round2(MARGIN_PT + list_margin_pt(2, BODY_SIZE_PT, None))
         );
         assert!(
             inner.x_pt > outer.x_pt,
@@ -1548,7 +1574,7 @@ mod tests {
             .expect("continuation paragraph text");
         assert_eq!(
             second.x_pt,
-            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT))
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None))
         );
     }
 
@@ -1566,7 +1592,7 @@ mod tests {
         let text = items.iter().find(|item| item.text == "Text").unwrap();
         assert_eq!(
             text.x_pt,
-            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT)),
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None)),
             "the item text must stay at the normal hanging-indent margin"
         );
         assert!(

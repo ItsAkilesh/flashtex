@@ -140,6 +140,11 @@ pub enum Block {
         /// Extra gap after this item: `topsep`, set only on the list's last
         /// item.
         extra_gap_after_pt: f64,
+        /// `\setlist{leftmargin=...}`'s effect on this level's own share of
+        /// the cumulative hanging-indent margin (`Default` outside
+        /// `\setlist`, or when the level's default `LIST_LEFTMARGIN_EM`
+        /// share applies unchanged).
+        leftmargin: ListLeftMargin,
     },
     /// `\vspace{<dimen>}`: additional vertical glue, in points.
     VSpace {
@@ -151,6 +156,23 @@ pub enum Block {
     },
     /// `\newpage`: force the next block onto a fresh page.
     PageBreak,
+}
+
+/// `\setlist{leftmargin=...}`'s effect on a `Block::ListItem`'s own
+/// contribution to the cumulative hanging-indent margin (see
+/// `layout::list_margin_pt`); enclosing levels' shares are unaffected.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum ListLeftMargin {
+    /// No override: the level's default `LIST_LEFTMARGIN_EM` share applies.
+    #[default]
+    Default,
+    /// `leftmargin=<dimen>`, already resolved to points.
+    Explicit(f64),
+    /// `leftmargin=*`: every distinct label text that can appear in this
+    /// list, resolved once every `\item` in it has been seen (enumitem picks
+    /// the widest of these once the labels are known — see `set_list`);
+    /// `layout` measures each at the body size and adds `\labelsep`.
+    Widest(Vec<String>),
 }
 
 /// Font selection for one text item, as set by `\textbf`, `\itshape`, etc.
@@ -645,8 +667,11 @@ struct P<'a> {
     current_counter: Option<String>,
     seen_labels: HashMap<String, Span>,
     /// Environment name, item count, an enumitem label template if given,
-    /// and the `\setlist` spacing resolved when this list's `\begin` ran.
-    list_stack: Vec<(String, u32, Option<String>, ListSpacing)>,
+    /// the `\setlist` spacing resolved when this list's `\begin` ran, and the
+    /// `blocks` length at that point (where this list's own items start, for
+    /// the `leftmargin=*` backpatch once every item is known — see
+    /// `environment`).
+    list_stack: Vec<(String, u32, Option<String>, ListSpacing, usize)>,
     /// The marker text and span set by the most recent `\item`, consumed by
     /// the next `flush_paragraph`/`flush_list_item` call (its own paragraph,
     /// or a later one if the item's text is empty). `None` once consumed, so
@@ -674,6 +699,20 @@ struct P<'a> {
 struct ListSpacing {
     itemsep_pt: f64,
     topsep_pt: f64,
+    leftmargin: LeftMarginSetting,
+}
+
+/// `\setlist{leftmargin=...}`'s value, resolved into a `Block::ListItem`'s
+/// `ListLeftMargin` once the list's items are known (`Widest` needs every
+/// label; `Explicit` is applied to each item as it is created).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+enum LeftMarginSetting {
+    #[default]
+    Unset,
+    /// `leftmargin=<dimen>`, already resolved to points.
+    Explicit(f64),
+    /// `leftmargin=*`.
+    Widest,
 }
 
 impl P<'_> {
@@ -915,7 +954,7 @@ impl P<'_> {
                 let gap_before = self
                     .list_stack
                     .last()
-                    .map(|(_, count, _, spacing)| {
+                    .map(|(_, count, _, spacing, _)| {
                         if *count <= 1 {
                             spacing.topsep_pt
                         } else {
@@ -925,7 +964,7 @@ impl P<'_> {
                     .unwrap_or(0.0);
                 self.flush_list_item(blocks, para, gap_before, 0.0);
                 match self.list_stack.last_mut() {
-                    Some((kind, count, template, _)) => {
+                    Some((kind, count, template, _, _)) => {
                         *count += 1;
                         let marker = if kind == "enumerate" {
                             match template {
@@ -1228,10 +1267,11 @@ impl P<'_> {
 
     /// `\setlist[<env list>]{key=value,...}`: enumitem's list-spacing
     /// override. The optional argument names which environments the given
-    /// keys apply to (a comma list; omitted means every list). Only
-    /// `itemsep` and `topsep` change layout today; every other recognised
-    /// enumitem key (`leftmargin`, `label`, `parsep`, `partopsep`, ...) has
-    /// no equivalent in this layout engine and is reported once, by name.
+    /// keys apply to (a comma list; omitted means every list). `itemsep`,
+    /// `topsep` and `leftmargin` (an explicit dimension, or `*`) change
+    /// layout; every other recognised enumitem key (`label`, `parsep`,
+    /// `partopsep`, ...) has no equivalent in this layout engine and is
+    /// reported once, by name.
     fn set_list(&mut self, span: Span) {
         let environments = self
             .optional_bracket_argument()
@@ -1252,6 +1292,7 @@ impl P<'_> {
 
         let mut itemsep_pt = None;
         let mut topsep_pt = None;
+        let mut leftmargin = None;
         let mut ignored_keys: Vec<String> = Vec::new();
         for pair in token_text(&tokens).split(',') {
             let pair = pair.trim();
@@ -1269,6 +1310,14 @@ impl P<'_> {
                 "topsep" if value.and_then(parse_dimen_pt).is_some() => {
                     topsep_pt = value.and_then(parse_dimen_pt);
                 }
+                "leftmargin" if value == Some("*") => {
+                    leftmargin = Some(LeftMarginSetting::Widest);
+                }
+                "leftmargin" if value.and_then(parse_dimen_pt).is_some() => {
+                    leftmargin = value
+                        .and_then(parse_dimen_pt)
+                        .map(LeftMarginSetting::Explicit);
+                }
                 _ if !ignored_keys.iter().any(|seen| seen == key) => {
                     ignored_keys.push(key.to_string());
                 }
@@ -1283,6 +1332,9 @@ impl P<'_> {
             }
             if let Some(pt) = topsep_pt {
                 spacing.topsep_pt = pt;
+            }
+            if let Some(lm) = leftmargin {
+                spacing.leftmargin = lm;
             }
         }
 
@@ -1587,7 +1639,7 @@ impl P<'_> {
                     .copied()
                     .unwrap_or_default();
                 self.list_stack
-                    .push((environment.clone(), 0, template, spacing));
+                    .push((environment.clone(), 0, template, spacing, blocks.len()));
             } else if self.in_body {
                 self.diags.push(Diagnostic::warning(
                     format!(
@@ -1631,7 +1683,7 @@ impl P<'_> {
             self.paragraph_styles.pop();
         } else if matches!(environment.as_str(), "itemize" | "enumerate") {
             let (gap_before, gap_after) = match self.list_stack.last() {
-                Some((_, count, _, spacing)) => (
+                Some((_, count, _, spacing, _)) => (
                     if *count <= 1 {
                         spacing.topsep_pt
                     } else {
@@ -1642,7 +1694,43 @@ impl P<'_> {
                 None => (0.0, 0.0),
             };
             self.flush_list_item(blocks, para, gap_before, gap_after);
-            self.list_stack.pop();
+            let level = self.list_stack.len() as u8;
+            if let Some((kind, count, template, spacing, start)) = self.list_stack.pop() {
+                if spacing.leftmargin == LeftMarginSetting::Widest && count > 0 {
+                    let labels: Vec<String> = if kind == "enumerate" {
+                        // An alphabetic counter has only 26 possible single-
+                        // letter values, so enumitem checks every one of them
+                        // regardless of how many items this particular list
+                        // has; other styles use this list's own item count
+                        // (its labels only grow wider as the count does).
+                        let widest_count = match &template {
+                            Some(t) if matches!(enumitem_label_style(t), 'a' | 'A') => 26,
+                            _ => count,
+                        };
+                        (1..=widest_count)
+                            .map(|n| match &template {
+                                Some(template) => enumitem_label(template, n),
+                                None => format!("{n}."),
+                            })
+                            .collect()
+                    } else {
+                        vec!["•".to_string()]
+                    };
+                    for block in &mut blocks[start..] {
+                        if let Block::ListItem {
+                            level: item_level,
+                            leftmargin,
+                            ..
+                        } = block
+                        {
+                            if *item_level == level && matches!(leftmargin, ListLeftMargin::Default)
+                            {
+                                *leftmargin = ListLeftMargin::Widest(labels.clone());
+                            }
+                        }
+                    }
+                }
+            }
         } else if environment == "figure" {
             self.flush_paragraph(blocks, para);
         }
@@ -2362,8 +2450,18 @@ impl P<'_> {
         let list_level = self
             .list_stack
             .last()
-            .filter(|(_, count, _, _)| *count > 0)
+            .filter(|(_, count, _, _, _)| *count > 0)
             .map(|_| self.list_stack.len() as u8);
+        // `leftmargin=*` needs every item's label, so it is resolved later
+        // (backpatched once the list's `\end` is reached — see
+        // `environment`); an explicit dimension is already known.
+        let leftmargin = match self.list_stack.last() {
+            Some((_, _, _, spacing, _)) => match spacing.leftmargin {
+                LeftMarginSetting::Explicit(pt) => ListLeftMargin::Explicit(pt),
+                LeftMarginSetting::Unset | LeftMarginSetting::Widest => ListLeftMargin::Default,
+            },
+            None => ListLeftMargin::Default,
+        };
         blocks.push(match list_level {
             Some(level) => Block::ListItem {
                 level,
@@ -2371,6 +2469,7 @@ impl P<'_> {
                 content,
                 extra_gap_before_pt,
                 extra_gap_after_pt,
+                leftmargin,
             },
             None => match self.paragraph_styles.last() {
                 Some(&style) => Block::Styled { style, content },
@@ -2638,6 +2737,34 @@ fn enumitem_label(template: &str, count: u32) -> String {
         ),
         None => template.to_string(),
     }
+}
+
+/// The counter style (`a A i I 1`) an enumitem label template selects,
+/// mirroring `enumitem_label`'s own template parsing (defaulting to `1`,
+/// arabic, exactly like it does). Used by `\setlist{leftmargin=*}` to decide
+/// how far its widest-label search needs to look — see `environment`.
+fn enumitem_label_style(template: &str) -> char {
+    if template.contains('=') {
+        let Some(label) = template
+            .split(',')
+            .find_map(|key| key.trim().strip_prefix("label="))
+        else {
+            return '1';
+        };
+        return [
+            ("\\alph*", 'a'),
+            ("\\Alph*", 'A'),
+            ("\\roman*", 'i'),
+            ("\\Roman*", 'I'),
+        ]
+        .iter()
+        .find(|(command, _)| label.contains(command))
+        .map_or('1', |(_, style)| *style);
+    }
+    template
+        .char_indices()
+        .find(|(_, c)| "aAiI1".contains(*c))
+        .map_or('1', |(_, style)| style)
 }
 
 fn alphabetic(count: u32, base: u8) -> String {
