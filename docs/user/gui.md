@@ -59,9 +59,15 @@ folder it lives in.
   expansion; `\input{\jobname}` is reported as non-literal). Targets resolve
   against the project root, `name.tex` before `name`, never above the root
   and never through symlinks. Resolved files show in the sidebar; open them
-  (click, ⌘-click the command, or *Open All Includes*) to edit them. **Only
-  open files are sent to the engine** — open an include if you want its
-  content compiled.
+  (click, ⌘-click the command, or *Open All Includes*) to edit them. On the
+  direct route (no preview controller attached) the compile request carries
+  the whole resolved include closure automatically — chapters you never
+  opened are still compiled, read fresh from disk each time, and recompile
+  when they change on disk. An unopened include still shows as a greyed
+  sidebar row; opening it makes its buffer (not disk) authoritative, and
+  closing it reverts to reading disk. On the helper route (below), an include
+  still needs an explicit open: the durable helper compiles only its own
+  ledger membership.
 - **Saving** (⌘S) is compare-and-replace: if the file changed on disk since
   it was read, you get *File › Resolve On-Disk Conflict…* with **Overwrite /
   Reload / Keep Editing** instead of a silent overwrite. FlashTeX also watches
