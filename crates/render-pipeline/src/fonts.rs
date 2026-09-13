@@ -113,6 +113,10 @@ pub enum Role {
     /// Upright-medium slanted text (`\slshape`, running heads): Latin Modern
     /// `lmromanslant*` with `ec-lmro*` metrics.
     Slanted,
+    /// Typewriter text (`\ttfamily`: verbatim, `\verb`, listings): Latin
+    /// Modern Mono outlines laid out with the metrics [`MonoMetrics`]
+    /// selects ([`FontSet::resolve_mono`]).
+    Mono { bold: bool },
     /// Math letters, symbols and operators: Latin Modern Math (`MATH`
     /// table) for both families, because `\usepackage{times}` leaves math
     /// in Computer Modern.
@@ -220,6 +224,17 @@ impl Discovery {
             push(PathBuf::from(d.to_string_lossy().replace("/opentype/", "/tfm/")));
             push(d.clone());
         }
+        // The OT1 `cmtt` metrics of typewriter text (`MonoMetrics::CmOt1`),
+        // after every Latin Modern candidate and before the EC directories.
+        for root in self.bundle_texmf_roots() {
+            push(root.join(CM_TFM_DIR));
+        }
+        for d in font_dirs {
+            let d = d.to_string_lossy();
+            if let Some(at) = d.find("/fonts/opentype/public/lm") {
+                push(PathBuf::from(format!("{}/{CM_TFM_DIR}", &d[..at])));
+            }
+        }
         // The EC metrics of T1 `cmr` documents (`Family::ComputerModern`):
         // the bundled trees' and each TeX Live tree's `fonts/tfm/jknappen/ec`,
         // after every Latin Modern candidate so their order is unchanged.
@@ -276,6 +291,13 @@ pub fn latin_modern_tfm(otf_stem: &str) -> Option<String> {
         let d: u32 = rest.strip_suffix("-regular")?.parse().ok()?;
         return Some(format!("ec-lmro{d}.tfm"));
     }
+    if otf_stem == "lmmonolt10-bold" {
+        return Some("ec-lmtk10.tfm".to_string());
+    }
+    if let Some(rest) = otf_stem.strip_prefix("lmmono") {
+        let d: u32 = rest.strip_suffix("-regular")?.parse().ok()?;
+        return Some(format!("ec-lmtt{d}.tfm"));
+    }
     let rest = otf_stem.strip_prefix("lmroman")?;
     let (digits, style) = rest.split_once('-')?;
     let d: u32 = digits.parse().ok()?;
@@ -292,6 +314,72 @@ pub fn latin_modern_tfm(otf_stem: &str) -> Option<String> {
 /// Where TeX Live keeps the EC metrics (`jknappen/ec`), relative to a
 /// texmf root.
 pub const EC_TFM_DIR: &str = "fonts/tfm/jknappen/ec";
+
+/// Where TeX Live keeps the Computer Modern metrics (`cmtt10`, ...),
+/// relative to a texmf root.
+pub const CM_TFM_DIR: &str = "fonts/tfm/public/cm";
+
+/// Which metrics LaTeX lays `\ttfamily` out with. `\ttdefault` is `cmtt`
+/// unless a package changes it (`lmodern`: `lmtt`; `times`: `pcr`, which
+/// [`FontSet::resolve_mono`] sets in Courier).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum MonoMetrics {
+    /// OT1 `cmtt` (ot1cmtt.fd): `cmtt8` for 5-8pt, `cmtt9`, `cmtt10` for
+    /// 10/10.95pt, `cmtt12` from 12pt; `bx` is `ssub` to medium.
+    #[default]
+    CmOt1,
+    /// T1 `cmtt` (t1cmtt.fd): `ectt0800` for 5-8pt, else `ectt<size>` at
+    /// the EC size nearest; `bx` substitutes medium.
+    EcT1,
+    /// `lmodern` (t1lmtt.fd, ot1lmtt.fd): `ec-lmtt8/9/10/12`, `b`/`bx` the
+    /// dark `ec-lmtk10`.
+    LatinModern,
+}
+
+/// t1lmtt.fd `m/n` design sizes: <-8.5> 8, <8.5-9.5> 9, <9.5-11> 10, <11-> 12.
+fn mono_design(size_pt: f64) -> u32 {
+    if size_pt < 8.5 {
+        8
+    } else if size_pt < 9.5 {
+        9
+    } else if size_pt < 11.0 {
+        10
+    } else {
+        12
+    }
+}
+
+/// The TFM LaTeX loads for typewriter text at `size_pt` (see [`MonoMetrics`]).
+pub fn mono_tfm_file(metrics: MonoMetrics, bold: bool, size_pt: f64) -> String {
+    match metrics {
+        MonoMetrics::LatinModern if bold => "ec-lmtk10.tfm".to_string(),
+        MonoMetrics::LatinModern => format!("ec-lmtt{}.tfm", mono_design(size_pt)),
+        MonoMetrics::CmOt1 => {
+            // `<5><6><7><8>cmtt8<9>cmtt9<10><10.95>cmtt10<12>...cmtt12`; an
+            // undeclared size takes the nearest declared one.
+            let d = if size_pt < 8.5 {
+                8
+            } else if size_pt < 9.5 {
+                9
+            } else if size_pt < 11.475 {
+                10
+            } else {
+                12
+            };
+            format!("cmtt{d}.tfm")
+        }
+        MonoMetrics::EcT1 => {
+            if size_pt < 8.5 {
+                return "ectt0800.tfm".to_string();
+            }
+            let (_, suffix) = EC_SIZES
+                .iter()
+                .min_by(|a, b| (a.0 - size_pt).abs().total_cmp(&(b.0 - size_pt).abs()))
+                .expect("EC sizes");
+            format!("ectt{suffix}.tfm")
+        }
+    }
+}
 
 /// The sizes `t1cmr.fd` declares for every EC shape
 /// (`<5><6><7><8><9><10><10.95><12><14.4><17.28><20.74><24.88><29.86><35.83>genb*ecrm`)
@@ -319,7 +407,7 @@ const EC_SIZES: [(f64, &str); 14] = [
 /// LaTeX size substitution to the nearest one). `None` for math.
 pub fn ec_tfm_file(role: Role, size_pt: f64) -> Option<String> {
     let prefix = match role {
-        Role::Math => return None,
+        Role::Math | Role::Mono { .. } => return None,
         Role::Text { bold: false, italic: false } => "ecrm",
         Role::Text { bold: true, italic: false } => "ecbx",
         Role::Text { bold: false, italic: true } => "ecti",
@@ -749,6 +837,8 @@ impl FontSet {
                 format!("lmroman{d}-italic.otf")
             }
             Role::Text { bold: true, italic: true } => "lmroman10-bolditalic.otf".to_string(),
+            Role::Mono { bold: true } => "lmmonolt10-bold.otf".to_string(),
+            Role::Mono { bold: false } => format!("lmmono{}-regular.otf", mono_design(s)),
             // t1lmr.fd `m/sl`: <-8.5> 8, <8.5-9.5> 9, <9.5-11> 10, <11-15> 12, <15-> 17.
             Role::Slanted => {
                 let d = if s < 8.5 {
@@ -775,13 +865,39 @@ impl FontSet {
             Role::Text { bold: false, italic: true } => Core14::TimesItalic,
             Role::Text { bold: true, italic: true } => Core14::TimesBoldItalic,
             Role::Slanted => Core14::TimesItalic,
+            Role::Mono { .. } => Core14::Courier,
+        }
+    }
+
+    /// Resolves the typewriter face at `size_pt`: Latin Modern Mono outlines
+    /// laid out with [`mono_tfm_file`] (the `ec-lm*` mono TFM when that file
+    /// is missing, reported through `metrics_fallback`); Courier under
+    /// `times` (`\ttdefault` pcr). OT1/T1 `cmtt` has no bold: `bx` is the
+    /// medium face.
+    pub fn resolve_mono(&self, family: Family, metrics: MonoMetrics, bold: bool, size_pt: f64) -> Resolved {
+        if family == Family::Times {
+            return Resolved {
+                face: self.core14(Core14::Courier),
+                substituted: None,
+            };
+        }
+        let bold = bold && metrics == MonoMetrics::LatinModern;
+        let role = Role::Mono { bold };
+        let file = Self::latin_modern_file(role, size_pt);
+        let tfm = mono_tfm_file(metrics, bold, size_pt);
+        match self.otf_with_tfm(&file, Some(&tfm)) {
+            Ok(face) => Resolved { face, substituted: None },
+            Err(reason) => Resolved {
+                face: self.core14(Core14::Courier),
+                substituted: Some(format!("{file}: {reason}")),
+            },
         }
     }
 
     /// Resolves (and loads once) the face for `family`/`role` at `size_pt`.
     pub fn resolve(&self, family: Family, role: Role, size_pt: f64) -> Resolved {
         match (family, role) {
-            (Family::Times, Role::Text { .. } | Role::Slanted) => Resolved {
+            (Family::Times, Role::Text { .. } | Role::Slanted | Role::Mono { .. }) => Resolved {
                 face: self.core14(Self::core14_for(role)),
                 substituted: None,
             },

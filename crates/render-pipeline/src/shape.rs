@@ -129,6 +129,70 @@ impl Shaper {
         shaped
     }
 
+    /// Shapes `text` one character at a time: no ligatures and no font
+    /// kerns between characters. Verbatim text is set like that
+    /// (latex.ltx `\@noligs` puts `\kern\z@` before every character that
+    /// begins or continues a typewriter ligature). U+2423 is the visible
+    /// space `\verb*` sets with `\char32` (`\asciispace`): it takes the
+    /// TFM's slot 32 metrics and the face's own visible-space glyph.
+    pub fn shape_literal(&self, face: &Rc<LoadedFace>, text: &str) -> Rc<Shaped> {
+        if text.chars().nth(1).is_none() && !text.contains('\u{2423}') {
+            return self.shape(face, text);
+        }
+        let key = (face.shape_key.clone(), format!("\u{0}literal\u{0}{text}"));
+        if let Some(hit) = self.cache.borrow().get(&key) {
+            return hit.clone();
+        }
+        let mut out: Option<Shaped> = None;
+        for (offset, ch) in text.char_indices() {
+            let piece = match (ch, &face.tfm) {
+                ('\u{2423}', Some(tfm)) => visible_space(face, tfm).unwrap_or_else(|| (*self.shape(face, "\u{2423}")).clone()),
+                _ => (*self.shape(face, &text[offset..offset + ch.len_utf8()])).clone(),
+            };
+            match &mut out {
+                None => {
+                    let mut first = piece;
+                    first.text = text.to_string();
+                    out = Some(first);
+                }
+                Some(acc) => {
+                    let scale = |v: i64| -> i64 {
+                        if piece.units_per_em == acc.units_per_em {
+                            v
+                        } else {
+                            (v as f64 * acc.units_per_em as f64 / piece.units_per_em as f64).round() as i64
+                        }
+                    };
+                    for mut c in piece.clusters.clone() {
+                        c.text_range = c.text_range.start + offset..c.text_range.end + offset;
+                        for g in &mut c.glyphs {
+                            g.advance = scale(i64::from(g.advance)) as i32;
+                        }
+                        acc.clusters.push(c);
+                    }
+                    acc.width_units += scale(piece.width_units);
+                    acc.height_units = acc.height_units.max(scale(i64::from(piece.height_units)) as i32);
+                    acc.depth_units = acc.depth_units.max(scale(i64::from(piece.depth_units)) as i32);
+                    acc.missing.extend(piece.missing.iter().map(|(c, o)| (*c, o + offset)));
+                    acc.tfm_metrics &= piece.tfm_metrics;
+                    if acc.refused.is_none() {
+                        acc.refused = piece.refused.clone();
+                    }
+                    if acc.tfm_error.is_none() {
+                        acc.tfm_error = piece.tfm_error.clone();
+                    }
+                }
+            }
+        }
+        let shaped = Rc::new(out.unwrap_or_else(|| shape_uncached(face, text)));
+        let mut cache = self.cache.borrow_mut();
+        if cache.len() >= SHAPER_CACHE_LIMIT {
+            cache.clear();
+        }
+        cache.insert(key, shaped.clone());
+        shaped
+    }
+
     pub fn len(&self) -> usize {
         self.cache.borrow().len()
     }
@@ -136,6 +200,43 @@ impl Shaper {
     pub fn is_empty(&self) -> bool {
         self.cache.borrow().is_empty()
     }
+}
+
+/// U+2423 set as `\char32` of a typewriter TFM (visible space in OT1
+/// `cmtt` and T1): the slot's metrics with the face's visible-space glyph.
+fn visible_space(face: &Rc<LoadedFace>, tfm: &Tfm) -> Option<Shaped> {
+    let m = tfm.metrics(0x20)?;
+    let gid = face.face().glyph_id('\u{2423}')?;
+    let b = face.bounds(gid, Some('\u{2423}'));
+    Some(Shaped {
+        face: face.clone(),
+        text: "\u{2423}".to_string(),
+        clusters: vec![SCluster {
+            glyphs: vec![SGlyph {
+                gid,
+                advance: m.width,
+                italic: m.italic,
+                x_offset: 0,
+                y_offset: 0,
+                y_max: if b.empty { 0 } else { b.y_max },
+                y_min: if b.empty { 0 } else { b.y_min },
+                x_max: if b.empty { 0 } else { b.x_max },
+                empty: b.empty,
+                tfm_code: Some(0x20),
+                tfm_kern: 0,
+            }],
+            text_range: 0..'\u{2423}'.len_utf8(),
+            text: "\u{2423}".to_string(),
+        }],
+        units_per_em: FIX,
+        tfm_metrics: true,
+        width_units: i64::from(m.width),
+        height_units: m.height,
+        depth_units: m.depth,
+        missing: Vec::new(),
+        refused: None,
+        tfm_error: None,
+    })
 }
 
 fn shape_uncached(face: &Rc<LoadedFace>, text: &str) -> Shaped {

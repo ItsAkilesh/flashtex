@@ -467,7 +467,7 @@ impl<'a> Context<'a> {
     }
 
     fn face(&mut self, style: TextStyle, size: f64, span: Span) -> Rc<LoadedFace> {
-        let r = self.fonts.resolve(self.style.family, role_of(style), size);
+        let r = self.resolve_text(style, size);
         if let Some(reason) = r.substituted {
             let src = self.source(span);
             self.report_once(
@@ -590,7 +590,7 @@ impl<'a> Context<'a> {
     /// `\fontdimen`s of the face for `style` at `size`: the face's TFM
     /// when it has one (exact fixwords), else the transcribed table.
     fn text_params(&self, style: TextStyle, size: f64) -> params::TextParamsPt {
-        let r = self.fonts.resolve(self.style.family, role_of(style), size);
+        let r = self.resolve_text(style, size);
         if let (None, Some(tfm)) = (&r.substituted, &r.face.tfm) {
             let dim = |n: usize| tfm.param(n).map_or(0.0, |v| crate::tfm::Tfm::pt(v, size));
             return params::TextParamsPt {
@@ -602,8 +602,28 @@ impl<'a> Context<'a> {
                 extra_space: dim(7),
             };
         }
+        if style.mono {
+            // cmtt10's own parameters (0.525em fixed space, 1.05em quad).
+            return params::TextParamsPt {
+                space: 0.525 * size,
+                stretch: 0.0,
+                shrink: 0.0,
+                x_height: 0.430555 * size,
+                quad: 1.05 * size,
+                extra_space: 0.525 * size,
+            };
+        }
         let design = design_size(self.style.family, size);
         params::text_params(self.style.family, style.bold, style.italic, design).at(size)
+    }
+
+    /// The face a text style is set in: the typewriter face for `mono`.
+    fn resolve_text(&self, style: TextStyle, size: f64) -> crate::fonts::Resolved {
+        if style.mono {
+            self.fonts.resolve_mono(self.style.family, self.style.mono_metrics, style.bold, size)
+        } else {
+            self.fonts.resolve(self.style.family, role_of(style), size)
+        }
     }
 
     /// Interword glue for the face/style at `size` with TeX's space factor.
@@ -621,7 +641,7 @@ impl<'a> Context<'a> {
     fn text_box(&mut self, seg: &adapter::Segment, size: f64) -> Option<(pl::GlyphRun, usize)> {
         let span = seg_span(seg)?;
         let face = self.face(seg.style, size, span);
-        let shaped = self.shaper.shape(&face, &seg.text);
+        let shaped = if seg.style.literal { self.shaper.shape_literal(&face, &seg.text) } else { self.shaper.shape(&face, &seg.text) };
         if let Some(e) = &shaped.tfm_error {
             let src = self.source(span);
             self.report_once(
@@ -1243,6 +1263,12 @@ impl<'a> Context<'a> {
     /// not TFM-shaped text in a font microtype configures.
     fn micro_run(&mut self, rec: usize, run: &pl::GlyphRun) -> Option<pl::MicroRun> {
         let BoxRec::Text { face, size, style, glyphs, .. } = &self.recs[rec] else { return None };
+        // microtype's default sets (`alltext`, `basictext`) are the `rm*`
+        // and `sf*` families: pdfTeX neither protrudes nor expands
+        // typewriter text.
+        if style.mono {
+            return None;
+        }
         if glyphs.len() != run.glyphs.len() || !glyphs.iter().any(|g| g.tfm_code.is_some()) {
             return None;
         }
@@ -1384,7 +1410,7 @@ impl<'a> Context<'a> {
                     // ends the search with no hyphens).
                     let after_glue = matches!(out.last(), Some(pl::Item::Glue(_)));
                     let joined = matches!(items.get(idx + 1), Some(AItem::Word(_) | AItem::Math { .. }));
-                    let hyphenate = after_glue && !joined && w.segments.len() == 1;
+                    let hyphenate = after_glue && !joined && w.segments.len() == 1 && !w.segments[0].style.literal && !base.literal;
                     for seg in &w.segments {
                         let seg = adapter::Segment {
                             text: seg.text.clone(),
@@ -1395,6 +1421,8 @@ impl<'a> Context<'a> {
                                 size_cpt: seg.style.size_cpt,
                                 medium: seg.style.medium,
                                 slanted: seg.style.slanted || base.slanted,
+                                mono: seg.style.mono || base.mono,
+                                literal: seg.style.literal || base.literal,
                             },
                         };
                         // A size declaration in force (`{\Large ...}`) sets
@@ -1412,6 +1440,8 @@ impl<'a> Context<'a> {
                         size_cpt: style.size_cpt,
                         medium: style.medium,
                         slanted: style.slanted || base.slanted,
+                        mono: style.mono || base.mono,
+                        literal: style.literal || base.literal,
                     };
                     if *no_break {
                         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
@@ -1966,6 +1996,114 @@ impl<'a> Context<'a> {
     /// measure, `0.4pt` high and `0pt` deep, appended with no interline glue
     /// before it and `prev_depth` left at `ignore_depth` after it. Set as a
     /// one-line block whose single box is a [`BoxRec::Rule`].
+    /// `verbatim`/`verbatim*` (latex.ltx `\@verbatim`): every source line is
+    /// a paragraph of its own (`\obeylines`; `\par` is `\leavevmode\null
+    /// \@@par\penalty\interlinepenalty`) in the typewriter face at the size
+    /// in force, with `\leftskip\@totalleftmargin`, `\rightskip` 0,
+    /// `\parindent` 0 and `\parfillskip\@flushglue`. Typewriter glue has no
+    /// stretch or shrink and every space is `\nobreakspace`, so a line is
+    /// never broken or stretched: each character sits at its natural
+    /// advance, an empty line is the `\null` box, and a line wider than the
+    /// measure runs into the margin like pdfTeX's overfull box. The
+    /// `\trivlist` glue around the block is added by the caller.
+    fn verbatim_block(&mut self, v: &adapter::VerbatimBlock) -> BuiltBlock {
+        let class = match self.style.base {
+            flashtex_document_style::BaseSize::Pt10 => 10,
+            flashtex_document_style::BaseSize::Pt11 => 11,
+            flashtex_document_style::BaseSize::Pt12 => 12,
+        };
+        let (size, baselineskip) = if v.size_cpt == 0 {
+            (self.style.body_size_pt, self.style.baselineskip_pt)
+        } else {
+            (f64::from(v.size_cpt) / 100.0, crate::table::baselineskip_pt(class, v.size_cpt))
+        };
+        let margin = match &v.list {
+            Some(geom) => self.list_geometry(geom, self.style.body_size_pt).0,
+            None => 0.0,
+        };
+        let visible = matches!(v.kind, crate::verbatim::BlockKind::Verbatim { starred: true });
+        let mut items: Vec<pl::Item> = Vec::new();
+        let mut recs: Vec<Option<usize>> = Vec::new();
+        let mut lines: Vec<pl::Line> = Vec::with_capacity(v.lines.len());
+        let mut extents = Vec::with_capacity(v.lines.len());
+        let mut y = 0.0;
+        for (index, raw) in v.lines.iter().enumerate() {
+            let first_item = items.len();
+            let mut runs = Vec::new();
+            let mut x = margin;
+            let (mut height, mut depth) = (0.0f64, 0.0f64);
+            for item in crate::verbatim::literal_items(&raw.text, raw.document, raw.start, v.size_cpt, visible) {
+                match item {
+                    AItem::Word(word) => {
+                        for seg in &word.segments {
+                            if let Some((run, rec)) = self.text_box(seg, size) {
+                                height = height.max(run.height);
+                                depth = depth.max(run.depth);
+                                runs.push(position_run(&run, x, 0.0));
+                                x += run.width;
+                                items.push(pl::Item::Box(run));
+                                recs.push(Some(rec));
+                            }
+                        }
+                    }
+                    AItem::Space { style, factor, .. } => x += self.space_glue(style, size, factor).width,
+                    _ => {}
+                }
+            }
+            y += if index == 0 { height } else { baselineskip };
+            for run in &mut runs {
+                run.baseline_y = y;
+            }
+            lines.push(pl::Line {
+                index,
+                runs,
+                baseline_y: y,
+                height,
+                depth,
+                natural_width: x - margin,
+                set_width: self.style.text_width_pt,
+                ratio: 0.0,
+                badness: 0.0,
+                items: first_item..items.len(),
+                hyphenated: false,
+            });
+            extents.push((height, depth));
+        }
+        let mut stats = one_line_stats();
+        stats.lines = lines.len();
+        let height = y + extents.last().map_or(0.0, |e| e.1);
+        let vertical = VBlock {
+            lines: extents,
+            penalty_before: None,
+            space_before: None,
+            parskip: Some(skip_tuple(v.parskip)),
+            interline_penalty: 0,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: None,
+            no_interline_first: false,
+            no_interline_after: false,
+            baselineskip: (v.size_cpt != 0).then_some(baselineskip),
+            vskip_after: Vec::new(),
+            pre_space_after: None,
+        };
+        BuiltBlock {
+            block: pl::ParagraphBlock::body(pl::Lines {
+                lines,
+                breaks: Vec::new(),
+                stats,
+                diagnostics: Vec::new(),
+                height,
+            }),
+            items,
+            recs,
+            vertical,
+            labels: Vec::new(),
+            cache_key: None,
+        }
+    }
+
     fn rule_block(&mut self, span: Span) -> BuiltBlock {
         const HRULE_HEIGHT: f64 = 0.4;
         self.rule_block_sized(span, self.style.text_width_pt, HRULE_HEIGHT, 0.0)
@@ -4592,6 +4730,47 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 }
                 after_heading = false;
             }
+            Block::Verbatim(v) => {
+                if v.endlist_adjust != 0.0 {
+                    if let Some(prev) = blocks.last_mut() {
+                        if let Some(s) = prev.vertical.space_after.filter(|s| s.0 > 0.0) {
+                            prev.vertical.space_after = Some((s.0 + v.endlist_adjust, s.1, s.2));
+                        }
+                    }
+                }
+                let mut vspace = v.vspace_before;
+                if v.addvspace_before != 0.0 {
+                    let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
+                    vspace += (v.addvspace_before - prev_after).max(0.0);
+                }
+                let mut b = ctx.verbatim_block(v);
+                // `\@trivlist`'s `\@topsepadd`: `\topsep`, plus `\partopsep`
+                // from vertical mode; `\@item` adds it with `\addvspace`
+                // after `\addpenalty\@beginparpenalty` unless a heading's
+                // `\@nobreak` is on (`\@nbitem`: no skip, no penalty).
+                let part = if v.vmode { v.partopsep } else { crate::style::Skip::default() };
+                let topsepadd = (v.topsep.natural + part.natural, v.topsep.stretch + part.stretch, v.topsep.shrink + part.shrink);
+                if *&v.eject_before {
+                    b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                } else if !after_heading {
+                    b.vertical.penalty_before = Some(LOW_PENALTY_BEGINPAR);
+                }
+                add_vspace(&mut b.vertical, vspace);
+                if !after_heading {
+                    match blocks.last_mut().and_then(|prev| prev.vertical.space_after.map(|s| (prev, s))) {
+                        Some((_, last)) if last.0 >= topsepadd.0 => {}
+                        Some((prev, _)) => {
+                            prev.vertical.space_after = None;
+                            add_skip_before(&mut b.vertical, Some(topsepadd));
+                        }
+                        None => add_skip_before(&mut b.vertical, Some(topsepadd)),
+                    }
+                }
+                b.vertical.penalty_after = Some(LOW_PENALTY_BEGINPAR);
+                b.vertical.space_after = Some(topsepadd);
+                blocks.push(b);
+                after_heading = false;
+            }
             Block::Rule {
                 span,
                 eject_before,
@@ -5046,6 +5225,9 @@ fn chrome_tokens(text: &str) -> Vec<ChromeTok> {
     }
     out
 }
+
+/// article.cls `\@beginparpenalty`/`\@endparpenalty`: `-\@lowpenalty`.
+const LOW_PENALTY_BEGINPAR: i32 = -51;
 
 fn one_line_stats() -> pl::Stats {
     pl::Stats {

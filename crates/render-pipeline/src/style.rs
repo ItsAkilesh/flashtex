@@ -10,7 +10,7 @@
 use flashtex_class_geometry::{ResolvedDocument, Sp};
 use flashtex_document_style::{BaseSize, Block, ClassOptions, Geometry, Paper, Stylesheet as DsStylesheet};
 
-use crate::fonts::Family;
+use crate::fonts::{Family, MonoMetrics};
 use crate::params;
 
 /// A vertical skip with TeX-style stretch and shrink, in points.
@@ -127,6 +127,8 @@ pub struct Stylesheet {
     /// `microtype` (`None` otherwise; lines are then broken exactly as
     /// before).
     pub microtype: Option<MicrotypeSetup>,
+    /// The typewriter metrics (`\ttdefault` and the text encoding).
+    pub mono_metrics: MonoMetrics,
 }
 
 impl Stylesheet {
@@ -220,6 +222,7 @@ impl Stylesheet {
             headings: [heading(1), heading(2), heading(3)],
             class_geometry: None,
             microtype: None,
+            mono_metrics: MonoMetrics::CmOt1,
         }
     }
 
@@ -292,6 +295,18 @@ impl Stylesheet {
             Family::ComputerModern
         } else {
             Family::LatinModern
+        }
+    }
+
+    /// `\ttfamily`'s metrics for the loaded packages and text encoding:
+    /// `lmodern` selects `lmtt`; otherwise `cmtt`, OT1 or T1 (EC).
+    pub fn mono_for(packages: &[String], t1_encoding: bool) -> MonoMetrics {
+        if packages.iter().any(|p| p == "lmodern") {
+            MonoMetrics::LatinModern
+        } else if t1_encoding {
+            MonoMetrics::EcT1
+        } else {
+            MonoMetrics::CmOt1
         }
     }
 

@@ -31,6 +31,7 @@ pub mod table;
 pub mod tfm;
 pub mod tikz;
 pub mod typeset;
+pub mod verbatim;
 pub mod v1;
 
 pub use display::DisplayList;

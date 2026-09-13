@@ -34,6 +34,13 @@ pub struct TextStyle {
     pub medium: bool,
     /// `\slshape` (upright medium only; running heads).
     pub slanted: bool,
+    /// `\ttfamily`: the typewriter face (`crate::fonts::MonoMetrics`).
+    pub mono: bool,
+    /// Set literally: no ligatures or font kerns between characters
+    /// (latex.ltx `\@noligs`) and no hyphenation (`\language
+    /// \l@nohyphenation`, typewriter `\hyphenchar` -1). Verbatim text,
+    /// `\verb`, listings.
+    pub literal: bool,
 }
 
 impl TextStyle {
@@ -320,6 +327,9 @@ pub enum Block {
         eject_before: bool,
         vspace_before: f64,
     },
+    /// `verbatim`/`verbatim*` and listings (compiler `Block::Verbatim`):
+    /// literal lines, laid out by `typeset::Context::verbatim_block`.
+    Verbatim(Box<VerbatimBlock>),
     /// `\hrule` in vertical mode: a full-measure rule 0.4pt high with no
     /// interline glue on either side (TeX §1056 sets `prev_depth` to
     /// `ignore_depth`).
@@ -328,6 +338,40 @@ pub enum Block {
         eject_before: bool,
         vspace_before: f64,
     },
+}
+
+/// One source line of a verbatim block: its raw bytes and where they start.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawLine {
+    pub document: DocumentId,
+    pub start: usize,
+    pub text: String,
+}
+
+/// A verbatim block (see [`Block::Verbatim`]). latex.ltx `\@verbatim`
+/// opens a `\trivlist` and `\item`: `\addvspace\@topsep` (`\topsep`, plus
+/// `\partopsep` when `\begin` was read in vertical mode) with
+/// `\@beginparpenalty`, `\vskip\parskip` (the `\parskip` in force: the
+/// enclosing list's `\parsep` inside a list), then the lines; `\endtrivlist`
+/// adds `\@endparpenalty` and the same `\@topsepadd`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VerbatimBlock {
+    pub lines: Vec<RawLine>,
+    pub kind: crate::verbatim::BlockKind,
+    /// The size declaration in force (hundredths of a point; 0 for
+    /// `\normalsize`).
+    pub size_cpt: u16,
+    pub vmode: bool,
+    /// The enclosing lists' margins (`\@totalleftmargin`).
+    pub list: Option<ListGeom>,
+    pub topsep: crate::style::Skip,
+    pub partopsep: crate::style::Skip,
+    pub parskip: crate::style::Skip,
+    pub eject_before: bool,
+    pub vspace_before: f64,
+    pub addvspace_before: f64,
+    pub endlist_adjust: f64,
+    pub span: Span,
 }
 
 /// LaTeX `\list` geometry of one `\item` paragraph (see
@@ -442,7 +486,7 @@ fn inlines_of(block: &CBlock) -> &[Inline] {
 /// - `\vfill`: dropped (the page builder has no stretchable vertical
 ///   glue), reported on the next block.
 fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<CBlock>, Vec<(&'static str, Span, String)>, Vec<StashedTitle>) {
-    use flashtex_compiler::parser::{FontSizeLevel, ParagraphStyle, TextFamily, TextStyle as CStyle};
+    use flashtex_compiler::parser::{FontSizeLevel, ParagraphStyle, TextStyle as CStyle};
     let mut out: Vec<CBlock> = Vec::with_capacity(blocks.len());
     let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
     let mut titles: Vec<StashedTitle> = Vec::new();
@@ -481,41 +525,6 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<C
             }
         }
         match block {
-            CBlock::Verbatim { lines, span } => {
-                let mut content: Vec<Inline> = Vec::with_capacity(lines.len() * 2);
-                for (i, line) in lines.iter().enumerate() {
-                    if i > 0 {
-                        // The break owns the bytes between the lines so no
-                        // interword space is read across it.
-                        let prev = lines[i - 1].span;
-                        content.push(Inline::LineBreak {
-                            span: Span {
-                                document: line.span.document,
-                                start: prev.end.min(line.span.start),
-                                end: line.span.start,
-                            },
-                        });
-                    }
-                    content.push(Inline::Text {
-                        text: line.text.clone(),
-                        span: line.span,
-                        style: CStyle {
-                            family: TextFamily::Mono,
-                            ..CStyle::default()
-                        },
-                        space_before: true,
-                    });
-                }
-                limitations.push((
-                    "unsupported_block",
-                    *span,
-                    format!("verbatim ({} line(s)) set as a flush-left paragraph in the body face with forced line breaks: the pipeline has no monospaced face or literal-text block", lines.len()),
-                ));
-                out.push(CBlock::Styled {
-                    style: ParagraphStyle::FlushLeft,
-                    content,
-                });
-            }
             CBlock::TableOfContents { span } => {
                 limitations.push((
                     "unsupported_block",
@@ -763,7 +772,7 @@ pub fn adapt_cached(
         let unit_start = match &unit.kind {
             UnitKind::Heading { number_span, .. } => Some(*number_span),
             UnitKind::Paragraph { inlines, .. } => inlines.iter().map(inline_span).next(),
-            UnitKind::Rule { span } => Some(*span),
+            UnitKind::Rule { span } | UnitKind::Verbatim { span, .. } => Some(*span),
             UnitKind::Picture { document, picture, .. } => Some(Span::in_document(*document, picture.start, picture.end)),
         };
         if let Some(at) = unit_start.filter(|s| s.document == entry_doc) {
@@ -893,6 +902,48 @@ pub fn adapt_cached(
                     eject_before,
                     vspace_before,
                 });
+                after_heading = false;
+                prev_para_end = None;
+            }
+            UnitKind::Verbatim { lines, span, vmode } => {
+                let src = texts.get(span.document.0).copied().unwrap_or("");
+                let raw = lines
+                    .iter()
+                    .map(|l| RawLine {
+                        document: l.span.document,
+                        start: l.span.start,
+                        text: texts.get(l.span.document.0).and_then(|t| t.get(l.span.start..l.span.end)).unwrap_or("").to_string(),
+                    })
+                    .collect();
+                let stack = list_stack_at(src, span.start);
+                let (topsep, partopsep, parskip, list) = match stack.last() {
+                    Some((env, _)) => {
+                        let seps = list_seps(src, env, stack.len(), size, &style);
+                        let geom = ListGeom {
+                            level: stack.len().min(usize::from(u8::MAX)) as u8,
+                            margins: list_margins(src, span.start, size),
+                            label: None,
+                            parsep: seps.parsep_skip,
+                        };
+                        (crate::style::Skip::fixed(seps.topsep), crate::style::Skip::fixed(seps.partopsep), seps.parsep_skip, Some(geom))
+                    }
+                    None => (style.topsep, style.partopsep, style.parskip, None),
+                };
+                blocks.push(Block::Verbatim(Box::new(VerbatimBlock {
+                    lines: raw,
+                    kind: crate::verbatim::block_kind(src, span.start),
+                    size_cpt: crate::verbatim::size_at(src, span.start, size),
+                    vmode,
+                    list,
+                    topsep,
+                    partopsep,
+                    parskip,
+                    eject_before,
+                    vspace_before,
+                    addvspace_before: unit.addvspace_before,
+                    endlist_adjust: unit.endlist_adjust,
+                    span,
+                })));
                 after_heading = false;
                 prev_para_end = None;
             }
@@ -1133,9 +1184,6 @@ fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, Strin
                 }
             }
         }
-        Inline::Verbatim { text, span, .. } => {
-            out.push(("unsupported_block", *span, format!("\\verb {text:?} set in the body face: the pipeline has no monospaced face")));
-        }
         #[cfg(feature = "amsmath-inline")]
         Inline::MathRows { rows, .. } => {
             for i in rows.iter().flat_map(|r| &r.intertext).flat_map(|t| &t.content) {
@@ -1150,9 +1198,9 @@ fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, Strin
 /// `\ref`/`\pageref`/`\eqref` become text from the label table; a
 /// footnote becomes its mark (plain text) followed by its note text; a
 /// tabular becomes its cells' inlines in reading order with `\\` between
-/// rows; `\verb` becomes `Mono` text. Everything else is borrowed.
+/// rows. `\verb` stays for `items_from_inlines` (typewriter text read
+/// from the source). Everything else is borrowed.
 fn lower_inline<'a>(inline: &'a Inline, labels: &Labels, reference_spans: &mut Vec<Span>, out: &mut Vec<std::borrow::Cow<'a, Inline>>) {
-    use flashtex_compiler::parser::{TextFamily, TextStyle as CStyle};
     match inline {
         Inline::Reference { key, page, equation, span, .. } => {
             let text = if *page {
@@ -1186,18 +1234,6 @@ fn lower_inline<'a>(inline: &'a Inline, labels: &Labels, reference_spans: &mut V
             for i in text.iter().flatten() {
                 lower_inline(i, labels, reference_spans, out);
             }
-        }
-        Inline::Verbatim { text, span, space_before } => {
-            reference_spans.push(*span);
-            out.push(std::borrow::Cow::Owned(Inline::Text {
-                text: text.clone(),
-                span: *span,
-                style: CStyle {
-                    family: TextFamily::Mono,
-                    ..CStyle::default()
-                },
-                space_before: *space_before,
-            }));
         }
         other => out.push(std::borrow::Cow::Borrowed(other)),
     }
@@ -1248,6 +1284,13 @@ enum UnitKind<'p> {
         picture: flashtex_vector_graphics::tikz::PictureSource,
         centered: bool,
     },
+    /// A compiler `Block::Verbatim`; `vmode`: its `\begin` was read in
+    /// vertical mode.
+    Verbatim {
+        lines: &'p [flashtex_compiler::parser::VerbatimLine],
+        span: Span,
+        vmode: bool,
+    },
 }
 
 const PAGE_BREAKS: [&str; 3] = ["newpage", "clearpage", "pagebreak"];
@@ -1273,6 +1316,9 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
     // The previous unit left TeX in vertical mode (a heading or a rule).
     let mut prev_vmode = false;
     let mut prev_styled = false;
+    // The previous unit was a verbatim block: TeX is in vertical mode after
+    // `\endtrivlist`, and `\@endpe` holds for the text that follows.
+    let mut prev_verbatim = false;
     // The previous unit was an `\item` paragraph, and whether its list's
     // `\begin` was read in vertical mode (`\@topsepadd` keeps `\partopsep`
     // for the closing skip too).
@@ -1303,6 +1349,41 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                 });
                 prev_end = Some(*span);
                 prev_vmode = true;
+                prev_verbatim = false;
+                continue;
+            }
+            CBlock::Verbatim { lines, span } => {
+                let gap = match prev_end {
+                    Some(p) if p.document == span.document && p.end <= span.start => texts.get(span.document.0).and_then(|t| t.get(p.end..span.start)),
+                    Some(_) => None,
+                    None => texts.get(span.document.0).and_then(|t| t.get(..span.start)),
+                };
+                let eject = std::mem::take(&mut pending_eject) || prev_end.is_some_and(|p| gap_has_page_break(texts, p, *span));
+                let vmode = prev_vmode || prev_verbatim || prev_end.is_none() || gap.is_some_and(|g| has_blank_line(g) || find_command(g, "par").is_some());
+                let src = texts.get(span.document.0).copied().unwrap_or("");
+                let (mut addvspace_before, mut endlist_adjust) = (0.0, 0.0);
+                if prev_list {
+                    if let Some(env) = gap.and_then(gap_has_list_end) {
+                        let seps = list_seps(src, env, 1, size, style);
+                        addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
+                        if let (Some(p), Some(g)) = (prev_end, gap) {
+                            endlist_adjust = list_end_adjust(src, p.end, g, size, style);
+                        }
+                    }
+                }
+                units.push(Unit {
+                    kind: UnitKind::Verbatim { lines, span: *span, vmode },
+                    eject_before: eject,
+                    vspace_before: std::mem::take(&mut pending_vspace),
+                    addvspace_before,
+                    endlist_adjust,
+                    limitations: std::mem::take(&mut pending_limitations),
+                });
+                prev_list = !list_stack_at(src, span.start).is_empty();
+                prev_end = Some(*span);
+                prev_vmode = false;
+                prev_styled = false;
+                prev_verbatim = true;
                 continue;
             }
             _ => {}
@@ -1394,7 +1475,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                     match opens {
                         Some((g, b)) if list_env_after_begin(&g[b..]) => {
                             let before = &g[..b];
-                            list_vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
+                            list_vmode = prev_vmode || prev_verbatim || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
                             if prev_vmode {
                                 // `\@nbitem`: `\addvspace{\@outerparskip - \parskip}`.
                                 addvspace_before += outer_parskip - seps.parsep;
@@ -1433,7 +1514,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
             };
             let begin = rfind_command(gap, "begin")?;
             let before = &gap[..begin];
-            let vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
+            let vmode = prev_vmode || prev_verbatim || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
             Some(EnvOpen { vmode })
         });
         // `\@endpe`: a plain paragraph right after `\end{...}` (no blank line
@@ -1450,7 +1531,17 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                         })
                     })
             });
+        // `\@endpe` after `\end{verbatim}`: the gap holds no blank line.
+        let after_env = after_env
+            || (styled.is_none()
+                && prev_verbatim
+                && first.zip(prev_end).is_some_and(|(f, p)| {
+                    p.document == f.document
+                        && p.end <= f.start
+                        && texts.get(f.document.0).and_then(|t| t.get(p.end..f.start)).is_some_and(|gap| !has_blank_line(gap) && find_command(gap, "par").is_none())
+                }));
         prev_styled = styled.is_some();
+        prev_verbatim = false;
         prev_vmode = matches!(block, CBlock::Heading { .. });
         match block {
             CBlock::Heading {
@@ -1556,8 +1647,8 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                     eject = false;
                 }
             }
-            CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => unreachable!("handled above"),
-            CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::TitleBlock { .. } | CBlock::VFill => unreachable!("lowered by lower_blocks"),
+            CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak | CBlock::Verbatim { .. } => unreachable!("handled above"),
+            CBlock::TableOfContents { .. } | CBlock::TitleBlock { .. } | CBlock::VFill => unreachable!("lowered by lower_blocks"),
         }
         if let Some(last) = inlines_of(block).iter().map(inline_span).last() {
             prev_end = Some(last);
@@ -2263,7 +2354,7 @@ enum StyleKind {
 /// so a size is never applied twice. The compiler's own table is the same
 /// one, but it resolves against its integer class size where the pipeline
 /// sets `\normalsize` at the class's real `\normalsize` (10.95pt at 11pt).
-fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
+pub(crate) fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
     use flashtex_compiler::parser::FontSizeLevel as L;
     let Some(level) = level else { return 0 };
     // tiny, scriptsize, footnotesize, small, large, Large, LARGE, huge, Huge
@@ -3301,7 +3392,30 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
     for inline in resolved.iter() {
         match &**inline {
             Inline::Label { key, .. } => items.push(Item::Label { key: key.clone() }),
-            Inline::Reference { .. } | Inline::Footnote { .. } | Inline::Verbatim { .. } => unreachable!("lowered by lower_inline above"),
+            Inline::Reference { .. } | Inline::Footnote { .. } => unreachable!("lowered by lower_inline above"),
+            Inline::Verbatim { span, .. } => {
+                // `\verb`: `\leavevmode\null` then the typewriter text; the
+                // space before it is read like a formula's.
+                let gap = space_between(prev_end, prev_span, *span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                pending_accent = None;
+                let src = text_of(span.document);
+                let size_cpt = crate::verbatim::size_at(src, span.start, size);
+                if let Some(verb) = crate::verbatim::verb_items(src, span.document, span.start, span.end, size_cpt) {
+                    for item in verb {
+                        match (items.last_mut(), item) {
+                            (Some(Item::Word(prev)), Item::Word(next)) => prev.segments.extend(next.segments),
+                            (_, item) => items.push(item),
+                        }
+                    }
+                }
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+            }
             Inline::Tabular(t) => {
                 // `\leavevmode\hbox{...}`: one box, with the space before it
                 // read like a formula's.
@@ -3778,6 +3892,7 @@ mod tests {
                 Block::Chrome { .. } => "M".to_string(),
                 Block::Title { .. } => "T".to_string(),
                 Block::ClearPage { .. } => "N".to_string(),
+                Block::Verbatim(_) => "V".to_string(),
             })
             .collect();
         // `Problem 1 \hfill \normalfont[4 points]`: one fill, no space after it.
