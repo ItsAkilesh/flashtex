@@ -223,6 +223,10 @@ pub struct PositionedGlyph {
     /// Baseline, in pt downward from the origin's y.
     pub baseline_y: f64,
     pub size: f64,
+    /// The glyph box's width in pt: the TFM character width TeX advances by
+    /// (plus the italic correction where `char_box` adds it, as for
+    /// delimiters), which is what pdfTeX records as the glyph's `/Widths`.
+    pub width: f64,
 }
 
 /// A filled rectangle on the page; `y` is its top edge (downward axis).
@@ -267,6 +271,7 @@ fn walk(b: &MathBox, x: f64, baseline: f64, out: &mut PositionedRuns) {
             x,
             baseline_y: baseline,
             size: *size,
+            width: b.width,
         }),
         BoxKind::Rule => out.rules.push(PositionedRule {
             x,

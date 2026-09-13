@@ -1,8 +1,0 @@
-{
-  "_comment": "Structural-gate limits per corpus case (tools/structural_gate.py). max_abs_delta_bp bounds every glyph-origin and rule-geometry delta relative to the case's first glyph; max_placement_delta_bp bounds the absolute page placement of that first glyph. pdfTeX writes three decimals, so 0.003 bp is its own rounding; the default leaves a little headroom above that and is NOT a claim of sub-0.01 fidelity beyond this corpus. regress_tolerance_bp is the allowed worsening against a recorded baseline.",
-  "regress_tolerance_bp": 0.001,
-  "default": {
-    "max_abs_delta_bp": 0.01,
-    "max_placement_delta_bp": 0.05
-  }
-}
