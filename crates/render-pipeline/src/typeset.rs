@@ -382,6 +382,18 @@ pub struct Context<'a> {
     maths: Vec<MathRec>,
     math_fonts: Option<MathProvider>,
     math_unavailable: bool,
+    /// Whether the project loads `amssymb`/`amsfonts`, which decides where
+    /// `\mathbb` and the AMS symbol repertoire come from
+    /// (`mathtext::TextSink::amsfonts`).
+    ///
+    /// This is a fact about the preamble: it is the same for every formula
+    /// in the project, and `texts` cannot change for the life of a
+    /// `Context`. It is therefore answered once, here, rather than by
+    /// re-scanning every document for `\usepackage` per formula -- which
+    /// made a whole-document render quadratic in (source size x formula
+    /// count). A field rather than a memo so that `math_box` has no
+    /// re-derivation to reach for.
+    ams_symbol_fonts: bool,
     reported: BTreeSet<String>,
     /// Diagnostics emitted while a cacheable block is being built (with
     /// their once-only keys, suppressed ones included).
@@ -429,6 +441,9 @@ impl<'a> Context<'a> {
             maths: Vec::new(),
             math_fonts: None,
             math_unavailable: false,
+            ams_symbol_fonts: texts
+                .iter()
+                .any(|t| crate::adapter::package_options(t, "amssymb").is_some() || crate::adapter::package_options(t, "amsfonts").is_some()),
             reported: BTreeSet::new(),
             capture: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
@@ -990,9 +1005,7 @@ impl<'a> Context<'a> {
             sink.text_quad = Some((text_quad, text_quad / fam2_quad));
         }
         sink.body_size_pt = self.style.body_size_pt;
-        sink.amsfonts = self.texts.iter().any(|t| {
-            crate::adapter::package_options(t, "amssymb").is_some() || crate::adapter::package_options(t, "amsfonts").is_some()
-        });
+        sink.amsfonts = self.ams_symbol_fonts;
         let texts = self.texts;
         let fence = |sp: &Span| fence_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
         let class = |sp: &Span| class_override_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
