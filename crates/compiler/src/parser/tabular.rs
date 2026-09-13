@@ -1540,7 +1540,7 @@ fn substitute_parameters(body: &[InputToken], arguments: &[Vec<InputToken>]) -> 
                         kind: TokenKind::Word(std::mem::take(literal)),
                         span: input.token.span,
                     },
-                    expansion_depth: input.expansion_depth,
+                    definition: input.definition,
                     maps_to_invocation: input.maps_to_invocation,
                 });
             }
