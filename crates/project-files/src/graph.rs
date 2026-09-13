@@ -396,8 +396,78 @@ struct Discovery<'a> {
 }
 
 impl Discovery<'_> {
-    fn exists(&self, path: &ProjectPath) -> bool {
-        self.overlay.get(path).is_some() || path.to_os_path(&self.root).is_file()
+    /// Resolves `path` to the file that actually backs it, if any.
+    ///
+    /// A literal lookup (overlay, then the exact on-disk bytes) is tried
+    /// first and returns `path` unchanged. On a normalization-insensitive
+    /// filesystem (APFS) that is already enough: `\input{café}` and
+    /// `\input{cafe´}` (NFD) both resolve the same physical file because the
+    /// OS itself treats the two byte spellings as the same lookup. On a
+    /// normalization-*sensitive* filesystem (ext4) the literal lookup for
+    /// whichever spelling was not used on disk fails, so a second pass lists
+    /// the containing directory and matches entries by [`ProjectPath`]
+    /// identity (Unicode-NFC-normalized), which is spelling-insensitive
+    /// regardless of what the filesystem does. This keeps resolution
+    /// filesystem-independent: the same graph comes out on ext4 and APFS.
+    ///
+    /// The returned path carries the *on-disk* raw bytes (never the
+    /// as-referenced spelling), so a physical file always gets exactly one
+    /// graph entry no matter how many differently-normalized spellings
+    /// reference it (issue #45 finding 3), and the subsequent rooted read in
+    /// [`Discovery::load`] is against bytes that actually exist on disk.
+    fn resolve_existing(&self, path: &ProjectPath) -> Option<ProjectPath> {
+        if self.overlay.get(path).is_some() {
+            return Some(path.clone());
+        }
+        if path.to_os_path(&self.root).is_file() {
+            return Some(path.clone());
+        }
+        self.resolve_via_directory_listing(path)
+    }
+
+    /// Lists `path`'s parent directory (a plain, non-fd-rooted read — the
+    /// same trust level `resolve_existing`'s literal `is_file()` check
+    /// already has) looking for an entry whose name is the *same*
+    /// [`ProjectPath`] identity as `path` (NFC-normalized comparison, so any
+    /// differently-normalized spelling of the same name matches). This never
+    /// grants extra trust: whatever name is found here still has to pass
+    /// through the fd-rooted, symlink-refusing [`Discovery::load`] before its
+    /// content is read, exactly like a literal candidate would.
+    fn resolve_via_directory_listing(&self, path: &ProjectPath) -> Option<ProjectPath> {
+        let parent_dir = path.parent_dir();
+        let mut dir_os_path = self.root.clone();
+        if !parent_dir.is_empty() {
+            for seg in parent_dir.split('/') {
+                dir_os_path.push(seg);
+            }
+        }
+        let entries = std::fs::read_dir(&dir_os_path).ok()?;
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            // A symlink entry is filtered here too (its own file type, not
+            // the target's), but this is belt-and-suspenders: `load` refuses
+            // to follow it either way.
+            if !file_type.is_file() {
+                continue;
+            }
+            let Some(name) = entry.file_name().into_string().ok() else {
+                continue; // not valid UTF-8; cannot match a ProjectPath
+            };
+            let candidate_str = if parent_dir.is_empty() {
+                name
+            } else {
+                format!("{parent_dir}/{name}")
+            };
+            let Ok(on_disk) = ProjectPath::normalize(&candidate_str) else {
+                continue;
+            };
+            if &on_disk == path {
+                return Some(on_disk);
+            }
+        }
+        None
     }
 
     /// Loads `path` through the rooted, symlink-refusing primitive that
@@ -532,7 +602,7 @@ impl Discovery<'_> {
             }
         };
         let (kind, candidates) = candidates(r.kind, &base);
-        let Some(target) = candidates.iter().find(|c| self.exists(c)).cloned() else {
+        let Some(target) = candidates.iter().find_map(|c| self.resolve_existing(c)) else {
             let severity = if kind == FileKind::Graphic {
                 Severity::Warning
             } else {
@@ -725,5 +795,71 @@ pub fn candidates(kind: ReferenceKind, base: &ProjectPath) -> (FileKind, Vec<Pro
                 )
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// Issue #45 finding 3, unit-tested directly against
+    /// `resolve_via_directory_listing` rather than through the full
+    /// `ProjectGraph::discover` pipeline. `Discovery::resolve_existing` tries
+    /// a literal lookup first and only falls back to a directory listing
+    /// when that literal lookup fails -- which it always does on ext4 for a
+    /// spelling that doesn't match what's on disk, but *not* on APFS, whose
+    /// own normalization-insensitive lookup already succeeds for either
+    /// spelling. That asymmetry is exactly how this regressed unnoticed on
+    /// macOS, so an end-to-end test run on this (macOS) machine cannot, by
+    /// itself, prove the fallback path works -- it would pass whether or not
+    /// this function existed at all. Calling `resolve_via_directory_listing`
+    /// directly sidesteps that: it deterministically exercises the exact
+    /// fallback code that ext4 depends on, regardless of what the host
+    /// filesystem's own lookup semantics happen to be for this pair of
+    /// spellings.
+    #[test]
+    fn directory_listing_fallback_finds_nfd_reference_against_nfc_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "flashtex-graph-nfc-nfd-unit-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let nfc_stem = "caf\u{e9}"; // "café", 'é' precomposed (NFC) -- the only file written to disk
+        let nfd_stem = "cafe\u{301}"; // "café", 'e' + combining acute (NFD) -- how it's looked up
+        fs::write(dir.join(format!("{nfc_stem}.tex")), "Cafe content.").unwrap();
+
+        let overlay = Overlay::default();
+        let project_root = ProjectRoot::open(&dir).unwrap();
+        let discovery = Discovery {
+            root: dir.clone(),
+            project_root,
+            overlay: &overlay,
+            graph: ProjectGraph {
+                root: dir.clone(),
+                entry: ProjectPath::normalize("main.tex").unwrap(),
+                files: Vec::new(),
+                edges: Vec::new(),
+                diagnostics: Vec::new(),
+            },
+            index: BTreeMap::new(),
+            stack: Vec::new(),
+        };
+
+        let nfd_candidate = ProjectPath::normalize(&format!("{nfd_stem}.tex")).unwrap();
+        let resolved = discovery
+            .resolve_via_directory_listing(&nfd_candidate)
+            .expect("directory listing must find the on-disk NFC file for an NFD-spelled candidate");
+        assert_eq!(
+            resolved.as_str(),
+            format!("{nfc_stem}.tex"),
+            "the resolved path must carry the on-disk (NFC) raw bytes, not the NFD spelling it was looked up with"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
