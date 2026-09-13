@@ -28,6 +28,7 @@ mod hyperlinks;
 mod boxes;
 mod lists;
 mod colors;
+mod algorithmic;
 mod tabular;
 
 pub use lists::{
@@ -1098,6 +1099,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         include_stack: vec![entry],
         counters: crate::xref::Counters::article(),
         subequations: Vec::new(),
+        algorithm_counter: 0,
         footnote_counter: 0,
         mpfootnote_counter: 0,
         chapter_class: false,
@@ -1251,6 +1253,8 @@ struct P<'a> {
     /// The `\theequation` in force outside each open `subequations`
     /// environment, restored at its `\end` (amsmath's group).
     subequations: Vec<Vec<crate::xref::Piece>>,
+    /// The `algorithm` float's counter (algorithm.sty's `\newfloat`).
+    algorithm_counter: u32,
     /// LaTeX's `footnote` counter; article never resets it, report and
     /// book reset it at every numbered `\chapter` (`\@addtoreset`).
     footnote_counter: u32,
@@ -1683,6 +1687,16 @@ impl P<'_> {
             // `expansion::HOST_PRELUDE`).
             "numberwithin" => self.counter_numbering(name, span),
             "counterwithin" | "counterwithout" => self.counter_numbering(name, span),
+            // Pseudocode package definitions, read from the source bytes by
+            // `crate::algorithmic::setup`; their tokens are consumed here.
+            "algnewcommand" | "algrenewcommand" => self.algorithm_definition(name, span),
+            "algsetup" => {
+                let _ = self.required_group(name, span);
+            }
+            "floatname" => {
+                let _ = self.required_group(name, span);
+                let _ = self.required_group(name, span);
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "chapter" if self.chapter_class => self.chapter(span, blocks, para),
             "section" | "subsection" | "subsubsection" => {
@@ -1847,7 +1861,9 @@ impl P<'_> {
                     .last()
                     .map(|(name, _)| name.clone())
                     .unwrap_or_default();
-                if float != "figure" && float != "table" {
+                if matches!(float.as_str(), "algorithm" | "algorithm*") {
+                    self.algorithm_caption(span, tokens, blocks, para);
+                } else if float != "figure" && float != "table" {
                     self.diags.push(Diagnostic::error(
                         "\\caption is only supported inside a figure or table environment",
                         Some(span),
@@ -2877,10 +2893,21 @@ impl P<'_> {
                 self.verbatim_environment(span, argument_span, &environment, blocks, para);
                 return;
             }
+            // `algorithmic`/`algpseudocode` (see `crate::algorithmic`).
+            if environment == "algorithmic"
+                && self.in_body
+                && self.algorithmic_environment(span, blocks, para)
+            {
+                return;
+            }
             self.env_alignments.push(self.declared_alignment);
             if environment == "document" && self.has_document {
                 self.in_body = true;
-            } else if (environment == "figure" || environment == "table") && self.in_body {
+            } else if matches!(
+                environment.as_str(),
+                "figure" | "table" | "algorithm" | "algorithm*"
+            ) && self.in_body
+            {
                 self.flush_paragraph(blocks, para);
             } else if environment == "NoHyper" {
                 self.no_hyper_depth += 1;
@@ -3094,7 +3121,7 @@ impl P<'_> {
                     }
                 }
             }
-        } else if environment == "figure" || environment == "table" {
+        } else if matches!(environment.as_str(), "figure" | "table" | "algorithm" | "algorithm*") {
             self.flush_paragraph(blocks, para);
         } else if self.theorems.contains_key(&environment) {
             self.flush_paragraph(blocks, para);
@@ -5613,6 +5640,13 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // lstlisting/\lstinline bodies are literal text; the listings keys
         // are laid out by the render pipeline (see `LISTING_KEYS`).
         "listings" => options.is_empty(),
+        // Pseudocode (crate::algorithmic): every algorithm.sty option is
+        // modelled (style, counter reset, or the float name through
+        // `\DeclareOption*`); algorithmic's and algpseudocode's end/noend.
+        "algorithm" => true,
+        "algorithmic" => options.iter().all(|option| *option == "noend"),
+        "algpseudocode" => options.iter().all(|option| crate::algorithmic::algpseudocode_option(option)),
+        "algorithmicx" => options.is_empty(),
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep

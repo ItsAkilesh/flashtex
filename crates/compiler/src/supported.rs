@@ -125,6 +125,10 @@ const TEXT_EXTRA_ARMS: &[&str] = &[
     "swapnumbers",
     "qed",
     "qedhere",
+    "algnewcommand",
+    "algrenewcommand",
+    "algsetup",
+    "floatname",
 ];
 
 /// Canonical commands the expansion pass executes itself (engine primitives
@@ -190,7 +194,11 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("label", "{key}", "names the current section, equation or figure number"),
     ("ref", "{key}", "number of the labelled item"),
     ("pageref", "{key}", "page number of the labelled item"),
-    ("caption", "{...}", "numbered \"Figure N:\" caption inside figure"),
+    ("caption", "{...}", "numbered \"Figure N:\" caption inside figure; \"Algorithm N\" inside algorithm"),
+    ("algnewcommand", "{\\name}[n]{body}", "algorithmicx definition: keyword texts (\\algorithmicrequire ...), \\algorithmicindent, \\alglinenumber and \\item[...] label commands"),
+    ("algrenewcommand", "{\\name}[n]{body}", "algorithmicx redefinition of a keyword text, \\algorithmicindent or \\alglinenumber"),
+    ("algsetup", "{key=value}", "algorithmic indent, linenosize and linenodelimiter"),
+    ("floatname", "{float}{name}", "the caption name of the algorithm float"),
     ("item", "[label]", "entry of an itemize, enumerate or description list"),
     ("textbf", "{...}", "bold text"),
     ("textmd", "{...}", "medium-weight text"),
@@ -707,6 +715,15 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
         "amsmath: displays inside number as the parent number plus a, b, ...; a \\label right after \\begin gets the parent number",
     ),
     ("figure", "numbered captions; no floating"),
+    (
+        "algorithm",
+        "algorithm.sty float: \"Algorithm N\" captions (plain, ruled, boxed); no floating in this layout",
+    ),
+    ("algorithm*", "two-column algorithm float"),
+    (
+        "algorithmic",
+        "algorithmic or algpseudocode statements: nested blocks, bold keywords, line numbers, comments, procedures",
+    ),
     ("center", "centred paragraphs"),
     ("flushleft", "left-aligned paragraphs"),
     ("flushright", "right-aligned paragraphs"),
@@ -777,6 +794,22 @@ const PACKAGES: &[(&str, &str, &str)] = &[
         "colorlinks, bookmarksnumbered",
         "links, destinations, bookmarks and PDF info recorded for export; \\autoref, \\nameref, \\hypersetup",
     ),
+];
+
+/// Pseudocode packages (`crate::algorithmic`), appended to [`PACKAGES`].
+const PSEUDOCODE_PACKAGES: &[(&str, &str, &str)] = &[
+    (
+        "algorithm",
+        "plain, ruled, boxed, section",
+        "the algorithm float: style, counter reset and float name options",
+    ),
+    ("algorithmic", "noend", "\\STATE, \\IF, \\FOR, \\WHILE, \\REPEAT, \\REQUIRE, \\COMMENT"),
+    (
+        "algpseudocode",
+        "noend",
+        "\\State, \\If, \\For, \\While, \\Procedure, \\Function, \\Call, \\Comment",
+    ),
+    ("algorithmicx", "", "the layout algpseudocode builds on"),
 ];
 
 /// The vendored coverage denominator.
@@ -964,6 +997,7 @@ pub fn inventory() -> Inventory {
 
     let packages = PACKAGES
         .iter()
+        .chain(PSEUDOCODE_PACKAGES)
         .map(|&(name, options, description)| Package {
             name,
             options,
