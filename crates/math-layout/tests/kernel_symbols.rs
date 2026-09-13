@@ -89,8 +89,10 @@ const KERNEL_SYMBOLS: &[(&str, char, &str, &str)] = &[
     ("biguplus", '\u{2A04}', "8.33336", "21.24416"),
     // Already-carried rows re-read here as the control on the two tables:
     // \imath/\jmath (letters "7B/"7C) and \varrho (letters "25).
-    ("imath", '\u{0131}', "3.22456", "12.80211"),
-    ("jmath", '\u{0237}', "3.84030", "13.41785"),
+    ("imath", '\u{1D6A4}', "3.22456", "12.80211"),
+    ("jmath", '\u{1D6A5}', "3.84030", "13.41785"),
+    ("imath (text dotless i)", '\u{0131}', "3.22456", "12.80211"),
+    ("jmath (text dotless j)", '\u{0237}', "3.84030", "13.41785"),
     ("varrho", '\u{03F1}', "5.17015", "14.74770"),
 ];
 

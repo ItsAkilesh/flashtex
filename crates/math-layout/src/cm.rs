@@ -406,8 +406,12 @@ pub fn symbol_slot(ch: char) -> Option<(Family, u8)> {
         '\u{02C7}' => (Roman, 0x14),
         '\u{20D7}' => (Italic, 0x7E),
         // \imath, \jmath
-        '\u{0131}' => (Italic, 0x7B),
-        '\u{0237}' => (Italic, 0x7C),
+        // Both the text dotless pair and the Mathematical Alphanumeric pair
+        // `unicode-math` names for these two commands, which is what the
+        // compiler emits (it is 0.322456 em / 0.384030 em wide in Latin Modern
+        // Math, cmmi10's width; the text pair is 14% and 20% narrow there).
+        '\u{0131}' | '\u{1D6A4}' => (Italic, 0x7B),
+        '\u{0237}' | '\u{1D6A5}' => (Italic, 0x7C),
         _ => return None,
     })
 }
