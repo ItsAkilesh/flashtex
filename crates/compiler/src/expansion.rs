@@ -41,9 +41,11 @@
 //!   (see [`HOST_PRELUDE`]), recorded in [`Expansion::arraystretch`].
 
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::rc::Rc;
 
-use flashtex_tex_expansion::{self as tex, CatCode, Engine, Limits, TokenKind as TexKind};
+use flashtex_tex_expansion::{self as tex, CatCode, Edit, Engine, IncrementalExpander, Limits, TokenKind as TexKind};
 
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{tokenize_document, Token, TokenKind};
@@ -71,7 +73,9 @@ pub struct ExpansionSite {
 }
 
 pub struct Expansion {
-    pub tokens: Vec<ExpandedToken>,
+    /// Shared with the incremental cache, so a keystroke does not copy the
+    /// whole stream.
+    pub tokens: Rc<Vec<ExpandedToken>>,
     pub diagnostics: Vec<Diagnostic>,
     /// `\arraystretch`'s replacement text in effect at each
     /// `\begin{tabular}`/`tabular*`/`array`, keyed by that `\begin`'s span.
@@ -136,6 +140,20 @@ impl Prepared<'_> {
 
 /// Counter formats enumitem accepts as `\<format>*` in a `label` template.
 const LABEL_FORMATS: &[&str] = &["arabic", "roman", "Roman", "alph", "Alph", "fnsymbol"];
+
+impl<'a> Prepared<'a> {
+    /// A document the engine reads unmodified (never scanned).
+    fn plain(text: &'a str) -> Self {
+        Prepared {
+            text: Cow::Borrowed(text),
+            verbs: HashMap::new(),
+            verb_markers: HashSet::new(),
+            renamed: HashMap::new(),
+            skip: Vec::new(),
+            verbatim_ends: HashMap::new(),
+        }
+    }
+}
 
 fn prepare<'a>(text: &'a str, document: DocumentId) -> Prepared<'a> {
     let mut prepared = Prepared {
@@ -334,7 +352,6 @@ struct Converter<'d> {
     document_by_path: HashMap<&'d str, usize>,
     /// Engine source id -> document index (`None`: the prelude).
     source_documents: HashMap<u32, Option<usize>>,
-    entry: usize,
     out: Vec<ExpandedToken>,
     diagnostics: Vec<Diagnostic>,
     arraystretch: HashMap<(usize, usize), String>,
@@ -344,6 +361,13 @@ struct Converter<'d> {
     /// Reading the `{<\arraystretch>}` group after a table marker: the key
     /// it is recorded under, brace depth, and the text so far.
     stretch: Option<((usize, usize), usize, String)>,
+    /// Engine token index being converted, and the index of the marker that
+    /// opened the current `\arraystretch` capture.
+    index: usize,
+    stretch_index: usize,
+    /// Every `\arraystretch` record in production order, with its marker's
+    /// engine token index (what the incremental cache keeps and splices).
+    stretch_log: Vec<(usize, (usize, usize), String)>,
 }
 
 struct PendingWord {
@@ -521,52 +545,73 @@ impl<'d> Converter<'d> {
     }
 }
 
-/// Run the expansion pass over the entry document (and everything it
-/// includes).
-pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansion {
-    let prepared: Vec<Prepared<'_>> = documents
-        .iter()
-        .enumerate()
-        .map(|(index, document)| prepare(document.text, DocumentId(index)))
-        .collect();
-    let total_bytes: usize = documents.iter().map(|d| d.text.len()).sum();
-    let limits = Limits {
-        max_expansion_steps: 2_000_000 + 32 * total_bytes as u64,
-        max_output_tokens: 2_000_000 + 8 * total_bytes as u64,
+/// Entry documents at least this large keep a thread-local incremental
+/// cache (see [`expand_project_cached`]); smaller ones re-expand from
+/// scratch, which costs less than the cache bookkeeping.
+pub const INCREMENTAL_MIN_BYTES: usize = 16 * 1024;
+
+fn limits_for(bytes: usize) -> Limits {
+    Limits {
+        max_expansion_steps: 2_000_000 + 32 * bytes as u64,
+        max_output_tokens: 2_000_000 + 8 * bytes as u64,
         ..Limits::default()
-    };
-    let entry_text: &str = prepared.get(entry).map_or("", |p| p.text.as_ref());
-    let mut engine = Engine::with_limits(entry_text, limits);
+    }
+}
+
+/// Host setup shared by the full and the incremental path. Everything it
+/// sets is part of the engine's checkpointed state.
+fn configure(engine: &mut Engine) {
     engine.run_host_prelude(HOST_PRELUDE);
     engine.set_emit_unbalanced_close(true);
     for name in BUILT_INS {
         engine.declare_host_command(name);
     }
     engine.declare_host_command("include");
+}
 
-    let mut conv = Converter {
-        documents,
-        document_by_path: documents.iter().enumerate().map(|(i, d)| (d.path, i)).collect(),
-        source_documents: HashMap::from([(0, Some(entry))]),
-        entry,
-        out: Vec::new(),
-        diagnostics: Vec::new(),
-        arraystretch: HashMap::new(),
-        word: None,
-        last_span: Span::in_document(DocumentId(entry), 0, 0),
-        stretch: None,
-    };
-    let _ = conv.entry;
+fn has_includes(text: &str) -> bool {
+    text.contains("\\input") || text.contains("\\include")
+}
 
-    let mut lookahead: Vec<(tex::Token, Option<tex::Span>)> = Vec::new();
-    loop {
-        let next = if lookahead.is_empty() {
-            engine.next_content_token_with_origin()
-        } else {
-            Some(lookahead.remove(0))
-        };
-        let Some((token, origin)) = next else { break };
-        let at = conv.place(&token, origin);
+fn step_limit_hit(diagnostics: &[tex::Diagnostic]) -> bool {
+    diagnostics.iter().any(|d| d.message.contains("expansion step limit exceeded"))
+}
+
+/// What the caller must do after one converted token.
+enum Flow {
+    Next,
+    /// A source-level `\input`/`\include`: its braced path is still to be
+    /// read.
+    Include(String, Placement),
+}
+
+impl<'d> Converter<'d> {
+    fn new(documents: &'d [SourceDocument<'d>], entry: usize) -> Self {
+        Converter {
+            documents,
+            document_by_path: documents.iter().enumerate().map(|(i, d)| (d.path, i)).collect(),
+            source_documents: HashMap::from([(0, Some(entry))]),
+            out: Vec::new(),
+            diagnostics: Vec::new(),
+            arraystretch: HashMap::new(),
+            word: None,
+            last_span: Span::in_document(DocumentId(entry), 0, 0),
+            stretch: None,
+            index: 0,
+            stretch_index: 0,
+            stretch_log: Vec::new(),
+        }
+    }
+
+    /// No partially built word or `\arraystretch` capture: the output so far
+    /// does not depend on tokens still to come.
+    fn clean(&self) -> bool {
+        self.word.is_none() && self.stretch.is_none()
+    }
+
+    fn convert_token(&mut self, prepared: &[Prepared<'_>], token: &tex::Token, origin: Option<tex::Span>) -> Flow {
+        let conv = self;
+        let at = conv.place(token, origin);
         if let Some((key, depth, mut text)) = conv.stretch.take() {
             match &token.kind {
                 TexKind::Char(_, CatCode::BeginGroup) => {
@@ -576,6 +621,7 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
                     conv.stretch = Some((key, depth + 1, text));
                 }
                 TexKind::Char(_, CatCode::EndGroup) if depth <= 1 => {
+                    conv.stretch_log.push((conv.stretch_index, key, text.clone()));
                     conv.arraystretch.insert(key, text);
                 }
                 TexKind::Char(_, CatCode::EndGroup) => {
@@ -593,10 +639,10 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
                 }
                 _ => conv.stretch = Some((key, depth, text)),
             }
-            continue;
+            return Flow::Next;
         }
         if !at.maps && at.real.is_some_and(|real| prepared[real.document.0].skips(real.start)) {
-            continue;
+            return Flow::Next;
         }
         match &token.kind {
             TexKind::Char(c, cat) => match cat {
@@ -631,6 +677,7 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
                             .filter(|b| conv.source_text(*b) == "\\begin")
                             .map(|b| Placement { span: b, definition: None, maps: false, real: Some(b) })
                             .unwrap_or(at);
+                        conv.stretch_index = conv.index;
                         conv.stretch = Some(((begin.span.document.0, begin.span.start), 0, String::new()));
                         conv.push_environment("begin", env, begin);
                     }
@@ -664,45 +711,7 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
                         .real
                         .is_some_and(|real| prepared[real.document.0].verb_markers.contains(&real.start)) => {}
                     "input" | "include" if origin.is_none() && real_text == format!("\\{name}") => {
-                        // Read the braced path through the engine.
-                        let mut taken = Vec::new();
-                        let mut path = String::new();
-                        let mut ok = false;
-                        let mut depth = 0usize;
-                        while let Some((t, o)) = engine.next_content_token_with_origin() {
-                            let kind = t.kind.clone();
-                            taken.push((t, o));
-                            match kind {
-                                TexKind::Char(_, CatCode::Space) if depth == 0 => {}
-                                TexKind::Char(_, CatCode::BeginGroup) => {
-                                    depth += 1;
-                                    if depth > 1 {
-                                        path.push('{');
-                                    }
-                                }
-                                TexKind::Char(_, CatCode::EndGroup) if depth > 0 => {
-                                    depth -= 1;
-                                    if depth == 0 {
-                                        ok = true;
-                                        break;
-                                    }
-                                    path.push('}');
-                                }
-                                _ if depth == 0 => break,
-                                TexKind::Char(c, _) | TexKind::ActiveChar(c) => path.push(c),
-                                TexKind::ControlSequence(cs) => {
-                                    path.push('\\');
-                                    path.push_str(&cs);
-                                }
-                                _ => {}
-                            }
-                        }
-                        if !ok {
-                            conv.push(TokenKind::Command(name.clone()), at);
-                            lookahead.extend(taken);
-                            continue;
-                        }
-                        include(&mut conv, &mut engine, &prepared, name, path.trim(), at.span);
+                        return Flow::Include(name.clone(), at);
                     }
                     _ if name.chars().count() == 1 && !name.chars().all(char::is_alphabetic) => {
                         conv.flush_word();
@@ -733,57 +742,473 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
                 }
             }
         }
+        Flow::Next
+    }
+
+    /// A runaway expansion (`\def\x{\x}\x`, common mid-edit) stops the engine
+    /// for good. Keep the rest of the document visible: its remaining bytes
+    /// are typeset from the parser's own tokenizer, without macro expansion.
+    fn resume_unexpanded(&mut self, document: usize, offset: usize) {
+        let text = self.documents[document].text;
+        let offset = offset.min(text.len());
+        if !text.is_char_boundary(offset) {
+            return;
+        }
+        for token in tokenize_document(&text[offset..], DocumentId(document)) {
+            let span = Span::in_document(DocumentId(document), token.span.start + offset, token.span.end + offset);
+            self.out.push(ExpandedToken {
+                token: Token { kind: token.kind, span },
+                definition: None,
+                maps_to_invocation: false,
+            });
+        }
+    }
+
+    fn map_diagnostics(&mut self, diagnostics: &[tex::Diagnostic]) {
+        let fallback = self.last_span;
+        for diagnostic in diagnostics {
+            if parser_reports_itself(&diagnostic.message) {
+                continue;
+            }
+            let span = self
+                .span(diagnostic.span)
+                .or(if diagnostic.span.is_synthetic() { Some(fallback) } else { None });
+            let recovery = Some(recovery_for(&diagnostic.message).to_string());
+            self.diagnostics.push(match diagnostic.severity {
+                tex::Severity::Error => Diagnostic::error(diagnostic.message.clone(), span, recovery),
+                tex::Severity::Warning => Diagnostic::warning(diagnostic.message.clone(), span, recovery),
+            });
+        }
+    }
+}
+
+/// Run the expansion pass over the entry document (and everything it
+/// includes) from scratch.
+pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansion {
+    let prepared: Vec<Prepared<'_>> = documents
+        .iter()
+        .enumerate()
+        .map(|(index, document)| prepare(document.text, DocumentId(index)))
+        .collect();
+    let total_bytes: usize = documents.iter().map(|d| d.text.len()).sum();
+    let entry_text: &str = prepared.get(entry).map_or("", |p| p.text.as_ref());
+    let mut engine = Engine::with_limits(entry_text, limits_for(total_bytes));
+    configure(&mut engine);
+
+    let mut conv = Converter::new(documents, entry);
+    let mut lookahead: VecDeque<(tex::Token, Option<tex::Span>)> = VecDeque::new();
+    loop {
+        let next = match lookahead.pop_front() {
+            Some(t) => Some(t),
+            None => engine.next_content_token_with_origin(),
+        };
+        let Some((token, origin)) = next else { break };
+        let Flow::Include(name, at) = conv.convert_token(&prepared, &token, origin) else {
+            continue;
+        };
+        // Read the braced path through the engine.
+        let mut taken = Vec::new();
+        let mut path = String::new();
+        let mut ok = false;
+        let mut depth = 0usize;
+        while let Some((t, o)) = engine.next_content_token_with_origin() {
+            let kind = t.kind.clone();
+            taken.push((t, o));
+            match kind {
+                TexKind::Char(_, CatCode::Space) if depth == 0 => {}
+                TexKind::Char(_, CatCode::BeginGroup) => {
+                    depth += 1;
+                    if depth > 1 {
+                        path.push('{');
+                    }
+                }
+                TexKind::Char(_, CatCode::EndGroup) if depth > 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        ok = true;
+                        break;
+                    }
+                    path.push('}');
+                }
+                _ if depth == 0 => break,
+                TexKind::Char(c, _) | TexKind::ActiveChar(c) => path.push(c),
+                TexKind::ControlSequence(cs) => {
+                    path.push('\\');
+                    path.push_str(&cs);
+                }
+                _ => {}
+            }
+        }
+        if !ok {
+            conv.push(TokenKind::Command(name), at);
+            lookahead.extend(taken);
+            continue;
+        }
+        include(&mut conv, &mut engine, &prepared, &name, path.trim(), at.span);
     }
     conv.flush_word();
 
-    // A runaway expansion (`\def\x{\x}\x`, common mid-edit) stops the engine
-    // for good. Keep the rest of the document visible: its remaining bytes
-    // are typeset from the parser's own tokenizer, without macro expansion.
-    // The engine's diagnostic below names the invocation that looped.
-    let fallback = conv.last_span;
-    let halted = engine
-        .diagnostics()
-        .iter()
-        .any(|d| d.message.contains("expansion step limit exceeded"));
-    if halted {
+    if step_limit_hit(engine.diagnostics()) {
         if let Some((source, offset)) = engine.input_position() {
             if let Some(Some(document)) = conv.source_documents.get(&source).copied() {
-                let text = documents[document].text;
-                let offset = offset.min(text.len());
-                if text.is_char_boundary(offset) {
-                    for token in tokenize_document(&text[offset..], DocumentId(document)) {
-                        let span = Span::in_document(
-                            DocumentId(document),
-                            token.span.start + offset,
-                            token.span.end + offset,
-                        );
-                        conv.out.push(ExpandedToken {
-                            token: Token { kind: token.kind, span },
-                            definition: None,
-                            maps_to_invocation: false,
-                        });
-                    }
-                }
+                conv.resume_unexpanded(document, offset);
             }
         }
     }
-    for diagnostic in engine.diagnostics() {
-        if parser_reports_itself(&diagnostic.message) {
-            continue;
-        }
-        let span = conv.span(diagnostic.span).or(if diagnostic.span.is_synthetic() {
-            Some(fallback)
-        } else {
-            None
-        });
-        let recovery = Some(recovery_for(&diagnostic.message).to_string());
-        conv.diagnostics.push(match diagnostic.severity {
-            tex::Severity::Error => Diagnostic::error(diagnostic.message.clone(), span, recovery),
-            tex::Severity::Warning => Diagnostic::warning(diagnostic.message.clone(), span, recovery),
-        });
-    }
+    let diagnostics = engine.diagnostics().to_vec();
+    conv.map_diagnostics(&diagnostics);
+    Expansion { tokens: Rc::new(conv.out), diagnostics: conv.diagnostics, arraystretch: conv.arraystretch }
+}
 
-    Expansion { tokens: conv.out, diagnostics: conv.diagnostics, arraystretch: conv.arraystretch }
+/// A converter state with nothing pending, recorded while converting: after
+/// `index` engine tokens the converted output had `out_len` tokens.
+#[derive(Debug, Clone, Copy)]
+struct Mark {
+    index: usize,
+    out_len: usize,
+    last_span: Span,
+}
+
+/// Engine tokens between two recorded marks.
+const MARK_EVERY: usize = 64;
+
+/// Incremental expansion state for one entry document: the engine's
+/// checkpoints (`IncrementalExpander`) and the converted stream with marks
+/// where it can be cut and resumed.
+pub struct ExpansionCache {
+    entry_path: String,
+    /// The blanked entry text the expander holds.
+    masked: String,
+    created_bytes: usize,
+    expander: IncrementalExpander,
+    out: Rc<Vec<ExpandedToken>>,
+    marks: Vec<Mark>,
+    stretch_log: Vec<(usize, (usize, usize), String)>,
+    last_span: Span,
+    /// Engine tokens the previous run produced.
+    old_engine_tokens: usize,
+    /// The last revision ran into the step limit: re-expand from scratch
+    /// until it no longer does (an incremental run would hit the same limit
+    /// and still need the full run for its recovery).
+    halted: bool,
+}
+
+thread_local! {
+    static CACHES: RefCell<Vec<ExpansionCache>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Documents kept warm per thread.
+const MAX_CACHES: usize = 4;
+
+/// [`expand_project`], re-expanding incrementally when the entry document
+/// was expanded before on this thread (same path). Output is identical to
+/// [`expand_project`] (see `tests/expansion_incremental.rs`). Small entries
+/// and projects that `\input` files use the full path.
+pub fn expand_project_cached(documents: &[SourceDocument<'_>], entry: usize) -> Expansion {
+    let Some(document) = documents.get(entry) else {
+        return expand_project(documents, entry);
+    };
+    if document.text.len() < INCREMENTAL_MIN_BYTES || has_includes(document.text) {
+        return expand_project(documents, entry);
+    }
+    CACHES.with(|caches| {
+        let mut caches = caches.borrow_mut();
+        let mut slot = caches
+            .iter()
+            .position(|cache| cache.entry_path == document.path)
+            .map(|index| caches.remove(index));
+        let expansion = expand_project_with_cache(documents, entry, &mut slot);
+        if let Some(cache) = slot {
+            caches.insert(0, cache);
+            caches.truncate(MAX_CACHES);
+        }
+        expansion
+    })
+}
+
+/// [`expand_project`] through a caller-held cache, with no size threshold.
+pub fn expand_project_with_cache(
+    documents: &[SourceDocument<'_>],
+    entry: usize,
+    cache: &mut Option<ExpansionCache>,
+) -> Expansion {
+    let Some(document) = documents.get(entry).copied() else {
+        *cache = None;
+        return expand_project(documents, entry);
+    };
+    if has_includes(document.text) {
+        *cache = None;
+        return expand_project(documents, entry);
+    }
+    let prepared: Vec<Prepared<'_>> = documents
+        .iter()
+        .enumerate()
+        .map(|(index, d)| if index == entry { prepare(d.text, DocumentId(index)) } else { Prepared::plain(d.text) })
+        .collect();
+    if cache.as_ref().is_some_and(|c| c.halted && c.entry_path == document.path) {
+        let full = expand_project(documents, entry);
+        if full.diagnostics.iter().any(|d| d.message.contains("expansion step limit exceeded")) {
+            return full;
+        }
+        *cache = None;
+    }
+    let masked: &str = prepared[entry].text.as_ref();
+    let reusable = cache.as_ref().is_some_and(|c| {
+        c.entry_path == document.path && masked.len() <= 2 * c.created_bytes.max(INCREMENTAL_MIN_BYTES)
+    });
+    let expansion = if reusable {
+        update_cache(cache.as_mut().expect("checked"), documents, entry, &prepared)
+    } else {
+        let (fresh, expansion) = build_cache(documents, entry, &prepared);
+        *cache = Some(fresh);
+        expansion
+    };
+    match expansion {
+        Some(expansion) => expansion,
+        None => {
+            // Runaway expansion: the full path's recovery reads the engine's
+            // own stop position, which the cache does not keep.
+            if let Some(cache) = cache.as_mut() {
+                cache.halted = true;
+            }
+            expand_project(documents, entry)
+        }
+    }
+}
+
+fn build_cache(documents: &[SourceDocument<'_>], entry: usize, prepared: &[Prepared<'_>]) -> (ExpansionCache, Option<Expansion>) {
+    let masked: &str = prepared[entry].text.as_ref();
+    let init: Rc<dyn Fn(&mut Engine)> = Rc::new(configure);
+    let expander = IncrementalExpander::with_host(masked, limits_for(masked.len()), 2048, init);
+    let mut conv = Converter::new(documents, entry);
+    let mut marks = vec![Mark { index: 0, out_len: 0, last_span: conv.last_span }];
+    convert_range(&mut conv, prepared, &expander, 0, &mut marks, None);
+    conv.flush_word();
+    let mut cache = ExpansionCache {
+        entry_path: documents[entry].path.to_string(),
+        masked: masked.to_string(),
+        created_bytes: masked.len(),
+        expander,
+        out: Rc::new(Vec::new()),
+        marks,
+        stretch_log: Vec::new(),
+        last_span: conv.last_span,
+        old_engine_tokens: 0,
+        halted: false,
+    };
+    let expansion = finish(&mut cache, conv);
+    (cache, expansion)
+}
+
+/// The reusable old suffix while re-converting after an edit.
+struct Join<'a> {
+    /// First new engine index whose token comes from the old run.
+    from: usize,
+    /// new index - old index for those tokens.
+    offset: isize,
+    old_marks: &'a [Mark],
+    /// Old converted tokens from `base` on (old coordinates).
+    old_tail: &'a mut Vec<ExpandedToken>,
+    base: usize,
+    shift: &'a dyn Fn(Span) -> Span,
+}
+
+/// Convert engine tokens `from..` of `expander` into `conv`, recording marks.
+/// With `join`, stop as soon as the old run's converted suffix can be spliced
+/// in; returns the old mark it was spliced at.
+fn convert_range(
+    conv: &mut Converter<'_>,
+    prepared: &[Prepared<'_>],
+    expander: &IncrementalExpander,
+    from: usize,
+    marks: &mut Vec<Mark>,
+    mut join: Option<Join<'_>>,
+) -> Option<Mark> {
+    let tokens = expander.tokens();
+    let origins = expander.origins();
+    for k in from..tokens.len() {
+        if k > from && conv.clean() {
+            if let Some(j) = join.as_mut() {
+                if k >= j.from {
+                    let old_k = k as isize - j.offset;
+                    if let Ok(m) = j.old_marks.binary_search_by_key(&old_k, |mark| mark.index as isize) {
+                        let old = j.old_marks[m];
+                        if old.out_len >= j.base {
+                            // The converter's next decision depends only on
+                            // the last converted token; it must agree.
+                            let old_last = if old.out_len == j.base {
+                                None
+                            } else {
+                                j.old_tail.get(old.out_len - 1 - j.base).map(|t| shifted(t, j.shift))
+                            };
+                            let agrees = if old.out_len == j.base {
+                                conv.out.len() == j.base
+                            } else {
+                                conv.out.last() == old_last.as_ref()
+                            };
+                            if agrees {
+                                let out_offset = conv.out.len() as isize - old.out_len as isize;
+                                let shift = j.shift;
+                                conv.out.extend(j.old_tail.drain(old.out_len - j.base..).map(|t| shifted(&t, shift)));
+                                marks.extend(j.old_marks[m..].iter().map(|mark| Mark {
+                                    index: (mark.index as isize + j.offset) as usize,
+                                    out_len: (mark.out_len as isize + out_offset) as usize,
+                                    last_span: shift(mark.last_span),
+                                }));
+                                return Some(old);
+                            }
+                        }
+                    }
+                }
+            }
+            if marks.last().map_or(true, |mark| k - mark.index >= MARK_EVERY) {
+                marks.push(Mark { index: k, out_len: conv.out.len(), last_span: conv.last_span });
+            }
+        }
+        conv.index = k;
+        if let Flow::Include(name, at) = conv.convert_token(prepared, &tokens[k], origins[k]) {
+            conv.push(TokenKind::Command(name), at);
+        }
+    }
+    None
+}
+
+fn shifted(token: &ExpandedToken, shift: &dyn Fn(Span) -> Span) -> ExpandedToken {
+    ExpandedToken {
+        token: Token { kind: token.token.kind.clone(), span: shift(token.token.span) },
+        definition: token.definition.map(shift),
+        maps_to_invocation: token.maps_to_invocation,
+    }
+}
+
+fn update_cache(
+    cache: &mut ExpansionCache,
+    documents: &[SourceDocument<'_>],
+    entry: usize,
+    prepared: &[Prepared<'_>],
+) -> Option<Expansion> {
+    let masked: &str = prepared[entry].text.as_ref();
+    let changes = crate::incremental::changed_bytes(&cache.masked, masked);
+    if changes.old.is_empty() && changes.new.is_empty() && cache.masked.len() == masked.len() {
+        let mut conv = Converter::new(documents, entry);
+        conv.out = Vec::new();
+        conv.last_span = cache.last_span;
+        conv.stretch_log = cache.stretch_log.clone();
+        conv.arraystretch = stretch_map(&conv.stretch_log);
+        let tokens = cache.out.clone();
+        let mut expansion = finish_diagnostics(cache, conv)?;
+        expansion.tokens = tokens;
+        return Some(expansion);
+    }
+    let stats = cache.expander.edit(&Edit {
+        start: changes.old.start,
+        end: changes.old.end,
+        replacement: masked[changes.new.clone()].to_string(),
+    });
+    let delta = masked.len() as isize - cache.masked.len() as isize;
+    cache.masked.clear();
+    cache.masked.push_str(masked);
+
+    let n_new = cache.expander.tokens().len();
+    let prefix = stats.prefix_reused.min(n_new);
+    let suffix = if stats.converged_at.is_some() { stats.suffix_reused } else { 0 };
+    let old_marks = std::mem::take(&mut cache.marks);
+    let restart_at = old_marks.partition_point(|mark| mark.index <= prefix).saturating_sub(1);
+    let restart = old_marks[restart_at];
+    let mut out = Rc::try_unwrap(std::mem::replace(&mut cache.out, Rc::new(Vec::new()))).unwrap_or_else(|shared| (*shared).clone());
+    let mut old_tail = out.split_off(restart.out_len);
+    let old_log = std::mem::take(&mut cache.stretch_log);
+    let edit_start = changes.old.start;
+    let old_edit_end = changes.old.end;
+    let document = DocumentId(entry);
+    let shift = move |sp: Span| -> Span {
+        if sp.document == document && sp.start >= old_edit_end {
+            Span::in_document(sp.document, (sp.start as isize + delta) as usize, (sp.end as isize + delta) as usize)
+        } else {
+            sp
+        }
+    };
+
+    let mut conv = Converter::new(documents, entry);
+    conv.out = out;
+    conv.last_span = restart.last_span;
+    // Records whose marker precedes the restart point are unchanged; later
+    // ones are regenerated or come back with the spliced suffix.
+    conv.stretch_log = old_log.iter().filter(|(index, _, _)| *index < restart.index).cloned().collect();
+    conv.arraystretch = stretch_map(&conv.stretch_log);
+    let _ = edit_start;
+    let mut marks: Vec<Mark> = old_marks[..=restart_at].to_vec();
+    let old_count = cache.engine_token_count(n_new, &stats);
+    let token_offset = n_new as isize - old_count as isize;
+    let join = (suffix > 0).then(|| Join {
+        from: n_new - suffix,
+        offset: n_new as isize - old_count as isize,
+        old_marks: &old_marks,
+        old_tail: &mut old_tail,
+        base: restart.out_len,
+        shift: &shift,
+    });
+    let spliced = convert_range(&mut conv, prepared, &cache.expander, restart.index, &mut marks, join);
+    match spliced {
+        Some(old_mark) => {
+            for (index, key, text) in old_log.into_iter().filter(|(index, _, _)| *index >= old_mark.index) {
+                let key = if key.0 == entry && key.1 >= old_edit_end {
+                    (key.0, (key.1 as isize + delta) as usize)
+                } else {
+                    key
+                };
+                conv.stretch_log.push(((index as isize + token_offset) as usize, key, text.clone()));
+                conv.arraystretch.insert(key, text);
+            }
+            conv.last_span = shift(cache.last_span);
+        }
+        None => conv.flush_word(),
+    }
+    cache.marks = marks;
+    cache.last_span = conv.last_span;
+    finish(cache, conv)
+}
+
+impl ExpansionCache {
+    /// Engine token count of the previous run, from this edit's statistics.
+    fn engine_token_count(&self, n_new: usize, stats: &tex::EditStats) -> usize {
+        // new = prefix + expanded + suffix; old = prefix + (old middle) + suffix,
+        // and the old middle is what the last recorded mark index tells.
+        let _ = (n_new, stats);
+        self.old_engine_tokens
+    }
+}
+
+/// Store the converted stream in the cache and map the engine diagnostics.
+/// `None` when expansion ran away (the caller falls back to the full path).
+fn finish(cache: &mut ExpansionCache, conv: Converter<'_>) -> Option<Expansion> {
+    let mut conv = conv;
+    let out = std::mem::take(&mut conv.out);
+    cache.stretch_log = conv.stretch_log.clone();
+    cache.last_span = conv.last_span;
+    cache.old_engine_tokens = cache.expander.tokens().len();
+    let tokens = Rc::new(out);
+    cache.out = tokens.clone();
+    let mut expansion = finish_diagnostics(cache, conv)?;
+    expansion.tokens = tokens;
+    Some(expansion)
+}
+
+fn stretch_map(log: &[(usize, (usize, usize), String)]) -> HashMap<(usize, usize), String> {
+    log.iter().map(|(_, key, text)| (*key, text.clone())).collect()
+}
+
+fn finish_diagnostics(cache: &ExpansionCache, mut conv: Converter<'_>) -> Option<Expansion> {
+    if step_limit_hit(cache.expander.diagnostics()) {
+        return None;
+    }
+    conv.last_span = cache.last_span;
+    conv.map_diagnostics(cache.expander.diagnostics());
+    Some(Expansion {
+        tokens: Rc::new(Vec::new()),
+        diagnostics: conv.diagnostics,
+        arraystretch: conv.arraystretch,
+    })
 }
 
 fn recovery_for(message: &str) -> &'static str {

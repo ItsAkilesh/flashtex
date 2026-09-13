@@ -33,6 +33,38 @@
 use std::rc::Rc;
 
 use crate::error::{Diagnostic, Limits};
+
+/// One edit's span mapping (see `Converge::shift_span`), kept on checkpoints
+/// that were carried past an edit so their states are shifted only when used.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Shift {
+    edit_start: usize,
+    old_edit_end: usize,
+    delta: isize,
+}
+
+impl Shift {
+    fn apply(&self, s: Span) -> Option<Span> {
+        if s.is_synthetic() || s.source_id != 0 {
+            return Some(s);
+        }
+        let (start, end) = (s.start as usize, s.end as usize);
+        if end <= self.edit_start && start < self.edit_start {
+            Some(s)
+        } else if start >= self.old_edit_end {
+            Some(Span::new(0, (start as isize + self.delta) as u32, (end as isize + self.delta) as u32))
+        } else if start == end && start <= self.edit_start {
+            Some(s)
+        } else {
+            None
+        }
+    }
+}
+
+/// Apply every pending shift, oldest first.
+fn apply_all(s: Span, pending: &[Shift]) -> Option<Span> {
+    pending.iter().try_fold(s, |s, shift| shift.apply(s))
+}
 use crate::expand::{Checkpoint, Engine, LabelRecord, State};
 use crate::span::Span;
 use crate::token::Token;
@@ -78,6 +110,10 @@ pub struct IncrementalExpander {
     diagnostics: Vec<Diagnostic>,
     labels: Vec<LabelRecord>,
     checkpoints: Vec<Checkpoint>,
+    /// Pending span shifts per checkpoint (parallel to `checkpoints`): the
+    /// checkpoint's state is valid for the current buffer once these are
+    /// applied to it, oldest first.
+    pending: Vec<Vec<Shift>>,
     limits: Limits,
     checkpoint_interval: usize,
 }
@@ -111,6 +147,7 @@ impl IncrementalExpander {
             diagnostics: Vec::new(),
             labels: Vec::new(),
             checkpoints: Vec::new(),
+            pending: Vec::new(),
             limits,
             checkpoint_interval: checkpoint_interval.max(1),
         };
@@ -155,7 +192,9 @@ impl IncrementalExpander {
         self.diagnostics.clear();
         self.labels.clear();
         self.checkpoints.clear();
+        self.pending.clear();
         self.checkpoints.push(engine.snapshot(0));
+        self.pending.push(Vec::new());
         let mut last_cp = 0usize;
         self.drive(&mut engine, &mut last_cp, None);
         self.diagnostics = engine.take_diagnostics();
@@ -166,6 +205,7 @@ impl IncrementalExpander {
     /// checkpoint, when `converge` is given), appending output tokens and
     /// recording new checkpoints. Returns the convergence point if any.
     fn drive(&mut self, engine: &mut Engine, last_cp: &mut usize, converge: Option<&mut Converge>) -> Option<usize> {
+        // (The old checkpoints' pending shifts travel inside `Converge`.)
         let mut converge = converge;
         // The engine's diagnostics/labels vectors start empty after a
         // restore, so checkpoint counts must be offset to absolute
@@ -188,7 +228,7 @@ impl IncrementalExpander {
                     if pos >= c.new_edit_end {
                         if let Some(old_idx) = c.candidate_at(pos) {
                             let old = &c.old_checkpoints[old_idx];
-                            if states_equivalent(&old.state, engine.state(), c) && old.lex_state == engine.lex_state() {
+                            if old.lex_state == engine.lex_state() && states_equivalent(&old.state, &c.old_pending[old_idx], engine.state(), c) {
                                 return Some(old_idx);
                             }
                         }
@@ -199,6 +239,7 @@ impl IncrementalExpander {
                     cp.diag_len += diag_base;
                     cp.label_len += label_base;
                     self.checkpoints.push(cp);
+                    self.pending.push(Vec::new());
                     *last_cp = pos;
                 }
             }
@@ -214,6 +255,11 @@ impl IncrementalExpander {
         assert!(self.source.is_char_boundary(start) && self.source.is_char_boundary(end), "edit not on char boundary");
         let old_len = self.source.len();
         let delta = replacement.len() as isize - (end - start) as isize;
+        // Some TeX messages embed a source line number ("... after line N");
+        // reusing old diagnostics after convergence only shifts their spans,
+        // so an edit that changes the line count must not converge while any
+        // such diagnostic would be reused.
+        let lines_changed = self.source[start..end].matches('\n').count() != replacement.matches('\n').count();
         self.source.replace_range(start..end, replacement);
         let new_edit_end = start + replacement.len();
 
@@ -226,10 +272,24 @@ impl IncrementalExpander {
             .iter()
             .rposition(|cp| cp.pos == 0 || cp.pos < start)
             .expect("checkpoint 0 always exists");
-        let cp = self.checkpoints[cp_idx].clone();
+        let mut cp = self.checkpoints[cp_idx].clone();
+        if !self.pending[cp_idx].is_empty() {
+            // Spans in a checkpoint's state all precede its position, which
+            // precedes this edit; earlier edits may still need applying.
+            let pending = std::mem::take(&mut self.pending[cp_idx]);
+            match cp.state.map_spans(&|sp| apply_all(sp, &pending)) {
+                Some(st) => {
+                    cp.state = st;
+                    self.checkpoints[cp_idx].state = cp.state.clone();
+                }
+                None => unreachable!("a checkpoint before an edit cannot overlap an earlier edit it survived"),
+            }
+        }
         let old_checkpoints: Vec<Checkpoint> = self.checkpoints.drain(cp_idx + 1..).collect();
-        let old_tokens: Vec<Token> = self.tokens.drain(cp.out_len..).collect();
-        let old_origins: Vec<Option<Span>> = self.origins.drain(cp.out_len..).collect();
+        let old_pending: Vec<Vec<Shift>> = self.pending.drain(cp_idx + 1..).collect();
+        // Moved, not cloned: the reused suffix is spliced back below.
+        let mut old_tokens: Vec<Token> = self.tokens.split_off(cp.out_len);
+        let mut old_origins: Vec<Option<Span>> = self.origins.split_off(cp.out_len);
         let old_diags: Vec<Diagnostic> = self.diagnostics.drain(cp.diag_len..).collect();
         let old_labels: Vec<LabelRecord> = self.labels.drain(cp.label_len..).collect();
         let prefix_reused = self.tokens.len();
@@ -240,13 +300,19 @@ impl IncrementalExpander {
         let mut last_cp = cp.pos;
         let mut conv = Converge {
             old_checkpoints,
+            old_pending,
             edit_start: start,
             old_edit_end: end,
             new_edit_end,
             delta,
             old_len,
         };
-        let converged = self.drive(&mut engine, &mut last_cp, Some(&mut conv));
+        let line_sensitive = lines_changed && old_diags.iter().any(|d| d.message.contains("line "));
+        let converged = if line_sensitive {
+            self.drive(&mut engine, &mut last_cp, None)
+        } else {
+            self.drive(&mut engine, &mut last_cp, Some(&mut conv))
+        };
         let tokens_expanded = self.tokens.len() - prefix_reused;
         let mut stats = EditStats {
             restarted_from: cp.pos,
@@ -268,10 +334,12 @@ impl IncrementalExpander {
             let base_label = old_cp.label_len - cp.label_len;
             stats.converged_at = Some((old_cp.pos as isize + delta) as usize);
             stats.suffix_reused = old_tokens.len() - base_out;
-            for (t, o) in old_tokens[base_out..].iter().zip(&old_origins[base_out..]) {
-                self.tokens.push(Token::new(t.kind.clone(), conv.shift_span(t.span).unwrap_or(t.span)));
-                self.origins.push(o.map(|o| conv.shift_span(o).unwrap_or(o)));
-            }
+            let shift = conv.as_shift();
+            self.tokens.extend(old_tokens.drain(base_out..).map(|mut t| {
+                t.span = shift.apply(t.span).unwrap_or(t.span);
+                t
+            }));
+            self.origins.extend(old_origins.drain(base_out..).map(|o| o.map(|o| shift.apply(o).unwrap_or(o))));
             for d in &old_diags[base_diag..] {
                 let mut d = d.clone();
                 d.span = conv.shift_span(d.span).unwrap_or(d.span);
@@ -289,26 +357,29 @@ impl IncrementalExpander {
             let out_offset = self.tokens.len() as isize - (old_cp.out_len as isize + stats.suffix_reused as isize);
             let diag_offset = self.diagnostics.len() as isize - (old_diags.len() as isize - base_diag as isize) - old_cp.diag_len as isize;
             let label_offset = self.labels.len() as isize - (old_labels.len() as isize - base_label as isize) - old_cp.label_len as isize;
-            for old in conv.old_checkpoints.iter().skip(old_idx) {
-                let mut shifted = match conv.shift_state(&old.state) {
-                    Some(s) => Checkpoint {
-                        pos: (old.pos as isize + delta) as usize,
-                        lex_state: old.lex_state,
-                        state: s,
-                        steps: old.steps,
-                        out_len: (old.out_len as isize + out_offset) as usize,
-                        diag_len: (old.diag_len as isize + diag_offset) as usize,
-                        label_len: (old.label_len as isize + label_offset) as usize,
-                    },
-                    None => continue,
-                };
+            let shift = conv.as_shift();
+            let old_cps = std::mem::take(&mut conv.old_checkpoints);
+            let old_pending = std::mem::take(&mut conv.old_pending);
+            for (old, mut pending) in old_cps.into_iter().zip(old_pending).skip(old_idx) {
+                let pos = (old.pos as isize + delta) as usize;
                 if let Some(last) = self.checkpoints.last() {
-                    if shifted.pos <= last.pos {
+                    if pos <= last.pos {
                         continue;
                     }
                 }
-                shifted.steps = old.steps;
-                self.checkpoints.push(shifted);
+                // The state is shifted when the checkpoint is next used
+                // (restart or convergence), not here.
+                pending.push(shift);
+                self.checkpoints.push(Checkpoint {
+                    pos,
+                    lex_state: old.lex_state,
+                    state: old.state,
+                    steps: old.steps,
+                    out_len: (old.out_len as isize + out_offset) as usize,
+                    diag_len: (old.diag_len as isize + diag_offset) as usize,
+                    label_len: (old.label_len as isize + label_offset) as usize,
+                });
+                self.pending.push(pending);
             }
         }
         stats
@@ -318,6 +389,7 @@ impl IncrementalExpander {
 /// Bookkeeping for the convergence search during one edit.
 pub(crate) struct Converge {
     old_checkpoints: Vec<Checkpoint>,
+    old_pending: Vec<Vec<Shift>>,
     pub edit_start: usize,
     pub old_edit_end: usize,
     pub new_edit_end: usize,
@@ -361,10 +433,14 @@ impl Converge {
     pub fn shift_state(&self, st: &State) -> Option<State> {
         st.map_spans(&|s| self.shift_span(s))
     }
+
+    fn as_shift(&self) -> Shift {
+        Shift { edit_start: self.edit_start, old_edit_end: self.old_edit_end, delta: self.delta }
+    }
 }
 
-fn states_equivalent(old: &State, new: &State, c: &Converge) -> bool {
-    match c.shift_state(old) {
+fn states_equivalent(old: &State, pending: &[Shift], new: &State, c: &Converge) -> bool {
+    match old.map_spans(&|s| apply_all(s, pending).and_then(|s| c.shift_span(s))) {
         Some(shifted) => &shifted == new,
         None => false,
     }

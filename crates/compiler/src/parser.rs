@@ -6,6 +6,7 @@
 //! package loading, or general environment implementation.
 
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 use crate::bib;
 use crate::diagnostics::Diagnostic;
@@ -650,14 +651,8 @@ pub(crate) fn path_is_safe(path: &str) -> bool {
     !path.split(['/', '\\']).any(|component| component == "..")
 }
 
-#[derive(Debug, Clone)]
-struct InputToken {
-    token: Token,
-    /// For macro replacement text: the definition bytes it was copied from
-    /// (`token.span` is then the invocation span).
-    definition: Option<Span>,
-    maps_to_invocation: bool,
-}
+/// One parser input token (see `crate::expansion::ExpandedToken`).
+type InputToken = expansion::ExpandedToken;
 
 /// Whether the token at `index` in `tokens` sits directly against real
 /// source whitespace — a preceding `TokenKind::Space`/`ParBreak` — or is the
@@ -721,15 +716,15 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
     let bibliography = bib::prescan(&raw, &mut bibliography_diags);
     let expanded = if documents.is_empty() {
         expansion::Expansion {
-            tokens: Vec::new(),
+            tokens: Rc::new(Vec::new()),
             diagnostics: Vec::new(),
             arraystretch: HashMap::new(),
         }
     } else {
-        expansion::expand_project(documents, entry)
+        expansion::expand_project_cached(documents, entry)
     };
     let mut expansions: Vec<ExpansionSite> = Vec::new();
-    for token in &expanded.tokens {
+    for token in expanded.tokens.iter() {
         if let (true, Some(definition)) = (token.maps_to_invocation, token.definition) {
             match expansions.last_mut() {
                 Some(last)
@@ -748,15 +743,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         }
     }
     let mut p = P {
-        t: expanded
-            .tokens
-            .into_iter()
-            .map(|token| InputToken {
-                token: token.token,
-                definition: token.definition,
-                maps_to_invocation: token.maps_to_invocation,
-            })
-            .collect(),
+        t: expanded.tokens.clone(),
         i: 0,
         diags: Vec::new(),
         brace_stack: Vec::new(),
@@ -851,7 +838,8 @@ fn gap_is_blank(documents: &[SourceDocument<'_>], a: Span, b: Span) -> bool {
 }
 
 struct P<'a> {
-    t: Vec<InputToken>,
+    /// Shared with the expansion cache; never mutated in place.
+    t: Rc<Vec<InputToken>>,
     i: usize,
     diags: Vec<Diagnostic>,
     brace_stack: Vec<Span>,
@@ -1703,7 +1691,7 @@ impl P<'_> {
                 definition: None,
                 maps_to_invocation: false,
             })
-            .collect(),
+            .collect::<Vec<_>>().into(),
         );
         let saved_index = std::mem::replace(&mut self.i, 0);
         self.include_stack.push(document_index);
@@ -3318,7 +3306,7 @@ impl P<'_> {
     }
 
     fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>, base: TextStyle) -> Vec<Inline> {
-        let outer_tokens = std::mem::replace(&mut self.t, tokens);
+        let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(tokens));
         let outer_index = std::mem::replace(&mut self.i, 0);
         let mut expanded = Vec::new();
         while self.i < self.t.len() {
@@ -3450,7 +3438,7 @@ impl P<'_> {
     /// inside the argument become line breaks: the footnote is one inline
     /// sequence, not separate blocks; each break is attributed to `span`.
     fn footnote_inlines(&mut self, tokens: Vec<InputToken>, span: Span) -> Vec<Inline> {
-        let outer_tokens = std::mem::replace(&mut self.t, tokens);
+        let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(tokens));
         let outer_index = std::mem::replace(&mut self.i, 0);
         let outer_style = std::mem::take(&mut self.style);
         let outer_label = self.pending_item_label.take();
@@ -3494,7 +3482,7 @@ impl P<'_> {
                     argument_count,
                     replacement,
                 })
-                .collect(),
+                .collect::<Vec<_>>().into(),
         );
     }
 
@@ -3591,7 +3579,7 @@ impl P<'_> {
     /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued
     /// to it (`\\[3pt]Next`) as the remainder of the word.
     fn skip_line_break_length(&mut self) {
-        let Some(input) = self.t.get_mut(self.i) else {
+        let Some(input) = std::rc::Rc::make_mut(&mut self.t).get_mut(self.i) else {
             return;
         };
         let TokenKind::Word(word) = &input.token.kind else {
