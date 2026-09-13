@@ -11,7 +11,10 @@ use crate::bib;
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
 use crate::math::{self, MathList};
-use crate::theorems::{self, TheoremDef, TheoremStyle};
+use crate::theorems::{
+    self, HeadSpace, QedMark, QedPlacement, QedSymbol, TheoremDef, TheoremKind, TheoremRecord,
+    ThmSkip,
+};
 use crate::{DocumentId, Span};
 
 mod tabular;
@@ -463,6 +466,13 @@ pub struct Parsed {
     pub incremental_safe: bool,
     /// True when counters or the label table make layout document-global.
     pub document_global_state: bool,
+    /// Every theorem-like environment instance (`\newtheorem` environments
+    /// and amsthm's `proof`) in `\begin` order, with the head, font, skip
+    /// and span data a layout needs (see `theorems::TheoremRecord`).
+    pub theorems: Vec<crate::theorems::TheoremRecord>,
+    /// Every end-of-proof symbol placed (`\end{proof}`, `\qedhere`, `\qed`),
+    /// in source order (see `theorems::QedMark`).
+    pub qed_marks: Vec<crate::theorems::QedMark>,
 }
 
 impl Parsed {
@@ -786,8 +796,13 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         env_alignments: Vec::new(),
         list_spacing: HashMap::new(),
         theorems: HashMap::new(),
-        theorem_style: TheoremStyle::default(),
-        theorem_counters: HashMap::new(),
+        theorem_style: "plain".to_string(),
+        theorem_styles: theorems::builtin_styles(),
+        theorem_swap: false,
+        theorem_records: Vec::new(),
+        theorem_open: Vec::new(),
+        proof_frames: Vec::new(),
+        qed_marks: Vec::new(),
         noted_unclickable_link: false,
         bibliography,
         bib_cursor: 0,
@@ -838,6 +853,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         preamble_source: preamble_source(entry_document.text, has_document),
         incremental_safe,
         document_global_state: p.document_global_state,
+        theorems: p.theorem_records,
+        qed_marks: p.qed_marks,
     }
 }
 
@@ -911,13 +928,22 @@ struct P<'a> {
     list_spacing: HashMap<String, ListSpacing>,
     /// `\newtheorem` registrations, keyed by environment name.
     theorems: HashMap<String, TheoremDef>,
-    /// The style set by the most recent `\theoremstyle`, applied to
+    /// The style name set by the most recent `\theoremstyle`, applied to
     /// `\newtheorem` declarations from that point on (`plain` until then,
     /// matching amsthm's own default).
-    theorem_style: TheoremStyle,
-    /// Theorem counters, keyed by `TheoremDef::counter` (an environment's
-    /// own name, or the name of the environment whose counter it shares).
-    theorem_counters: HashMap<String, u32>,
+    theorem_style: String,
+    /// amsthm's predefined styles and every `\newtheoremstyle`.
+    theorem_styles: HashMap<String, theorems::TheoremStyleSpec>,
+    /// amsthm `\swapnumbers` (toggles; read at each `\newtheorem`).
+    theorem_swap: bool,
+    /// See `Parsed::theorems`.
+    theorem_records: Vec<TheoremRecord>,
+    /// Indices into `theorem_records` of the open theorem-like environments.
+    theorem_open: Vec<usize>,
+    /// Open `proof` environments, innermost last.
+    proof_frames: Vec<theorems::ProofFrame>,
+    /// See `Parsed::qed_marks`.
+    qed_marks: Vec<QedMark>,
     /// Set once `\url`/`\href` has already produced the one honest
     /// "links are not clickable yet" diagnostic (see `note_links_unclickable`),
     /// so a document with many links gets a single notice, not one per use.
@@ -1131,6 +1157,9 @@ impl P<'_> {
             "DeclareMathOperator" => self.declare_math_operator(span),
             "newtheorem" => self.new_theorem(span),
             "theoremstyle" => self.set_theorem_style(span),
+            "newtheoremstyle" => self.new_theorem_style(span),
+            "swapnumbers" => self.theorem_swap = !self.theorem_swap,
+            "numberwithin" => self.number_within(span),
             "begin" | "end" => self.environment(name, span, blocks, para),
             "input" | "include" => self.include(name, span, blocks, para),
             // MacTeX writes package-version banners to the log for `\listfiles`;
@@ -1179,9 +1208,6 @@ impl P<'_> {
                 let number = if starred {
                     String::new()
                 } else {
-                    if level == 1 {
-                        theorems::reset_within_section(&self.theorems, &mut self.theorem_counters);
-                    }
                     self.counters.step(name).unwrap_or_default()
                 };
                 if !starred {
@@ -1631,6 +1657,8 @@ impl P<'_> {
                 Some(span),
                 Some("skipped the command and typeset its braced arguments as plain text".into()),
             )),
+            "qed" => self.place_qed(span, QedPlacement::Command, para),
+            "qedhere" => self.qed_here(span, para),
             other => self.unsupported(other, span),
         }
     }
@@ -2203,7 +2231,11 @@ impl P<'_> {
             body: body.into_iter().map(|t| t.token).collect(),
         };
 
-        let already_defined = self.macros.contains_key(&name) || BUILT_INS.contains(&name.as_str());
+        // amsthm `\providecommand`s `\proofname` and `\qedsymbol`.
+        let amsthm_default = matches!(name.as_str(), "proofname" | "qedsymbol")
+            && self.packages.iter().any(|package| package == "amsthm");
+        let already_defined =
+            self.macros.contains_key(&name) || BUILT_INS.contains(&name.as_str()) || amsthm_default;
         let valid = if kind == "newcommand" {
             if already_defined {
                 self.diags.push(Diagnostic::error(
@@ -2474,9 +2506,9 @@ impl P<'_> {
             self.env_styles.push(self.style);
             if self.in_body {
                 if let Some(theorem) = self.theorems.get(&environment).cloned() {
-                    self.begin_theorem(&theorem, span, para);
+                    self.begin_theorem(&environment, &theorem, span, argument_span, para);
                 } else if environment == "proof" {
-                    self.begin_proof(span, para);
+                    self.begin_proof(span, argument_span, para);
                 }
             }
             return;
@@ -2561,17 +2593,15 @@ impl P<'_> {
                     }
                 }
             }
-        } else if environment == "figure" || self.theorems.contains_key(&environment) {
+        } else if environment == "figure" {
             self.flush_paragraph(blocks, para);
+        } else if self.theorems.contains_key(&environment) {
+            self.flush_paragraph(blocks, para);
+            self.close_theorem(&environment, span);
         } else if environment == "proof" {
-            para.push(Inline::HFill { span });
-            para.push(Inline::Text {
-                text: "∎".to_string(),
-                span,
-                style: TextStyle::default(),
-                space_before: false,
-            });
+            self.end_proof(span, para);
             self.flush_paragraph(blocks, para);
+            self.close_theorem(&environment, span);
         }
         if environment == "document" && self.has_document {
             self.flush_paragraph(blocks, para);
@@ -2587,10 +2617,13 @@ impl P<'_> {
         }
     }
 
-    /// `\newtheorem{name}{Title}`, its starred (unnumbered) form, the
-    /// shared-counter form `\newtheorem{name}[shared]{Title}`, and the
-    /// reset-on-section form `\newtheorem{name}{Title}[section]`. See
-    /// `theorems::TheoremDef`.
+    /// `\newtheorem{env}{Name}`, `\newtheorem{env}[counter]{Name}` (steps an
+    /// existing counter), `\newtheorem{env}{Name}[within]` (a new counter
+    /// reset by `within`, printed `\the<within>.<n>`) and amsthm's unnumbered
+    /// `\newtheorem*` (latex.ltx `\@nthm`/`\@othm`/`\@xnthm`/`\@ynthm`;
+    /// amsthm.sty 77-128). With amsthm the style and `\swapnumbers` state in
+    /// force here are captured, as amsthm's `\xdef` does; without it the
+    /// kernel's head applies. See `theorems::TheoremDef`.
     fn new_theorem(&mut self, span: Span) {
         let starred = self.take_optional_star();
         let (name_tokens, name_span) = self.required_group("newtheorem", span);
@@ -2611,140 +2644,472 @@ impl P<'_> {
             ));
             return;
         }
-        let (counter, within_section) = match shared {
-            Some((shared_name, shared_span)) => {
-                let shared_name = shared_name.trim().to_string();
-                match self.theorems.get(&shared_name) {
-                    Some(existing) => (existing.counter.clone(), existing.within_section),
-                    None => {
-                        self.diags.push(Diagnostic::error(
-                            format!(
-                                "\\newtheorem{{{name}}}[{shared_name}] shares the counter of \
-                                 undefined theorem environment '{shared_name}'"
-                            ),
-                            Some(shared_span),
-                            Some("ignored the declaration".into()),
-                        ));
-                        return;
+        let counter = if starred {
+            String::new()
+        } else {
+            match shared {
+                Some((shared_name, shared_span)) => {
+                    let shared_name = shared_name.trim().to_string();
+                    match self.theorems.get(&shared_name) {
+                        Some(existing) => existing.counter.clone(),
+                        None if self.counters.value(&shared_name).is_some() => shared_name,
+                        None => {
+                            self.diags.push(Diagnostic::error(
+                                format!(
+                                    "\\newtheorem{{{name}}}[{shared_name}] shares the counter of \
+                                     undefined theorem environment '{shared_name}'"
+                                ),
+                                Some(shared_span),
+                                Some("ignored the declaration".into()),
+                            ));
+                            return;
+                        }
                     }
                 }
-            }
-            None => {
-                let within_section = match within {
-                    None => false,
-                    Some((counter_name, _)) if counter_name.trim() == "section" => true,
-                    Some((counter_name, counter_span)) => {
-                        let counter_name = counter_name.trim().to_string();
-                        self.diags.push(Diagnostic::warning(
-                            format!(
-                                "\\newtheorem counter '[{counter_name}]' is recognised but not implemented"
-                            ),
-                            Some(counter_span),
-                            Some(format!(
-                                "'{name}' is numbered without resetting on '{counter_name}'"
-                            )),
-                        ));
-                        false
+                None => {
+                    match within {
+                        Some((parent, _)) if self.counters.value(parent.trim()).is_some() => {
+                            self.counters.number_within(&name, parent.trim());
+                        }
+                        Some((parent, parent_span)) => {
+                            let parent = parent.trim().to_string();
+                            self.diags.push(Diagnostic::warning(
+                                format!(
+                                    "\\newtheorem counter '[{parent}]' is recognised but not implemented"
+                                ),
+                                Some(parent_span),
+                                Some(format!(
+                                    "'{name}' is numbered without resetting on '{parent}'"
+                                )),
+                            ));
+                            self.counters.define(&name, None);
+                        }
+                        None => {
+                            self.counters.define(&name, None);
+                        }
                     }
-                };
-                (name.clone(), within_section)
+                    name.clone()
+                }
             }
+        };
+        let amsthm = self.packages.iter().any(|package| package == "amsthm");
+        let (kind, style) = if amsthm {
+            let style = self
+                .theorem_styles
+                .get(&self.theorem_style)
+                .cloned()
+                .unwrap_or_else(theorems::TheoremStyleSpec::plain);
+            (TheoremKind::Amsthm, style)
+        } else {
+            (TheoremKind::Kernel, theorems::TheoremStyleSpec::kernel())
         };
         self.theorems.insert(
             name,
             TheoremDef {
                 title,
-                style: self.theorem_style,
+                style,
+                kind,
                 numbered: !starred,
                 counter,
-                within_section,
+                swap: amsthm && !starred && self.theorem_swap,
             },
         );
     }
 
+    /// amsthm `\theoremstyle{name}`: an unknown name warns and selects
+    /// `plain` (amsthm.sty 59-66).
     fn set_theorem_style(&mut self, span: Span) {
         let (tokens, argument_span) = self.required_group("theoremstyle", span);
         let name = token_text(&tokens).trim().to_string();
-        match TheoremStyle::from_name(&name) {
-            Some(style) => self.theorem_style = style,
-            None => self.diags.push(Diagnostic::error(
+        if self.theorem_styles.contains_key(&name) {
+            self.theorem_style = name;
+        } else {
+            self.diags.push(Diagnostic::error(
                 format!("\\theoremstyle{{{name}}} is not a recognised amsthm style"),
                 Some(span.merge(argument_span)),
-                Some("kept the previous \\theoremstyle in effect".into()),
-            )),
+                Some("selected the plain style, as amsthm does".into()),
+            ));
+            self.theorem_style = "plain".to_string();
         }
     }
 
-    /// The head run and, for numbered environments, the counter for
-    /// entering a `\newtheorem`-registered environment. Called after
-    /// `self.style` has already been saved onto `env_styles` by the caller
-    /// (see `environment`), so mutating it here to the body's default style
-    /// is correctly restored at the matching `\end`.
-    fn begin_theorem(&mut self, def: &TheoremDef, span: Span, para: &mut Vec<Inline>) {
-        let note = self.optional_bracket_argument();
-        let mut head = def.title.clone();
-        if def.numbered {
-            let counter = self
-                .theorem_counters
-                .entry(def.counter.clone())
-                .or_insert(0);
-            *counter += 1;
-            let n = *counter;
-            let number = if def.within_section {
-                format!("{}.{}", self.counters.value("section").unwrap_or(0), n)
-            } else {
-                n.to_string()
-            };
-            self.current_counter = Some(number.clone());
-            head.push(' ');
-            head.push_str(&number);
+    /// amsthm `\newtheoremstyle{name}{above}{below}{body font}{indent}{head
+    /// font}{head punct}{head space}{head spec}` (amsthm.sty 236-272). An
+    /// empty space above/below is `\topsep`; head space `{ }` is an
+    /// interword space and `{\newline}` breaks the line. A non-empty head
+    /// specification is diagnosed and the default head is used.
+    fn new_theorem_style(&mut self, span: Span) {
+        let mut args = Vec::with_capacity(9);
+        let mut end = span;
+        for _ in 0..9 {
+            let (tokens, argument_span) = self.required_group("newtheoremstyle", span);
+            end = argument_span;
+            args.push(tokens);
         }
+        let whole = span.merge(end);
+        let name = token_text(&args[0]).trim().to_string();
+        if name.is_empty() {
+            self.diags.push(Diagnostic::error(
+                "\\newtheoremstyle was given an empty style name",
+                Some(whole),
+                Some("ignored the declaration".into()),
+            ));
+            return;
+        }
+        let size = self.class_size_pt.unwrap_or(10.0);
+        let mut unread = Vec::new();
+        let mut skip = |index: usize, what: &str| {
+            let text = token_text(&args[index]);
+            theorems::parse_skip(&text, size).unwrap_or_else(|| {
+                unread.push(format!("{what} '{}'", text.trim()));
+                ThmSkip::Topsep { scale: 1.0 }
+            })
+        };
+        let preskip = skip(1, "space above");
+        let postskip = skip(2, "space below");
+        let indent_text = token_text(&args[4]);
+        let indent = match theorems::parse_dimen(&indent_text) {
+            // A zero indent is `\let\thm@indent\noindent` (amsthm.sty 238-239).
+            Some(dimen) => Some(dimen).filter(|dimen| *dimen != theorems::Dimen::Pt(0.0)),
+            None if indent_text.trim().is_empty() => None,
+            None => {
+                unread.push(format!("indent '{}'", indent_text.trim()));
+                None
+            }
+        };
+        let head_font = font_from_tokens(&args[5]);
+        let significant: Vec<&TokenKind> = args[7]
+            .iter()
+            .map(|input| &input.token.kind)
+            .filter(|kind| !matches!(kind, TokenKind::Space | TokenKind::Comment))
+            .collect();
+        let head_space = match significant.as_slice() {
+            [] if args[7]
+                .iter()
+                .any(|input| matches!(input.token.kind, TokenKind::Space)) =>
+            {
+                HeadSpace::Space
+            }
+            [] => HeadSpace::Glue {
+                pt: 0.0,
+                plus: 0.0,
+                minus: 0.0,
+            },
+            [TokenKind::Command(command)] if command == "newline" => HeadSpace::Newline,
+            _ => match theorems::parse_skip(&token_text(&args[7]), size) {
+                Some(ThmSkip::Glue { pt, plus, minus }) => HeadSpace::Glue { pt, plus, minus },
+                _ => {
+                    unread.push(format!("head space '{}'", token_text(&args[7]).trim()));
+                    HeadSpace::Glue {
+                        pt: 5.0,
+                        plus: 1.0,
+                        minus: 1.0,
+                    }
+                }
+            },
+        };
+        if !token_text(&args[8]).trim().is_empty() {
+            self.diags.push(Diagnostic::warning(
+                format!("\\newtheoremstyle{{{name}}}: a custom head specification is recognised but not implemented"),
+                Some(whole),
+                Some("used amsthm's default head (name, number, note)".into()),
+            ));
+        }
+        if !unread.is_empty() {
+            self.diags.push(Diagnostic::warning(
+                format!(
+                    "\\newtheoremstyle{{{name}}}: could not read {}",
+                    unread.join(", ")
+                ),
+                Some(whole),
+                Some("used amsthm's defaults for those values".into()),
+            ));
+        }
+        let spec = theorems::TheoremStyleSpec {
+            preskip,
+            postskip,
+            body_font: font_from_tokens(&args[3]),
+            head_font,
+            note_font: TextStyle {
+                bold: false,
+                italic: false,
+                ..head_font
+            },
+            indent,
+            head_punct: token_text(&args[6]).trim().to_string(),
+            head_space,
+        };
+        self.theorem_styles.insert(name, spec);
+    }
+
+    /// amsmath `\numberwithin[format]{counter}{parent}`.
+    fn number_within(&mut self, span: Span) {
+        let _ = self.optional_bracket_argument();
+        let (counter_tokens, _) = self.required_group("numberwithin", span);
+        let (parent_tokens, parent_span) = self.required_group("numberwithin", span);
+        let counter = token_text(&counter_tokens).trim().to_string();
+        let parent = token_text(&parent_tokens).trim().to_string();
+        if !self.counters.set_within(&counter, &parent) {
+            self.diags.push(Diagnostic::warning(
+                format!("\\numberwithin{{{counter}}}{{{parent}}} is recognised but not implemented for this counter"),
+                Some(span.merge(parent_span)),
+                Some("kept the counter's numbering unchanged".into()),
+            ));
+        }
+    }
+
+    /// `\begin{env}[note]` of a `\newtheorem` environment: `\refstepcounter`
+    /// (so a following `\label` names it), the head inlines, and the
+    /// instance record. Kernel (latex.ltx `\@begintheorem`/
+    /// `\@opargbegintheorem`): `{\bfseries Name Number (Note)}`, no
+    /// punctuation. amsthm (`\@begintheorem`, `\thmhead@plain`,
+    /// `\swappedhead`): `Name Number` in the head font, the note in
+    /// `\thm@notefont`, then `\thm@headpunct` in the head font. Called after
+    /// `self.style` was saved on `env_styles`, so the body font set here is
+    /// undone at `\end`.
+    fn begin_theorem(
+        &mut self,
+        environment: &str,
+        def: &TheoremDef,
+        span: Span,
+        argument_span: Span,
+        para: &mut Vec<Inline>,
+    ) {
+        let note = self.optional_bracket_argument();
+        let number = if def.numbered {
+            let number = self.counters.step(&def.counter);
+            if number.is_some() {
+                self.current_counter = number.clone();
+            }
+            number
+        } else {
+            None
+        };
+        let style = &def.style;
+        let mut head = String::new();
+        match &number {
+            Some(n) if def.swap => {
+                head.push_str(n);
+                if !def.title.is_empty() {
+                    head.push(' ');
+                    head.push_str(&def.title);
+                }
+            }
+            Some(n) => {
+                head.push_str(&def.title);
+                if !def.title.is_empty() {
+                    head.push(' ');
+                }
+                head.push_str(n);
+            }
+            None => head.push_str(&def.title),
+        }
+        if !head.is_empty() {
+            para.push(Inline::Text {
+                text: head,
+                span,
+                style: style.head_font,
+                space_before: true,
+            });
+        }
+        let mut begin = span.merge(argument_span);
+        let note_text = match &note {
+            Some((text, note_span)) => {
+                begin = begin.merge(*note_span);
+                Some(text.trim().to_string()).filter(|text| !text.is_empty())
+            }
+            None => None,
+        };
+        if let (Some(text), Some((_, note_span))) = (&note_text, &note) {
+            para.push(Inline::Text {
+                text: format!("({text})"),
+                span: *note_span,
+                style: style.note_font,
+                space_before: true,
+            });
+        }
+        if !style.head_punct.is_empty() {
+            para.push(Inline::Text {
+                text: style.head_punct.clone(),
+                span,
+                style: style.head_font,
+                space_before: false,
+            });
+        }
+        self.theorem_open.push(self.theorem_records.len());
+        self.theorem_records.push(TheoremRecord {
+            environment: environment.to_string(),
+            kind: def.kind,
+            begin,
+            end: None,
+            name: def.title.clone(),
+            number,
+            note: note_text,
+            swap: def.swap,
+            head_font: style.head_font,
+            note_font: style.note_font,
+            body_font: style.body_font,
+            head_punct: style.head_punct.clone(),
+            head_space: style.head_space,
+            indent: style.indent,
+            preskip: style.preskip,
+            postskip: style.postskip,
+        });
+        self.style = style.body_font;
+    }
+
+    /// amsthm's `proof` (amsthm.sty 431-440): `\item[\hskip\labelsep
+    /// \itshape #1\@addpunct{.}]` with `#1` the optional argument or
+    /// `\proofname`, an upright body, and `\pushQED{\qed}` (placed by
+    /// `end_proof`).
+    fn begin_proof(&mut self, span: Span, argument_span: Span, para: &mut Vec<Inline>) {
+        let option = self.optional_bracket_argument();
+        let proofname = self.macros.get("proofname").map(|definition| {
+            let tokens: Vec<InputToken> = definition
+                .body
+                .iter()
+                .cloned()
+                .map(|token| InputToken {
+                    token,
+                    expansion_depth: 0,
+                    maps_to_invocation: false,
+                })
+                .collect();
+            token_text(&tokens).trim().to_string()
+        });
+        let heading = option
+            .as_ref()
+            .map(|(text, _)| text.trim().to_string())
+            .filter(|text| !text.is_empty())
+            .or(proofname)
+            .unwrap_or_else(|| "Proof".to_string());
+        // `\@addpunct{.}`: no period after a mark whose space factor exceeds
+        // 1000 (a sentence-ending `.`, `?`, `!` or `:`).
+        let punct = if heading.ends_with(['.', '?', '!', ':']) {
+            ""
+        } else {
+            "."
+        };
+        let head_font = TextStyle {
+            italic: true,
+            ..TextStyle::default()
+        };
         para.push(Inline::Text {
-            text: head,
+            text: format!("{heading}{punct}"),
             span,
-            style: def.style.head_style(),
+            style: head_font,
             space_before: true,
         });
-        if let Some((note_text, note_span)) = note {
-            let note_text = note_text.trim();
-            if !note_text.is_empty() {
-                para.push(Inline::Text {
-                    text: format!(" ({note_text})"),
-                    span: note_span,
-                    style: TextStyle::default(),
-                    space_before: false,
-                });
-            }
+        let begin = match &option {
+            Some((_, option_span)) => span.merge(argument_span).merge(*option_span),
+            None => span.merge(argument_span),
+        };
+        let six = ThmSkip::Glue {
+            pt: 6.0,
+            plus: 6.0,
+            minus: 0.0,
+        };
+        self.theorem_open.push(self.theorem_records.len());
+        self.theorem_records.push(TheoremRecord {
+            environment: "proof".to_string(),
+            kind: TheoremKind::Proof,
+            begin,
+            end: None,
+            name: heading,
+            number: None,
+            note: None,
+            swap: false,
+            head_font,
+            note_font: head_font,
+            body_font: TextStyle::default(),
+            head_punct: punct.to_string(),
+            head_space: HeadSpace::LabelSep,
+            indent: None,
+            preskip: six,
+            postskip: six,
+        });
+        self.proof_frames.push(theorems::ProofFrame {
+            token_index: self.i,
+            qed_placed: false,
+        });
+        self.style = TextStyle::default();
+    }
+
+    /// `\end{proof}`'s `\popQED`: the `\qed` pushed at `\begin{proof}`,
+    /// unless a `\qedhere` already placed it. A `\qedhere` read in math mode
+    /// (inside a display) is set by the display (amsthm's
+    /// `\displaymath@qed`/`\equation@qed`, at the equation number's place),
+    /// so only its mark is recorded.
+    fn end_proof(&mut self, span: Span, para: &mut Vec<Inline>) {
+        let Some(frame) = self.proof_frames.pop() else {
+            return;
+        };
+        if frame.qed_placed {
+            return;
         }
+        let end = self.i.min(self.t.len());
+        let here = self.t[frame.token_index.min(end)..end]
+            .iter()
+            .find(
+                |input| matches!(&input.token.kind, TokenKind::Command(name) if name == "qedhere"),
+            )
+            .map(|input| input.token.span);
+        match here {
+            Some(here) => self.qed_marks.push(QedMark {
+                span: here,
+                placement: QedPlacement::Display,
+                symbol: self.qed_symbol(),
+            }),
+            None => self.place_qed(span, QedPlacement::EndOfProof, para),
+        }
+    }
+
+    fn qed_symbol(&self) -> QedSymbol {
+        if self.macros.contains_key("qedsymbol") {
+            QedSymbol::Custom
+        } else {
+            QedSymbol::OpenBox
+        }
+    }
+
+    /// amsthm `\qed` in text: `\leavevmode\unskip\penalty9999 \hbox{}
+    /// \nobreak\hfill\quad\hbox{\qedsymbol}` (amsthm.sty 273-279), emitted
+    /// as `\hfill` and U+220E; the `QedMark` carries the exact construction.
+    fn place_qed(&mut self, span: Span, placement: QedPlacement, para: &mut Vec<Inline>) {
+        para.push(Inline::HFill { span });
         para.push(Inline::Text {
-            text: ".".to_string(),
+            text: "∎".to_string(),
             span,
             style: TextStyle::default(),
             space_before: false,
         });
-        self.style = def.style.body_style();
+        self.qed_marks.push(QedMark {
+            span,
+            placement,
+            symbol: self.qed_symbol(),
+        });
     }
 
-    /// `proof`'s italic "Proof." head (or a custom `[...]` heading, still
-    /// period-terminated) and upright body. The closing "∎" is appended by
-    /// `environment`'s `\end` handling, once the body's last paragraph is
-    /// known.
-    fn begin_proof(&mut self, span: Span, para: &mut Vec<Inline>) {
-        let heading = self
-            .optional_bracket_argument()
-            .map(|(text, _)| text.trim().to_string())
-            .filter(|text| !text.is_empty())
-            .unwrap_or_else(|| "Proof".to_string());
-        para.push(Inline::Text {
-            text: format!("{heading}."),
-            span,
-            style: TextStyle {
-                italic: true,
-                ..TextStyle::default()
-            },
-            space_before: true,
-        });
-        self.style = TextStyle::default();
+    /// amsthm `\qedhere` in text: the innermost open proof's symbol goes
+    /// here. Outside a proof amsthm's QED stack is empty and nothing happens.
+    fn qed_here(&mut self, span: Span, para: &mut Vec<Inline>) {
+        if let Some(frame) = self.proof_frames.last_mut() {
+            if !frame.qed_placed {
+                frame.qed_placed = true;
+                self.place_qed(span, QedPlacement::Here, para);
+            }
+        }
+    }
+
+    /// Records `\end{environment}` on the innermost open theorem-like
+    /// instance of that name.
+    fn close_theorem(&mut self, environment: &str, span: Span) {
+        if let Some(&index) = self.theorem_open.last() {
+            if self.theorem_records[index].environment == environment {
+                self.theorem_open.pop();
+                self.theorem_records[index].end = Some(span);
+            }
+        }
     }
 
     /// `verbatim`, `verbatim*`, and basic `lstlisting`. The body is not read
@@ -3958,11 +4323,14 @@ impl P<'_> {
         // (see the `\begin` handling in `environment`); `itemize`/`enumerate`
         // use it for their own unrelated `enumitem` template instead, so it
         // only carries a `widest_label` for a `thebibliography` list.
-        let widest_label = self.list_stack.last().and_then(|(kind, _, template, _, _)| {
-            (kind == "thebibliography")
-                .then(|| template.clone())
-                .flatten()
-        });
+        let widest_label = self
+            .list_stack
+            .last()
+            .and_then(|(kind, _, template, _, _)| {
+                (kind == "thebibliography")
+                    .then(|| template.clone())
+                    .flatten()
+            });
         blocks.push(match list_level {
             Some(level) => Block::ListItem {
                 level,
@@ -4062,7 +4430,10 @@ impl P<'_> {
     /// Either way, the diagnostic's recovery note records whether an argument
     /// was skipped, so the choice itself stays auditable from the output.
     fn unsupported(&mut self, name: &str, span: Span) {
-        debug_assert!(!BUILT_INS.contains(&name));
+        debug_assert!(
+            !BUILT_INS.contains(&name),
+            "built-in \\{name} reached unsupported"
+        );
         let skipped = self.skip_recoverable_argument(name);
         self.diags.push(Diagnostic::command_error(
             name,
@@ -4195,6 +4566,17 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // warning rather than being silently matched here.
         _ => false,
     }
+}
+
+/// The text face a font-declaration argument selects from `\normalfont`
+/// (`\newtheoremstyle`'s body and head fonts: `\itshape`, `\bfseries`, ...).
+fn font_from_tokens(tokens: &[InputToken]) -> TextStyle {
+    tokens.iter().fold(TextStyle::default(), |style, input| {
+        match &input.token.kind {
+            TokenKind::Command(name) if style_declaration(name) => apply_style(style, name),
+            _ => style,
+        }
+    })
 }
 
 fn length_pt(value: &str) -> Option<f64> {

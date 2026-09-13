@@ -113,7 +113,15 @@ pub const TEXT_DIAGNOSTIC_ONLY: &[&str] = &["includegraphics", "frac", "sqrt"];
 pub const TEXT_CONTEXT_ONLY: &[&str] = &["thanks", "and", "today"];
 
 /// Dispatch arms that are not `parser::BUILT_INS` entries.
-const TEXT_EXTRA_ARMS: &[&str] = &["newtheorem", "theoremstyle"];
+const TEXT_EXTRA_ARMS: &[&str] = &[
+    "newtheorem",
+    "theoremstyle",
+    "newtheoremstyle",
+    "swapnumbers",
+    "numberwithin",
+    "qed",
+    "qedhere",
+];
 
 /// (name, arguments, description) for every `parser::BUILT_INS` entry that
 /// renders, plus the lexer's `\\`.
@@ -223,8 +231,13 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("author", "{...}", "author block for \\maketitle; \\and and \\thanks inside it"),
     ("date", "{...}", "date for \\maketitle; \\today inside it"),
     ("maketitle", "", "article.cls title block"),
-    ("newtheorem", "{env}[counter]{name}", "defines a numbered theorem-like environment (amsthm)"),
+    ("newtheorem", "{env}[counter]{name}[within]", "defines a theorem-like environment: the kernel head, or with amsthm the current style; starred form unnumbered"),
     ("theoremstyle", "{style}", "selects the amsthm style for following \\newtheorem"),
+    ("newtheoremstyle", "{name}{above}{below}{body font}{indent}{head font}{punct}{space}{spec}", "defines an amsthm style; a custom head specification is diagnosed"),
+    ("swapnumbers", "", "amsthm: numbers before names in the heads of later \\newtheorem environments"),
+    ("numberwithin", "[format]{counter}{parent}", "amsmath: a theorem or sectioning counter resets with its parent and prints the parent's number first"),
+    ("qed", "", "amsthm end-of-proof box, flush right"),
+    ("qedhere", "", "amsthm: puts the proof's end-of-proof box here instead of at \\end{proof}"),
 ];
 
 const SIZE_DECLARATIONS: &[&str] = &[
@@ -455,6 +468,12 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["qedhere"],
+        "",
+        "amsthm: the display holds the proof's end-of-proof box",
+        true,
+    ),
+    (
         &["tag"],
         "{label}",
         "(label) two quads after the display; starred form without parentheses",
@@ -524,7 +543,7 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
     ("verbatim", "literal monospaced lines"),
     ("verbatim*", "literal monospaced lines with visible spaces"),
     ("lstlisting", "literal monospaced lines (basic listings)"),
-    ("proof", "amsthm proof with a closing square"),
+    ("proof", "amsthm proof: italic head and an end-of-proof box (\\qedhere moves it)"),
     ("thebibliography", "References section with numbered \\bibitem entries"),
 ];
 
@@ -539,7 +558,7 @@ const PACKAGES: &[(&str, &str, &str)] = &[
     (
         "amsthm",
         "",
-        "\\newtheorem, \\theoremstyle and the proof environment",
+        "\\newtheorem, \\theoremstyle, \\newtheoremstyle, \\swapnumbers, the proof environment, \\qed and \\qedhere",
     ),
     (
         "array",
@@ -633,7 +652,10 @@ pub fn inventory() -> Inventory {
         // A `command_atom` arm runs before the glyph table (`\varnothing`
         // keeps `∅` but forces msbm10's advance), so the structure entry
         // above already describes it.
-        if MATH_STRUCTURES.iter().any(|(names, ..)| names.contains(&name)) {
+        if MATH_STRUCTURES
+            .iter()
+            .any(|(names, ..)| names.contains(&name))
+        {
             continue;
         }
         commands.push(Command {

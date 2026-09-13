@@ -109,8 +109,13 @@
     {"name": "author", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "author block for \\maketitle; \\and and \\thanks inside it", "renders": true},
     {"name": "date", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "date for \\maketitle; \\today inside it", "renders": true},
     {"name": "maketitle", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "article.cls title block", "renders": true},
-    {"name": "newtheorem", "mode": "text", "origin": "text_dispatch", "arguments": "{env}[counter]{name}", "description": "defines a numbered theorem-like environment (amsthm)", "renders": true},
+    {"name": "newtheorem", "mode": "text", "origin": "text_dispatch", "arguments": "{env}[counter]{name}[within]", "description": "defines a theorem-like environment: the kernel head, or with amsthm the current style; starred form unnumbered", "renders": true},
     {"name": "theoremstyle", "mode": "text", "origin": "text_dispatch", "arguments": "{style}", "description": "selects the amsthm style for following \\newtheorem", "renders": true},
+    {"name": "newtheoremstyle", "mode": "text", "origin": "text_dispatch", "arguments": "{name}{above}{below}{body font}{indent}{head font}{punct}{space}{spec}", "description": "defines an amsthm style; a custom head specification is diagnosed", "renders": true},
+    {"name": "swapnumbers", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "amsthm: numbers before names in the heads of later \\newtheorem environments", "renders": true},
+    {"name": "numberwithin", "mode": "text", "origin": "text_dispatch", "arguments": "[format]{counter}{parent}", "description": "amsmath: a theorem or sectioning counter resets with its parent and prints the parent's number first", "renders": true},
+    {"name": "qed", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "amsthm end-of-proof box, flush right", "renders": true},
+    {"name": "qedhere", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "amsthm: puts the proof's end-of-proof box here instead of at \\end{proof}", "renders": true},
     {"name": "\\", "mode": "text", "origin": "control_symbol", "arguments": "", "description": "line break; an optional [length] is consumed", "renders": true},
     {"name": ",", "mode": "math", "origin": "control_symbol", "arguments": "", "description": "thin space (3mu)", "renders": true},
     {"name": ":", "mode": "math", "origin": "control_symbol", "arguments": "", "description": "medium space (4mu)", "renders": true},
@@ -231,6 +236,7 @@
     {"name": "nonumber", "mode": "math", "origin": "math_structure", "arguments": "", "description": "accepted without effect", "renders": true},
     {"name": "notag", "mode": "math", "origin": "math_structure", "arguments": "", "description": "accepted without effect", "renders": true},
     {"name": "middle", "mode": "math", "origin": "math_structure", "arguments": "", "description": "accepted without effect", "renders": true},
+    {"name": "qedhere", "mode": "math", "origin": "math_structure", "arguments": "", "description": "amsthm: the display holds the proof's end-of-proof box", "renders": true},
     {"name": "tag", "mode": "math", "origin": "math_structure", "arguments": "{label}", "description": "(label) two quads after the display; starred form without parentheses", "renders": true},
     {"name": "begin", "mode": "math", "origin": "math_structure", "arguments": "{env}", "description": "opens a math grid environment", "renders": true},
     {"name": "alpha", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol α", "renders": true, "glyph": "α"},
@@ -449,7 +455,7 @@
     {"name": "verbatim", "mode": "text", "description": "literal monospaced lines"},
     {"name": "verbatim*", "mode": "text", "description": "literal monospaced lines with visible spaces"},
     {"name": "lstlisting", "mode": "text", "description": "literal monospaced lines (basic listings)"},
-    {"name": "proof", "mode": "text", "description": "amsthm proof with a closing square"},
+    {"name": "proof", "mode": "text", "description": "amsthm proof: italic head and an end-of-proof box (\\qedhere moves it)"},
     {"name": "thebibliography", "mode": "text", "description": "References section with numbered \\bibitem entries"},
     {"name": "array", "mode": "math", "description": "math grid, centred cells"},
     {"name": "matrix", "mode": "math", "description": "math grid, centred cells"},
@@ -469,7 +475,7 @@
   "packages": [
     {"name": "inputenc", "silent_options": "utf8", "description": "source text is already decoded as UTF-8"},
     {"name": "fontenc", "silent_options": "T1", "description": "text glyphs are mapped from Unicode"},
-    {"name": "amsthm", "silent_options": "", "description": "\\newtheorem, \\theoremstyle and the proof environment"},
+    {"name": "amsthm", "silent_options": "", "description": "\\newtheorem, \\theoremstyle, \\newtheoremstyle, \\swapnumbers, the proof environment, \\qed and \\qedhere"},
     {"name": "array", "silent_options": "", "description": "tabular >{} <{} !{} m b w columns, \\newcolumntype and \\extrarowheight"},
     {"name": "enumitem", "silent_options": "shortlabels", "description": "enumerate label templates; \\setlist itemsep/topsep"},
     {"name": "geometry", "silent_options": "letterpaper, margin=1in", "description": "matches the fixed US Letter page with 1in margins"}
@@ -489,7 +495,7 @@
     "rows": [
       {"set": "kernel", "kind": "command", "canonical": 410, "supported": 104, "percent": 25.4},
       {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
-      {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 35, "percent": 34.3},
+      {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 36, "percent": 35.3},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
       {"set": "amssymb", "kind": "command", "canonical": 229, "supported": 20, "percent": 8.7},
       {"set": "enumitem", "kind": "command", "canonical": 17, "supported": 1, "percent": 5.9},
@@ -500,6 +506,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 194, "percent": 19.3}
+    "total": {"canonical": 1003, "supported": 195, "percent": 19.4}
   }
 }
