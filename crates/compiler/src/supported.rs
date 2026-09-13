@@ -457,6 +457,12 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         "upright named operator (\\mathop); starred and withlimits forms take limits",
         true,
     ),
+    (
+        &["colon"],
+        "",
+        "function-arrow colon: punctuation (0mu/3mu) as the kernel declares it, amsmath's 2mu/6mu when amsmath is loaded",
+        true,
+    ),
     (&["bmod", "mod"], "", "upright mod", true),
     (&["pmod"], "{n}", "parenthesised (mod n)", true),
     (

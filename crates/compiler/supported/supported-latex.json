@@ -291,6 +291,7 @@
     {"name": "underset", "mode": "math", "origin": "math_structure", "arguments": "{script}{base}", "description": "script-size list centred above or below a base", "renders": true},
     {"name": "operatorname", "mode": "math", "origin": "math_structure", "arguments": "{name}", "description": "upright named operator (\\mathop); starred and withlimits forms take limits", "renders": true},
     {"name": "operatornamewithlimits", "mode": "math", "origin": "math_structure", "arguments": "{name}", "description": "upright named operator (\\mathop); starred and withlimits forms take limits", "renders": true},
+    {"name": "colon", "mode": "math", "origin": "math_structure", "arguments": "", "description": "function-arrow colon: punctuation (0mu/3mu) as the kernel declares it, amsmath's 2mu/6mu when amsmath is loaded", "renders": true},
     {"name": "bmod", "mode": "math", "origin": "math_structure", "arguments": "", "description": "upright mod", "renders": true},
     {"name": "mod", "mode": "math", "origin": "math_structure", "arguments": "", "description": "upright mod", "renders": true},
     {"name": "pmod", "mode": "math", "origin": "math_structure", "arguments": "{n}", "description": "parenthesised (mod n)", "renders": true},
@@ -864,7 +865,7 @@
       "Source siunitx: tokens of siunitx.sty (siunitx.sty 2025-07-09 v3.4.14 A comprehensive (SI) units package); dependency baseline: translations, etoolbox, pdftexcmds, infwarerr, iftex, ltxcmds, amstext, amsgen, array"
     ],
     "rows": [
-      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 162, "percent": 39.5},
+      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 163, "percent": 39.8},
       {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 17, "percent": 56.7},
       {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 40, "percent": 39.2},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
@@ -879,6 +880,6 @@
       {"set": "xcolor", "kind": "command", "canonical": 71, "supported": 14, "percent": 19.7},
       {"set": "siunitx", "kind": "command", "canonical": 240, "supported": 17, "percent": 7.1}
     ],
-    "total": {"canonical": 1314, "supported": 501, "percent": 38.1}
+    "total": {"canonical": 1314, "supported": 502, "percent": 38.2}
   }
 }
