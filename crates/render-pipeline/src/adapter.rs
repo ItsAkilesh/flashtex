@@ -3592,28 +3592,29 @@ fn items_cached(
     at.bold.hash(&mut h);
     at.italic.hash(&mut h);
     (at.slanted, at.caps, at.family, at.undefined, st.scheme).hash(&mut h);
+    inlines.len().hash(&mut h);
     for i in inlines {
         let s = inline_span(i);
         (s.start.wrapping_sub(start), s.end.wrapping_sub(start)).hash(&mut h);
+        // The kind tag comes from the variant itself, never a hand-written
+        // number: see `incremental::tag`.
+        crate::incremental::tag(i, &mut h);
         match i {
             Inline::Text { text, .. } => {
-                0u8.hash(&mut h);
                 text.hash(&mut h);
             }
-            Inline::LineBreak { .. } => 1u8.hash(&mut h),
+            // The tag is the whole payload.
+            Inline::LineBreak { .. } => {}
             Inline::Math { list, display, number, .. } => {
-                2u8.hash(&mut h);
                 display.hash(&mut h);
                 number.hash(&mut h);
                 crate::incremental::hash_math(list, &mut h);
             }
             Inline::Label { key, value, .. } => {
-                3u8.hash(&mut h);
                 key.hash(&mut h);
                 value.hash(&mut h);
             }
             Inline::Reference { key, page, equation, .. } => {
-                4u8.hash(&mut h);
                 key.hash(&mut h);
                 page.hash(&mut h);
                 equation.hash(&mut h);
@@ -3621,46 +3622,38 @@ fn items_cached(
             // Lowered constructs (pin `d416472a`): their text is in the
             // source slice already hashed; the structure is hashed here.
             Inline::Footnote { number, mark, text, .. } => {
-                9u8.hash(&mut h);
                 number.hash(&mut h);
                 mark.hash(&mut h);
                 text.as_ref().map_or(0, Vec::len).hash(&mut h);
             }
             Inline::Tabular(t) => {
-                10u8.hash(&mut h);
                 t.entries.len().hash(&mut h);
                 t.inline_lists().iter().map(|l| l.len()).sum::<usize>().hash(&mut h);
             }
             Inline::Verbatim { text, .. } => {
-                11u8.hash(&mut h);
                 text.hash(&mut h);
             }
             Inline::Logo { logo, style, .. } => {
-                12u8.hash(&mut h);
                 logo.hash(&mut h);
                 style.hash(&mut h);
             }
             Inline::Rule { rule, style, .. } => {
-                13u8.hash(&mut h);
                 rule.hash(&mut h);
                 style.hash(&mut h);
             }
             Inline::Kern { amount, style, .. } => {
-                14u8.hash(&mut h);
                 amount.hash(&mut h);
                 style.hash(&mut h);
             }
-            Inline::HFill { .. } => 6u8.hash(&mut h),
+            // The tag is the whole payload.
+            Inline::HFill { .. } => {}
             Inline::HSpace { pt, .. } => {
-                7u8.hash(&mut h);
                 pt.to_bits().hash(&mut h);
             }
             Inline::TextGlue { em, .. } => {
-                8u8.hash(&mut h);
                 em.to_bits().hash(&mut h);
             }
             Inline::MathRows { rows, aligned, .. } => {
-                5u8.hash(&mut h);
                 aligned.hash(&mut h);
                 rows.len().hash(&mut h);
                 for row in rows {
