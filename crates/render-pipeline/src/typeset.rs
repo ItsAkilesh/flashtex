@@ -3274,6 +3274,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // `(index of the block that follows, event, source)`: page-style and
     // mark commands; a heading's mark sits on the heading's own block.
     let mut events: Vec<(usize, adapter::ChromeEvent, Span)> = Vec::new();
+    // First block of every `\chapter` (its `\cleardoublepage`).
+    let mut chapter_starts: Vec<usize> = Vec::new();
     // `\sectionmark`/`\chaptermark` as defined by the last `\ps@headings` or
     // `\ps@myheadings` (`\ps@plain`/`\ps@empty` leave them alone).
     let mut mark_rules: Vec<flashtex_class_geometry::MarkRule> = geo.map(|g| g.mark_rules.clone()).unwrap_or_default();
@@ -3355,6 +3357,9 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                     events.push((blocks.len(), mark_event(rule, n, title, doc.secnumdepth), *span));
                 }
                 let built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size);
+                if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
+                    chapter_starts.push(blocks.len());
+                }
                 blocks.extend(built);
                 after_heading = true;
             }
@@ -3586,7 +3591,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     };
     let vblocks: Vec<VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
     let list = pagebuild::vlist(&params, &vblocks);
-    let (built, images, float_labels) = if floats.is_empty() {
+    let (mut built, images, float_labels) = if floats.is_empty() {
         (pagebuild::break_pages(&params, &list), Vec::new(), Vec::new())
     } else {
         floatpage::paginate(ctx, &mut blocks, &params, &list, floats)
@@ -3595,6 +3600,16 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // (`\@colht`); `\@outputdblcol` ships the first column and the second
     // side by side, the second `\columnwidth + \columnsep` to the right.
     let columns = geo.map_or(1, |g| g.frame.columns.len().max(1));
+    // `\c@page` and `\thepage` of every page; `\cleardoublepage`'s empty
+    // page (`\hbox{}\newpage`) before an `openright` chapter that would
+    // start on an even page of a two-sided document.
+    let mut blank_pages: Vec<usize> = Vec::new();
+    let counters = geo.map_or_else(Vec::new, |g| {
+        if columns == 1 && g.flags.twoside && !chapter_starts.is_empty() {
+            blank_pages = open_right(&mut built, &chapter_starts, blocks.len(), &events, g.numbering);
+        }
+        page_counters(&built, columns, blocks.len(), &events, g.numbering)
+    });
     let mut pages = pl::Pages {
         pages: Vec::with_capacity(built.len().div_ceil(columns)),
         overflow: Vec::new(),
@@ -3616,7 +3631,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         }
         // `\@themargin` of this page (0 on odd and one-sided pages: the
         // blocks are assembled at `\oddsidemargin`) plus the column offset.
-        let dx = geo.map_or(0.0, |g| crate::style::frame_pt(g.frame.text_left(i64::from(number))) - s.text_x_pt + crate::style::frame_pt(g.frame.columns[col].offset));
+        let counter = counters.get(pi).map_or(i64::from(number), |c| c.0);
+        let dx = geo.map_or(0.0, |g| crate::style::frame_pt(g.frame.text_left(counter)) - s.text_x_pt + crate::style::frame_pt(g.frame.columns[col].offset));
         let page = pages.pages.last_mut().expect("pushed above");
         let dxs = line_dx.last_mut().expect("pushed above");
         for placed in &bp.lines {
@@ -3652,13 +3668,19 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         }
     }
     if let Some(g) = geo {
-        page_chrome(ctx, g, &mut blocks, &mut pages, &mut line_dx, &events);
+        page_chrome(ctx, g, &mut blocks, &mut pages, &mut line_dx, &events, &counters);
     }
-    // Float image items and labels are numbered by page-builder column: map
-    // them to their page and give them the page's margin and column offset
-    // (an even twoside page's `\evensidemargin`, the second column).
+    // Float image items and labels are numbered by page-builder column
+    // (before `\cleardoublepage`'s empty pages): map them to their page and
+    // give them the page's margin and column offset (an even twoside page's
+    // `\evensidemargin`, the second column).
     let column_page = |n: u32| -> (u32, usize) {
-        let ci = n.saturating_sub(1) as usize;
+        let mut ci = n.saturating_sub(1) as usize;
+        for &b in &blank_pages {
+            if b <= ci {
+                ci += 1;
+            }
+        }
         ((ci / columns) as u32 + 1, ci % columns)
     };
     let images: Vec<(u32, display::Item)> = images
@@ -3666,7 +3688,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         .map(|(n, mut it)| {
             let (number, col) = column_page(n);
             if let Some(g) = geo {
-                let dx = crate::style::frame_pt(g.frame.text_left(i64::from(number))) - s.text_x_pt + crate::style::frame_pt(g.frame.columns[col].offset);
+                let counter = counters.get(number as usize - 1).map_or(i64::from(number), |c| c.0);
+                let dx = crate::style::frame_pt(g.frame.text_left(counter)) - s.text_x_pt + crate::style::frame_pt(g.frame.columns[col].offset);
                 if dx != 0.0 {
                     display::shift_x(&mut it, Tick::from_tex_pt(dx));
                 }
@@ -3737,13 +3760,73 @@ const QUAD_MARK: char = '\u{2003}';
 /// An interword space at space factor 3000 (after a period) inside mark text.
 const SENTENCE_SPACE_MARK: char = '\u{2002}';
 
+/// `(\c@page, \thepage style)` of every shipped page: 1 and the class
+/// numbering at the start, `\pagenumbering` resets to 1, `\setcounter{page}`
+/// sets, each shipout steps. Events belong to the page holding the next
+/// block (as in [`page_chrome`]).
+fn page_counters(built: &[pagebuild::BuiltPage], columns: usize, n_blocks: usize, events: &[(usize, adapter::ChromeEvent, Span)], numbering: flashtex_class_geometry::Numbering) -> Vec<(i64, flashtex_class_geometry::Numbering)> {
+    let n_pages = built.len().div_ceil(columns.max(1));
+    if n_pages == 0 {
+        return Vec::new();
+    }
+    let mut first_page: Vec<Option<usize>> = vec![None; n_blocks];
+    for (ci, bp) in built.iter().enumerate() {
+        for l in &bp.lines {
+            if let Some(slot) = first_page.get_mut(l.payload.0) {
+                slot.get_or_insert(ci / columns.max(1));
+            }
+        }
+    }
+    let mut per: Vec<Vec<&adapter::ChromeEvent>> = vec![Vec::new(); n_pages];
+    for (b, e, _) in events {
+        let page = (*b..n_blocks).find_map(|i| first_page[i]).unwrap_or(n_pages - 1);
+        per[page].push(e);
+    }
+    let (mut counter, mut style) = (1i64, numbering);
+    let mut out = Vec::with_capacity(n_pages);
+    for events in per {
+        for e in events {
+            match e {
+                adapter::ChromeEvent::PageNumbering(n) => {
+                    style = *n;
+                    counter = 1;
+                }
+                adapter::ChromeEvent::SetPage(n) => counter = *n,
+                _ => {}
+            }
+        }
+        out.push((counter, style));
+        counter += 1;
+    }
+    out
+}
+
+/// `\cleardoublepage` before an `openright` chapter (one-column,
+/// two-sided): an empty page (`\hbox{}\newpage`, the page style in force)
+/// when the chapter's page would be even.
+fn open_right(built: &mut Vec<pagebuild::BuiltPage>, chapter_starts: &[usize], n_blocks: usize, events: &[(usize, adapter::ChromeEvent, Span)], numbering: flashtex_class_geometry::Numbering) -> Vec<usize> {
+    // Indices (in the final list, ascending) of the inserted empty pages.
+    let mut inserted = Vec::new();
+    let mut k = 0;
+    while k < built.len() {
+        let starts = built[k].lines.first().is_some_and(|l| chapter_starts.contains(&l.payload.0));
+        if starts && page_counters(built, 1, n_blocks, events, numbering)[k].0 % 2 == 0 {
+            built.insert(k, pagebuild::BuiltPage::default());
+            inserted.push(k);
+            k += 1;
+        }
+        k += 1;
+    }
+    inserted
+}
+
 /// Header, footer and `\columnseprule` of every page (`\@outputpage`,
 /// `\@outputdblcol`): the page style in force when the page ships
 /// (`\pagestyle` changes before its last material count; `\thispagestyle`
 /// only for its page), `\leftmark` from the page's last mark and
 /// `\rightmark` from its first (`\botmark`/`\firstmark`, the previous
 /// page's last mark when the page has none).
-fn page_chrome(ctx: &mut Context, g: &flashtex_class_geometry::ResolvedDocument, blocks: &mut Vec<BuiltBlock>, pages: &mut pl::Pages, line_dx: &mut [Vec<f64>], events: &[(usize, adapter::ChromeEvent, Span)]) {
+fn page_chrome(ctx: &mut Context, g: &flashtex_class_geometry::ResolvedDocument, blocks: &mut Vec<BuiltBlock>, pages: &mut pl::Pages, line_dx: &mut [Vec<f64>], events: &[(usize, adapter::ChromeEvent, Span)], counters: &[(i64, flashtex_class_geometry::Numbering)]) {
     use crate::style::frame_pt;
     use adapter::ChromeEvent;
     use flashtex_class_geometry::Field;
@@ -3773,7 +3856,7 @@ fn page_chrome(ctx: &mut Context, g: &flashtex_class_geometry::ResolvedDocument,
     let mut top = (String::new(), String::new());
     let mut current = top.clone();
     for pi in 0..n_pages {
-        let number = pi as i64 + 1;
+        let (number, numbering) = counters.get(pi).copied().unwrap_or((pi as i64 + 1, g.numbering));
         let mut this = None;
         let mut first: Option<(String, String)> = None;
         for e in &by_page[pi] {
@@ -3788,13 +3871,14 @@ fn page_chrome(ctx: &mut Context, g: &flashtex_class_geometry::ResolvedDocument,
                     current.1 = r.clone();
                     first.get_or_insert_with(|| current.clone());
                 }
+                ChromeEvent::PageNumbering(_) | ChromeEvent::SetPage(_) => {}
             }
         }
         let first = first.unwrap_or_else(|| top.clone());
         let bot = current.clone();
         let m = this.map_or(macros, |ps| macros.apply(ps, g.options.twoside));
         let (head, foot) = m.for_page(g.flags.twoside, number);
-        let page_no = g.numbering.format(number);
+        let page_no = numbering.format(number);
         let dx = frame_pt(frame.text_left(number)) - text_x;
         if frame.twocolumn && frame.columns.len() > 1 && ctx.style.columnseprule_pt > 0.0 {
             // `\hb@xt@\columnwidth{..}\hfil\vrule\@width\columnseprule\hfil`:

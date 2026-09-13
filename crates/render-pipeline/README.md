@@ -266,9 +266,18 @@ within 0.1pt, and every matched line start's x and baseline within 0.1pt
 (line starts whose first words differ, i.e. a different line break, are
 counted, not failed).
 
-Not implemented: `\cleardoublepage`'s blank page before an `openright`
-chapter on an even page, `\pagenumbering` (always arabic from 1),
-`\maketitle`'s `\thispagestyle{plain}`, two-column `\chapter`
+Implemented and gated against pdflatex (`tests/page_frame.rs`, 32
+fixtures): `\pagenumbering{arabic|roman|Roman|alph|Alph}` (resets
+`\c@page` to 1), `\setcounter{page}{n}` (page parity follows the counter
+for margins and heads), `\cleardoublepage`'s empty page (current page
+style) before an `openright` chapter on an even page, article
+`\maketitle`'s `\thispagestyle{plain}`.
+
+Not implemented: `\@maketitle`'s vertical skips and tabular author block
+(body baselines under a title are reported, not gated), report/book
+`titlepage` (`\maketitle` on its own empty-style page, `\c@page` reset),
+`\frontmatter`/`\mainmatter`, `\cleardoublepage` in two-column documents
+and explicit `\cleardoublepage` commands, two-column `\chapter`
 (`\@topnewpage`), float and footnote placement, commands and marks inside
 `\input` files, macros inside mark/chapter titles (their source text is
 used).
