@@ -195,9 +195,11 @@ final class PanelAccessibilityTests: XCTestCase {
         let window = try await host(EditorPreferencesView(preferences: prefs, showGrok: true), title: "Editor Preferences", size: NSSize(width: 480, height: 900))
         let controls = assertControlsTakeKeyboardFocus(in: window, panel: "Settings+Grok", atLeast: 11)
         let kinds = controls.map { String(describing: type(of: $0)) }
-        XCTAssertEqual(kinds.filter { $0.contains("Switch") }.count, 4, kinds.description)
+        // mac-grok-polish: the provider switch became the auto/on/off picker and the model field a
+        // picker whose "Other…" text field only appears when chosen.
+        XCTAssertEqual(kinds.filter { $0.contains("Switch") }.count, 3, kinds.description)
         XCTAssertTrue(kinds.contains { $0.contains("SecureTextField") }, kinds.description)
-        XCTAssertGreaterThanOrEqual(kinds.filter { $0.contains("TextField") }.count, 2, "key + model fields: \(kinds)")
+        XCTAssertGreaterThanOrEqual(kinds.filter { $0.contains("PopupButton") }.count, 2, "provider mode + model pickers: \(kinds)")
         window.close()
     }
 
