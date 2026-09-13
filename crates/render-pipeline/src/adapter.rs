@@ -119,6 +119,13 @@ pub enum Item {
     /// `tabular`/`tabular*` (compiler `Inline::Tabular`): one box in the
     /// paragraph, laid out by `table.rs`.
     Table(Box<crate::table::TableItem>),
+    /// `\footnote`, `\footnotemark` or `\footnotetext` (compiler
+    /// `Inline::Footnote`). `number` is `\@thefnmark`; `mark` sets
+    /// `\@makefnmark` here (false for `\footnotetext`); `text` is the note's
+    /// items, set in `\footnotesize` at the foot of the column by
+    /// `typeset::footnotes` (`None` for `\footnotemark`). `span` is the
+    /// command token.
+    Footnote { number: String, mark: bool, span: Span, text: Option<Vec<Item>> },
 }
 
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
@@ -1111,16 +1118,9 @@ fn inline_span(i: &Inline) -> Span {
 /// columns or rules) and `\verb` (body face). Footnote text is scanned too.
 fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, String)>) {
     match inline {
-        Inline::Footnote { number, span, mark, text, .. } => {
-            out.push((
-                "unsupported_block",
-                *span,
-                format!(
-                    "\\footnote {number}: {}{} set inline in the paragraph (no page-bottom footnote area yet)",
-                    if *mark { "mark as plain text" } else { "no mark" },
-                    if text.is_some() { ", note text" } else { "" }
-                ),
-            ));
+        Inline::Footnote { text, .. } => {
+            // Set by `typeset::footnotes`; contexts it does not reach
+            // (headings, captions, floats) are diagnosed there.
             for i in text.iter().flatten() {
                 unsupported_inlines(i, out);
             }
@@ -1172,20 +1172,6 @@ fn lower_inline<'a>(inline: &'a Inline, labels: &Labels, reference_spans: &mut V
                 // spans here, never from the compiler's flag.
                 space_before: true,
             }));
-        }
-        Inline::Footnote { number, span, mark, text, .. } => {
-            if *mark {
-                reference_spans.push(*span);
-                out.push(std::borrow::Cow::Owned(Inline::Text {
-                    text: number.clone(),
-                    span: *span,
-                    style: Default::default(),
-                    space_before: true,
-                }));
-            }
-            for i in text.iter().flatten() {
-                lower_inline(i, labels, reference_spans, out);
-            }
         }
         Inline::Verbatim { text, span, space_before } => {
             reference_spans.push(*span);
@@ -3301,7 +3287,25 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
     for inline in resolved.iter() {
         match &**inline {
             Inline::Label { key, .. } => items.push(Item::Label { key: key.clone() }),
-            Inline::Reference { .. } | Inline::Footnote { .. } | Inline::Verbatim { .. } => unreachable!("lowered by lower_inline above"),
+            Inline::Reference { .. } | Inline::Verbatim { .. } => unreachable!("lowered by lower_inline above"),
+            Inline::Footnote { number, span, mark, text, .. } => {
+                // `\@footnotemark` keeps the space factor; the space before
+                // the command is an ordinary interword space. The command's
+                // `[<n>]` and `{<text>}` are skipped for the gap that follows.
+                let src = text_of(span.document);
+                let end = footnote_command_end(src, span.end);
+                let word = src.get(span.start..span.end).unwrap_or("\\footnote");
+                let gap = space_between(prev_end, prev_span, *span, Some(word), after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                let note = text.as_ref().map(|t| items_from_inlines_styled(texts, t, styles, labels, size, false, compiler_weight));
+                items.push(Item::Footnote { number: number.clone(), mark: *mark, span: *span, text: note });
+                after_control_word = end == span.end;
+                prev_end = Some(end);
+                prev_span = Some(Span::in_document(span.document, span.start, end));
+                pending_accent = None;
+            }
             Inline::Tabular(t) => {
                 // `\leavevmode\hbox{...}`: one box, with the space before it
                 // read like a formula's.
@@ -3537,6 +3541,39 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
         }
     }
     items
+}
+
+/// The byte after `\footnote[<n>]{<text>}` whose command token ends at
+/// `at`: an optional `[...]` and a brace group (`{}` after `\footnotemark`
+/// too) are skipped; `at` itself when neither follows.
+fn footnote_command_end(src: &str, at: usize) -> usize {
+    let bytes = src.as_bytes();
+    let mut i = at;
+    if bytes.get(i) == Some(&b'[') {
+        match src[i..].find(']') {
+            Some(close) => i += close + 1,
+            None => return at,
+        }
+    }
+    if bytes.get(i) != Some(&b'{') {
+        return i;
+    }
+    let mut depth = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 1,
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    bytes.len()
 }
 
 /// The size declaration in force where TeX reads the space token between

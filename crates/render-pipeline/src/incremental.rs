@@ -247,6 +247,17 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 9u8.hash(h);
                 format!("{t:?}").hash(h);
             }
+            Item::Footnote { number, mark, span, text } => {
+                10u8.hash(h);
+                number.hash(h);
+                mark.hash(h);
+                (span.start.wrapping_sub(base)).hash(h);
+                (span.end.wrapping_sub(base)).hash(h);
+                text.is_some().hash(h);
+                if let Some(t) = text {
+                    hash_items(t, base, h);
+                }
+            }
         }
     }
 }
@@ -591,6 +602,12 @@ pub fn relocate_items(items: &[Item], delta: isize) -> Vec<Item> {
             Item::Math { list, span } => {
                 shift_span(span, delta);
                 shift_math(list, delta);
+            }
+            Item::Footnote { span, text, .. } => {
+                shift_span(span, delta);
+                if let Some(t) = text {
+                    *t = relocate_items(t, delta);
+                }
             }
             _ => {}
         }
