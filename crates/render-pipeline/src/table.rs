@@ -553,9 +553,44 @@ pub struct Metrics {
 /// Lays the table out. `rows[i]` holds the measured cells of the i-th
 /// `Row` entry, in the order [`row_slots`] returns them.
 pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
+    let widths = widths(table, rows, m);
+    layout_with(table, rows, m, &widths, Options::default())
+}
+
+/// The column geometry of a table: what TeX’s `\halign` settles after
+/// §801. longtable measures it over every row of every chunk (head, foot
+/// and `\kill` rows included) and then sets each chunk with it, so it is
+/// computed apart from the vertical pass.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Widths {
+    /// Left edge of each column, plus the table's right edge.
+    pub column_x: Vec<f64>,
+    /// Natural width of each column (without the following `\tabskip`).
+    pub widths: Vec<f64>,
+    /// The whole table's width (`\hsize` for `tabular*`).
+    pub box_width: f64,
+}
+
+impl Widths {
+    /// The right edge of column `k`'s material (before its `\tabskip`).
+    fn right_of(&self, k: usize) -> f64 {
+        self.column_x[k] + self.widths[k]
+    }
+}
+
+/// How [`layout_with`] differs from a plain `tabular`.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Options {
+    /// longtable: `\hline` is `\LT@hline` (longtable.sty 430-454), two
+    /// `\multispan` leader rows `\LT@sep` apart rather than one `\hrule`,
+    /// and the geometry keeps the vertical origin at the top (each chunk is
+    /// its own box in the page's vertical list, not a box on a baseline).
+    pub longtable: bool,
+}
+
+/// TeX §801 over every row: the column widths and the table's width.
+pub fn widths(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Widths {
     let n = table.columns.len().max(1);
-    let arw = table.lengths.arrayrulewidth;
-    let dbl = table.lengths.doublerulesep;
 
     // TeX §801: w[k][j] is the widest entry spanning columns k..=j.
     let mut w = vec![vec![f64::NEG_INFINITY; n]; n];
@@ -601,7 +636,18 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
     for k in 0..n {
         column_x[k + 1] = column_x[k] + widths[k] + tabskip[k];
     }
-    let right_of = |k: usize| column_x[k] + widths[k];
+    Widths { column_x, widths, box_width }
+}
+
+/// The vertical pass over `table.entries` with the column geometry already
+/// settled, so a longtable can set several chunks against one measurement.
+pub fn layout_with(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics, cols: &Widths, opts: Options) -> Geometry {
+    let n = table.columns.len().max(1);
+    let arw = table.lengths.arrayrulewidth;
+    let dbl = table.lengths.doublerulesep;
+    let column_x = &cols.column_x;
+    let box_width = cols.box_width;
+    let right_of = |k: usize| cols.right_of(k);
 
     let mut placed = Vec::new();
     let mut rules: Vec<PlacedRule> = Vec::new();
@@ -739,6 +785,30 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
                 y += height + depth;
                 last_depth = depth;
             }
+            // The second `\hline` of `\hline\hline` was gobbled by
+            // `\@gtempa` (longtable.sty 437, 454): the pair is one rule row,
+            // `\doublerulesep`, another rule row.
+            TableEntry::HLine { .. } if opts.longtable && matches!(table.entries.get(index.wrapping_sub(1)), Some(TableEntry::HLine { .. })) => {}
+            TableEntry::HLine { span } if opts.longtable => {
+                // `\LT@hline` (longtable.sty 430-454): `\hline` is two
+                // `\multispan\LT@cols` leader rows of `\arrayrulewidth`
+                // with `\LT@sep` between them, not one `\hrule`. A single
+                // `\hline` separates them by `-\arrayrulewidth`, so they
+                // coincide; `\hline\hline` (the second one gobbled) by
+                // `\doublerulesep`. Both rows are real boxes, so a
+                // longtable paints two rules where a tabular paints one.
+                first_height.get_or_insert(arw);
+                let double = matches!(next, Some(TableEntry::HLine { .. }));
+                rule(&mut rules, 0.0, y, box_width, arw, *span, &rule_color);
+                y += arw;
+                let sep = if double { dbl } else { -arw };
+                if double && gap_color.is_some() {
+                    rule(&mut rules, 0.0, y, box_width, sep, *span, &gap_color);
+                }
+                y += sep;
+                rule(&mut rules, 0.0, y, box_width, arw, *span, &rule_color);
+                y += arw;
+            }
             TableEntry::HLine { span } => {
                 first_height.get_or_insert(arw);
                 rule(&mut rules, 0.0, y, box_width, arw, *span, &rule_color);
@@ -854,10 +924,17 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
     }
 
     let total = y;
-    let reference = match table.position {
-        VerticalPosition::Top => first_height.unwrap_or(0.0),
-        VerticalPosition::Bottom => total - last_depth,
-        VerticalPosition::Center => total / 2.0 + m.axis,
+    // longtable chunks go into the page's vertical list as boxes of their
+    // own, with `\baselineskip\z@` (longtable.sty 191): the origin stays
+    // at the top and the caller reads the bands.
+    let reference = if opts.longtable {
+        0.0
+    } else {
+        match table.position {
+            VerticalPosition::Top => first_height.unwrap_or(0.0),
+            VerticalPosition::Bottom => total - last_depth,
+            VerticalPosition::Center => total / 2.0 + m.axis,
+        }
     };
     for p in &mut placed {
         p.baseline -= reference;
