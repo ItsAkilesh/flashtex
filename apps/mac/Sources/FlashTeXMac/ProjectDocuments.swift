@@ -556,6 +556,94 @@ final class ProjectDocuments {
         return closure
     }
 
+    // MARK: implicit include-closure documents
+
+    /// One document in the include closure that is not an open project
+    /// member: a rooted path and the text last read from disk for it. Role
+    /// `.implicit` — never a project member (`ShellModel.documents` never
+    /// gets it), never durable (no `open_document`/`edit` for it), never
+    /// written. Exists only for the compile request and this lane's file
+    /// watchers; opening it the ordinary way (a click on its sidebar row,
+    /// `openDocument`) promotes it to a real member and it stops being
+    /// reported here, and detaching it reverts it to implicit on the next
+    /// `discoverClosure()` — there is no separate state to update either way.
+    struct ImplicitDocument: Equatable { var path: String; var text: String }
+
+    @ObservationIgnored private var implicitWatchers: [String: DocumentWatcher] = [:]
+    @ObservationIgnored private var implicitDebounce: DispatchWorkItem?
+
+    /// The compile request's documents beyond the open project members:
+    /// every `discoverClosure()` path that is not already open, read fresh
+    /// through the same rooted reader `openDirectly` uses (no symlink on any
+    /// path component, `ProjectIncludes.maxDocumentBytes` bound, valid
+    /// UTF-8). A path that cannot be read this way right now (raced away
+    /// since discovery, grew past the bound, not UTF-8) is left out rather
+    /// than fabricated: the compiler then reports its ordinary "referenced
+    /// but missing" diagnostic for that include, exactly as for an unopened
+    /// include today.
+    ///
+    /// Also rearms this lane's per-path `DocumentWatcher`s to exactly the
+    /// current implicit set, so an on-disk edit to one of them schedules a
+    /// recompile coalesced behind the existing auto-compile debounce
+    /// (`ShellModel.debounceInterval`) — never the entry's own watcher, never
+    /// the durable ledger.
+    ///
+    /// Direct/worker route only (`ShellModel.compile()`). The durable helper
+    /// (preview-controller) compiles from its own ledger membership and its
+    /// `compile`/`edit` requests carry no field for a read-only, non-durable
+    /// document (`crates/preview-controller/STDIO.md`), so a project attached
+    /// to it still needs an explicit open for an unopened include; extending
+    /// that route needs a helper-side protocol change, out of this lane's scope.
+    func implicitClosureDocuments() -> [ImplicitDocument] {
+        guard let root = projectRoot else { rearmImplicitWatchers([:]); return [] }
+        let closure = discoverClosure()
+        let open = Set(model.documents.map(\.path))
+        var out: [ImplicitDocument] = []
+        var urls: [String: URL] = [:]
+        for path in closure.paths where !open.contains(path) {
+            guard case .file(let url) = Self.rootedFile(path, under: root) else { continue }
+            urls[path] = url
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  (attrs[.size] as? Int ?? 0) <= ProjectIncludes.maxDocumentBytes,
+                  let data = try? Data(contentsOf: url),
+                  let text = String(data: data, encoding: .utf8) else { continue }
+            out.append(ImplicitDocument(path: path, text: text))
+        }
+        rearmImplicitWatchers(urls)
+        return out
+    }
+
+    /// Keeps exactly one `DocumentWatcher` per path the last
+    /// `implicitClosureDocuments()` pass considered (including one whose read
+    /// failed — a symlink or size violation a later edit might fix, or a file
+    /// about to reappear): stops watchers for paths no longer implicit (now
+    /// open, or no longer in the closure), starts one for each new path.
+    private func rearmImplicitWatchers(_ current: [String: URL]) {
+        for path in implicitWatchers.keys where current[path] == nil {
+            implicitWatchers.removeValue(forKey: path)?.stop()
+        }
+        for (path, url) in current where implicitWatchers[path]?.url != url {
+            let watcher = implicitWatchers[path] ?? DocumentWatcher()
+            watcher.onChange = { [weak self] in self?.scheduleImplicitRecompile() }
+            watcher.watch(url)
+            implicitWatchers[path] = watcher
+        }
+    }
+
+    /// An implicit document changed on disk: recompile, coalesced exactly
+    /// like a keystroke burst (`ShellModel.debounceInterval`), so several
+    /// implicit files touched together (a `git checkout`, a build script)
+    /// become one compile.
+    private func scheduleImplicitRecompile() {
+        let model = self.model // strong across the debounce delay (see flushToHelper)
+        guard model.autoCompile, model.workerAttached else { return }
+        implicitDebounce?.cancel()
+        if ShellModel.debounceInterval == 0 { model.compile(); return }
+        let item = DispatchWorkItem { [weak model] in model?.compile() }
+        implicitDebounce = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + ShellModel.debounceInterval, execute: item)
+    }
+
     /// Resolves scanned references like `discoverIncludes` does.
     private func resolve(_ refs: [ProjectIncludes.Reference], route helper: Bool) -> [Discovered] {
         refs.map { ref in

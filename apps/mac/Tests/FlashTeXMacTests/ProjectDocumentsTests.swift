@@ -621,4 +621,137 @@ final class ProjectDocumentsTests: XCTestCase {
             try await Task.sleep(nanoseconds: 30_000_000)
         }
     }
+
+    // MARK: implicit include-closure compile (lane mac-includes-auto)
+
+    /// Every resolved, unopened include in the closure goes out with the
+    /// compile request (`ProjectDocuments.implicitClosureDocuments`), even a
+    /// nested one two levels deep — without opening any of them.
+    func testImplicitClosureSendsUnopenedIncludesWithoutOpeningThem() throws {
+        let project = try TempProject(main: "\\begin{document}\nMain.\n\\input{chapter}\n\\end{document}\n",
+                                      chapter: "Chapter.\n\\input{ch/two}\n",
+                                      extra: ["ch/two.tex": "Section two.\n"])
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let implicit = model.project.implicitClosureDocuments()
+        XCTAssertEqual(Set(implicit.map(\.path)), ["chapter.tex", "ch/two.tex"], "the whole transitive closure, not just the entry's direct includes")
+        XCTAssertEqual(implicit.first(where: { $0.path == "chapter.tex" })?.text, "Chapter.\n\\input{ch/two}\n")
+        XCTAssertEqual(implicit.first(where: { $0.path == "ch/two.tex" })?.text, "Section two.\n")
+        // Discovery-only: nothing was opened, the project membership is unchanged.
+        XCTAssertEqual(model.documents.map(\.path), ["main.tex"])
+        XCTAssertEqual(model.project.listing.count, 1)
+    }
+
+    /// An on-disk edit to a still-unopened include is what the next compile
+    /// request carries (read fresh, never cached); opening the file makes the
+    /// buffer authoritative and removes it from the implicit set entirely —
+    /// an unsaved buffer edit is therefore never leaked into a "disk" read —
+    /// and detaching it (discarding the buffer) reverts it to implicit.
+    func testImplicitClosureTextUpdatesOnDiskChangeAndOpenedBufferOverridesDisk() async throws {
+        let project = try TempProject(main: "\\begin{document}\nMain.\n\\input{chapter}\n\\end{document}\n",
+                                      chapter: "Chapter, first version.\n")
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let p = model.project
+        XCTAssertEqual(p.implicitClosureDocuments().map(\.text), ["Chapter, first version.\n"])
+
+        let chapterURL = project.root.appendingPathComponent("project/chapter.tex")
+        try "Chapter, edited on disk.\n".write(to: chapterURL, atomically: true, encoding: .utf8)
+        XCTAssertEqual(p.implicitClosureDocuments().map(\.text), ["Chapter, edited on disk.\n"])
+
+        let opened = await p.openDocument("chapter.tex")
+        XCTAssertEqual(opened, .opened(path: "chapter.tex"))
+        XCTAssertTrue(p.implicitClosureDocuments().isEmpty, "an open member is never also reported as implicit")
+        p.switchDocument(to: "chapter.tex")
+        model.updateActiveText("Chapter, edited in the buffer (not saved).\n")
+        XCTAssertEqual(model.documents.last?.text, "Chapter, edited in the buffer (not saved).\n")
+        XCTAssertEqual(try String(contentsOf: chapterURL, encoding: .utf8), "Chapter, edited on disk.\n", "the buffer edit was never written")
+        XCTAssertTrue(p.implicitClosureDocuments().isEmpty)
+
+        let detached = await p.detachDocument("chapter.tex", discardingEdits: true)
+        XCTAssertEqual(detached, .detached(path: "chapter.tex"))
+        XCTAssertEqual(p.implicitClosureDocuments().map(\.text), ["Chapter, edited on disk.\n"], "reverted to implicit; reads disk again, not the discarded buffer")
+    }
+
+    /// A missing include is left out of the implicit set — never fabricated —
+    /// and discovery's existing "referenced but missing" diagnostic path is
+    /// unchanged.
+    func testImplicitClosureLeavesOutAMissingIncludeWithoutFabricatingContent() throws {
+        let project = try TempProject(main: "\\begin{document}\nMain.\n\\input{chapter}\n\\input{missing}\n\\end{document}\n")
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let p = model.project
+        let found = p.discoverIncludes()
+        XCTAssertEqual(found.map(\.reference.argument), ["chapter", "missing"])
+        XCTAssertEqual(found[1].state, .unresolvable("no such file under the project root"), "unchanged diagnostic path")
+        XCTAssertEqual(p.implicitClosureDocuments().map(\.path), ["chapter.tex"])
+    }
+
+    /// A symlinked include is refused (never read, never sent) exactly like
+    /// direct-mode discovery already refuses it.
+    func testImplicitClosureRefusesASymlinkedInclude() throws {
+        let project = try TempProject(main: "\\begin{document}\nMain.\n\\input{chapter}\n\\input{link}\n\\end{document}\n")
+        defer { project.remove() }
+        try "outside\n".write(to: project.root.appendingPathComponent("outside.tex"), atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: project.root.appendingPathComponent("project/link.tex"),
+                                                   withDestinationURL: project.root.appendingPathComponent("outside.tex"))
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let p = model.project
+        let found = p.discoverIncludes()
+        XCTAssertEqual(found[1].state, .unresolvable("link.tex is a symbolic link"))
+        XCTAssertEqual(p.implicitClosureDocuments().map(\.path), ["chapter.tex"], "the symlinked include is refused, never read")
+    }
+
+    // MARK: live producer (FLASHTEX_RENDER)
+
+    /// The include closure reaches the engine even when only the entry is
+    /// open: compiling `fixtures/real-world/input-bibliography/main.tex`
+    /// (its `sections/*.tex` are real `\input` files) with only `main.tex`
+    /// open must produce the same page count as compiling it with every file
+    /// opened through `openDiscoveredIncludes()`.
+    func testLiveProducerClosurePageCountMatchesAllFilesOpen() async throws {
+        guard let render = ProcessInfo.processInfo.environment["FLASHTEX_RENDER"], FileManager.default.isExecutableFile(atPath: render) else {
+            throw XCTSkip("FLASHTEX_RENDER not set to a built flashtex-render")
+        }
+        guard let repoRoot = ShellModel.locateRepoRoot() else { throw XCTSkip("repo root not found") }
+        let fixture = repoRoot.appendingPathComponent("fixtures/real-world/input-bibliography/main.tex")
+        guard FileManager.default.fileExists(atPath: fixture.path) else { throw XCTSkip("fixture not found at \(fixture.path)") }
+
+        let onlyEntry = ShellModel()
+        onlyEntry.autoCompile = false
+        XCTAssertEqual(onlyEntry.openTex(at: fixture), .opened)
+        XCTAssertEqual(onlyEntry.documents.map(\.path), ["main.tex"], "only the entry is open")
+        XCTAssertEqual(Set(onlyEntry.project.implicitClosureDocuments().map(\.path)), ["sections/intro.tex", "sections/method.tex"])
+        onlyEntry.attachWorker(at: URL(fileURLWithPath: render))
+        onlyEntry.compile()
+        try await waitUntil(timeout: 30) { onlyEntry.inFlightRevision == nil }
+        onlyEntry.detachWorker()
+        let onlyEntryResult = try XCTUnwrap(onlyEntry.result)
+        XCTAssertNotEqual(onlyEntryResult.status, .failed, "\(onlyEntryResult.diagnostics)")
+
+        let allOpen = ShellModel()
+        allOpen.autoCompile = false
+        XCTAssertEqual(allOpen.openTex(at: fixture), .opened)
+        let opened = await allOpen.project.openDiscoveredIncludes()
+        XCTAssertEqual(opened.count, 2)
+        XCTAssertEqual(Set(allOpen.documents.map(\.path)), ["main.tex", "sections/intro.tex", "sections/method.tex"])
+        allOpen.attachWorker(at: URL(fileURLWithPath: render))
+        allOpen.compile()
+        try await waitUntil(timeout: 30) { allOpen.inFlightRevision == nil }
+        allOpen.detachWorker()
+        let allOpenResult = try XCTUnwrap(allOpen.result)
+        XCTAssertNotEqual(allOpenResult.status, .failed, "\(allOpenResult.diagnostics)")
+
+        XCTAssertEqual(onlyEntryResult.pages.count, allOpenResult.pages.count,
+                       "only-main-open must compile the same page count as every file open (implicit include closure)")
+        XCTAssertGreaterThan(onlyEntryResult.pages.count, 0)
+    }
 }
