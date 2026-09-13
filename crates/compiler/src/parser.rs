@@ -1204,6 +1204,8 @@ impl P<'_> {
                 self.date = Some((tokens, span.merge(argument_span)));
             }
             "maketitle" => self.maketitle(span, blocks, para),
+            // Register declarations belong in the preamble as often as the body.
+            "newsavebox" | "newlength" => self.box_register_command(name, span, para),
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
@@ -1500,8 +1502,9 @@ impl P<'_> {
             | "vphantom" | "smash" | "llap" | "rlap" | "strut" | "parbox" | "usebox" => {
                 self.box_command(name, span, para)
             }
-            "newsavebox" | "sbox" | "savebox" | "newlength" | "settowidth" | "settoheight"
-            | "settodepth" => self.box_register_command(name, span, para),
+            "sbox" | "savebox" | "settowidth" | "settoheight" | "settodepth" => {
+                self.box_register_command(name, span, para)
+            }
             "footnote" | "footnotemark" | "footnotetext" => self.footnote(name, span, para),
             // `\linebreak[n]`/`\nolinebreak[n]`: real TeX's 0-4 priority only
             // ever hints a badness-based line-breaking algorithm this greedy
