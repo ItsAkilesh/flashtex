@@ -66,8 +66,8 @@ extension V2Geometry {
                     rects.append(contentsOf: c.hitRects)
                 }
                 if member { indices.append(index) }
-            case .image:
-                continue // images are never part of a formula box
+            case .image, .path:
+                continue // images and TikZ paths are never part of a formula box
             }
         }
         guard let first = rects.first else { return nil }

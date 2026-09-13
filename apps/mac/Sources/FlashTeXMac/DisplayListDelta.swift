@@ -73,6 +73,33 @@ enum DisplayListDelta {
                 c.u(i.transform.count); for v in i.transform { c.s(String(format: "%.3f", v)) }
                 c.s(i.image.imageId); c.s(i.image.path); c.u(i.image.pdfPage ?? 0)
                 c.provenance(sources: i.sources, synthetic: i.syntheticReason)
+            case .path(let p):
+                // path-v0 (TikZ), likewise outside the r5 canon: every command,
+                // the operation (fill rule or full stroke), clips, paint and
+                // provenance, so any change to the picture changes the digest.
+                c.bytes.append(0x04)
+                func commands(_ cmds: [RenderingV2.PathCommand]) {
+                    c.u(cmds.count)
+                    for cmd in cmds {
+                        switch cmd {
+                        case .move: c.bytes.append(0x6D)
+                        case .line: c.bytes.append(0x6C)
+                        case .cubic: c.bytes.append(0x63)
+                        case .close: c.bytes.append(0x7A)
+                        }
+                        for v in cmd.coordinates { c.i(v) }
+                    }
+                }
+                switch p.op {
+                case .fill(let rule): c.bytes.append(0x01); c.s(rule.rawValue)
+                case .stroke(let s):
+                    c.bytes.append(0x02); c.i(s.width); c.s(s.cap.rawValue); c.s(s.join.rawValue); c.f(s.miterLimit)
+                    if let d = s.dash { c.u(d.array.count); for v in d.array { c.i(v) }; c.i(d.phase) } else { c.u(0) }
+                }
+                commands(p.path)
+                c.u(p.clips.count); for clip in p.clips { c.s(clip.fillRule.rawValue); commands(clip.path) }
+                c.paint(p.paint)
+                c.provenance(sources: p.sources, synthetic: p.syntheticReason)
             }
         }
         return c.sha()
@@ -148,6 +175,10 @@ enum DisplayListDelta {
                 guard let moved = relocate(i.sources, by) else { return nil }
                 i.sources = moved
                 items.append(.image(i))
+            case .path(var p):
+                guard let moved = relocate(p.sources, by) else { return nil }
+                p.sources = moved
+                items.append(.path(p))
             }
         }
         return RenderingV2.Page(number: p.number, width: p.width, height: p.height, items: items)
@@ -171,6 +202,7 @@ enum DisplayListDelta {
             case .glyphRun(let r): for c in r.clusters where !visit(c.sources) { return nil }
             case .rule(let r): if !visit(r.sources) { return nil }
             case .image(let i): if !visit(i.sources) { return nil }
+            case .path(let p): if !visit(p.sources) { return nil }
             }
         }
         let (total, o) = cached.addingReportingOverflow(delta)
