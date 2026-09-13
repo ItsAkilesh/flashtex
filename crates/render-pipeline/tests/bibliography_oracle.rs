@@ -118,6 +118,11 @@ fn check(name: &str) -> Option<(usize, f64)> {
         }
         let mut at = 0;
         for (x, t) in &w.words {
+            // pdftotext words without letters or digits (`,` alone) have
+            // no start of their own to compare.
+            if norm(t).is_empty() {
+                continue;
+            }
             if let Some(ours) = starts.get(&at) {
                 let dx = (ours - x).abs();
                 assert!(dx <= 0.5, "{name}: page {} word {t:?} at {ours:.3}bp, pdflatex {x:.3}bp", w.page);
@@ -158,6 +163,16 @@ oracle! {
     book_bibliography_is_a_starred_chapter => "08-book-bibname",
 }
 
+/// Known residual: `\Citet` upper-cases through natbib's `\NAT@Up`, whose
+/// group ends between `V` and `an`, so pdfTeX sets no `Va` kern; the
+/// pipeline kerns the pair (0.83bp on the line). The citation text itself
+/// matches.
+#[test]
+#[ignore = "needs the compiler re-pin; \\Citet's \\NAT@Up group breaks the Va kern (0.83bp residual)"]
+fn natbib_author_and_year_commands() {
+    check("16-author-year-variants");
+}
+
 oracle_after_repin! {
     citation_notes_and_key_spaces => "02-cite-notes",
     undefined_citations => "03-undefined-key",
@@ -167,7 +182,6 @@ oracle_after_repin! {
     natbib_sort => "13-natbib-sort",
     natbib_sort_and_compress => "14-natbib-sort-compress",
     natbib_pre_and_post_notes => "15-citep-pre-post",
-    natbib_author_and_year_commands => "16-author-year-variants",
     natbib_starred_author_lists => "17-starred-full-authors",
     natbib_bibpunct => "18-bibpunct",
     natbib_setcitestyle => "19-setcitestyle",

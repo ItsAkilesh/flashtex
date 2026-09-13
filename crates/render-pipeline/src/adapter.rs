@@ -3583,8 +3583,17 @@ fn gap_has_space(gap: &str) -> bool {
                         while i < bytes.len() && bytes[i].is_ascii_digit() {
                             i += 1;
                         }
-                        if i < bytes.len() && bytes[i] == b' ' {
-                            i += 1;
+                        // The space ending the number; a line end also
+                        // drops the next line's leading blanks.
+                        match bytes.get(i) {
+                            Some(b' ') => i += 1,
+                            Some(b'\n') => {
+                                i += 1;
+                                while i < bytes.len() && matches!(bytes[i], b' ' | b'\t') {
+                                    i += 1;
+                                }
+                            }
+                            _ => {}
                         }
                         continue;
                     }
