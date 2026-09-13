@@ -7,9 +7,13 @@
 //! `\tag`/`\tag*`/`\notag`, displays in lists and `quote`, right after a
 //! heading and at page breaks. Every reference word must start at a glyph
 //! of the same character within 0.5 bp (the full word-by-word comparison is
-//! `oracle.py check`). Fixtures not listed here do not pass yet: glue shrink
-//! of too-wide formulas (09, 10, 33), `\numberwithin`/`subequations`
-//! numbering (17, 18), `\tag{$..$}` math (15) and nested list labels (20).
+//! `oracle.py check`). Too-wide formulas are squeezed by their math glue
+//! with the number beside them or on a line of its own (09, 10, 33; needs
+//! math-layout `MathBox::pack_to`), and `\numberwithin`/`subequations`
+//! numbers come from the compiler (18; 17's numbers are right, its `\eqref`
+//! misses LaTeX's `\sw@slant` italic correction before the space). Fixtures
+//! not listed here do not pass yet: 17, `\tag{$..$}` math (15) and nested
+//! list labels (20).
 
 mod common;
 
@@ -29,11 +33,14 @@ const PASSING: &[&str] = &[
     "06-equation-leqno",
     "07-equation-fleqn",
     "08-fleqn-leqno",
+    "09-long-equation-number-below",
+    "10-long-equation-leqno-above",
     "11-dollars-short",
     "12-dollars-eqno",
     "13-dollars-leqno",
     "14-equation-star",
     "16-gather-numbers",
+    "18-subequations",
     "19-itemize-display",
     "21-after-heading",
     "22-page-bottom",
@@ -47,6 +54,7 @@ const PASSING: &[&str] = &[
     "30-widow-display",
     "31-tag-equation",
     "32-consecutive-displays",
+    "33-wide-tag-shifts-formula",
     "34-parindent-medium-line",
     "35-12pt-fleqn-leqno-align",
     "36-cm-default-fonts",
