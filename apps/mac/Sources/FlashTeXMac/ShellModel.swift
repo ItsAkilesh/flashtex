@@ -43,7 +43,14 @@ final class ShellModel {
     /// scheduling logic lives here.
     let wordCount = WordCountModel()
     /// The display-list-v2 pane (PreviewV2View.swift) is the default; `FLASHTEX_PREVIEW_V2=0` selects the v1 pane.
-    var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] != "0"
+    var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] != "0" {
+        // Leaving the v2 pane: a result whose v1 pages were elided
+        // (`display-list-v2-only`) is re-requested with pages.
+        didSet { if oldValue, !previewV2, v1PagesElided, autoCompile, workerAttached { compile() } }
+    }
+    /// Whether the applied result's runtime-v1 `pages` were elided at this
+    /// shell's request (`display-list-v2-only`, DisplayListDelta.swift).
+    var v1PagesElided: Bool { negotiation.accepted.contains(DisplayListDelta.v2OnlyCapability) }
     /// Preview debug status (compile status word, "provisional rendering", v2 frame/font identity line,
     /// display-list diagnostics under the pages): off by default; View > Show Preview Debug Status.
     var previewDebugStatus = UserDefaults.standard.bool(forKey: ShellModel.previewDebugStatusKey) {
@@ -223,6 +230,11 @@ final class ShellModel {
         var layoutCapabilities: [String] = []
     }
     private(set) var inFlightRequests: [String: InFlight] = [:]
+    /// `display-list-v2-delta`: the live v2 frame currently published, as the
+    /// producer may relocate it (DisplayListDelta.swift). Set only when a live
+    /// frame is published after full validation; cleared by any refusal,
+    /// worker exit or relaunch, or a result that did not accept `display-list-v2`.
+    @ObservationIgnored var deltaInstalled: DisplayListDelta.Installed?
     /// Id of the most recently sent compile request. A reply to any older
     /// request is valid but stale (`scripts/check_runtime.py`: `stale_ignore`):
     /// it is checked, logged and dropped, and never changes the preview or the
@@ -275,8 +287,11 @@ final class ShellModel {
     /// Binds a result's negotiation state, substitutions, and layout diagnostics.
     func bindLayout(of applied: RuntimeV1.CompileResult, requested: [String]) {
         // Change-only (see handle(.result)): these are read by the preview header and toolbar.
-        let bound = LayoutNegotiation(requested: requested, accepted: applied.layoutCapabilities ?? [])
+        // The per-request opt-ins are decided by the producer per reply; their
+        // absence is never a missing capability.
+        let bound = LayoutNegotiation(requested: DisplayListDelta.stripPerRequest(requested), accepted: applied.layoutCapabilities ?? [])
         if negotiation != bound { negotiation = bound }
+        if !negotiation.accepted.contains(V2Live.capability) { deltaInstalled = nil }
         let substitutions = PreviewFonts.substitutions(in: applied)
         if fontSubstitutions != substitutions { fontSubstitutions = substitutions }
         let diagnostics = LayoutNegotiation.unsupportedPrimitiveDiagnostics(in: applied, negotiation: negotiation)
@@ -793,13 +808,13 @@ final class ShellModel {
         debounce?.cancel()
         let capabilities = requestedLayoutCapabilities
         if let latestID = latestRequestID, let latest = inFlightRequests[latestID] {
-            guard latest.layoutCapabilities != capabilities else {
+            guard DisplayListDelta.stripPerRequest(latest.layoutCapabilities) != capabilities else {
                 compileQueued = true
                 return
             }
             log("layout capability switch while \(latestID) is in flight: re-requesting revision \(editorRevision) under \(LayoutNegotiation.describe(capabilities))")
         } else if let current = result, previewSource != .fixture, current.revision == editorRevision,
-                  negotiation.requested == capabilities {
+                  negotiation.requested == capabilities, previewV2 || !v1PagesElided {
             return // buffers and capability set unchanged since the applied result
         }
         let id = "mac-\(nextRequestID)"
@@ -809,12 +824,26 @@ final class ShellModel {
         // fresh from disk (never a project member, never durable) — see
         // ProjectDocuments.implicitClosureDocuments().
         let sendDocuments = documents + project.implicitClosureDocuments().map { RuntimeV1.Document(path: $0.path, text: $0.text) }
+        let projectId = result?.projectId ?? "demo"
+        // Per-request opt-ins next to `display-list-v2` (never a mode switch):
+        // the v1 pages are elided while the v2 pane paints, and the installed
+        // v2 frame is acknowledged so the producer may answer with a delta.
+        var sent = capabilities
+        var displayListBase: RuntimeV1.CompileRequest.DisplayListBase?
+        if previewV2, capabilities.contains(V2Live.capability) {
+            if DisplayListDelta.v2OnlyEnabled { sent.append(DisplayListDelta.v2OnlyCapability) }
+            if DisplayListDelta.enabled, let installed = deltaInstalled, installed.list.projectId == projectId {
+                sent.append(DisplayListDelta.capability)
+                displayListBase = installed.acknowledgement
+            }
+        }
         let request = RuntimeV1.CompileRequest(
-            projectId: result?.projectId ?? "demo",
+            projectId: projectId,
             revision: editorRevision,
             entryPath: project.entryPath, // the entry stays first whichever document is being edited
             documents: sendDocuments,
-            layoutCapabilities: capabilities.isEmpty ? nil : capabilities,
+            layoutCapabilities: sent.isEmpty ? nil : sent,
+            displayListBase: displayListBase,
             // display-list-v2-images: the producer sizes `\includegraphics`
             // files under the open project's directory (V2ImageStore.swift).
             projectRoot: capabilities.contains(RenderingV2.imagesCapability) ? project.projectRoot?.path : nil)
@@ -822,7 +851,7 @@ final class ShellModel {
             if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             try worker.send(request, id: id)
             inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
-                                            documents: sendDocuments, sentAt: Date(), layoutCapabilities: capabilities)
+                                            documents: sendDocuments, sentAt: Date(), layoutCapabilities: sent)
             latestRequestID = id
             inFlightRevision = editorRevision
             workerStatus = "compiling revision \(editorRevision) (\(id))…"
@@ -942,6 +971,7 @@ final class ShellModel {
             log(text.trimmingCharacters(in: .whitespacesAndNewlines))
         case .exited(let code):
             inFlightRequests.removeAll()
+            deltaInstalled = nil // a restarted producer holds no snapshot
             latestRequestID = nil
             inFlightRevision = nil
             compileQueued = false

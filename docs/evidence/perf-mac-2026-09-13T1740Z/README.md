@@ -193,3 +193,67 @@ Measured on this machine; function names from the FT-065 profiles still hold.
 4. **Not a producer problem**: warm HW1/HW2 keystrokes are 3.7–4.1 ms with v2;
    the pipeline's `RenderCache` reuse works (`reused pages` on the Mac is
    N−1 of N when the edit is on the last page).
+
+## Addendum, lane mac-perf-3 (FT-071 IPC size): delta + v2-only landed, compaction measured
+
+Branch `agent/mac-render-pipeline/perf-3-wire` (base `d46a0f63`). Producer:
+`crates/render-pipeline/src/delta.rs` (`display-list-v2-delta`, proposal r5
+producer side) and `display-list-v2-only`
+(`protocol/proposals/display-list-v2-only.md`); consumer: the Mac requests
+both whenever the v2 pane is active and holds an installed base
+(`ShellModel.compile`, `receiveDisplayListV2`), `FLASHTEX_DISPLAY_DELTA` is
+no longer needed (`=0` turns the request off). Raw: `raw/ipc-perf3-base.txt`
+(binary of `d46a0f63`), `raw/ipc-perf3-after.txt`, `raw/glyph-bytes-perf3.txt`.
+
+Reply bytes per warm keystroke (`ipc_bench.py`, 20 steps, typing before
+`\end{document}`; other agents were building throughout, so latencies are
+load-affected — bytes are exact):
+
+| seed | before: v1 + v2 | after `--delta`: v1 + v2 | after `--delta --only`: v1 + v2 | deltas/full |
+| --- | ---: | ---: | ---: | --- |
+| HW1 (3 pages) | 185 667 + 1 157 718 = 1 343 385 B | 185 691 + 259 481 | 1 879 + 259 481 = **261 360 B (−80.5%)** | 20 / 1 |
+| demo (2 pages) | 222 541 + 1 945 350 = 2 167 891 B | 222 565 + 807 836 | 280 + 807 836 = **808 116 B (−62.7%)** | 20 / 1 |
+| body60k (~24 pages) | 2 494 207 + declined | 2 494 207 + declined | 2 494 207 + declined | 0 / 0 |
+
+The delta carries only the edited page (HW1: page 3 of 3; demo: page 2 of 2,
+the larger page) plus the complete header, digests and `page_bytes`; the
+producer's warm round trip with `--delta` was 8.1 ms p50 on HW1 vs 5.2 ms full
+(the extra is `dl2-canon-1` hashing of every page and the lockstep relocation
+compare; both scale with document size — a per-page digest cache keyed on the
+relocation is the next producer step).
+
+**The 60 KB body still gets no v2 frame.** A delta needs an installed base,
+and the first full frame (~21 MB estimated for 24 pages) is over the 16 MiB
+line cap, so `display-list-v2` is declined on every request and the v1 pane
+carries the 2.49 MB v1 line. `-only` cannot help there either (it elides pages
+only when a sibling exists). This is the compaction case:
+
+| per cluster (one cluster per glyph) | HW1 | body60k (6-page cut) |
+| --- | ---: | ---: |
+| `carets` (1–2 objects) | 85.8 B (20.4%) | 87.2 B (20.9%) |
+| `hit_rects` (1 object) | 79.1 B (18.8%) | 79.1 B (19.0%) |
+| `sources` (1 range, path repeated) | 64.8 B (15.4%) | 69.6 B (16.7%) |
+| cluster `text_*_byte` + framing | 41.0 B (9.8%) | 41.0 B (9.8%) |
+| glyph object | 101.2 B (24.1%) | 101.1 B (24.2%) |
+| total per glyph | ~420 B | ~417 B |
+
+Within the frozen schema there is no additive way to drop these: `clusters`,
+`carets`, `hit_rects` and `sources`/`synthetic_reason` are required by
+`protocol/rendering-v2.schema.json`, and omitting them "when derivable"
+changes the meaning of a valid document. Not implemented; the numbers above
+are the input for a contract revision (`display-list-v2-compact`, a separate
+`render_format`/capability): (a) a run-level `sources` span with per-cluster
+byte offsets (−15%), (b) `carets`/`hit_rects` omitted when equal to the
+glyph's advance box (−39%), (c) glyph arrays as parallel integer lists
+(−10–15%). (a)+(b) alone bring the 24-page body to ~10 MB — under the cap —
+after which the delta path applies to it as to HW1.
+
+Gates on this branch: `cargo test --release` in `crates/render-pipeline`
+184 passed / 0 failed (incl. the new `tests/display_list_delta.rs` gate:
+every delta over 60 cumulative edits reconstructs byte-identically to the
+fresh full line, `incremental` still 1 passed); Mac `swift test --filter
+'PreviewV2|RenderingV2|DisplayListDelta|LayoutCapability|V2Path|V2Image'`
+with `FLASHTEX_RENDER=<this binary>`: 73 tests, 72 passed, 1 skipped
+(`RealCompilerTests…` wants `flashtex-compiler`), 0 failures — the five
+`DisplayListDeltaTests` drive the real producer, so Swift and Rust
+`dl2-canon-1` digests agree.

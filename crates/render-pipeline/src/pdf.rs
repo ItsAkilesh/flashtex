@@ -98,6 +98,7 @@ pub fn write_pdf(v2: &DisplayList) -> Result<PdfOut, String> {
         font_hints: true,
         display_list: false,
         device_color: false,
+        ..Capabilities::default()
     };
     let accepted = vec![CAP_RULES.to_string(), CAP_FONT_HINTS.to_string()];
     let v1 = v1::fallback(v2, caps, Some(accepted.clone()));

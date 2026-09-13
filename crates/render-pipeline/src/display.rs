@@ -635,78 +635,143 @@ impl DisplayList {
 
     /// [`write_json_with`](Self::write_json_with) with every negotiated proposal.
     pub fn write_json_wire(&self, id: &str, wire: Wire) -> String {
+        self.write_envelope(id, wire, |o, _, p| write_page(o, p, wire))
+    }
+
+    /// [`write_json_wire`](Self::write_json_wire), also recording the exact
+    /// byte length of every page object as written (`display-list-v2-delta`
+    /// `page_bytes`).
+    pub fn write_json_wire_measured(&self, id: &str, wire: Wire, page_bytes: &mut Vec<usize>) -> String {
+        page_bytes.clear();
+        self.write_envelope(id, wire, |o, _, p| {
+            let start = o.len();
+            write_page(o, p, wire);
+            page_bytes.push(o.len() - start);
+        })
+    }
+
+    /// The full line with each page object supplied as text (a consumer's
+    /// reconstruction from base + delta; the producer gate compares it with
+    /// [`write_json_wire`](Self::write_json_wire)). `pages` has one entry per
+    /// page of `self`.
+    pub fn write_json_wire_with_page_objects(&self, id: &str, wire: Wire, pages: &[String]) -> String {
+        self.write_envelope(id, wire, |o, i, _| o.push_str(&pages[i]))
+    }
+
+    fn write_envelope(&self, id: &str, wire: Wire, mut page: impl FnMut(&mut String, usize, &Page)) -> String {
         let mut o = String::with_capacity(self.estimated_json_bytes());
         o.push_str("{\"id\":");
         json::write_string_into(id, &mut o);
-        o.push_str(",\"payload\":{\"color_space\":\"srgb\",\"coordinate_unit\":\"bp_2pow20\",\"diagnostics\":[");
-        for (i, d) in self.diagnostics.iter().enumerate() {
-            sep(&mut o, i);
-            o.push_str("{\"code\":");
-            json::write_string_into(&d.code, &mut o);
-            o.push_str(",\"message\":");
-            json::write_string_into(&d.message, &mut o);
-            o.push_str(",\"severity\":");
-            o.push_str(match d.severity {
-                Severity::Warning => "\"warning\"",
-                Severity::Error => "\"error\"",
-            });
-            o.push_str(",\"sources\":");
-            write_sources(&mut o, &d.sources);
-            o.push('}');
-        }
-        o.push_str("],\"documents\":[");
-        for (i, d) in self.documents.iter().enumerate() {
-            sep(&mut o, i);
-            o.push_str("{\"byte_length\":");
-            num(&mut o, d.byte_length as f64);
-            o.push_str(",\"path\":");
-            json::write_string_into(&d.path, &mut o);
-            o.push_str(",\"revision\":");
-            num(&mut o, d.revision as f64);
-            o.push_str(",\"sha256\":");
-            json::write_string_into(&d.sha256, &mut o);
-            o.push('}');
-        }
-        o.push_str("],\"fonts\":[");
-        for (i, f) in self.fonts.iter().enumerate() {
-            sep(&mut o, i);
-            o.push_str("{\"byte_length\":");
-            num(&mut o, f.byte_length as f64);
-            o.push_str(",\"face_index\":");
-            num(&mut o, f64::from(f.face_index));
-            o.push_str(",\"font_id\":");
-            json::write_string_into(&f.font_id, &mut o);
-            o.push_str(",\"format\":");
-            json::write_string_into(&f.format, &mut o);
-            o.push_str(",\"glyph_count\":");
-            num(&mut o, f64::from(f.glyph_count));
-            o.push_str(",\"postscript_name\":");
-            json::write_string_into(&f.postscript_name, &mut o);
-            o.push_str(",\"sha256\":");
-            json::write_string_into(&f.sha256, &mut o);
-            o.push_str(",\"units_per_em\":");
-            num(&mut o, f64::from(f.units_per_em));
-            o.push('}');
-        }
-        o.push_str("],\"pages\":[");
+        o.push_str(",\"payload\":{\"color_space\":\"srgb\",\"coordinate_unit\":\"bp_2pow20\",\"diagnostics\":");
+        write_diagnostics(&mut o, &self.diagnostics);
+        o.push_str(",\"documents\":");
+        write_documents(&mut o, &self.documents);
+        o.push_str(",\"fonts\":");
+        write_fonts(&mut o, &self.fonts);
+        o.push_str(",\"pages\":[");
         for (i, p) in self.pages.iter().enumerate() {
             sep(&mut o, i);
-            write_page(&mut o, p, wire);
+            page(&mut o, i, p);
         }
         o.push_str("],\"project_id\":");
         json::write_string_into(&self.project_id, &mut o);
-        o.push_str(",\"render_format\":\"display-list-v2\",\"required_features\":[");
-        for (i, f) in self.required_features_wire(wire).into_iter().enumerate() {
-            sep(&mut o, i);
-            json::write_string_into(f, &mut o);
-        }
-        o.push_str("],\"revision\":");
+        o.push_str(",\"render_format\":\"display-list-v2\",\"required_features\":");
+        write_features(&mut o, self, wire);
+        o.push_str(",\"revision\":");
         num(&mut o, self.revision as f64);
         o.push_str(",\"text_extraction\":\"cluster-actualtext\"},\"protocol_version\":");
         num(&mut o, PROTOCOL_VERSION as f64);
         o.push_str(",\"type\":\"display_list\"}");
         o
     }
+}
+
+/// Bytes of the full `display_list` line that are neither a page object, a
+/// page separator, nor one of the measured parts (`id`, `diagnostics`,
+/// `documents`, `fonts`, `project_id`, `required_features`, `revision`):
+/// the fixed framing of [`DisplayList::write_json_wire`], which the delta
+/// consumer's exact size formula (`DisplayListDelta.fullLineBytes`) assumes.
+pub const FULL_LINE_FRAME_BYTES: usize = "{\"id\":".len()
+    + ",\"payload\":{\"color_space\":\"srgb\",\"coordinate_unit\":\"bp_2pow20\",\"diagnostics\":".len()
+    + ",\"documents\":".len()
+    + ",\"fonts\":".len()
+    + ",\"pages\":[".len()
+    + "],\"project_id\":".len()
+    + ",\"render_format\":\"display-list-v2\",\"required_features\":".len()
+    + ",\"revision\":".len()
+    + ",\"text_extraction\":\"cluster-actualtext\"},\"protocol_version\":2,\"type\":\"display_list\"}".len();
+
+/// The `diagnostics` array of the full line (also carried complete by a delta).
+pub(crate) fn write_diagnostics(o: &mut String, diagnostics: &[Diagnostic]) {
+    o.push('[');
+    for (i, d) in diagnostics.iter().enumerate() {
+        sep(o, i);
+        o.push_str("{\"code\":");
+        json::write_string_into(&d.code, o);
+        o.push_str(",\"message\":");
+        json::write_string_into(&d.message, o);
+        o.push_str(",\"severity\":");
+        o.push_str(match d.severity {
+            Severity::Warning => "\"warning\"",
+            Severity::Error => "\"error\"",
+        });
+        o.push_str(",\"sources\":");
+        write_sources(o, &d.sources);
+        o.push('}');
+    }
+    o.push(']');
+}
+
+pub(crate) fn write_documents(o: &mut String, documents: &[DocumentResource]) {
+    o.push('[');
+    for (i, d) in documents.iter().enumerate() {
+        sep(o, i);
+        o.push_str("{\"byte_length\":");
+        num(o, d.byte_length as f64);
+        o.push_str(",\"path\":");
+        json::write_string_into(&d.path, o);
+        o.push_str(",\"revision\":");
+        num(o, d.revision as f64);
+        o.push_str(",\"sha256\":");
+        json::write_string_into(&d.sha256, o);
+        o.push('}');
+    }
+    o.push(']');
+}
+
+pub(crate) fn write_fonts(o: &mut String, fonts: &[FontResource]) {
+    o.push('[');
+    for (i, f) in fonts.iter().enumerate() {
+        sep(o, i);
+        o.push_str("{\"byte_length\":");
+        num(o, f.byte_length as f64);
+        o.push_str(",\"face_index\":");
+        num(o, f64::from(f.face_index));
+        o.push_str(",\"font_id\":");
+        json::write_string_into(&f.font_id, o);
+        o.push_str(",\"format\":");
+        json::write_string_into(&f.format, o);
+        o.push_str(",\"glyph_count\":");
+        num(o, f64::from(f.glyph_count));
+        o.push_str(",\"postscript_name\":");
+        json::write_string_into(&f.postscript_name, o);
+        o.push_str(",\"sha256\":");
+        json::write_string_into(&f.sha256, o);
+        o.push_str(",\"units_per_em\":");
+        num(o, f64::from(f.units_per_em));
+        o.push('}');
+    }
+    o.push(']');
+}
+
+/// The `required_features` array of `list` under `wire`.
+pub(crate) fn write_features(o: &mut String, list: &DisplayList, wire: Wire) {
+    o.push('[');
+    for (i, f) in list.required_features_wire(wire).into_iter().enumerate() {
+        sep(o, i);
+        json::write_string_into(f, o);
+    }
+    o.push(']');
 }
 
 fn sep(o: &mut String, i: usize) {
@@ -855,7 +920,9 @@ fn device_space(d: &flashtex_compiler::color::DeviceColor) -> &'static str {
     }
 }
 
-fn write_page(o: &mut String, p: &Page, wire: Wire) {
+/// One page object exactly as it sits inside the full line's `pages` array
+/// (and inside a delta's `changed_pages`).
+pub fn write_page(o: &mut String, p: &Page, wire: Wire) {
     let images = wire.images;
     o.push_str("{\"height\":");
     write_tick(o, p.height);
