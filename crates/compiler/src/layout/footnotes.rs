@@ -309,6 +309,9 @@ impl LayoutCursor {
         let mut scratch =
             LayoutCursor::with_labels(self.constraints, self.resolved_labels.clone(), true);
         scratch.footnotes.line_log = Some(Vec::new());
+        // A footnote is an ordinary justified paragraph in LaTeX: wrapped
+        // lines stretch to the right edge, the last line stays ragged.
+        scratch.justify = true;
         let indent = MARGIN_PT + MARK_BOX_EM * metrics.size;
         scratch.x = indent;
         scratch.content_end = indent;
@@ -576,6 +579,35 @@ mod tests {
         assert_eq!(note.baseline_y_pt, TEXT_BOTTOM_PT);
         // The second page has no footnotes: its body may reach the bottom.
         assert!(pages[1].items.iter().all(|item| item.rule.is_none()));
+    }
+
+    #[test]
+    fn wrapped_note_lines_are_justified_except_the_last() {
+        let source = format!("Marked\\footnote{{{}end.}} tail", "word ".repeat(40));
+        let output = compile(&source);
+        assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+        let metrics = Metrics::for_body(LayoutConstraints::default().font_size_pt);
+        let mut lines: Vec<(f64, f64)> = Vec::new();
+        for item in output.pages[0]
+            .items
+            .iter()
+            .filter(|item| item.rule.is_none() && item.font_size_pt == metrics.size)
+        {
+            let end =
+                item.x_pt + crate::layout::text_width(&item.text, item.font_size_pt, item.font);
+            match lines.iter_mut().find(|(y, _)| *y == item.baseline_y_pt) {
+                Some(line) => line.1 = line.1.max(end),
+                None => lines.push((item.baseline_y_pt, end)),
+            }
+        }
+        lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+        assert!(lines.len() >= 3, "{lines:?}");
+        let right = PAGE_WIDTH_PT - MARGIN_PT;
+        let (last, wrapped) = lines.split_last().unwrap();
+        for (y, end) in wrapped {
+            assert!((end - right).abs() < 0.02, "line at {y} ends at {end}");
+        }
+        assert!(last.1 < right - 1.0, "last line {last:?}");
     }
 
     #[test]
