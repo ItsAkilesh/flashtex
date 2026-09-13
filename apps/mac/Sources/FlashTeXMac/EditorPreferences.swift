@@ -521,8 +521,8 @@ struct EditorPreferencesView: View {
                 .accessibilityHint("Also the default of the preview's dark toggle for new windows.")
             }
             Section("Typing") {
-                Toggle("Auto-close braces", isOn: $prefs.autoCloseBraces)
-                    .accessibilityHint("Typing an opening brace inserts the matching closing brace.")
+                Toggle("Auto-close brackets & math", isOn: $prefs.autoCloseBraces)
+                    .accessibilityHint("Typing {, (, [ or $ inserts the matching closer and places the caret between them.")
                 Toggle("Show completion list", isOn: $prefs.completionPopup)
                     .accessibilityHint("When off, the list never opens; Control-Space and Escape do nothing.")
                 Toggle("Check spelling", isOn: $prefs.spellCheck)

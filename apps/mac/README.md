@@ -797,18 +797,26 @@ the scan is bounded to the caret's line and skips commented text). The
 inserted `\frac{|}{}` snippet opens it too. Off when the completion-list
 preference is off.
 
-**Editor niceties** (`SourceEditorView.swift`, `EditorIntelligence.swift`):
-`{`, `[` and `$` are auto-closed and the closer typed over (Backspace between
-an empty pair removes both); `\(` and `\[` auto-close with `\)` / `\]`, both
-halves typed over (`ShellModel.autoClosePairs`, default `{ [ $ (`; the
-Preferences "auto-close braces" switch gates all of them). Return keeps the
-line's indentation, indents once more after `\begin{env}` and adds the
-matching `\end{env}`; Return at the end of a `\item …` line continues the
-list with a new `\item ` (`\item[] ` for a description entry; a bare `\item`
-line just breaks). ⌘/ toggles `% ` on every line the selection touches (all
-commented → uncomment, `%` with or without a space; otherwise comment the
-non-blank lines; one undo step "Toggle Comment"). The delimiter pair around
-the caret is highlighted (`BraceMatcher`).
+**Editor niceties** (`SourceEditorView.swift`, `EditorIntelligence.swift`,
+`EditorKeyHandling.swift`): `{`, `[` and `$` are auto-closed and the closer
+typed over (Backspace between an empty pair removes both); `\(` and `\[`
+auto-close with `\)` / `\]`, both halves typed over (`ShellModel.autoClosePairs`,
+default `{ [ $ (`; the Preferences "auto-close brackets & math" switch gates
+all of them). A completion snippet's own placeholder closer (`\section{}`'s
+`}`) is tracked the same way, so typing over it overtypes instead of doubling
+it. Tab indents: a multi-line selection gets the indent unit (spaces × width,
+or a tab, per the Preferences "Indent with" setting) prefixed to every line
+it touches, and a caret or single-line selection just inserts it; Shift-Tab
+always outdents the touched line(s) by up to one unit, selection or not.
+While a completion list or an inserted snippet's placeholders are active, Tab
+still means those instead (below). Return keeps the line's indentation,
+indents once more after `\begin{env}` and adds the matching `\end{env}`;
+Return at the end of a `\item …` line continues the list with a new `\item `
+(`\item[] ` for a description entry; a bare `\item` line just breaks). ⌘/
+toggles `% ` on every line the selection touches (all commented → uncomment,
+`%` with or without a space; otherwise comment the non-blank lines; one undo
+step "Toggle Comment"). The delimiter pair around the caret is highlighted
+(`BraceMatcher`).
 
 Commands trigger on `\` (empty prefix lists everything supported). Invalid
 carets (negative, past the end, inside a surrogate pair) and malformed input
@@ -843,12 +851,12 @@ explain that nothing is loaded.
 
 | Shortcut | Action |
 |---|---|
-| ⌘, | Settings window (editor preferences: font, wrapping, tab width, indent, appearance, auto-close braces, completion list; Tab walks the controls top to bottom) |
+| ⌘, | Settings window (editor preferences: font, wrapping, tab width, indent, appearance, auto-close brackets & math, completion list; Tab walks the controls top to bottom) |
 | ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
 | Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
 | ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
-| — | Reload Fixture (File menu; developer-only, no shortcut — confirms before replacing a real/unsaved document) |
+| File > Reload Fixture | Reload Fixture (developer-only, no shortcut — confirms before replacing a real/unsaved document) |
 | ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |
 | File > Export PDF (exact, v2)… | Exact route: the loaded v2 display list through `flashtex-pdf-exact from-v2` (`$FLASHTEX_PDF_EXACT`, bundle, or `crates/pdf/target/…`): original GIDs, embedded font programs, typed rules; refusals name the item |
 | ⌘⇧R | Attach render pipeline (`$FLASHTEX_RENDER`, the app bundle, or `crates/render-pipeline/target/…`): the Latin Modern-metric producer, so the preview shows Computer Modern-style text |
@@ -872,15 +880,19 @@ explain that nothing is loaded.
 | ⌘⌥0 | Reset editor font size (View): back to the default 13 pt |
 | ⌘⇧M | Toggle Problems panel (View): the grouped diagnostics list under the editor and preview with a severity filter, jump, explanations and Fix…; the sidebar's Problems rows and the status bar counts open it too |
 | Edit > Durable History… | Durable History window (undo/redo on the helper's edit ledger: Refresh, Undo, Redo, Retry/Discard after an uncertain reply, retention gauge, both stacks) |
+| ⌘F | Find… (opens the source editor's find bar; AppKit's built-in incremental search) |
+| ⌘⌥F | Find and Replace… (opens the find bar already showing its Replace row; a replacement is one undoable edit, so ⌘Z undoes it and the preview recompiles) |
+| Edit > Find Next | Find Next (selects the next find-bar match; no key equivalent — ⌘G is Find in Project's Next match, ⇧⌘G is Convert Capture — Return in the find bar's search field does the same) |
+| Edit > Find Previous | Find Previous (selects the previous find-bar match; no key equivalent for the same reason — Shift-Return in the find bar's search field does the same) |
+| ⌘E | Use Selection for Find (sets the focused editor's selection as the find bar's search string) |
+| ⌘J | Jump to Selection (scrolls the focused editor's current selection into view and centers it) |
 | ⌘⇧F | Find in Project… window (case-sensitive literal search of the durable project source; Return searches or goes to the selected match, ↑/↓ move the selection, Esc closes; Plan Replacement / Apply for reviewed replacement) |
 | ⌘G | Next match (while the Find in Project window is key: selects the next match, wrapping, and goes there) |
 | ⌘Z | Undo (including an approved capture insertion) |
 | Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, citation keys, document words; never takes the keyboard from the editor) |
 | ↑ / ↓ / Tab / ⇧Tab / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
-| Tab / ⇧Tab / Esc | While an inserted snippet is active (no list open): next / previous placeholder (`\frac{|}{}`, environment templates), Esc leaves the snippet |
 | ⌘⇧Space | Signature help for the command whose argument the caret is in (also opens on `{`/`[` typed after a command name; `}`, Esc or leaving the argument closes it) |
 | ⌘/ | Toggle `% ` line comment on the selection's lines |
-| Return | Auto-indent; after `\begin{env}` indent and add `\end{env}`; at the end of a `\item …` line continue the list |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
 | ⌘⌥] / ⌘⌥[ | Next / previous occurrence within the diagnostics panel's selected group (wrapping; the row reads "k of n") |
@@ -891,6 +903,21 @@ explain that nothing is loaded.
 
 The compiler rejects request lines over 8 MiB with an `error` envelope, which the
 banner shows; the shell rejects response lines over 16 MiB.
+
+## Editor keys
+
+A few physical keys mean different things depending on editor mode, so no
+single row in the table above could own them (each shortcut cell there names
+exactly one command). They are not menu items or command-palette entries —
+only the meaning that applies once the higher-priority modes below are
+inactive (completion list, then snippet placeholders) reaches the plain
+editor behavior.
+
+| Keys | Behavior |
+|---|---|
+| Tab / ⇧Tab / Esc | While an inserted snippet is active (no completion list open): next / previous placeholder (`\frac{|}{}`, environment templates), Esc leaves the snippet |
+| Tab / ⇧Tab | Otherwise (no list, no active snippet): Tab indents (a multi-line selection: every touched line; a caret or single-line selection: inserts the indent unit at it); ⇧Tab always outdents the touched line(s) by up to one unit |
+| Return | Auto-indent; after `\begin{env}` indent and add `\end{env}`; at the end of a `\item …` line continue the list |
 
 ## Targets
 

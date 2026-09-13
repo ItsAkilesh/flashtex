@@ -37,8 +37,9 @@ text says so.
   the *Auto-compile after edits*, *v2 pane* and *Dark preview* switches, the
   Problems toggle and *Commands*.
 - **Problems panel** (bottom, ⌘⇧M) and the **status bar** (editor revision,
-  last compile latency, route, problem counts — click the counts
-  to toggle the panel).
+  last compile latency, route, a live word count — click it for a
+  per-section breakdown popover, "M of N words" while there is a selection —
+  and problem counts — click the counts to toggle the panel).
 - **⌘⇧P** opens the command palette: every command with its shortcut; type to
   filter, Return runs.
 
@@ -110,8 +111,13 @@ folder it lives in.
   argument highlighted and a one-line description; it closes on `}`, Esc, or
   when the caret leaves the argument.
 - **Typing helpers**: `{`, `[`, `$`, `\(` and `\[` are closed automatically and
-  the closer is typed over (switch off with *Auto-close braces* in
-  Preferences); Return keeps the indentation, indents inside a new
+  the closer is typed over, including a completion snippet's own placeholder
+  closer like `\section{}`'s `}` (switch off with *Auto-close brackets &
+  math* in Preferences); **Tab** indents (a multi-line selection: every line
+  it touches; a caret or single-line selection: just inserts the indent
+  unit) and **⇧Tab** always outdents the touched line(s), except while the
+  completion list or a snippet's placeholders are active, when Tab/⇧Tab mean
+  those instead; Return keeps the indentation, indents inside a new
   `\begin{env}` and adds `\end{env}`, and continues a list with a new `\item`;
   **⌘/** comments or uncomments the selected lines with `%`; the bracket or
   `$` pair around the caret is highlighted.
@@ -132,8 +138,14 @@ folder it lives in.
   drawn under the wrong text; when a compile fails with no output the previous
   underlines are kept and flagged "kept from revision N".
 - **Auto-close**: typing `{` inserts `}` when the brace is code and followed by
-  whitespace or a closer (Preferences › Auto-close braces). Return
+  whitespace or a closer (Preferences › Auto-close brackets & math). Return
   auto-indents and closes `\begin{env}` with the matching `\end{env}`.
+- **Find** (⌘F / ⌘⌥F): AppKit's native find bar in the source editor —
+  incremental search as you type, with a Replace row (⌘⌥F) whose replacements
+  are one undoable edit. Find Next/Previous have no key equivalent (Return /
+  Shift-Return in the find bar's own field do the same); **⌘E** sets the
+  current selection as the search string, **⌘J** re-centers it in view. This
+  is separate from *Find in Project* below (one file vs. the whole project).
 - **Find in Project** (⌘⇧F): case-sensitive literal search across the
   project's durable source; Return or ⌘G goes to the next match; *Plan
   Replacement* → *Apply* performs a reviewed replace-all. **Helper route
@@ -302,7 +314,7 @@ you trust.
 | Wrap long lines | on |
 | Tab width 2–8, indent with spaces or tab | 4, spaces |
 | Editor appearance: System / Light / Dark (also seeds the dark-preview switch) | System |
-| Auto-close braces | on |
+| Auto-close brackets & math | on |
 | Show completion list (off disables ⌃Space / Esc completion) | on |
 | Capture conversion: provider (None / xAI), key in Keychain, model | None |
 | Restore Defaults | |
@@ -327,7 +339,10 @@ you trust.
 | Esc / ⌃Space | Open the completion list |
 | ↑ ↓ / Tab ⇧Tab / Return / Esc | While the list is open: choose / insert / close |
 | Tab / ⇧Tab / Esc | After inserting a snippet: next / previous placeholder / leave |
+| Tab / ⇧Tab | Otherwise: indent / outdent the touched line(s) |
 | ⌘⇧Space | Signature help for the command whose argument the caret is in |
+| ⌘F / ⌘⌥F | Find… / Find and Replace… (native find bar in the editor) |
+| ⌘E / ⌘J | Use selection for Find / jump to (center) the current selection |
 | ⌘/ | Comment or uncomment the selected lines |
 | ⌘-click / ⌘⇧D | Go to matching `\label`↔`\ref`, `\begin`↔`\end`, open `\input` file |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic |

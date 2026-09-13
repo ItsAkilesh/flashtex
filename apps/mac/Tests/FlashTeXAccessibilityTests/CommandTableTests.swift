@@ -85,7 +85,7 @@ final class CommandTableTests: XCTestCase {
     /// (`ProjectSearchCommands`, Edit = `after: .textEditing`). In the panel
     /// file only the text from its `Commands` type on is read, so the
     /// window's own buttons (Search, Next Match ⌘G) are not menu items.
-    static let commandFiles = ["FlashTeXMacApp.swift", "Navigation.swift", "ProjectSearchPanel.swift", "DiagnosticsPanel.swift", "CitationRename.swift"]
+    static let commandFiles = ["FlashTeXMacApp.swift", "Navigation.swift", "ProjectSearchPanel.swift", "DiagnosticsPanel.swift", "CitationRename.swift", "EditorFind.swift"]
 
     /// `Button("Title")` items with their `keyboardShortcut` and enclosing
     /// menu from `FlashTeXMacApp.swift` (File = `replacing: .newItem`,
@@ -148,9 +148,10 @@ final class CommandTableTests: XCTestCase {
         XCTAssertGreaterThan(wired.count, 20, "menu items parsed from the shell source")
         for e in AccessibilityCommand.entries {
             guard let item = e.menuItem else {
-                // Undo and Settings (⌘,) are system items; completion, the preview
-                // click and the search window's ⌘G are not menu items.
-                XCTAssertTrue([.undo, .completion, .completionList, .selectPreviewItemSource, .editorPreferences, .nextSearchMatch].contains(e.command), "\(e.command) has no menu item")
+                // Undo and Settings (⌘,) are system items; completion, toggle
+                // comment, signature help, the preview click and the search
+                // window's ⌘G are not menu items.
+                XCTAssertTrue([.undo, .completion, .completionList, .toggleComment, .signatureHelp, .selectPreviewItemSource, .editorPreferences, .nextSearchMatch].contains(e.command), "\(e.command) has no menu item")
                 continue
             }
             let matches = wired.filter { $0.title == item }

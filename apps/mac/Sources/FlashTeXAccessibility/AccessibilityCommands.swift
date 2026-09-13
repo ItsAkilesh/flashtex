@@ -14,11 +14,12 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case undo
     case commandPalette, toggleProblems
     case zoomIn, zoomOut, actualSize, fitWidth, increaseEditorFontSize, decreaseEditorFontSize, resetEditorFontSize
-    case completion, completionList
+    case completion, completionList, toggleComment, signatureHelp
     case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
     case selectPreviewItemSource
     case accessibilityHelp
     case durableHistory, findInProject, nextSearchMatch, renameCitation
+    case find, findAndReplace, findNext, findPrevious, useSelectionForFind, jumpToSelection
 
     public struct Entry: Equatable {
         public var command: AccessibilityCommand
@@ -67,8 +68,8 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          description: "Loads a runtime v1 compile_result JSON into the preview; a sibling -request.json seeds the editor.",
                          menuItem: "Open Compile Result Fixture…")
         case .reloadFixture:
-            return Entry(command: self, title: "Reload fixture", shortcuts: ["⌘R"], menu: "File",
-                         description: "Reloads the current fixture from disk.",
+            return Entry(command: self, title: "Reload fixture", shortcuts: ["File > Reload Fixture"], menu: "File",
+                         description: "Reloads the current fixture from disk (developer-only; confirms via Save/Discard/Cancel before replacing a real or unsaved document).",
                          menuItem: "Reload Fixture")
         case .attachBuiltCompiler:
             return Entry(command: self, title: "Attach built compiler", shortcuts: ["⌘⇧K"], menu: "File",
@@ -170,6 +171,12 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Completion list keys", shortcuts: ["↑", "↓", "Tab", "⇧Tab", "Return"], menu: "Editor",
                          description: "While the completion list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return or Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list and any other caret move closes it.",
                          requires: "an open completion list")
+        case .signatureHelp:
+            return Entry(command: self, title: "Signature help", shortcuts: ["⌘⇧Space"], menu: "Editor",
+                         description: "Shows the signature of the command whose argument the caret is in; also opens on `{`/`[` typed after a command name. `}`, Esc, or leaving the argument closes it.")
+        case .toggleComment:
+            return Entry(command: self, title: "Toggle comment", shortcuts: ["⌘/"], menu: "Editor",
+                         description: "Toggles a `% ` line comment on every line the selection touches: all commented lines are uncommented, otherwise the non-blank lines are commented; one undo step.")
         case .goToMatching:
             return Entry(command: self, title: "Go to matching", shortcuts: ["⌘⇧D"], menu: "Navigate",
                          description: "Selects the matching \\begin/\\end or \\label/\\ref for the command under the caret; misses are explained in the footer.",
@@ -236,6 +243,30 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Rename citation window", shortcuts: ["Edit > Rename Citation…"], menu: "Edit",
                          description: "Opens the reviewed citation rename: the helper plans every \\cite occurrence across the project (plan_citation_rename), the plan is shown for review, and Apply sends one apply_group; also in the toolbar.",
                          menuItem: "Rename Citation…")
+        case .find:
+            return Entry(command: self, title: "Find", shortcuts: ["⌘F"], menu: "Edit",
+                         description: "Opens the source editor's find bar (AppKit's built-in incremental search) over the focused document.",
+                         menuItem: "Find…")
+        case .findAndReplace:
+            return Entry(command: self, title: "Find and Replace", shortcuts: ["⌘⌥F"], menu: "Edit",
+                         description: "Opens the find bar already showing its Replace row; a replacement goes through the editor's normal undoable edit path, so ⌘Z undoes it and the preview recompiles.",
+                         menuItem: "Find and Replace…")
+        case .findNext:
+            return Entry(command: self, title: "Find Next", shortcuts: ["Edit > Find Next"], menu: "Edit",
+                         description: "Selects the next find-bar match in the focused editor. No key equivalent: ⌘G is Find in Project's Next match and ⇧⌘G is Convert Capture, so Return in the find bar's search field is the keyboard way to find next.",
+                         menuItem: "Find Next")
+        case .findPrevious:
+            return Entry(command: self, title: "Find Previous", shortcuts: ["Edit > Find Previous"], menu: "Edit",
+                         description: "Selects the previous find-bar match in the focused editor. No key equivalent, for the same reason as Find Next: Shift-Return in the find bar's search field is the keyboard way to find previous.",
+                         menuItem: "Find Previous")
+        case .useSelectionForFind:
+            return Entry(command: self, title: "Use Selection for Find", shortcuts: ["⌘E"], menu: "Edit",
+                         description: "Sets the focused editor's current selection as the find bar's search string.",
+                         menuItem: "Use Selection for Find")
+        case .jumpToSelection:
+            return Entry(command: self, title: "Jump to Selection", shortcuts: ["⌘J"], menu: "Edit",
+                         description: "Scrolls the focused editor's current selection into view and centers it.",
+                         menuItem: "Jump to Selection")
         }
     }
 
@@ -375,7 +406,7 @@ public enum PanelFocusOrder {
                 Control(name: "Tab width", sourceMarker: "Stepper(value: $prefs.tabWidth"),
                 Control(name: "Indent style (radio group)", sourceMarker: "Picker(\"Indent with\""),
                 Control(name: "Editor appearance (segments)", sourceMarker: "Picker(\"Editor appearance\""),
-                Control(name: "Auto-close braces", sourceMarker: "Toggle(\"Auto-close braces\""),
+                Control(name: "Auto-close brackets & math", sourceMarker: "Toggle(\"Auto-close brackets & math\""),
                 Control(name: "Show completion list", sourceMarker: "Toggle(\"Show completion list\""),
                 Control(name: "Check spelling", sourceMarker: "Toggle(\"Check spelling\""),
                 Control(name: "Restore Defaults", sourceMarker: "Button(\"Restore Defaults\""),
