@@ -9,6 +9,7 @@
 //! flattening step a pure translation with no per-kind rules.
 
 use crate::metrics::FontId;
+use crate::source::SourceTag;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BoxKind {
@@ -50,11 +51,16 @@ pub struct MathBox {
     pub width: f64,
     pub height: f64,
     pub depth: f64,
+    /// Provenance of a glyph or rule leaf (see [`crate::source`]); layout
+    /// fills it from the atom that produced the leaf. Containers, kerns and
+    /// glue leave it unset. Never read for geometry.
+    pub tag: SourceTag,
 }
 
 impl MathBox {
     pub fn empty() -> MathBox {
         MathBox {
+            tag: SourceTag::NONE,
             kind: BoxKind::HBox(Vec::new()),
             width: 0.0,
             height: 0.0,
@@ -64,6 +70,7 @@ impl MathBox {
 
     pub fn kern(width: f64) -> MathBox {
         MathBox {
+            tag: SourceTag::NONE,
             kind: BoxKind::Kern,
             width,
             height: 0.0,
@@ -73,6 +80,7 @@ impl MathBox {
 
     pub fn glue(width: f64, mu: f64) -> MathBox {
         MathBox {
+            tag: SourceTag::NONE,
             kind: BoxKind::Glue { mu },
             width,
             height: 0.0,
@@ -83,6 +91,7 @@ impl MathBox {
     /// A rule of `width` × (`height` + `depth`) around the baseline.
     pub fn rule(width: f64, height: f64, depth: f64) -> MathBox {
         MathBox {
+            tag: SourceTag::NONE,
             kind: BoxKind::Rule,
             width,
             height,
@@ -92,6 +101,7 @@ impl MathBox {
 
     pub fn glyph(g: &crate::metrics::Glyph) -> MathBox {
         MathBox {
+            tag: SourceTag::NONE,
             kind: BoxKind::Glyph {
                 font_id: g.font_id,
                 gid: g.gid,
@@ -124,6 +134,7 @@ impl MathBox {
             x += w;
         }
         MathBox {
+            tag: SourceTag::NONE,
             kind: BoxKind::HBox(children),
             width: x,
             height,
@@ -170,6 +181,7 @@ impl MathBox {
             });
         }
         MathBox {
+            tag: SourceTag::NONE,
             kind: BoxKind::VBox(children),
             width,
             height,
@@ -205,6 +217,29 @@ impl MathBox {
         MathBox::hlist(vec![MathBox::kern(pad), self, MathBox::kern(pad)])
     }
 
+    /// This box with `tag` on itself (a leaf).
+    pub fn with_tag(mut self, tag: SourceTag) -> MathBox {
+        self.tag = tag;
+        self
+    }
+
+    /// Fills the unset tag fields of every glyph and rule leaf from `outer`
+    /// (innermost-first inheritance, see [`crate::source`]).
+    pub fn inherit_tag(&mut self, outer: SourceTag) {
+        if outer.is_none() {
+            return;
+        }
+        match &mut self.kind {
+            BoxKind::Glyph { .. } | BoxKind::Rule => self.tag.inherit(outer),
+            BoxKind::HBox(children) | BoxKind::VBox(children) => {
+                for c in children {
+                    c.content.inherit_tag(outer);
+                }
+            }
+            BoxKind::Kern | BoxKind::Glue { .. } => {}
+        }
+    }
+
     /// Wrap in an hbox shifted by `dy` (positive down), as TeX does when it
     /// `hpack`s a box that carries a `shift_amount`.
     pub fn shifted(self, dy: f64) -> MathBox {
@@ -227,6 +262,8 @@ pub struct PositionedGlyph {
     /// (plus the italic correction where `char_box` adds it, as for
     /// delimiters), which is what pdfTeX records as the glyph's `/Widths`.
     pub width: f64,
+    /// The source span and attribute of the atom that produced the glyph.
+    pub tag: SourceTag,
 }
 
 /// A filled rectangle on the page; `y` is its top edge (downward axis).
@@ -236,6 +273,8 @@ pub struct PositionedRule {
     pub y: f64,
     pub w: f64,
     pub h: f64,
+    /// The source span and attribute of the atom that produced the rule.
+    pub tag: SourceTag,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -272,12 +311,14 @@ fn walk(b: &MathBox, x: f64, baseline: f64, out: &mut PositionedRuns) {
             baseline_y: baseline,
             size: *size,
             width: b.width,
+            tag: b.tag,
         }),
         BoxKind::Rule => out.rules.push(PositionedRule {
             x,
             y: baseline - b.height,
             w: b.width,
             h: b.height + b.depth,
+            tag: b.tag,
         }),
         BoxKind::HBox(children) | BoxKind::VBox(children) => {
             for c in children {
