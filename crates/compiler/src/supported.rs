@@ -53,6 +53,10 @@ pub enum Origin {
     MathSymbol,
     /// `math::OPERATOR_NAMES`.
     MathOperator,
+    /// Executed by the expansion pass (`crate::expansion`): a TeX/LaTeX
+    /// primitive or kernel macro of `flashtex-tex-expansion`, never seen by
+    /// the parser.
+    Expansion,
 }
 
 impl Origin {
@@ -65,6 +69,7 @@ impl Origin {
             Origin::MathStructure => "math_structure",
             Origin::MathSymbol => "math_symbol",
             Origin::MathOperator => "math_operator",
+            Origin::Expansion => "expansion",
         }
     }
 }
@@ -114,6 +119,37 @@ pub const TEXT_CONTEXT_ONLY: &[&str] = &["thanks", "and", "today"];
 
 /// Dispatch arms that are not `parser::BUILT_INS` entries.
 const TEXT_EXTRA_ARMS: &[&str] = &["newtheorem", "theoremstyle"];
+
+/// Canonical commands the expansion pass executes itself (engine primitives
+/// and kernel-prelude macros of `flashtex-tex-expansion`); their effect
+/// reaches the parser only as expanded tokens. `\newcommand`/`\renewcommand`
+/// and `\DeclareMathOperator` keep their parser-inventory entries.
+const EXPANSION_COMMANDS: &[(&str, &str, &str)] = &[
+    ("long", "", "prefix: the following definition accepts \\par in arguments"),
+    ("protected", "", "e-TeX prefix: the following macro is not expanded inside \\edef-like contexts"),
+    ("providecommand", "{\\name}[n][default]{body}", "defines the macro only when \\name is undefined"),
+    ("DeclareRobustCommand", "{\\name}[n][default]{body}", "defines or redefines a macro (robustness is not modelled separately)"),
+    ("newenvironment", "{env}[n][default]{begin}{end}", "defines an environment run by \\begin{env}/\\end{env}"),
+    ("renewenvironment", "{env}[n][default]{begin}{end}", "redefines an environment"),
+    ("newcounter", "{counter}[within]", "allocates a counter (\\c@counter, \\thecounter) reset by within"),
+    ("setcounter", "{counter}{number}", "sets a counter globally"),
+    ("addtocounter", "{counter}{number}", "adds to a counter globally"),
+    ("stepcounter", "{counter}", "increments a counter and resets its dependants"),
+    ("refstepcounter", "{counter}", "increments a counter and makes it the current \\label value"),
+    ("value", "{counter}", "a counter's value in a number context"),
+    ("Alph", "{counter}", "a counter as an upper-case letter"),
+    ("fnsymbol", "{counter}", "a counter as a footnote symbol"),
+    ("newlength", "{\\name}", "allocates a skip register"),
+    ("settowidth", "{\\name}{text}", "sets a length from text measured by the expansion pass's box measurer (an approximation)"),
+    ("settoheight", "{\\name}{text}", "sets a length from text height (an approximation, as \\settowidth)"),
+    ("settodepth", "{\\name}{text}", "sets a length from text depth (an approximation, as \\settowidth)"),
+    ("AtBeginDocument", "{code}", "stores code that runs at \\begin{document}"),
+    ("AtEndDocument", "{code}", "stores code that runs at \\end{document}"),
+    ("makeatother", "", "makes @ an other character again"),
+    ("space", "", "expands to one space"),
+    ("ignorespaces", "", "skips the spaces that follow"),
+    ("jobname", "", "expands to texput"),
+];
 
 /// (name, arguments, description) for every `parser::BUILT_INS` entry that
 /// renders, plus the lexer's `\\`.
@@ -678,6 +714,17 @@ pub fn inventory() -> Inventory {
             renders: true,
         });
     }
+    for &(name, arguments, description) in EXPANSION_COMMANDS {
+        commands.push(Command {
+            name,
+            mode: Mode::Text,
+            origin: Origin::Expansion,
+            arguments,
+            description: description.to_string(),
+            glyph: None,
+            renders: true,
+        });
+    }
     for &(name, mode, description) in CONTROL_SYMBOLS {
         commands.push(Command {
             name,
@@ -1099,7 +1146,12 @@ pub fn render_markdown(inventory: &Inventory) -> String {
             ));
         }
     };
-    table(&mut out, "Text commands", &|c| c.mode == Mode::Text);
+    table(&mut out, "Text commands", &|c| {
+        c.mode == Mode::Text && c.origin != Origin::Expansion
+    });
+    table(&mut out, "Commands run by the expansion pass", &|c| {
+        c.origin == Origin::Expansion
+    });
     table(&mut out, "Math structures", &|c| {
         c.mode == Mode::Math && matches!(c.origin, Origin::MathStructure | Origin::ControlSymbol)
     });

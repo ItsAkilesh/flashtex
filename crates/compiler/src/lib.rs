@@ -13,6 +13,7 @@ pub mod amssymb;
 pub mod bib;
 pub mod diagnostics;
 pub mod export;
+pub mod expansion;
 pub mod incremental;
 pub mod json;
 pub mod layout;

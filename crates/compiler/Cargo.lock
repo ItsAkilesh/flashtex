@@ -7,8 +7,7 @@ name = "flashtex-compiler"
 version = "0.1.0"
 dependencies = [
  "flashtex-font-engine",
- "flashtex-tex-boxes",
- "flashtex-tex-text-encoding",
+ "flashtex-tex-expansion",
 ]
 
 [[package]]
@@ -29,15 +28,10 @@ name = "flashtex-math-layout"
 version = "0.1.0"
 
 [[package]]
-name = "flashtex-microtype"
-version = "0.1.0"
-
-[[package]]
 name = "flashtex-paragraph-layout"
 version = "0.1.0"
 dependencies = [
  "flashtex-document-style",
- "flashtex-microtype",
 ]
 
 [[package]]
@@ -45,9 +39,5 @@ name = "flashtex-pdf"
 version = "0.1.0"
 
 [[package]]
-name = "flashtex-tex-boxes"
-version = "0.1.0"
-
-[[package]]
-name = "flashtex-tex-text-encoding"
+name = "flashtex-tex-expansion"
 version = "0.1.0"

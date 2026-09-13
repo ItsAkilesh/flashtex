@@ -178,7 +178,12 @@ fn text_inventory_equals_the_parser_arms() {
             "{diagnostic_only} arm moved"
         );
     }
-    let actual = names(|c| c.mode == Mode::Text && c.origin != Origin::ControlSymbol);
+    // Expansion-pass commands are executed by `crate::expansion`'s engine and
+    // never reach a parser arm; the behaviour probes below still compile each
+    // one and require that it is not diagnosed as unsupported.
+    let actual = names(|c| {
+        c.mode == Mode::Text && c.origin != Origin::ControlSymbol && c.origin != Origin::Expansion
+    });
     assert_eq!(
         actual, expected,
         "text inventory != parser dispatch/style arms"
