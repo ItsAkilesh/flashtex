@@ -9,7 +9,7 @@
     "license": "GUST Font License v1.0 (GUST-FONT-LICENSE.TXT in this directory, sha256 49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050)"
   },
   "producer_enumeration": {
-    "source": "origin/agent/mac-render-pipeline/unified 9aaec57a crates/render-pipeline/src/fonts.rs FontSet::latin_modern_file",
+    "source": "crates/render-pipeline/src/fonts.rs latin_modern_outline (t1lmr.fd / t1lmss.fd / t1lmtt.fd design-size boundaries); every file that function can return is vendored here.",
     "regular": [
       5,
       6,
@@ -42,7 +42,6 @@
     "math": [
       "latinmodern-math.otf"
     ],
-    "not_requested": "lmsans*, lmromanslant*, lmromancaps*, lmromandemi*, lmromanunsl*, lmsansdemicond*, dunhill (no FamilyKind::Sf or non-upright roman request reaches a vendored file yet; those shapes still fall back with a font_outline_substituted note). Typewriter is covered as of the mono tier.",
     "mono": {
       "source": "crates/render-pipeline/src/fonts.rs latin_modern_outline, FamilyKind::Tt arms",
       "regular": [
@@ -69,7 +68,55 @@
       "ltboldoblique": [
         10
       ]
-    }
+    },
+    "slanted": [
+      8,
+      9,
+      10,
+      12,
+      17
+    ],
+    "slanted_bold": [
+      10
+    ],
+    "caps": [
+      "lmromancaps10-regular.otf",
+      "lmromancaps10-oblique.otf"
+    ],
+    "unslanted": [
+      "lmromanunsl10-regular.otf"
+    ],
+    "demi": [
+      "lmromandemi10-regular.otf",
+      "lmromandemi10-oblique.otf"
+    ],
+    "sans": {
+      "regular": [
+        8,
+        9,
+        10,
+        12,
+        17
+      ],
+      "oblique": [
+        8,
+        9,
+        10,
+        12,
+        17
+      ],
+      "bold": [
+        10
+      ],
+      "boldoblique": [
+        10
+      ],
+      "demicond": [
+        "lmsansdemicond10-regular.otf",
+        "lmsansdemicond10-oblique.otf"
+      ]
+    },
+    "not_requested": "dunhill (lmdunh*) and the lmvtt variable-width typewriter designs: latin_modern_outline has no arm that returns them, so no request can reach a vendored file."
   },
   "entries": [
     {
@@ -258,6 +305,156 @@
       "sha256": "a739b6deaafe0b9e8ae1eec9db1f425c52e1f6f483ca8e07e359bdd118310bba",
       "byte_length": 75300,
       "source_member": "fonts/opentype/public/lm/lmmonolt10-boldoblique.otf"
+    },
+    {
+      "path": "lmromanslant8-regular.otf",
+      "sha256": "a88ecd1a6b4d5aa1c9d537b98d0de8e19d63b292918fabf0cc36158ed770ca63",
+      "byte_length": 118720,
+      "source_member": "fonts/opentype/public/lm/lmromanslant8-regular.otf"
+    },
+    {
+      "path": "lmromanslant9-regular.otf",
+      "sha256": "7441aee0c9dfbca16118fc7fe339c2e6c79ecc966a51ac1f76860351b6a8f02e",
+      "byte_length": 119932,
+      "source_member": "fonts/opentype/public/lm/lmromanslant9-regular.otf"
+    },
+    {
+      "path": "lmromanslant10-regular.otf",
+      "sha256": "056ad4d08d2eb58d6b7fd0ac5de3f1fb799f2bb0c16b66c7e6b5bc5b6aef6481",
+      "byte_length": 118508,
+      "source_member": "fonts/opentype/public/lm/lmromanslant10-regular.otf"
+    },
+    {
+      "path": "lmromanslant12-regular.otf",
+      "sha256": "25f2ecfb860f2e45e6ebe69d11bc6305f5bfbef8f13476638ba291f47d1f130c",
+      "byte_length": 117116,
+      "source_member": "fonts/opentype/public/lm/lmromanslant12-regular.otf"
+    },
+    {
+      "path": "lmromanslant17-regular.otf",
+      "sha256": "4f30eda1d4674a1f4eea513b3baf85e3ba3fb17b2e4cf09bf627aee91dc0a4cc",
+      "byte_length": 118092,
+      "source_member": "fonts/opentype/public/lm/lmromanslant17-regular.otf"
+    },
+    {
+      "path": "lmromanslant10-bold.otf",
+      "sha256": "5f6689646a5e88b402d2e60085c813fca3a4d60707b0383c65cb023107a8bddc",
+      "byte_length": 117984,
+      "source_member": "fonts/opentype/public/lm/lmromanslant10-bold.otf"
+    },
+    {
+      "path": "lmromancaps10-regular.otf",
+      "sha256": "1ab40332a969892c7ed6cb010193b5276ccef1da6798bcbd1a465fee23d29334",
+      "byte_length": 108740,
+      "source_member": "fonts/opentype/public/lm/lmromancaps10-regular.otf"
+    },
+    {
+      "path": "lmromancaps10-oblique.otf",
+      "sha256": "603e6bb88c206f3252d2ca1a061d0faf252dd6c87501f2efa32ce2f70793b1ad",
+      "byte_length": 116564,
+      "source_member": "fonts/opentype/public/lm/lmromancaps10-oblique.otf"
+    },
+    {
+      "path": "lmromanunsl10-regular.otf",
+      "sha256": "21bbbe167e824b93a956327bcc1efda99c1bb472e761834da40cef33cab46194",
+      "byte_length": 124048,
+      "source_member": "fonts/opentype/public/lm/lmromanunsl10-regular.otf"
+    },
+    {
+      "path": "lmromandemi10-regular.otf",
+      "sha256": "63b6f9528e6117c5b0c0b1992517696ae09d05e7ca3711df0e0409d9db6df32c",
+      "byte_length": 111892,
+      "source_member": "fonts/opentype/public/lm/lmromandemi10-regular.otf"
+    },
+    {
+      "path": "lmromandemi10-oblique.otf",
+      "sha256": "430d9237cfeb1b7ef25a36002adac0524a11a07f4a31b16ce5a0eb3330163217",
+      "byte_length": 119632,
+      "source_member": "fonts/opentype/public/lm/lmromandemi10-oblique.otf"
+    },
+    {
+      "path": "lmsans8-regular.otf",
+      "sha256": "04f0d25ca474494cb707e752170f6c22cdcb8ae2b5fb80872143e18d5cc463f8",
+      "byte_length": 94256,
+      "source_member": "fonts/opentype/public/lm/lmsans8-regular.otf"
+    },
+    {
+      "path": "lmsans9-regular.otf",
+      "sha256": "80ef596460b7b402621780f7cd73a348efedc4cd2c6deca37da58f07ee61b85d",
+      "byte_length": 94552,
+      "source_member": "fonts/opentype/public/lm/lmsans9-regular.otf"
+    },
+    {
+      "path": "lmsans10-regular.otf",
+      "sha256": "d431b786b9b603662718e79cfe9b441f47a8b0b3e854dde89d5acb3ed7cfd682",
+      "byte_length": 95128,
+      "source_member": "fonts/opentype/public/lm/lmsans10-regular.otf"
+    },
+    {
+      "path": "lmsans12-regular.otf",
+      "sha256": "f87ebdea035a96e8787e2c663cfcc78ce73205d37800eafe7948278e2cc7666a",
+      "byte_length": 95160,
+      "source_member": "fonts/opentype/public/lm/lmsans12-regular.otf"
+    },
+    {
+      "path": "lmsans17-regular.otf",
+      "sha256": "f6c395a436e4fa7e88bbf1445e64b9c78ce4effba3668b13cc433077fc71a984",
+      "byte_length": 94828,
+      "source_member": "fonts/opentype/public/lm/lmsans17-regular.otf"
+    },
+    {
+      "path": "lmsans8-oblique.otf",
+      "sha256": "7f4227513bfd47b7077bedd125caa4c0a223a2cdad17a1470145cdea83353c88",
+      "byte_length": 100084,
+      "source_member": "fonts/opentype/public/lm/lmsans8-oblique.otf"
+    },
+    {
+      "path": "lmsans9-oblique.otf",
+      "sha256": "ac0535d7d4a8eb1b531c5faeb9060a4b9bac397d72cf54191ef53eea6f66b617",
+      "byte_length": 101068,
+      "source_member": "fonts/opentype/public/lm/lmsans9-oblique.otf"
+    },
+    {
+      "path": "lmsans10-oblique.otf",
+      "sha256": "1b38b36efc21f9d3f34edf6a13f9d71f59c41f824e790f5d3ee5ba5b4936f377",
+      "byte_length": 101412,
+      "source_member": "fonts/opentype/public/lm/lmsans10-oblique.otf"
+    },
+    {
+      "path": "lmsans12-oblique.otf",
+      "sha256": "1f138e6203f7092f9a01f6193ed97d971b5045b99969f3a62c7e43a7faabc1c0",
+      "byte_length": 102056,
+      "source_member": "fonts/opentype/public/lm/lmsans12-oblique.otf"
+    },
+    {
+      "path": "lmsans17-oblique.otf",
+      "sha256": "0f6a4450c5fc9afd3650f24ad9003684fff3252691bbf2a33be94b383db8a77c",
+      "byte_length": 100500,
+      "source_member": "fonts/opentype/public/lm/lmsans17-oblique.otf"
+    },
+    {
+      "path": "lmsans10-bold.otf",
+      "sha256": "a597b710326c1a8a2c7238d808e5d38711638a72a32383478db4829d63afd687",
+      "byte_length": 107448,
+      "source_member": "fonts/opentype/public/lm/lmsans10-bold.otf"
+    },
+    {
+      "path": "lmsans10-boldoblique.otf",
+      "sha256": "e45673d84754a94f2f053bd4c15950b4b320144fbb622c630a26fd7b68cfabc5",
+      "byte_length": 114984,
+      "source_member": "fonts/opentype/public/lm/lmsans10-boldoblique.otf"
+    },
+    {
+      "path": "lmsansdemicond10-regular.otf",
+      "sha256": "3a8cc8f72acaf6d4cc9200a838e5e118bf6f265233aa078e105559f6db6c2948",
+      "byte_length": 106836,
+      "source_member": "fonts/opentype/public/lm/lmsansdemicond10-regular.otf"
+    },
+    {
+      "path": "lmsansdemicond10-oblique.otf",
+      "sha256": "f98ed7d9cc5e10fd5c8e01f6ea708fddff5bbbf6f4503998c92b3c1f26d68d33",
+      "byte_length": 114848,
+      "source_member": "fonts/opentype/public/lm/lmsansdemicond10-oblique.otf"
     }
   ],
   "mono_provenance": {
@@ -265,5 +462,11 @@
     "copied_from": "/nix/store/l7fr37hc3k7wgpavm25lcyndwwghwb9x-texlive-2025-r78234-final-env-texmfdist (TeX Live 2025 r78234 on linux-primary; packages jknappen and lm)",
     "cross_checked": "this source is not the MacTeX 2026 tree the earlier tiers were copied from, so the release identity was established by byte-comparison instead: every file already pinned from those two packages is byte-identical between the two distributions - all 70 vendored jknappen/ec TFMs, all 28 vendored public/lm TFMs, all 21 vendored Latin Modern OTFs and all 6 amsfonts/symbols TFMs compare equal (cmp) to their namesakes under this root. The typewriter members below were copied from the same directories in the same run, hashed before and after the copy.",
     "license": "GUST Font License v1.0 (GUST-FONT-LICENSE.TXT in this directory, sha256 49ea6cb9...) - the same Latin Modern release as the 21 lmroman*/latinmodern-math faces already pinned here, so no new license applies."
+  },
+  "sans_slant_caps_provenance": {
+    "purpose": "The sans, slanted, small-caps, demi and unslanted Latin Modern designs latin_modern_outline returns for FamilyKind::Sf and for the non-upright roman shapes (Sl, Sc, Scsl, Scit, Ui) and Series::B/Sbc. article.cls/book.cls set every headings/myheadings running head in \\slshape (article.cls:134-135,152,163-164), so before this tier EVERY running head in the bundle was drawn on a substituted roman outline and warned font_outline_substituted, and \\textsf/\\textsl/\\textsc substituted roman throughout. 25 files: lmromanslant 8/9/10/12/17 + bold 10, lmromancaps 10 regular/oblique, lmromanunsl 10, lmromandemi 10 regular/oblique, lmsans 8/9/10/12/17 regular and oblique, lmsans10 bold/boldoblique, lmsansdemicond 10 regular/oblique.",
+    "copied_from": "/nix/store/l7fr37hc3k7wgpavm25lcyndwwghwb9x-texlive-2025-r78234-final-env-texmfdist (TeX Live 2025 r78234 on linux-primary; package lm), members fonts/opentype/public/lm/<file>; nothing downloaded",
+    "cross_checked": "Release identity established by byte-comparison, the method PR #183 used, because this source is not the MacTeX 2026 tree the earlier tiers were copied from: EVERY file already pinned from the packages involved is byte-identical (cmp) between the two distributions - all 33 vendored Latin Modern OTFs, all 38 vendored public/lm TFMs, all 114 vendored jknappen/ec TFMs and all 6 vendored amsfonts/symbols TFMs, 191 files, 0 differences. The members below were copied from the same directory in the same run and hashed after the copy.",
+    "license": "GUST Font License v1.0 (GUST-FONT-LICENSE.TXT in this directory, sha256 49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050) - the same Latin Modern release as the 33 faces already pinned here, so no new package and no new license applies."
   }
 }

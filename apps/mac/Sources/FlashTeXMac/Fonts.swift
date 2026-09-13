@@ -45,13 +45,15 @@ enum PreviewFonts {
     private(set) static var latinModernDirectory: String?
 
     /// Every Latin Modern file the layout producer can request
-    /// (`flashtex-render` `FontSet::latin_modern_file`, t1lmr.fd boundaries):
+    /// (`flashtex-render` `latin_modern_outline`, t1lmr.fd boundaries):
     /// regular 5–17, bold 5–12, italic 7–12, bold-italic 10, LM Math, and the
     /// secondary double-struck math face `NewCMMath-Regular.otf` (New Computer
     /// Modern Math, msbm's `\mathbb` design; `mathfont::BB_FONT_FILE`), plus
     /// the typewriter designs `latin_modern_outline` returns for
     /// `FamilyKind::Tt` (t1lmtt.fd boundaries: `m/n` 8, 9, 10, `<11->` 12;
-    /// one 10 pt design for italic, slanted, caps and the bold `lmmonolt`).
+    /// one 10 pt design for italic, slanted, caps and the bold `lmmonolt`),
+    /// the non-upright roman designs (`latinModernRomanShapeFaceFiles`) and
+    /// the sans designs (`latinModernSansFaceFiles`).
     /// The vendored `apps/mac/Fonts` (pinned by `SUPPLEMENTARY-FACES.json`
     /// plus the Commander manifest) holds all of them; when the registered
     /// directory lacks any, the gap is recorded in `latinModernMissingFaces`
@@ -62,6 +64,34 @@ enum PreviewFonts {
         + [7, 8, 9, 10, 12].map { "lmroman\($0)-italic.otf" }
         + ["lmroman10-bolditalic.otf", "latinmodern-math.otf", newComputerModernMathFile]
         + latinModernMonoFaceFiles
+        + latinModernRomanShapeFaceFiles
+        + latinModernSansFaceFiles
+
+    /// The non-upright roman designs `latin_modern_outline` returns for
+    /// `FamilyKind::Rm` outside `m/n`, `bx/n`, `m/it` and `bx/it`
+    /// (`t1lmr.fd` boundaries: `m/sl` 8, 9, 10, 12, `<15->` 17; one 10 pt
+    /// design for bold slanted, small caps, unslanted and the demi series).
+    /// `article.cls`/`book.cls` set every `headings`/`myheadings` running
+    /// head in `\slshape`, so without these every running head in the
+    /// bundle drew a substituted roman outline and warned
+    /// `font_outline_substituted`.
+    static let latinModernRomanShapeFaceFiles: [String] =
+        [8, 9, 10, 12, 17].map { "lmromanslant\($0)-regular.otf" }
+        + ["lmromanslant10-bold.otf",
+           "lmromancaps10-regular.otf", "lmromancaps10-oblique.otf",
+           "lmromanunsl10-regular.otf",
+           "lmromandemi10-regular.otf", "lmromandemi10-oblique.otf"]
+
+    /// The sans designs `latin_modern_outline` returns for `FamilyKind::Sf`
+    /// (`t1lmss.fd` boundaries: `m/n` and `m/sl` 8, 9, 10, 12, `<15.5->` 17;
+    /// one 10 pt design for bold, bold oblique and the demi-condensed
+    /// series). Without these every `\textsf` run drew a substituted roman
+    /// outline.
+    static let latinModernSansFaceFiles: [String] =
+        [8, 9, 10, 12, 17].map { "lmsans\($0)-regular.otf" }
+        + [8, 9, 10, 12, 17].map { "lmsans\($0)-oblique.otf" }
+        + ["lmsans10-bold.otf", "lmsans10-boldoblique.otf",
+           "lmsansdemicond10-regular.otf", "lmsansdemicond10-oblique.otf"]
 
     /// The typewriter faces, kept separate so a caller can tell a
     /// `\texttt` gap from a body-text gap. Without these the producer draws
