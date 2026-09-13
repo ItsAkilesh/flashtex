@@ -142,6 +142,67 @@ def fixtures():
     f["32-article-maketitle-empty"] = doc(
         "article", "", "\\maketitle\n" + paras(40, 11), "\\pagestyle{empty}\n\\title{A Title}\n\\author{An Author}\n\\date{1 May 2020}\n"
     )
+    # \maketitle layout (article.cls/report.cls/book.cls \@maketitle and
+    # titlepage; book \frontmatter/\mainmatter/\backmatter). Every fixture
+    # gives \date explicitly: pdflatex's \today is the run date.
+    f["33-article-maketitle-and"] = doc(
+        "article",
+        "",
+        "\\maketitle\n" + sectioned(41, 3, 3),
+        "\\title{A Longer Title for Testing}\n\\author{First Author \\and Second Writer \\and Third Person}\n\\date{2 June 2021}\n",
+    )
+    f["34-article-maketitle-author-lines-nodate"] = doc(
+        "article",
+        "",
+        "\\maketitle\n" + paras(42, 11),
+        "\\title{Stacked Authors}\n\\author{Ann Author\\\\ University of Somewhere \\and Bob Writer\\\\ Institute Two\\\\ Some City}\n\\date{}\n",
+    )
+    f["35-article-maketitle-thanks"] = doc(
+        "article",
+        "",
+        "\\maketitle\n" + sectioned(43, 3, 3),
+        "\\title{A Title\\thanks{Supported by a grant.}}\n\\author{An Author\\thanks{Corresponding author.}}\n\\date{3 July 2022}\n",
+    )
+    f["36-article-titlepage"] = doc(
+        "article", "titlepage", "\\maketitle\n" + sectioned(44, 3, 3), "\\title{A Title Page}\n\\author{An Author}\n\\date{4 August 2023}\n"
+    )
+    f["37-report-maketitle"] = doc(
+        "report", "", "\\maketitle\n\\chapter{Getting Started}\n" + paras(45, 10), "\\title{A Report}\n\\author{One Author \\and Two Author}\n\\date{5 May 2024}\n"
+    )
+    f["38-book-maketitle"] = doc(
+        "book", "", "\\maketitle\n\\chapter{Opening}\n" + paras(46, 10), "\\title{A Book}\n\\author{Book Author}\n\\date{6 June 2025}\n"
+    )
+    f["39-report-notitlepage"] = doc(
+        "report", "notitlepage", "\\maketitle\n" + paras(47, 10), "\\title{A Compact Report}\n\\author{Report Author}\n\\date{7 July 2019}\n"
+    )
+    f["40-article-twocolumn-maketitle"] = doc(
+        "article", "twocolumn", "\\maketitle\n" + sectioned(48, 4, 4), "\\title{A Two Column Title}\n\\author{Left Author \\and Right Author}\n\\date{8 March 2018}\n"
+    )
+    f["41-article-11pt-twoside-maketitle-nodate"] = doc(
+        "article", "11pt,twoside", "\\maketitle\n" + sectioned(49, 3, 4), "\\pagestyle{headings}\n\\title{Eleven Point Title}\n\\author{Some Author}\n\\date{}\n"
+    )
+    f["42-article-12pt-maketitle-long-title"] = doc(
+        "article",
+        "12pt",
+        "\\maketitle\n" + paras(50, 10),
+        "\\title{A Considerably Longer Title That Has to Wrap Across More Than One Line of the Page\\\\ With a Forced Second Part}\n\\author{An Author}\n\\date{9 September 2017}\n",
+    )
+    f["43-book-frontmatter-mainmatter-backmatter"] = doc(
+        "book",
+        "",
+        "\\frontmatter\n\\chapter{Preface}\n"
+        + paras(51, 3)
+        + "\n\n\\mainmatter\n\\chapter{Introduction}\n"
+        + paras(52, 4)
+        + "\n\n\\chapter{Development}\n"
+        + paras(53, 3)
+        + "\n\n\\backmatter\n\\chapter{Notes}\n"
+        + paras(54, 3),
+        "\\pagestyle{headings}\n",
+    )
+    f["44-article-twoside-titlepage"] = doc(
+        "article", "twoside,titlepage", "\\maketitle\n" + paras(55, 14), "\\title{Two Sided Title Page}\n\\author{First Author \\and Second Author}\n\\date{10 October 2016}\n"
+    )
     return f
 
 

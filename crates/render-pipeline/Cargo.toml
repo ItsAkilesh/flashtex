@@ -49,6 +49,10 @@ amsmath-inline = []
 flashtex-compiler = { path = "vendor/compiler" }
 flashtex-font-engine = { path = "vendor/font-engine" }
 flashtex-paragraph-layout = { path = "vendor/paragraph-layout" }
+# pdfTeX character protrusion/font expansion (the `microtype` package):
+# config resolution per font; vendor/paragraph-layout depends on the same
+# mirror (`../microtype`).
+flashtex-microtype = { path = "vendor/microtype" }
 flashtex-math-layout = { path = "vendor/math-layout" }
 flashtex-document-style = { path = "vendor/document-style" }
 flashtex-pdf = { path = "vendor/pdf" }

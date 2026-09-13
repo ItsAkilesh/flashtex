@@ -33,6 +33,11 @@ pub struct SGlyph {
     pub y_min: i32,
     pub x_max: i32,
     pub empty: bool,
+    /// TFM shaping only: the character code (T1 slot) this glyph sets and
+    /// the font kern (fixwords) included in `advance` after it; microtype
+    /// protrusion/expansion read them. `None`/0 otherwise.
+    pub tfm_code: Option<u8>,
+    pub tfm_kern: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -182,6 +187,8 @@ fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str) -> Result<Option<Shap
                 y_min: 0,
                 x_max: 0,
                 empty: true,
+                tfm_code: None,
+                tfm_kern: 0,
             }],
             text_range: 0..0,
             text: String::new(),
@@ -221,6 +228,8 @@ fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str) -> Result<Option<Shap
                 y_min: if b.empty { 0 } else { b.y_min },
                 x_max: if b.empty { 0 } else { b.x_max },
                 empty: b.empty || gid.0 == 0,
+                tfm_code: Some(g.code),
+                tfm_kern: g.kern_after,
             }],
             text_range: range,
             text: ctext,
@@ -268,6 +277,8 @@ fn shape_otf(face: &Rc<LoadedFace>, text: &str) -> Shaped {
                                 y_min: if b.empty { 0 } else { b.y_min },
                                 x_max: if b.empty { g.advance } else { b.x_max },
                                 empty: b.empty,
+                                tfm_code: None,
+                                tfm_kern: 0,
                             }
                         })
                         .collect(),
