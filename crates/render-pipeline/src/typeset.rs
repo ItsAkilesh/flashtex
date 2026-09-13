@@ -2386,7 +2386,7 @@ impl<'a> Context<'a> {
         let _ = drop_trailing_break(&mut list, &mut recs, &mut skips, ParaStyle::Center);
         let mut params = self.line_params(false, baselineskip_pt, ParaStyle::Center, 0.0);
         params.line_width = width;
-        let lines = self.break_paragraph(&list, &params, items)?;
+        let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
         let mut vertical = plain_vblock(line_extents(&lines));
         vertical.parskip = Some(skip_tuple(self.style.parskip));
