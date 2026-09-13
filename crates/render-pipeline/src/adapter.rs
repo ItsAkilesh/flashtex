@@ -10,7 +10,7 @@
 //! to expose instead is listed in docs/proposals/rendering-abi.md
 //! ("Requested compiler API").
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use flashtex_compiler::math::MathList;
 use flashtex_compiler::parser::{Block as CBlock, Inline, Parsed};
@@ -480,6 +480,7 @@ pub fn adapt_cached(
     labels: &Labels,
     cache: Option<&crate::incremental::RenderCache>,
 ) -> Doc {
+    let _macro_defs = MacroDefsScope::enter(texts);
     let source = texts.get(entry).copied().unwrap_or("");
     let explicit_class = class_options(source);
     let class_options = explicit_class.clone().unwrap_or_else(|| options.default_class_options.clone());
@@ -1800,8 +1801,87 @@ fn is_invocation_span(source: &str, span: Span) -> bool {
 /// `\providecommand`/`\def` for `\<name>` before byte `before` (or the first
 /// one anywhere), as the bytes inside its braces.
 fn macro_body<'a>(source: &'a str, name: &str, before: usize) -> Option<&'a str> {
+    // Within an adapt call the definitions of each document are indexed
+    // once (FT-065: rescanning the whole source per invocation token made a
+    // warm 500 KB request take seconds); elsewhere the source is scanned.
+    let pick = |defs: &[MacroDef]| defs.iter().rev().find(|d| d.at < before).or(defs.first()).map(|d| &source[d.body.clone()]);
+    let indexed = MACRO_DEFS.with(|scope| {
+        let mut scope = scope.borrow_mut();
+        let entry = scope.iter_mut().find(|e| e.ptr == source.as_ptr() as usize && e.len == source.len())?;
+        let index = entry.index.get_or_insert_with(|| {
+            let mut by_name: HashMap<String, Vec<MacroDef>> = HashMap::new();
+            for d in macro_definitions(source) {
+                by_name.entry(source[d.name.clone()].to_string()).or_default().push(d);
+            }
+            by_name
+        });
+        Some(index.get(name).map(|defs| (defs.first().map(|d| d.body.clone()), defs.iter().rev().find(|d| d.at < before).map(|d| d.body.clone()))))
+    });
+    match indexed {
+        Some(found) => found.and_then(|(first, last_before)| last_before.or(first)).map(|r| &source[r]),
+        None => {
+            let defs: Vec<MacroDef> = macro_definitions(source).into_iter().filter(|d| &source[d.name.clone()] == name).collect();
+            pick(&defs)
+        }
+    }
+}
+
+/// One `\newcommand`-style definition: where its command starts, the
+/// defined name's bytes and the replacement text inside its braces.
+#[derive(Debug, Clone)]
+struct MacroDef {
+    at: usize,
+    name: std::ops::Range<usize>,
+    body: std::ops::Range<usize>,
+}
+
+/// Per-thread definition indexes for the documents of the adapt call in
+/// progress, keyed by the text's address and length. Only texts registered
+/// by a live [`MacroDefsScope`] are indexed, and those are borrowed for the
+/// whole scope, so a key can never name different bytes while it is used.
+struct MacroDefsEntry {
+    ptr: usize,
+    len: usize,
+    index: Option<HashMap<String, Vec<MacroDef>>>,
+}
+
+thread_local! {
+    static MACRO_DEFS: std::cell::RefCell<Vec<MacroDefsEntry>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Registers `texts` for definition indexing until dropped.
+struct MacroDefsScope {
+    saved: Vec<MacroDefsEntry>,
+}
+
+impl MacroDefsScope {
+    fn enter(texts: &[&str]) -> MacroDefsScope {
+        let entries = texts
+            .iter()
+            .map(|t| MacroDefsEntry {
+                ptr: t.as_ptr() as usize,
+                len: t.len(),
+                index: None,
+            })
+            .collect();
+        MacroDefsScope {
+            saved: MACRO_DEFS.with(|scope| std::mem::replace(&mut *scope.borrow_mut(), entries)),
+        }
+    }
+}
+
+impl Drop for MacroDefsScope {
+    fn drop(&mut self) {
+        let saved = std::mem::take(&mut self.saved);
+        MACRO_DEFS.with(|scope| *scope.borrow_mut() = saved);
+    }
+}
+
+/// Every definition in `source`, sorted by position (the scan
+/// [`macro_body`] filters by name).
+fn macro_definitions(source: &str) -> Vec<MacroDef> {
     let bytes = source.as_bytes();
-    let mut defs: Vec<(usize, &str)> = Vec::new();
+    let mut defs: Vec<MacroDef> = Vec::new();
     for command in ["newcommand", "renewcommand", "providecommand", "def"] {
         let mut from = 0;
         while let Some(at) = find_command(&source[from..], command) {
@@ -1827,9 +1907,7 @@ fn macro_body<'a>(source: &'a str, name: &str, before: usize) -> Option<&'a str>
             let Some(rest) = source.get(i..) else { continue };
             let Some(rest) = rest.strip_prefix('\\') else { continue };
             let len = rest.bytes().take_while(u8::is_ascii_alphabetic).count();
-            if &rest[..len] != name {
-                continue;
-            }
+            let name_range = i + 1..i + 1 + len;
             i += 1 + len;
             skip_ws(&mut i);
             if braced {
@@ -1854,11 +1932,15 @@ fn macro_body<'a>(source: &'a str, name: &str, before: usize) -> Option<&'a str>
                 continue;
             }
             let Some(close) = matching_brace(bytes, i) else { continue };
-            defs.push((abs, &source[i + 1..close]));
+            defs.push(MacroDef {
+                at: abs,
+                name: name_range,
+                body: i + 1..close,
+            });
         }
     }
-    defs.sort_by_key(|(at, _)| *at);
-    defs.iter().rev().find(|(at, _)| *at < before).or(defs.first()).map(|(_, body)| *body)
+    defs.sort_by_key(|d| d.at);
+    defs
 }
 
 /// For a macro invoked at `inv` (its `\name` span), the index (from 1) of
