@@ -77,10 +77,15 @@ pub fn scale_decimal(int_part: i64, frac_digits: &str, sp_per_unit: f64) -> i64 
     };
     let magnitude = int_part.unsigned_abs() as f64 + frac;
     let sp = magnitude * sp_per_unit;
-    let rounded = sp.round() as i64;
+    // Real TeX's unit conversion (`xn_over_d` applied to the num/den pair
+    // for each unit, tex.web ch. 24) is exact-rational integer division,
+    // which truncates rather than rounds -- e.g. 1in = 72.27pt converts
+    // to 4736286sp, not the rounded 4736287. Verified against real TeX
+    // via the oracle corpus (`dimen_in`).
+    let truncated = sp.trunc() as i64;
     if int_part < 0 {
-        -rounded
+        -truncated
     } else {
-        rounded
+        truncated
     }
 }

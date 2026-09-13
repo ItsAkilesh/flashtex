@@ -346,16 +346,24 @@ impl<'a> Engine<'a> {
     /// like `\begingroup`/`\endgroup`, but are still emitted as content
     /// tokens (typesetting needs to see the braces for e.g. `{\bf x}`).
     fn maybe_handle_brace(&mut self, tok: &Token) -> Option<Step> {
+        // A bare grouping brace is pure bookkeeping in real TeX: main
+        // control's `{`/`}` handling calls `new_save_level`/`unsave`
+        // without appending anything to the current list (verified
+        // against real TeX's actual observable behavior via the oracle
+        // corpus: `{\def\a{inner}}\a` produces just the macro's expansion,
+        // no literal brace characters). So we swallow it here too, after
+        // performing the grouping side effect (and reinserting any
+        // `\aftergroup` tokens right where the closing brace was).
         if let TokenKind::Char(_, cat) = tok.kind {
             match cat {
                 CatCode::BeginGroup => {
                     self.scopes.push_group();
-                    return Some(Step::Emit(tok.clone()));
+                    return Some(Step::Continue);
                 }
                 CatCode::EndGroup => {
                     let after = self.scopes.pop_group();
                     self.push_tokens(after);
-                    return Some(Step::Emit(tok.clone()));
+                    return Some(Step::Continue);
                 }
                 _ => {}
             }
@@ -382,26 +390,25 @@ impl<'a> Engine<'a> {
                     break;
                 }
                 TokenKind::Char(_, CatCode::Param) => {
-                    // `#` in a parameter text is followed by a digit
-                    // 1..9 naming the parameter slot (TeXbook p.203).
+                    // `#` in a parameter text is followed either by a
+                    // digit 1..9 naming the parameter slot, or directly by
+                    // `{` -- the `#{` marker (TeXbook p.205) meaning "the
+                    // last parameter is delimited by the upcoming brace
+                    // group", with no parameter number of its own. The
+                    // `{` is pushed back for `scan_braced_group` to
+                    // consume as the start of the body.
                     match self.next_raw_token() {
                         Some(next) => match next.kind {
                             TokenKind::Char(d, _) if d.is_ascii_digit() && d != '0' => {
                                 let n = d.to_digit(10).unwrap() as u8;
-                                // Look ahead: `#{` means brace-delimited
-                                // last parameter (the `{` is left in the
-                                // stream for scan_braced_group to consume
-                                // as the start of the body).
-                                if let Some(after) = self.next_raw_token() {
-                                    if matches!(after.kind, TokenKind::Char(_, CatCode::BeginGroup)) {
-                                        flags.brace_delimited_last = true;
-                                    }
-                                    self.push_tokens(vec![after]);
-                                }
                                 params.push(ParamPart::Param(n));
                             }
+                            TokenKind::Char(_, CatCode::BeginGroup) => {
+                                flags.brace_delimited_last = true;
+                                self.push_tokens(vec![next]);
+                            }
                             _ => {
-                                self.err("parameter text: '#' must be followed by a digit 1-9", tok.span);
+                                self.err("parameter text: '#' must be followed by a digit 1-9 or '{'", tok.span);
                                 self.push_tokens(vec![next]);
                             }
                         },
@@ -484,6 +491,7 @@ impl<'a> Engine<'a> {
                 TokenKind::ControlSequence(name) => matches!(
                     self.scopes.meaning(name),
                     Meaning::Macro(_)
+                        | Meaning::MacroWithOptional { .. }
                         | Meaning::Primitive(
                             Primitive::Expandafter
                                 | Primitive::Noexpand
@@ -509,6 +517,16 @@ impl<'a> Engine<'a> {
                                 | Primitive::Else
                                 | Primitive::Fi
                                 | Primitive::Unless
+                                | Primitive::Value
+                                | Primitive::Arabic
+                                | Primitive::RomanLower
+                                | Primitive::RomanUpper
+                                | Primitive::AlphLower
+                                | Primitive::AlphUpper
+                                | Primitive::Fnsymbol
+                                | Primitive::IfNextChar
+                                | Primitive::IfStar
+                                | Primitive::NameUse
                         )
                 ),
                 TokenKind::ActiveChar(c) => !matches!(self.scopes.active_meaning(*c), Meaning::Undefined),
@@ -835,6 +853,21 @@ impl<'a> Engine<'a> {
         Some(t)
     }
 
+    /// Like `peek_one`, but expands macros/expandable primitives first
+    /// (real TeX's `scan_int`/`scan_dimen` read every token via
+    /// `get_x_token`, so e.g. `\value{name}` or a user macro that expands
+    /// to digits works as a `<number>`, not just literal digit
+    /// characters).
+    fn peek_one_expanding(&mut self) -> Option<Token> {
+        let p = self.next_expanding_raw()?;
+        self.push_tokens(vec![p.tok.clone()]);
+        Some(p.tok)
+    }
+
+    fn next_expanding_token(&mut self) -> Option<Token> {
+        self.next_expanding_raw().map(|p| p.tok)
+    }
+
     // ---- primitive handling --------------------------------------------
 
     fn handle_primitive(&mut self, tok: Token, p: Primitive) -> Step {
@@ -1041,7 +1074,7 @@ impl<'a> Engine<'a> {
             }
             Numexpr | Dimexpr => {
                 let v = self.scan_expr(matches!(p, Dimexpr));
-                let s = if matches!(p, Dimexpr) { format!("{v}sp") } else { v.to_string() };
+                let s = if matches!(p, Dimexpr) { format!("{}pt", print_scaled(v)) } else { v.to_string() };
                 // `\numexpr`/`\dimexpr` are read as internal quantities and
                 // expand to their numeric text only via `\the`; used bare
                 // they are still a value producer for register contexts.
@@ -1181,12 +1214,30 @@ impl<'a> Engine<'a> {
     /// (used by `\setcounter`/`\addtocounter`): expands it, then parses
     /// the resulting characters as a decimal integer.
     fn scan_counter_value_arg(&mut self) -> i64 {
-        let toks = self.scan_braced_group(true);
-        let s: String = toks
-            .iter()
-            .filter_map(|t| if let TokenKind::Char(c, _) = t.kind { Some(c) } else { None })
-            .collect();
-        s.trim().parse().unwrap_or(0)
+        // The argument is a `<number>` expression, which may itself
+        // contain `\value{...}` or other expandable constructs (e.g.
+        // `\setcounter{bar}{\value{foo}}`) -- so feed the raw braced
+        // tokens back through `scan_number`'s full expanding scanner
+        // rather than naively collecting character tokens.
+        let mut toks = self.scan_braced_group(false);
+        // A trailing sentinel keeps `scan_number`'s optional-space
+        // lookahead from falling through this temporary source into the
+        // surrounding (real) input stream once the braced content is
+        // exhausted.
+        toks.push(Token::synthetic(TokenKind::ControlSequence("relax".to_string())));
+        self.sources.push(Input::Toks(
+            toks.into_iter().map(|tok| Pending { tok, frozen: false }).collect(),
+            0,
+        ));
+        let v = self.scan_number();
+        // Discard whatever remains of the temporary source we just
+        // pushed (the sentinel, plus any leftovers) -- it must never leak
+        // into the surrounding stream. `scan_number` cannot have popped it
+        // itself: an exhausted `Input::Toks` source is only popped by
+        // `next_raw` when something tries to read *past* it, and the
+        // sentinel guarantees there is always one more token to stop at.
+        self.sources.pop();
+        v
     }
 
     fn counter_register(&self, name: &str) -> Option<u16> {
@@ -1418,10 +1469,17 @@ impl<'a> Engine<'a> {
         };
         match kind {
             RegisterKind::Count => chars_as_other(&self.scopes.count(idx).to_string(), tok.span),
-            RegisterKind::Dimen => chars_as_other(&format!("{}sp", self.scopes.dimen(idx)), tok.span),
+            RegisterKind::Dimen => chars_as_other(&format!("{}pt", print_scaled(self.scopes.dimen(idx))), tok.span),
             RegisterKind::Skip => {
                 let g = self.scopes.skip(idx);
-                chars_as_other(&format!("{}sp plus {}sp minus {}sp", g.value, g.stretch, g.shrink), tok.span)
+                let mut s = format!("{}pt", print_scaled(g.value));
+                if g.stretch != 0 {
+                    s.push_str(&format!(" plus {}{}", print_scaled(g.stretch), fil_unit(g.stretch_fil)));
+                }
+                if g.shrink != 0 {
+                    s.push_str(&format!(" minus {}{}", print_scaled(g.shrink), fil_unit(g.shrink_fil)));
+                }
+                chars_as_other(&s, tok.span)
             }
             RegisterKind::Toks => self.scopes.toks(idx),
         }
@@ -1551,7 +1609,7 @@ impl<'a> Engine<'a> {
         self.skip_spaces();
         let mut neg = false;
         loop {
-            match self.peek_one() {
+            match self.peek_one_expanding() {
                 Some(t) => match &t.kind {
                     TokenKind::Char('+', _) => {
                         self.next_raw_token();
@@ -1567,7 +1625,7 @@ impl<'a> Engine<'a> {
                 None => break,
             }
         }
-        let value = match self.peek_one() {
+        let value = match self.peek_one_expanding() {
             Some(t) => match &t.kind {
                 TokenKind::Char(c, CatCode::Other) if c.is_ascii_digit() => self.scan_decimal_digits(),
                 TokenKind::Char('\'', _) => {
@@ -1840,12 +1898,14 @@ impl<'a> Engine<'a> {
             }
             let int_val: i64 = int_part.parse().unwrap_or(0);
             let v = scale_decimal(int_val, &frac, 65536.0);
+            self.skip_one_optional_space();
             return (if neg { -v } else { v }, fil);
         }
         let unit = self.read_unit_name();
         let per = absolute_unit_sp_per_unit(&unit).unwrap_or(65536.0);
         let int_val: i64 = int_part.parse().unwrap_or(0);
         let v = scale_decimal(int_val, &frac, per);
+        self.skip_one_optional_space();
         (if neg { -v } else { v }, 0)
     }
 
@@ -1894,7 +1954,7 @@ impl<'a> Engine<'a> {
                 Some(t) if matches!(t.kind, TokenKind::Char('/', _)) => {
                     self.next_raw_token();
                     let d = self.expr_atom(is_dimen);
-                    acc = if d != 0 { acc / d } else { 0 };
+                    acc = rounded_div(acc, d);
                 }
                 _ => break,
             }
@@ -1933,7 +1993,7 @@ impl<'a> Engine<'a> {
             self.conditionals.push(IfShape::Case, IfBranch::Taken);
             let mut remaining = n;
             loop {
-                if remaining <= 0 {
+                if remaining == 0 {
                     break;
                 }
                 match self.skip_to_or_else_fi() {
@@ -2208,6 +2268,18 @@ enum BranchEnd {
     Fi,
 }
 
+/// e-TeX's `\numexpr`/`\dimexpr` division rounds to the nearest integer,
+/// ties away from zero (not truncating like `\divide`).
+fn rounded_div(a: i64, d: i64) -> i64 {
+    if d == 0 {
+        return 0;
+    }
+    let sign: i64 = if (a < 0) != (d < 0) { -1 } else { 1 };
+    let a_abs = a.unsigned_abs() as i64;
+    let d_abs = d.unsigned_abs() as i64;
+    sign * ((2 * a_abs + d_abs) / (2 * d_abs))
+}
+
 fn is_if_primitive(p: Primitive) -> bool {
     use Primitive::*;
     matches!(
@@ -2370,6 +2442,46 @@ fn to_fnsymbol(n: i64) -> String {
         SYMS[n as usize - 1].to_string()
     } else {
         String::new()
+    }
+}
+
+/// TeX's `print_scaled` (tex.web @<Print the scaled dimension@>): renders
+/// a scaled-point integer as the shortest decimal that round-trips to the
+/// same sp value under TeX's own rounding, e.g. 4736287sp -> "72.26999".
+/// This must match exactly for oracle comparisons against real
+/// `\the\dimen`/`\showthe`.
+fn print_scaled(sp: i64) -> String {
+    let neg = sp < 0;
+    let mut s = sp.unsigned_abs() as i64;
+    let unity = 65536i64;
+    let mut out = String::new();
+    if neg {
+        out.push('-');
+    }
+    out.push_str(&(s / unity).to_string());
+    out.push('.');
+    s = 10 * (s % unity) + 5;
+    let mut delta = 10i64;
+    loop {
+        if delta > unity {
+            s += 32768 - delta / 2;
+        }
+        out.push(std::char::from_digit((s / unity) as u32, 10).unwrap());
+        s = 10 * (s % unity);
+        delta *= 10;
+        if s <= delta {
+            break;
+        }
+    }
+    out
+}
+
+fn fil_unit(fil: u8) -> &'static str {
+    match fil {
+        1 => "fil",
+        2 => "fill",
+        3 => "filll",
+        _ => "pt",
     }
 }
 

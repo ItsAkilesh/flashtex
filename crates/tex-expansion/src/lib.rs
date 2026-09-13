@@ -12,6 +12,14 @@
 //! token stream with per-token source-span provenance, meant for
 //! `crates/compiler`'s layout stage to consume. See `CONTRACT.md` for the
 //! proposed adoption path.
+//!
+//! A handful of items (span/lexer accessors, `Meaning::Let`,
+//! `ConditionalFrame::shape`, ...) are forward-looking public API surface
+//! not yet exercised by this crate's own tests -- silenced here rather
+//! than deleted, since the adoption work in CONTRACT.md is expected to
+//! use them (source position queries for diagnostics, `\let` chain
+//! introspection for future `\show`/`\meaning` work, etc).
+#![allow(dead_code)]
 
 mod catcode;
 mod conditionals;

@@ -102,12 +102,14 @@ fn countdef_alias() {
 
 #[test]
 fn grouping_restores_local_def() {
-    assert_eq!(run(r"\def\a{outer}{\def\a{inner}\a}\a"), "{inner}outer");
+    // Bare grouping braces are pure bookkeeping (verified against real TeX
+    // via the oracle corpus: they never appear in the observable output).
+    assert_eq!(run(r"\def\a{outer}{\def\a{inner}\a}\a"), "innerouter");
 }
 
 #[test]
 fn global_def_survives_group() {
-    assert_eq!(run(r"\def\a{outer}{\global\def\a{inner}\a}\a"), "{inner}inner");
+    assert_eq!(run(r"\def\a{outer}{\global\def\a{inner}\a}\a"), "innerinner");
 }
 
 #[test]
@@ -117,7 +119,7 @@ fn begingroup_endgroup_scopes_registers() {
 
 #[test]
 fn aftergroup_reinserts_after_close() {
-    assert_eq!(run(r"{\aftergroup X}Y"), "{}XY");
+    assert_eq!(run(r"{\aftergroup X}Y"), "XY");
 }
 
 #[test]
@@ -182,7 +184,7 @@ fn catcode_and_makeatletter() {
 
 #[test]
 fn dimen_units() {
-    assert_eq!(run(r"\dimen0=1in \the\dimen0"), "4736287sp");
+    assert_eq!(run(r"\dimen0=1in \the\dimen0"), "72.26999pt");
 }
 
 #[test]
@@ -270,6 +272,29 @@ fn long_macro_flag_parses() {
     // yet special-case \par-forbidding for non-long macros (documented gap),
     // but the flag must at least parse without breaking the definition.
     assert_eq!(run(r"\long\def\a#1{[#1]}\a{x}"), "[x]");
+}
+
+#[test]
+fn def_brace_delim_last() {
+    // `#{` (TeXbook p.205): the last parameter is delimited by the
+    // upcoming `{`, which is left unconsumed. That leftover `{y}` is then
+    // an ordinary top-level group processed by normal (main-control-like)
+    // execution, which is silent for bare grouping braces (see
+    // CONTRACT.md "Known deviations" -- this differs from what `\write`'s
+    // scan_toks-based argument scanning would show, which is why this
+    // case isn't in the oracle corpus).
+    assert_eq!(run(r"\def\a#1#{[#1]}\a x{y}"), "[x]y");
+}
+
+#[test]
+fn infinite_macro_loop_terminates_with_diagnostic() {
+    // \loop directly recurses with no base case: real TeX would run out
+    // of memory / hang. The engine must instead hit its step limit and
+    // return a diagnostic rather than looping or panicking.
+    let r = expand_str(r"\def\loop{\loop}\loop");
+    assert!(r.tokens.is_empty());
+    assert_eq!(r.diagnostics.len(), 1);
+    assert!(r.diagnostics[0].message.contains("expansion step limit"));
 }
 
 #[test]

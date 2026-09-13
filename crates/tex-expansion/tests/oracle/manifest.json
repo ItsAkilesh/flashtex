@@ -1,0 +1,650 @@
+{
+  "Alph_counter": {
+    "expected": "B",
+    "expr": "\\Alph{foo}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{foo}\\setcounter{foo}{2}"
+  },
+  "Roman_counter": {
+    "expected": "IV",
+    "expr": "\\Roman{foo}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{foo}\\setcounter{foo}{4}"
+  },
+  "addtocounter_basic": {
+    "expected": "7",
+    "expr": "\\arabic{foo}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{foo}\\setcounter{foo}{3}\\addtocounter{foo}{4}"
+  },
+  "alph_counter": {
+    "expected": "a",
+    "expr": "\\alph{foo}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{foo}\\setcounter{foo}{1}"
+  },
+  "begingroup_endgroup_count": {
+    "expected": "1",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0=1 \\begingroup\\count0=2 \\endgroup"
+  },
+  "catcode_tilde_as_active": {
+    "expected": "TILDE",
+    "expr": "~",
+    "mode": "tex",
+    "setup": "\\catcode`\\~=13 \\def~{TILDE}"
+  },
+  "count_advance": {
+    "expected": "8",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0=5 \\advance\\count0 by 3 "
+  },
+  "count_backtick": {
+    "expected": "65",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0=`A "
+  },
+  "count_divide": {
+    "expected": "5",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0=15 \\divide\\count0 by 3 "
+  },
+  "count_hex": {
+    "expected": "255",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0=\"FF "
+  },
+  "count_multiply": {
+    "expected": "15",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0=5 \\multiply\\count0 by 3 "
+  },
+  "count_negative_advance": {
+    "expected": "-3",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0=5 \\advance\\count0 by -8 "
+  },
+  "count_octal": {
+    "expected": "15",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0='17 "
+  },
+  "count_the": {
+    "expected": "5",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0=5 "
+  },
+  "countdef_alias": {
+    "expected": "7",
+    "expr": "\\the\\mycount",
+    "mode": "tex",
+    "setup": "\\countdef\\mycount=5 \\mycount=7 "
+  },
+  "countdef_then_advance": {
+    "expected": "5",
+    "expr": "\\the\\mycount",
+    "mode": "tex",
+    "setup": "\\countdef\\mycount=9 \\mycount=1 \\advance\\mycount by 4 "
+  },
+  "csname_builds": {
+    "expected": "bar",
+    "expr": "\\csname foo\\endcsname",
+    "mode": "tex",
+    "setup": "\\def\\foo{bar}"
+  },
+  "csname_expandafter": {
+    "expected": "FOO",
+    "expr": "\\expandafter\\csname foo\\endcsname",
+    "mode": "tex",
+    "setup": "\\def\\foo{FOO}"
+  },
+  "csname_undefined_relax": {
+    "expected": "NOTDEF",
+    "expr": "\\ifx\\csname zzz\\endcsname\\relax DEF\\else NOTDEF\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "def_delimited": {
+    "expected": "[hello]",
+    "expr": "\\a hello;",
+    "mode": "tex",
+    "setup": "\\def\\a#1;{[#1]}"
+  },
+  "def_hash_hash": {
+    "expected": "\\#",
+    "expr": "\\a",
+    "mode": "tex",
+    "setup": "\\def\\a{\\#}"
+  },
+  "def_nested_call": {
+    "expected": "[IN]",
+    "expr": "\\outer",
+    "mode": "tex",
+    "setup": "\\def\\inner{IN}\\def\\outer{[\\inner]}"
+  },
+  "def_no_args_reuse": {
+    "expected": "AAA",
+    "expr": "\\y",
+    "mode": "tex",
+    "setup": "\\def\\x{A}\\def\\y{\\x\\x\\x}"
+  },
+  "def_param_repeated": {
+    "expected": "abab",
+    "expr": "\\dup{ab}",
+    "mode": "tex",
+    "setup": "\\def\\dup#1{#1#1}"
+  },
+  "def_simple": {
+    "expected": "hello",
+    "expr": "\\a",
+    "mode": "tex",
+    "setup": "\\def\\a{hello}"
+  },
+  "def_three_params": {
+    "expected": "cba",
+    "expr": "\\three{a}{b}{c}",
+    "mode": "tex",
+    "setup": "\\def\\three#1#2#3{#3#2#1}"
+  },
+  "def_two_delimited": {
+    "expected": "(x)(y)",
+    "expr": "\\a x,y.",
+    "mode": "tex",
+    "setup": "\\def\\a#1,#2.{(#1)(#2)}"
+  },
+  "def_with_arg": {
+    "expected": "Hello, world!",
+    "expr": "\\greet{world}",
+    "mode": "tex",
+    "setup": "\\def\\greet#1{Hello, #1!}"
+  },
+  "dimen_cm": {
+    "expected": "71.13188pt",
+    "expr": "\\the\\dimen0",
+    "mode": "tex",
+    "setup": "\\dimen0=2.5cm "
+  },
+  "dimen_in": {
+    "expected": "72.26999pt",
+    "expr": "\\the\\dimen0",
+    "mode": "tex",
+    "setup": "\\dimen0=1in "
+  },
+  "dimen_negative": {
+    "expected": "-3.0pt",
+    "expr": "\\the\\dimen0",
+    "mode": "tex",
+    "setup": "\\dimen0=-3pt "
+  },
+  "dimen_pt": {
+    "expected": "12.0pt",
+    "expr": "\\the\\dimen0",
+    "mode": "tex",
+    "setup": "\\dimen0=12pt "
+  },
+  "dimexpr_basic": {
+    "expected": "5.0pt",
+    "expr": "\\the\\dimen0",
+    "mode": "etex",
+    "setup": "\\dimen0=\\dimexpr 2pt+3pt\\relax "
+  },
+  "edef_concat": {
+    "expected": "AB",
+    "expr": "\\c",
+    "mode": "tex",
+    "setup": "\\def\\a{A}\\def\\b{B}\\edef\\c{\\a\\b}"
+  },
+  "edef_expands_body": {
+    "expected": "[X]",
+    "expr": "\\b",
+    "mode": "tex",
+    "setup": "\\def\\a{X}\\edef\\b{[\\a]}"
+  },
+  "edef_noexpand": {
+    "expected": "\\a ",
+    "expr": "\\b",
+    "mode": "tex",
+    "setup": "\\def\\a{X}\\edef\\b{\\noexpand\\a}\\let\\a=\\relax"
+  },
+  "edef_the_count": {
+    "expected": "9",
+    "expr": "\\c",
+    "mode": "tex",
+    "setup": "\\count5=9 \\edef\\c{\\the\\count5}\\count5=0 "
+  },
+  "expandafter_basic": {
+    "expected": "X",
+    "expr": "\\c",
+    "mode": "tex",
+    "setup": "\\def\\a{X}\\def\\b{\\a}\\expandafter\\def\\expandafter\\c\\expandafter{\\b}"
+  },
+  "expandafter_chain": {
+    "expected": "A",
+    "expr": "\\expandafter\\pick\\expandafter{\\a}{\\b}",
+    "mode": "tex",
+    "setup": "\\def\\a{A}\\def\\b{B}\\def\\pick#1#2{#1}"
+  },
+  "gdef_survives_extra_group": {
+    "expected": "Y",
+    "expr": "\\foo@bar",
+    "mode": "tex",
+    "setup": "\\makeatletter{\\gdef\\foo@bar{Y}}"
+  },
+  "global_inside_nested_group": {
+    "expected": "9",
+    "expr": "\\the\\count0",
+    "mode": "tex",
+    "setup": "\\count0=1 {{\\global\\count0=9 }}"
+  },
+  "group_global_survives": {
+    "expected": "inner",
+    "expr": "\\a",
+    "mode": "tex",
+    "setup": "\\def\\a{outer}{\\global\\def\\a{inner}}"
+  },
+  "group_nested_three_deep": {
+    "expected": "L0",
+    "expr": "\\a",
+    "mode": "tex",
+    "setup": "\\def\\a{L0}{\\def\\a{L1}{\\def\\a{L2}}}"
+  },
+  "group_restores_local": {
+    "expected": "outer",
+    "expr": "\\a",
+    "mode": "tex",
+    "setup": "\\def\\a{outer}{\\def\\a{inner}}"
+  },
+  "if_char_eq": {
+    "expected": "diff",
+    "expr": "\\if ab same\\else diff\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "if_char_same": {
+    "expected": " same",
+    "expr": "\\if aa same\\else diff\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifcase_beyond_or_falls_to_else": {
+    "expected": "other",
+    "expr": "\\ifcase 5 zero\\or one\\else other\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifcase_negative_falls_to_else": {
+    "expected": "other",
+    "expr": "\\ifcase -1 zero\\or one\\else other\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifcase_two": {
+    "expected": "two",
+    "expr": "\\ifcase 2 zero\\or one\\or two\\or three\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifcase_zero": {
+    "expected": "zero",
+    "expr": "\\ifcase 0 zero\\or one\\or two\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifcat_diff": {
+    "expected": "diff",
+    "expr": "\\ifcat a1 same\\else diff\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifcat_letters": {
+    "expected": " same",
+    "expr": "\\ifcat ab same\\else diff\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifdim_gt": {
+    "expected": "yes",
+    "expr": "\\ifdim 3pt>1pt yes\\else no\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifdim_lt": {
+    "expected": "yes",
+    "expr": "\\ifdim 1pt<2pt yes\\else no\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "iffalse_basic": {
+    "expected": "B",
+    "expr": "\\iffalse A\\else B\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifnextchar_nostar": {
+    "expected": "NOSTAR",
+    "expr": "\\test ",
+    "mode": "latex-render",
+    "setup": "\\makeatletter\\def\\test{\\@ifnextchar*{\\@teststar}{\\@testnostar}}\\def\\@teststar*{STAR}\\def\\@testnostar{NOSTAR}\\makeatother"
+  },
+  "ifnextchar_star": {
+    "expected": "STAR",
+    "expr": "\\test*",
+    "mode": "latex-render",
+    "setup": "\\makeatletter\\def\\test{\\@ifnextchar*{\\@teststar}{\\@testnostar}}\\def\\@teststar*{STAR}\\def\\@testnostar{NOSTAR}\\makeatother"
+  },
+  "ifnum_eq": {
+    "expected": "yes",
+    "expr": "\\ifnum 5=5 yes\\else no\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifnum_ge_via_not_lt": {
+    "expected": "eq",
+    "expr": "\\ifnum 5<5 lt\\else \\ifnum 5>5 gt\\else eq\\fi\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifnum_gt": {
+    "expected": "no",
+    "expr": "\\ifnum 5<3 yes\\else no\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifnum_lt": {
+    "expected": "yes",
+    "expr": "\\ifnum 3<5 yes\\else no\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifodd_false": {
+    "expected": "even",
+    "expr": "\\ifodd 4 odd\\else even\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifodd_true": {
+    "expected": "odd",
+    "expr": "\\ifodd 3 odd\\else even\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifstar_star": {
+    "expected": "STARBRANCH",
+    "expr": "\\test*",
+    "mode": "latex-render",
+    "setup": "\\makeatletter\\def\\test{\\@ifstar{STARBRANCH}{NOSTARBRANCH}}\\makeatother"
+  },
+  "iftrue_basic": {
+    "expected": "A",
+    "expr": "\\iftrue A\\else B\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifx_diff": {
+    "expected": "different",
+    "expr": "\\ifx\\a\\b same\\else different\\fi",
+    "mode": "tex",
+    "setup": "\\def\\a{X}\\def\\b{Y}"
+  },
+  "ifx_primitive_same": {
+    "expected": "same",
+    "expr": "\\ifx\\relax\\relax same\\else different\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "ifx_same": {
+    "expected": "same",
+    "expr": "\\ifx\\a\\b same\\else different\\fi",
+    "mode": "tex",
+    "setup": "\\def\\a{X}\\def\\b{X}"
+  },
+  "ifx_undefined_both": {
+    "expected": "same",
+    "expr": "\\ifx\\undefinedaaa\\undefinedbbb same\\else different\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "let_chain": {
+    "expected": "X",
+    "expr": "\\c",
+    "mode": "tex",
+    "setup": "\\def\\a{X}\\let\\b=\\a\\let\\c=\\b"
+  },
+  "let_to_macro": {
+    "expected": "X",
+    "expr": "\\b",
+    "mode": "tex",
+    "setup": "\\def\\a{X}\\let\\b=\\a"
+  },
+  "nameuse_namedef": {
+    "expected": "bar",
+    "expr": "\\@nameuse{foo}\\makeatother",
+    "mode": "latex-render",
+    "setup": "\\makeatletter\\@namedef{foo}{bar}"
+  },
+  "nested_if_else": {
+    "expected": "F",
+    "expr": "\\iftrue \\iffalse T\\else F\\fi \\else O\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "nested_ifcase_in_iftrue": {
+    "expected": "b",
+    "expr": "\\iftrue\\ifcase 1 a\\or b\\or c\\fi\\fi",
+    "mode": "tex",
+    "setup": ""
+  },
+  "newcommand_arg": {
+    "expected": "Hello World",
+    "expr": "\\greet{World}",
+    "mode": "latex-render",
+    "setup": "\\newcommand{\\greet}[1]{Hello #1}"
+  },
+  "newcommand_basic": {
+    "expected": "Hello",
+    "expr": "\\hi",
+    "mode": "latex-render",
+    "setup": "\\newcommand{\\hi}{Hello}"
+  },
+  "newcommand_opt_default": {
+    "expected": "Hi, World",
+    "expr": "\\greet{World}",
+    "mode": "latex-render",
+    "setup": "\\newcommand{\\greet}[2][Hi]{#1, #2}"
+  },
+  "newcommand_opt_given": {
+    "expected": "Yo, World",
+    "expr": "\\greet[Yo]{World}",
+    "mode": "latex-render",
+    "setup": "\\newcommand{\\greet}[2][Hi]{#1, #2}"
+  },
+  "newcommand_two_args": {
+    "expected": "(x,y)",
+    "expr": "\\pair{x}{y}",
+    "mode": "latex-render",
+    "setup": "\\newcommand{\\pair}[2]{(#1,#2)}"
+  },
+  "newcounter_setcounter": {
+    "expected": "5",
+    "expr": "\\arabic{foo}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{foo}\\setcounter{foo}{5}"
+  },
+  "newcounter_within_arabic": {
+    "expected": "3",
+    "expr": "\\arabic{sub}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{sec}\\newcounter{sub}[sec]\\setcounter{sub}{3}"
+  },
+  "newenvironment_basic": {
+    "expected": "[BEGIN]content[END]",
+    "expr": "\\begin{myenv}content\\end{myenv}",
+    "mode": "latex-render",
+    "setup": "\\newenvironment{myenv}{[BEGIN]}{[END]}"
+  },
+  "newif_default_false": {
+    "expected": "NO",
+    "expr": "\\ifmyflag YES\\else NO\\fi",
+    "mode": "tex",
+    "setup": "\\newif\\ifmyflag "
+  },
+  "newif_false": {
+    "expected": "NO",
+    "expr": "\\ifmyflag YES\\else NO\\fi",
+    "mode": "tex",
+    "setup": "\\newif\\ifmyflag \\myflagfalse"
+  },
+  "newif_true": {
+    "expected": "YES",
+    "expr": "\\ifmyflag YES\\else NO\\fi",
+    "mode": "tex",
+    "setup": "\\newif\\ifmyflag \\myflagtrue"
+  },
+  "number_basic": {
+    "expected": "42",
+    "expr": "\\number 42",
+    "mode": "tex",
+    "setup": ""
+  },
+  "number_negative": {
+    "expected": "-7",
+    "expr": "\\number -7",
+    "mode": "tex",
+    "setup": ""
+  },
+  "number_of_count": {
+    "expected": "99",
+    "expr": "\\number\\count0",
+    "mode": "tex",
+    "setup": "\\count0=99 "
+  },
+  "numexpr_basic": {
+    "expected": "14",
+    "expr": "\\the\\count0",
+    "mode": "etex",
+    "setup": "\\count0=\\numexpr 2+3*4\\relax "
+  },
+  "numexpr_division": {
+    "expected": "6",
+    "expr": "\\the\\count0",
+    "mode": "etex",
+    "setup": "\\count0=\\numexpr 17/3\\relax "
+  },
+  "numexpr_nested_parens": {
+    "expected": "15",
+    "expr": "\\the\\count0",
+    "mode": "etex",
+    "setup": "\\count0=\\numexpr (2+3)*(4-1)\\relax "
+  },
+  "numexpr_parens": {
+    "expected": "20",
+    "expr": "\\the\\count0",
+    "mode": "etex",
+    "setup": "\\count0=\\numexpr (2+3)*4\\relax "
+  },
+  "providecommand_keeps": {
+    "expected": "old",
+    "expr": "\\mytestcmd",
+    "mode": "latex-render",
+    "setup": "\\newcommand{\\mytestcmd}{old}\\providecommand{\\mytestcmd}{new}"
+  },
+  "refstepcounter_basic": {
+    "expected": "2",
+    "expr": "\\arabic{foo}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{foo}\\refstepcounter{foo}\\refstepcounter{foo}"
+  },
+  "renewcommand_basic": {
+    "expected": "new",
+    "expr": "\\mytestcmd",
+    "mode": "latex-render",
+    "setup": "\\newcommand{\\mytestcmd}{old}\\renewcommand{\\mytestcmd}{new}"
+  },
+  "roman_counter": {
+    "expected": "iv",
+    "expr": "\\roman{foo}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{foo}\\setcounter{foo}{4}"
+  },
+  "romannumeral_basic": {
+    "expected": "mcmxciv",
+    "expr": "\\romannumeral 1994",
+    "mode": "tex",
+    "setup": ""
+  },
+  "romannumeral_large": {
+    "expected": "mmmdccclxxxviii",
+    "expr": "\\romannumeral 3888",
+    "mode": "tex",
+    "setup": ""
+  },
+  "romannumeral_small": {
+    "expected": "ix",
+    "expr": "\\romannumeral 9",
+    "mode": "tex",
+    "setup": ""
+  },
+  "romannumeral_zero": {
+    "expected": "",
+    "expr": "\\romannumeral 0",
+    "mode": "tex",
+    "setup": ""
+  },
+  "skip_the": {
+    "expected": "1.0pt plus 2.0pt minus 3.0pt",
+    "expr": "\\the\\skip0",
+    "mode": "tex",
+    "setup": "\\skip0=1pt plus 2pt minus 3pt "
+  },
+  "stepcounter_twice": {
+    "expected": "2",
+    "expr": "\\arabic{foo}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{foo}\\stepcounter{foo}\\stepcounter{foo}"
+  },
+  "string_of_char": {
+    "expected": "a",
+    "expr": "\\string a",
+    "mode": "tex",
+    "setup": ""
+  },
+  "string_of_cs": {
+    "expected": "\\foo",
+    "expr": "\\string\\foo",
+    "mode": "tex",
+    "setup": ""
+  },
+  "string_of_digit": {
+    "expected": "5",
+    "expr": "\\string 5",
+    "mode": "tex",
+    "setup": ""
+  },
+  "unless_iffalse": {
+    "expected": "A",
+    "expr": "\\unless\\iffalse A\\else B\\fi",
+    "mode": "etex",
+    "setup": ""
+  },
+  "unless_iftrue": {
+    "expected": "B",
+    "expr": "\\unless\\iftrue A\\else B\\fi",
+    "mode": "etex",
+    "setup": ""
+  },
+  "value_in_setcounter": {
+    "expected": "4",
+    "expr": "\\arabic{bar}",
+    "mode": "latex-render",
+    "setup": "\\newcounter{foo}\\setcounter{foo}{4}\\newcounter{bar}\\setcounter{bar}{\\value{foo}}"
+  }
+}
