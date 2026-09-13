@@ -2697,14 +2697,26 @@ impl<'a> Context<'a> {
         let width = run.width;
         let (mut height, mut depth) = (run.height, run.depth);
         let (s, z) = self.display_shape(style, list_geom);
-        // \eqno: the number's box (§1202) reduces the room for the formula.
+        let source: &str = self.texts.get(span.document.0).copied().unwrap_or("");
+        let quad = self.text_params(TextStyle::default(), size).quad;
+        // The number's box `a` (§1199): its width reduces the room for the
+        // formula. `\leqno` (amsmath `leqno`, or the primitive) puts it left.
         let mut eqno: Option<(pl::GlyphRun, usize)> = None;
+        let mut left = false;
         let mut e = 0.0;
         let mut q = 0.0;
         if let Some((text, nspan)) = number {
+            let at = source.get(nspan.start..).unwrap_or("");
+            left = if at.starts_with("\\leqno") {
+                true
+            } else if at.starts_with("\\eqno") {
+                false
+            } else {
+                self.style.leqno
+            };
             let seg = adapter::Segment {
-                text: format!("({text})"),
-                chars: format!("({text})")
+                text: text.clone(),
+                chars: text
                     .chars()
                     .map(|_| adapter::CharSrc {
                         document: nspan.document,
@@ -2716,39 +2728,60 @@ impl<'a> Context<'a> {
             };
             if let Some((nrun, nrec)) = self.text_box(&seg, size) {
                 e = nrun.width;
-                q = e + self.text_params(TextStyle::default(), size).quad;
+                q = e + quad;
                 height = height.max(nrun.height);
                 depth = depth.max(nrun.depth);
                 eqno = Some((nrun, nrec));
             }
         }
-        // §1199: centre the formula in the measure; if it would collide with
-        // the number, shift it (d) so both fit; `l` marks a display wider
-        // than the room left.
-        let mut w = width;
-        let l = w + q > z;
-        if l {
-            w = (z - q).max(0.0);
-        }
-        let mut d = (z - w) / 2.0;
-        if e > 0.0 && d < 2.0 * e {
-            d = (z - w - e) / 2.0;
-            if d < 0.0 {
-                d = 0.0;
+        let rest = source.get(span.start..).unwrap_or("");
+        // amsmath's `\mathdisplay` honours `fleqn`; a primitive `$$` does not.
+        let fleqn = self.style.fleqn && !rest.starts_with("$$");
+        // (formula x, number x, d of §1202)
+        let (x, number_x, d) = if fleqn {
+            // amsmath `fleqn` (`\endmathdisplay@fleqn`): the formula is set
+            // in an `\hbox to\displaywidth` after `\@mathmargin`
+            // (`\leftmargini`); the tag follows `\hfil` flush right
+            // (`\emdf@R`) or comes first with at least `\mintagsep` before
+            // the formula (`\emdf@L`). TeX sees one display-wide box and no
+            // `\eqno`: d = 0.
+            let mintagsep = 0.5 * size;
+            let margin = self.style.leftmargini_pt;
+            if left && e > 0.0 {
+                (s + margin.max(e + mintagsep), s, 0.0)
+            } else {
+                (s + margin, s + z - e, 0.0)
             }
-        }
-        // §1199: "not enough clearance" when the display starts left of
-        // where the line before it ended (`d + s <= pre_display_size`).
-        let x = s + d.max(0.0);
+        } else {
+            // §1199: a formula too wide beside the number is repacked to
+            // z - q (its glue shrink is not modelled: the glyphs keep their
+            // natural widths).
+            let mut w = width;
+            if w + q > z {
+                w = (z - q).max(0.0);
+            }
+            // §1202: centred, or moved off a number closer than 2e.
+            let mut d = (z - w) / 2.0;
+            if e > 0.0 && d < 2.0 * e {
+                d = ((z - w - e) / 2.0).max(0.0);
+            }
+            // §1204: `\leqno` packs [a, kern z-w-e-d, b] at s; `\eqno`
+            // [b, kern z-w-e-d, a] at s + d.
+            if left && e > 0.0 {
+                (s + z - w - d, s, d)
+            } else {
+                (s + d, s + z - e, d)
+            }
+        };
         // amsmath sets `equation{split}` through `\gather@`'s `\halign`, a
         // display alignment: always the non-short skips (§1206).
-        let split = self
-            .texts
-            .get(span.document.0)
-            .and_then(|t| t.get(span.start..))
-            .and_then(|r| r.strip_prefix("\\begin{equation*}").or_else(|| r.strip_prefix("\\begin{equation}")))
+        let split = rest
+            .strip_prefix("\\begin{equation*}")
+            .or_else(|| rest.strip_prefix("\\begin{equation}"))
             .is_some_and(|r| r.trim_start().starts_with("\\begin{split}"));
-        let long = pre_display_size.is_some_and(|p| x <= p) || l || split;
+        // §1203: "not enough clearance" (`d + s <= \predisplaysize`) or a
+        // `\leqno` number takes the normal skips.
+        let long = pre_display_size.is_some_and(|p| s + d <= p) || (left && eqno.is_some() && !fleqn) || split;
         let (above, below) = if long {
             (self.style.abovedisplayskip, self.style.belowdisplayskip)
         } else {
@@ -2767,7 +2800,7 @@ impl<'a> Context<'a> {
         let mut items = vec![pl::Item::Box(run)];
         let mut recs = vec![Some(rec)];
         if let Some((nrun, nrec)) = eqno {
-            runs.push(position_run(&nrun, s + z - e, height));
+            runs.push(position_run(&nrun, number_x, height));
             items.push(pl::Item::Box(nrun));
             recs.push(Some(nrec));
         }
@@ -2860,6 +2893,9 @@ impl<'a> Context<'a> {
         let dw = self.style.text_width_pt;
         // `\mintagsep`: half of cmsy's quad at the text size.
         let mintagsep = 0.5 * size;
+        // amsmath `fleqn` (`\@mathmargin` = `\leftmargini`) and `leqno`.
+        let (fleqn, leqno) = (self.style.fleqn, self.style.leqno);
+        let margin = self.style.leftmargini_pt;
         let aligned = matches!(env, RowsEnv::Align | RowsEnv::AlignAt | RowsEnv::FlAlign);
         // Cell boxes: (run, rec) per row per cell; right-hand (even-index
         // from 1) align cells and every multline row start with `{}`.
@@ -2897,7 +2933,7 @@ impl<'a> Context<'a> {
         let mut tags: Vec<Option<(pl::GlyphRun, usize)>> = Vec::with_capacity(rows.len());
         for row in rows {
             tags.push(row.number.as_ref().and_then(|(text, nspan)| {
-                let label = format!("({text})");
+                let label = text.clone();
                 let seg = adapter::Segment {
                     text: label.clone(),
                     chars: label
@@ -2929,7 +2965,8 @@ impl<'a> Context<'a> {
                         colw[ci] = colw[ci].max(width(c));
                     }
                 }
-                let totwidth: f64 = colw.iter().sum();
+                // `\measure@`: under `fleqn` `\totwidth@` includes `\@mathmargin`.
+                let totwidth: f64 = colw.iter().sum::<f64>() + if fleqn { margin } else { 0.0 };
                 let d = dw - totwidth;
                 let p = (maxfields / 2) as i64;
                 let (mut eqnshift, mut alignsep, minalignsep, tempcntb, tempcnta);
@@ -2938,8 +2975,15 @@ impl<'a> Context<'a> {
                         alignsep = 0.0;
                         minalignsep = 0.0;
                         tempcntb = 0i64;
-                        tempcnta = 2i64;
-                        eqnshift = d / 2.0;
+                        tempcnta = if fleqn { 1i64 } else { 2i64 };
+                        eqnshift = if fleqn { margin } else { d / 2.0 };
+                    }
+                    RowsEnv::Align if fleqn => {
+                        tempcntb = p - 1;
+                        tempcnta = p;
+                        eqnshift = margin;
+                        alignsep = if tempcnta != 0 { d / tempcnta as f64 } else { d };
+                        minalignsep = MINALIGNSEP;
                     }
                     RowsEnv::Align => {
                         tempcntb = p - 1;
@@ -2952,6 +2996,7 @@ impl<'a> Context<'a> {
                         tempcntb = p - 1;
                         tempcnta = p - 1;
                         eqnshift = 0.0;
+                        let d = if fleqn { d + margin } else { d };
                         // TeX's \divide by zero leaves the dimension unchanged.
                         alignsep = if tempcntb > 0 { d / tempcntb as f64 } else { d };
                         minalignsep = MINALIGNSEP;
@@ -2959,13 +3004,15 @@ impl<'a> Context<'a> {
                 }
                 if alignsep < minalignsep {
                     alignsep = minalignsep;
-                    if eqnshift > 0.0 {
+                    if eqnshift > 0.0 && !fleqn {
                         eqnshift = (dw - totwidth - tempcntb as f64 * alignsep) / 2.0;
                     }
                 }
                 eqnshift = eqnshift.max(0.0);
                 // `\calc@shift@align` (tags right, not fleqn): last row first.
-                for ri in (0..cells.len()).rev() {
+                // The `fleqn`/`leqno` variants only move tags that do not
+                // fit onto their own line, which is not modelled.
+                for ri in (0..cells.len()).rev().filter(|_| !(fleqn || leqno)) {
                     let t = tagw(ri);
                     if t <= 0.0 {
                         continue;
@@ -3048,7 +3095,15 @@ impl<'a> Context<'a> {
                             shift -= t;
                         }
                     }
-                    let mut x = (shift / 2.0).max(0.0);
+                    // `\calc@shift@gather`: `\@mathmargin` under `fleqn`;
+                    // with `leqno` the shift is mirrored.
+                    let mut x = if fleqn {
+                        margin
+                    } else if leqno {
+                        (dw - w - shift / 2.0).max(0.0)
+                    } else {
+                        (shift / 2.0).max(0.0)
+                    };
                     for (ci, c) in row.iter().enumerate() {
                         xs[ri][ci] = x;
                         x += width(c);
@@ -3157,7 +3212,7 @@ impl<'a> Context<'a> {
             if let Some((nrun, nrec)) = &tags[ri] {
                 h = h.max(nrun.height);
                 d = d.max(nrun.depth);
-                runs.push(position_run(nrun, dw - nrun.width, 0.0));
+                runs.push(position_run(nrun, if leqno { 0.0 } else { dw - nrun.width }, 0.0));
                 items.push(pl::Item::Box(nrun.clone()));
                 recs.push(Some(*nrec));
             }
@@ -4541,7 +4596,16 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                             number,
                             bracket,
                         } => {
-                            if first {
+                            // TeX §1145: a display that opens a paragraph whose
+                            // list is still empty sets no line — after a
+                            // heading, `\@afterheading`'s `\everypar` has
+                            // removed the indent box — so only `\parskip`
+                            // precedes it and `\predisplaysize` is -\maxdimen.
+                            let mut empty_start = None;
+                            if first && after_heading && geom.is_none_or(|g| g.label.is_none()) {
+                                empty_start = Some((std::mem::take(&mut eject), std::mem::take(&mut vspace), env_before.take()));
+                                pre_display = None;
+                            } else if first {
                                 let (mut opener, size) = ctx.display_opener_block(*bracket, geom);
                                 if std::mem::take(&mut eject) {
                                     opener.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
@@ -4572,7 +4636,16 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                             };
                             let pd = pre_display;
                             let st = *style;
-                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref(), st, geom)) {
+                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref(), st, geom)) {
+                                if let Some((ej, vs, env)) = empty_start {
+                                    let parskip = geom.map_or(ctx.style.parskip, |g| g.parsep);
+                                    if ej {
+                                        b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                                    }
+                                    add_skip_before(&mut b.vertical, Some(skip_tuple(parskip)));
+                                    add_vspace(&mut b.vertical, vs);
+                                    add_skip_before(&mut b.vertical, env);
+                                }
                                 blocks.push(b);
                             }
                             pre_display = None;
