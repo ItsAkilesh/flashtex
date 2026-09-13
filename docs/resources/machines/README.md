@@ -23,4 +23,4 @@ Recording rules:
 
 | Machine alias | File | Owner agent | Last verified |
 |---|---|---|---|
-| mac-m5pro-kabir | [kabirs-macbook-pro.md](kabirs-macbook-pro.md) | Claude (this machine) | 2026-09-12T03:40Z |
+| mac-m5pro-kabir | [kabirs-macbook-pro.md](kabirs-macbook-pro.md) | Claude (this machine) | 2026-09-13T04:36Z (Claude Max plan user-reported) |

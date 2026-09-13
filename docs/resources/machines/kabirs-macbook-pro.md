@@ -2,6 +2,7 @@
 
 Verified by: Claude agent, session of 2026-09-12.
 Verified at: 2026-09-12T03:18Z; plan facts updated 2026-09-12T03:40Z (quota readings are point-in-time).
+Claude plan, toolchain and Xcode facts re-verified: 2026-09-13T04:36Z (Claude subagent session).
 Owner agent: Claude on this machine.
 Status: capability evidence. Confers no spending permission; see
 [RESOURCES.md](../../../coordination/RESOURCES.md).
@@ -27,20 +28,49 @@ concurrently. Memory is the binding constraint on how many heavy agents run at o
 
 | Property | Value | How read |
 |---|---|---|
-| Version | 2.1.269, native install | `claude --version` |
+| Version | 2.1.270, native install (was 2.1.269 on 2026-09-12) | `claude --version`, 2026-09-13T04:36Z |
 | Binary | `~/.local/bin/claude` | symlink inspection |
+| **Plan** | **Claude Max — user-reported 2026-09-13, tier (5x/20x) unverified** | user statement to this machine's session, below |
 | Account | `kabirgoyal@icloud.com` | `~/.claude.json` → `oauthAccount` |
 | Organization role | admin of a personal organization | same |
-| `organizationType` | `claude_pro` | same |
+| `organizationType` | `claude_pro` (cached; see note) | same, profile fetched 2026-09-13T04:07:54Z |
 | `billingType` | `stripe_subscription` | same |
-| `organizationRateLimitTier` | `default_claude_ai` | same |
+| `organizationRateLimitTier` | `default_claude_ai` (cached) | same |
+| `userRateLimitTier`, `seatTier` | `null` | same |
 | `hasExtraUsageEnabled` | `true` | same |
 | Subscription created | 2025-12-07 | same |
-| API key on this machine | **None** | no `ANTHROPIC_*` var in env or shell rc |
+| API key on this machine | **None** | no `ANTHROPIC_*` var in env or shell rc (2026-09-12 check, not repeated) |
 
-Live plan consumption could not be read non-interactively: `/usage` is an
-interactive slash command, and there is no CLI subcommand that prints it. A human
-must run `/usage` inside Claude Code and paste the result.
+**Plan upgrade, 2026-09-13 (user-reported).** Kabir told this machine's Claude
+session verbatim: "ok you have been upgraded to a claude max plan -- you should
+now update the resources for the computer and take on many more tasks with the
+subagents that you can use." The multiplier tier was not stated. No non-secret
+local field confirms it: the cached `oauthAccount` profile, last fetched
+2026-09-13T04:07:54Z, still reads `organizationType: claude_pro` and
+`organizationRateLimitTier: default_claude_ai`. That cache may predate the
+upgrade or lag it; it neither confirms nor refutes Max. Re-read after the client
+refreshes its profile, or have the user run `/status` in the TUI. Until then
+record the plan as **Max (user-reported 2026-09-13, tier unverified)**.
+
+**User direction.** The user directs this machine's Claude session to take on
+many more project tasks using subagents. That is a statement of intended use on
+this machine; the allocation itself belongs in `RESOURCES.md` (see
+"Resource owner action" below), and the Commander assigns the tasks.
+
+**Billing boundary, unchanged.** Only the included Max plan allowance is in
+scope. No overages, no purchases, no plan changes, and no use of the extra-usage
+credit (`hasExtraUsageEnabled: true` is a capability flag, not permission). A
+quota/limit error is a stop-and-report condition, not a reason to enable paid
+usage.
+
+Live plan consumption still cannot be authoritatively read non-interactively:
+`/usage` is an interactive slash command with no CLI equivalent. A human must run
+`/usage` inside Claude Code and paste the result. The client does keep a cache,
+`~/.claude.json` → `cachedUsageUtilization`, which at fetch time
+2026-09-13T04:32:03Z read `five_hour.utilization: 0` (no reset time) and
+`seven_day.utilization: 0` resetting 2026-09-14T04:00:00Z, with every dollar
+field `null`. It is a point-in-time client cache taken around the plan change,
+not a balance; do not derive a remaining allowance or task count from it.
 
 Local transcript totals on this machine only (not account-wide) — 4 sessions,
 2026-09-04 to 2026-09-12, all `claude-opus-5`:
@@ -53,10 +83,23 @@ Local transcript totals on this machine only (not account-wide) — 4 sessions,
 | cache read | 12,686,614 |
 | total | 13,619,756 |
 
-The account is reachable through a subscription only. There is **no separate
-API-key route configured on this machine**, which is the funding isolation
-`RESOURCES.md` and `CLAUDE.md` require before Claude work is unblocked. Supplying
-an `ANTHROPIC_API_KEY` funded by approved project credit is what would change that.
+The account is reachable through a subscription only; there is still **no
+separate API-key route configured on this machine**. As of 2026-09-12 that made
+Claude work here policy-blocked pending funding isolation. The 2026-09-13 user
+statement above directs Claude subagent work on the Max plan from this machine;
+whether that is recorded as an authorized pool is for the resource owner to write
+into `RESOURCES.md`. This register records the capability and the user statement
+only.
+
+## Resource owner action
+
+`coordination/RESOURCES.md` is Commander-owned and was **not** edited by this
+update. It should be amended to reflect that mac-m5pro-kabir's Claude
+subscription is now **Max (user-reported 2026-09-13, tier unverified)**, that the
+user directs this machine's Claude session to take on many more tasks with
+subagents, and that the billing boundary above (included allowance only, no
+overages, purchases or extra-usage credit) applies. The Codex entry
+(`openai-kabir-plus`) is unchanged by this update.
 
 ### Codex CLI
 
@@ -164,10 +207,16 @@ API-billed path on this computer at all.
 | `cargo` / `rustc` | 1.98.0 (Homebrew) | ready |
 | `swift` | 6.3.3 (swiftlang-6.3.3.1.3) | compiler only |
 | `node` | 26.7.0 | ready |
-| `python3` | 3.14.7 | ready |
+| `python3` | 3.9.6 at `/usr/bin/python3` (only `python3` on the agent shell's PATH, 2026-09-13; 3.14.7 was recorded 2026-09-12 from a different PATH) | ready, older |
 | `git` | `/usr/bin/git`, repo detected | ready |
-| `uv` | not installed | — |
-| `xcodebuild` | **unavailable** | blocker, below |
+| `gh` | `/opt/homebrew/bin/gh`, logged in as `GoKubar` | ready (`gh auth status`, 2026-09-13) |
+| `uv` | not installed (re-checked 2026-09-13) | — |
+| `xcodebuild` | **unavailable** (re-checked 2026-09-13T04:36Z) | blocker, below |
+
+Re-verified 2026-09-13T04:36Z: `node` v26.7.0, `cargo`/`rustc` 1.98.0 Homebrew,
+`swift` 6.3.3, `codex-cli 0.154.0`, `cursor-agent 2026.09.10-fd3934a`; macOS
+26.6.2 (25G83), Apple M5 Pro, 15 cores, 24 GB (`sysctl`); 719 GiB free of
+926 GiB (`df -h /`).
 
 ### Blocker: no full Xcode
 
@@ -209,7 +258,9 @@ silently attributes the commit to nobody, so do not guess one.
 
 `scripts/coord.py publish` builds this trailer itself from `gh api user`, but it
 treats `gh` as mandatory and fails outright when `gh` is unauthenticated, which it
-is here. Until `gh auth login` is run on this machine, publish through Cursor CLI
+was on 2026-09-12. As of 2026-09-13 `gh auth status` reports `GoKubar` logged
+in, so that blocker appears cleared (not re-tested through `coord.py`). Before it
+was cleared, publish through Cursor CLI
 directly with the trailer written into the message, and keep Cursor as the commit
 executor as AGENTS.md requires. Commits made before 2026-09-12T05:30Z
 (25fe5c4, 29221d8, e7127fb, 9f1033b) predate this rule and lack the trailer;
@@ -257,7 +308,9 @@ Ranked by what the evidence supports:
 ## How to re-verify
 
 ```sh
-claude --version                 # then /usage inside the TUI for live plan state
+claude --version                 # then /status and /usage inside the TUI for plan tier and live usage
+# non-secret cached fields only: ~/.claude.json -> oauthAccount.organizationType,
+#   organizationRateLimitTier, profileFetchedAt; cachedUsageUtilization (skip UUIDs/emails)
 codex doctor                     # install, auth mode, connectivity
 codex                            # then /status for live rate limits
 cursor-agent about               # tier and account
