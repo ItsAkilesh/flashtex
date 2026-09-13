@@ -20,7 +20,12 @@ use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
 use flashtex_tex_text_encoding::encoding::Encoding;
 
+mod lists;
 mod tabular;
+
+pub use lists::{
+    CounterStyle, ItemLabel, ListEnvironment, ListFrame, ListLength, ListOption, ListSkip,
+};
 
 /// Maximum number of active nested `\input`/`\include` calls.
 pub const INCLUDE_DEPTH_LIMIT: usize = 64;
@@ -208,11 +213,20 @@ pub enum Block {
     FigureCaption {
         content: Vec<Inline>,
     },
-    /// A paragraph inside `center`, `flushleft`, `flushright`, `quote` or
-    /// `quotation`.
+    /// A paragraph inside `center`, `flushleft`, `flushright`, `quote`,
+    /// `quotation` or `verse` (the last three report `ParagraphStyle::Quote`;
+    /// `lists` tells them apart).
     Styled {
         style: ParagraphStyle,
         content: Vec<Inline>,
+        /// Every enclosing `\list`-based environment, outermost first
+        /// (a `quote` inside an `itemize` item has both).
+        lists: Vec<ListFrame>,
+        /// `verse` only: this paragraph was started by the previous line's
+        /// `\\` (article.cls `\let\\\@centercr`: `\par`,
+        /// `\addvspace{-\parskip}`, then the optional `\vskip`), not by a
+        /// blank line.
+        line_break_before: Option<LineBreakBefore>,
     },
     /// One paragraph of an `itemize`/`enumerate` `\item`. `level` (1 =
     /// outermost) drives the hanging-indent margin; `label` carries the
@@ -242,6 +256,12 @@ pub enum Block {
         /// `\settowidth\labelwidth{\@biblabel{#1}}`. `None` for an ordinary
         /// `itemize`/`enumerate` item, which keeps using `level`'s indent.
         widest_label: Option<String>,
+        /// Every enclosing `\list`-based environment, outermost first; the
+        /// last is the list this item belongs to.
+        lists: Vec<ListFrame>,
+        /// How the label was produced (`None` exactly when `label` is: a
+        /// later paragraph of the same item).
+        item: Option<ItemLabel>,
     },
     /// `\vspace{<dimen>}`: additional vertical glue, in points.
     VSpace {
@@ -286,6 +306,17 @@ pub enum Block {
     /// on the current page, computed at layout time from the cursor's
     /// actual position (unlike `VSpace`'s flat, parse-time amount).
     VFill,
+}
+
+/// verse's `\\` (`\@centercr`, latex.ltx `\@xcentercr`/`\@icentercr`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineBreakBefore {
+    /// The `\\` (with its `*` and `[<dimen>]`).
+    pub span: Span,
+    /// `\\[<dimen>]`, in TeX points.
+    pub skip_pt: Option<f64>,
+    /// `\\*` (`\nobreak`).
+    pub star: bool,
 }
 
 /// One physical source line of a `Block::Verbatim`. `text` is already
@@ -899,7 +930,13 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
+        list_frames: Vec::new(),
+        setlists: Vec::new(),
+        resume_counters: HashMap::new(),
+        resume_keys: HashMap::new(),
         pending_item_label: None,
+        pending_item: None,
+        pending_line_break: None,
         paragraph_styles: Vec::new(),
         document_global_state: false,
         style: TextStyle::default(),
@@ -1016,13 +1053,26 @@ struct P<'a> {
     /// `blocks` length at that point (where this list's own items start, for
     /// the `leftmargin=*` backpatch once every item is known — see
     /// `environment`).
-    list_stack: Vec<(String, u32, Option<String>, ListSpacing, usize)>,
+    list_stack: Vec<OpenList>,
+    /// Every open `\list`-based environment (lists and `quote`/`quotation`/
+    /// `verse`), outermost first; see `Block::ListItem::lists`.
+    list_frames: Vec<ListFrame>,
+    /// `\setlist[<target>]{<keys>}` calls so far, in order.
+    setlists: Vec<(lists::SetlistTarget, Vec<ListOption>)>,
+    /// enumitem `resume` state: the last counter value and the `\begin`
+    /// keys of each environment name / `series@<name>`.
+    resume_counters: HashMap<String, i64>,
+    resume_keys: HashMap<String, Vec<ListOption>>,
     /// The marker text and span set by the most recent `\item`, consumed by
     /// the next `flush_paragraph`/`flush_list_item` call (its own paragraph,
     /// or a later one if the item's text is empty). `None` once consumed, so
     /// later paragraphs of the same item render with the hanging indent but
     /// no repeated label.
     pending_item_label: Option<(String, Span)>,
+    /// The structured form of `pending_item_label`, taken with it.
+    pending_item: Option<ItemLabel>,
+    /// verse's `\\` waiting for the next paragraph.
+    pending_line_break: Option<LineBreakBefore>,
     paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
     /// Every `\bibitem`'s resolved citation label, built once by
@@ -1081,6 +1131,30 @@ struct P<'a> {
     /// primitive, so `P::maketitle` renders the ordinary compact block and
     /// says so once, rather than silently ignoring the option.
     titlepage_option: bool,
+}
+
+/// One open `itemize`/`enumerate`/`description`/`thebibliography`.
+#[derive(Debug, Clone)]
+struct OpenList {
+    kind: String,
+    /// `\item`s seen so far.
+    count: u32,
+    /// An enumitem label as `enumitem_label` reads it (`label=<t>` or a
+    /// shortlabels template); `thebibliography`'s widest-label argument.
+    template: Option<String>,
+    spacing: ListSpacing,
+    /// `blocks.len()` at `\begin`.
+    start: usize,
+    /// The enumerate counter (`\c@enum<i>`), after `start=`/`resume`.
+    counter: i64,
+    /// `label*=<t>`: appended to the enclosing enumerate's current label.
+    label_star: Option<String>,
+    /// The label text of the latest counted `\item` (for `label*` below).
+    current_label: String,
+    /// `series=<name>`: the counter is also saved under `series@<name>`.
+    series: Option<String>,
+    /// The `\begin` keys (saved for `resume*`).
+    begin_options: Vec<ListOption>,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -1165,6 +1239,32 @@ impl P<'_> {
                 }
                 TokenKind::LineBreak => {
                     self.i += 1;
+                    // article.cls 390 `verse`: `\let\\\@centercr`, which ends
+                    // the paragraph (latex.ltx `\@centercr`: `\par`, then
+                    // `\@xcentercr` `\addvspace{-\parskip}` and `\@icentercr`
+                    // `\vskip #1`); `\\*` adds `\nobreak`.
+                    if render
+                        && self.in_body
+                        && self
+                            .list_frames
+                            .last()
+                            .is_some_and(|frame| frame.environment == ListEnvironment::Verse)
+                    {
+                        let star = self.take_optional_star();
+                        let end_before = self.i;
+                        let skip_pt = self.skip_line_break_length();
+                        let end = self
+                            .t
+                            .get(end_before.max(1) - 1)
+                            .map_or(tok.span.end, |t| t.token.span.end.max(tok.span.end));
+                        self.flush_paragraph(blocks, para);
+                        self.pending_line_break = Some(LineBreakBefore {
+                            span: Span::in_document(tok.span.document, tok.span.start, end),
+                            skip_pt,
+                            star,
+                        });
+                        continue;
+                    }
                     // `\\[<length>]`: the vertical space is not modelled, but the
                     // argument must not be typeset as text.
                     self.skip_line_break_length();
@@ -1463,27 +1563,19 @@ impl P<'_> {
                 let gap_before = self
                     .list_stack
                     .last()
-                    .map(|(_, count, _, spacing, _)| {
-                        if *count <= 1 {
-                            spacing.topsep_pt
+                    .map(|list| {
+                        if list.count <= 1 {
+                            list.spacing.topsep_pt
                         } else {
-                            spacing.itemsep_pt
+                            list.spacing.itemsep_pt
                         }
                     })
                     .unwrap_or(0.0);
                 self.flush_list_item(blocks, para, gap_before, 0.0);
-                match self.list_stack.last_mut() {
-                    Some((kind, count, template, _, _)) => {
-                        *count += 1;
-                        let marker = if kind == "enumerate" {
-                            match template {
-                                Some(template) => enumitem_label(template, *count),
-                                None => format!("{}.", count),
-                            }
-                        } else {
-                            "•".to_string()
-                        };
-                        self.pending_item_label = Some((marker, span));
+                match self.list_stack.last() {
+                    Some(_) => {
+                        let explicit = self.item_label_argument();
+                        self.begin_item(span, explicit);
                     }
                     None => self.diags.push(Diagnostic::error(
                         "\\item is only supported inside itemize or enumerate",
@@ -1494,7 +1586,7 @@ impl P<'_> {
             }
             "bibitem" => {
                 let in_bibliography =
-                    matches!(self.list_stack.last(), Some((kind, ..)) if kind == "thebibliography");
+                    matches!(self.list_stack.last(), Some(list) if list.kind == "thebibliography");
                 if !in_bibliography {
                     self.diags.push(Diagnostic::error(
                         "\\bibitem is only supported inside thebibliography",
@@ -1507,11 +1599,11 @@ impl P<'_> {
                     let gap_before = self
                         .list_stack
                         .last()
-                        .map(|(_, count, _, spacing, _)| {
-                            if *count <= 1 {
-                                spacing.topsep_pt
+                        .map(|list| {
+                            if list.count <= 1 {
+                                list.spacing.topsep_pt
                             } else {
-                                spacing.itemsep_pt
+                                list.spacing.itemsep_pt
                             }
                         })
                         .unwrap_or(0.0);
@@ -1536,10 +1628,12 @@ impl P<'_> {
                         (self.bib_cursor + 1).to_string()
                     });
                     self.bib_cursor += 1;
-                    if let Some((_, count, _, _, _)) = self.list_stack.last_mut() {
-                        *count += 1;
+                    if let Some(list) = self.list_stack.last_mut() {
+                        list.count += 1;
                     }
-                    self.pending_item_label = Some((bib::label_bracket(&label), span));
+                    let text = bib::label_bracket(&label);
+                    self.pending_item = Some(ItemLabel::Template { text: text.clone() });
+                    self.pending_item_label = Some((text, span));
                 }
             }
             "includegraphics" => {
@@ -1983,8 +2077,16 @@ impl P<'_> {
             .unwrap_or_default();
         let (tokens, argument_span) = self.required_group("setlist", span);
         let full_span = span.merge(argument_span);
+        self.setlists.push((
+            lists::SetlistTarget::parse(&environments),
+            lists::parse_options(&token_source(&tokens), body, false),
+        ));
         let envs: Vec<String> = if environments.trim().is_empty() {
-            vec!["itemize".to_string(), "enumerate".to_string()]
+            vec![
+                "itemize".to_string(),
+                "enumerate".to_string(),
+                "description".to_string(),
+            ]
         } else {
             environments
                 .split(',')
@@ -2318,16 +2420,20 @@ impl P<'_> {
                 if style != ParagraphStyle::Quote {
                     self.declared_alignment = None;
                 }
-            } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
+                if let Some(kind) = ListEnvironment::from_name(&environment) {
+                    self.push_list_frame(kind, Vec::new(), span.merge(argument_span));
+                }
+            } else if matches!(
+                environment.as_str(),
+                "itemize" | "enumerate" | "description"
+            ) && self.in_body
+            {
                 self.flush_paragraph(blocks, para);
-                let template = self.optional_bracket_argument().map(|(options, _)| options);
-                let spacing = self
-                    .list_spacing
-                    .get(&environment)
-                    .copied()
-                    .unwrap_or_default();
-                self.list_stack
-                    .push((environment.clone(), 0, template, spacing, blocks.len()));
+                let options = self.optional_bracket_argument();
+                let begin_span = options
+                    .as_ref()
+                    .map_or(span.merge(argument_span), |(_, o)| span.merge(*o));
+                self.open_list(&environment, options.map(|(text, _)| text), begin_span, blocks.len());
             } else if self.in_body
                 && (self.theorems.contains_key(&environment) || environment == "proof")
             {
@@ -2359,13 +2465,19 @@ impl P<'_> {
                     .get(&environment)
                     .copied()
                     .unwrap_or_default();
-                self.list_stack.push((
-                    environment.clone(),
-                    0,
-                    Some(widest_label),
+                self.list_stack.push(OpenList {
+                    kind: environment.clone(),
+                    count: 0,
+                    template: Some(widest_label),
                     spacing,
-                    blocks.len(),
-                ));
+                    start: blocks.len(),
+                    counter: 0,
+                    label_star: None,
+                    current_label: String::new(),
+                    series: None,
+                    begin_options: Vec::new(),
+                });
+                self.push_list_frame(ListEnvironment::Bibliography, Vec::new(), heading_span);
             } else if self.in_body {
                 self.diags.push(Diagnostic::environment_warning(
                     &environment,
@@ -2418,22 +2530,42 @@ impl P<'_> {
             self.paragraph_styles.pop();
         } else if matches!(
             environment.as_str(),
-            "itemize" | "enumerate" | "thebibliography"
+            "itemize" | "enumerate" | "description" | "thebibliography"
         ) {
             let (gap_before, gap_after) = match self.list_stack.last() {
-                Some((_, count, _, spacing, _)) => (
-                    if *count <= 1 {
-                        spacing.topsep_pt
+                Some(list) => (
+                    if list.count <= 1 {
+                        list.spacing.topsep_pt
                     } else {
-                        spacing.itemsep_pt
+                        list.spacing.itemsep_pt
                     },
-                    spacing.topsep_pt,
+                    list.spacing.topsep_pt,
                 ),
                 None => (0.0, 0.0),
             };
             self.flush_list_item(blocks, para, gap_before, gap_after);
             let level = self.list_stack.len() as u8;
-            if let Some((kind, count, template, spacing, start)) = self.list_stack.pop() {
+            if let Some(open) = self.list_stack.pop() {
+                // `\enit@endlist` (enumitem.sty 1127-1146): the counter and
+                // the `\begin` keys are kept for `resume`/`resume*`.
+                if open.kind == "enumerate" {
+                    self.resume_counters.insert(open.kind.clone(), open.counter);
+                    self.resume_keys
+                        .insert(open.kind.clone(), open.begin_options.clone());
+                    if let Some(series) = &open.series {
+                        let key = format!("series@{series}");
+                        self.resume_counters.insert(key.clone(), open.counter);
+                        self.resume_keys.insert(key, open.begin_options.clone());
+                    }
+                }
+                let OpenList {
+                    kind,
+                    count,
+                    template,
+                    spacing,
+                    start,
+                    ..
+                } = open;
                 if spacing.leftmargin == LeftMarginSetting::Widest && count > 0 {
                     let labels: Vec<String> = if kind == "enumerate" {
                         // An alphabetic counter has only 26 possible single-
@@ -2485,6 +2617,18 @@ impl P<'_> {
             self.flush_paragraph(blocks, para);
             self.in_body = false;
             self.document_ended = true;
+        }
+        if let Some(kind) = ListEnvironment::from_name(&environment) {
+            if self
+                .list_frames
+                .last()
+                .is_some_and(|frame| frame.environment == kind)
+            {
+                self.list_frames.pop();
+            }
+            if kind == ListEnvironment::Verse {
+                self.pending_line_break = None;
+            }
         }
         // Restored only after the flushes above: environments that end their
         // paragraph do so while their own declarations are still in force.
@@ -3799,6 +3943,7 @@ impl P<'_> {
         let outer_index = std::mem::replace(&mut self.i, 0);
         let outer_style = std::mem::take(&mut self.style);
         let outer_label = self.pending_item_label.take();
+        let outer_item = self.pending_item.take();
         let outer_dependency_blocks = self.block_dependencies.len();
         let mut blocks = Vec::new();
         let mut para = Vec::new();
@@ -3809,6 +3954,7 @@ impl P<'_> {
         self.i = outer_index;
         self.style = outer_style;
         self.pending_item_label = outer_label;
+        self.pending_item = outer_item;
 
         let mut content: Vec<Inline> = Vec::new();
         for block in blocks {
@@ -3866,16 +4012,17 @@ impl P<'_> {
         if paragraph.is_empty() && label.is_none() {
             return;
         }
+        let item = self.pending_item.take();
         // The item's topsep/itemsep belongs to its labelled first paragraph,
         // even when a blank line inside the item flushes that paragraph
         // through `flush_paragraph` (which passes `0.0`); later paragraphs
         // of the same item never get it.
         let extra_gap_before_pt = match (&label, self.list_stack.last()) {
-            (Some(_), Some((_, count, _, spacing, _))) if *count > 0 => {
-                if *count <= 1 {
-                    spacing.topsep_pt
+            (Some(_), Some(list)) if list.count > 0 => {
+                if list.count <= 1 {
+                    list.spacing.topsep_pt
                 } else {
-                    spacing.itemsep_pt
+                    list.spacing.itemsep_pt
                 }
             }
             (Some(_), _) => extra_gap_before_pt,
@@ -3886,16 +4033,23 @@ impl P<'_> {
         // seen (`count > 0`); text typed directly inside `itemize`/
         // `enumerate` before any `\item` falls back to an ordinary
         // paragraph, same as before this paragraph became list-aware.
+        // A `quote`/`quotation`/`verse` inside an item is its own `\list`:
+        // its paragraphs are `Styled`, with both frames in `lists`.
+        let in_quote = label.is_none()
+            && self
+                .list_frames
+                .last()
+                .is_some_and(|frame| frame.environment.is_quote_like());
         let list_level = self
             .list_stack
             .last()
-            .filter(|(_, count, _, _, _)| *count > 0)
+            .filter(|list| list.count > 0 && !in_quote)
             .map(|_| self.list_stack.len() as u8);
         // `leftmargin=*` needs every item's label, so it is resolved later
         // (backpatched once the list's `\end` is reached — see
         // `environment`); an explicit dimension is already known.
         let leftmargin = match self.list_stack.last() {
-            Some((_, _, _, spacing, _)) => match spacing.leftmargin {
+            Some(OpenList { spacing, .. }) => match spacing.leftmargin {
                 LeftMarginSetting::Explicit(pt) => ListLeftMargin::Explicit(pt),
                 LeftMarginSetting::Unset | LeftMarginSetting::Widest => ListLeftMargin::Default,
             },
@@ -3905,14 +4059,12 @@ impl P<'_> {
         // (see the `\begin` handling in `environment`); `itemize`/`enumerate`
         // use it for their own unrelated `enumitem` template instead, so it
         // only carries a `widest_label` for a `thebibliography` list.
-        let widest_label = self
-            .list_stack
-            .last()
-            .and_then(|(kind, _, template, _, _)| {
-                (kind == "thebibliography")
-                    .then(|| template.clone())
-                    .flatten()
-            });
+        let widest_label = self.list_stack.last().and_then(|list| {
+            (list.kind == "thebibliography")
+                .then(|| list.template.clone())
+                .flatten()
+        });
+        let lists = self.list_frames.clone();
         blocks.push(match list_level {
             Some(level) => Block::ListItem {
                 level,
@@ -3922,14 +4074,23 @@ impl P<'_> {
                 extra_gap_after_pt,
                 leftmargin,
                 widest_label,
+                lists,
+                item,
             },
             None => match (self.paragraph_styles.last(), self.declared_alignment) {
                 // A declaration inside `quote` would otherwise drop its indent.
                 (Some(&ParagraphStyle::Quote), _) => Block::Styled {
                     style: ParagraphStyle::Quote,
                     content,
+                    lists,
+                    line_break_before: self.pending_line_break.take(),
                 },
-                (_, Some(style)) | (Some(&style), None) => Block::Styled { style, content },
+                (_, Some(style)) | (Some(&style), None) => Block::Styled {
+                    style,
+                    content,
+                    lists,
+                    line_break_before: None,
+                },
                 (None, None) => Block::Paragraph(content),
             },
         });
@@ -3967,29 +4128,292 @@ impl P<'_> {
 
     /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued
     /// to it (`\\[3pt]Next`) as the remainder of the word.
-    fn skip_line_break_length(&mut self) {
-        let Some(input) = self.token_mut(self.i) else {
-            return;
-        };
+    /// Returns the length in TeX points when it reads as one.
+    fn skip_line_break_length(&mut self) -> Option<f64> {
+        let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+        let input = self.token_mut(self.i)?;
         let TokenKind::Word(word) = &input.token.kind else {
-            return;
+            return None;
         };
         if !word.starts_with('[') {
-            return;
+            return None;
         }
-        let Some(close) = word.find(']') else {
-            return;
-        };
+        let close = word.find(']')?;
+        let length = parse_dimen_pt_at(&word[1..close], body);
         let rest = word[close + 1..].to_string();
         if rest.is_empty() {
             self.i += 1;
-            return;
+            return length;
         }
         let span = input.token.span;
         if span.end - span.start == word.len() {
             input.token.span = Span::in_document(span.document, span.start + close + 1, span.end);
         }
         input.token.kind = TokenKind::Word(rest);
+        length
+    }
+
+    /// `\item[<label>]` (latex.ltx 15964-15966: `\@ifnextchar[`, which
+    /// skips spaces): the tokens between the brackets at brace depth 0,
+    /// with the words holding `[`/`]` trimmed, and the span of the whole
+    /// bracketed argument. `None` (nothing consumed but spaces) without a
+    /// `[` or without its closing `]` before a paragraph break.
+    fn item_label_argument(&mut self) -> Option<(Vec<InputToken>, Span)> {
+        self.skip_spaces();
+        let first = self.t.get(self.i)?;
+        let TokenKind::Word(word) = &first.token.kind else {
+            return None;
+        };
+        if !word.starts_with('[') {
+            return None;
+        }
+        let open = first.token.span;
+        let piece = |input: &InputToken, from: usize, to: usize| -> InputToken {
+            let TokenKind::Word(word) = &input.token.kind else {
+                return input.clone();
+            };
+            let span = input.token.span;
+            let mut out = input.clone();
+            out.token.kind = TokenKind::Word(word[from..to].to_string());
+            if span.end - span.start == word.len() {
+                out.token.span =
+                    Span::in_document(span.document, span.start + from, span.start + to);
+            }
+            out
+        };
+        let mut tokens = Vec::new();
+        let mut depth = 0usize;
+        let mut index = self.i;
+        while index < self.t.len() {
+            let input = &self.t[index];
+            let from = usize::from(index == self.i);
+            match &input.token.kind {
+                TokenKind::ParBreak => return None,
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => depth = depth.checked_sub(1)?,
+                TokenKind::Word(word) if depth == 0 && word[from..].contains(']') => {
+                    let close = from + word[from..].find(']').unwrap_or(0);
+                    if close > from {
+                        tokens.push(piece(input, from, close));
+                    }
+                    let span = input.token.span;
+                    let literal = span.end - span.start == word.len();
+                    let end = if literal { span.start + close + 1 } else { span.end };
+                    if close + 1 == word.len() {
+                        self.i = index + 1;
+                    } else {
+                        let rest = piece(input, close + 1, word.len());
+                        if let Some(slot) = self.token_mut(index) {
+                            *slot = rest;
+                        }
+                        self.i = index;
+                    }
+                    return Some((tokens, Span::in_document(open.document, open.start, end)));
+                }
+                _ => {}
+            }
+            let input = &self.t[index];
+            if from == 1 {
+                if let TokenKind::Word(word) = &input.token.kind {
+                    if word.len() > 1 {
+                        tokens.push(piece(input, 1, word.len()));
+                    }
+                }
+            } else {
+                tokens.push(input.clone());
+            }
+            index += 1;
+        }
+        None
+    }
+
+    /// The label of the `\item` just read (the innermost open list is
+    /// `self.list_stack.last()`); sets `pending_item_label`/`pending_item`.
+    fn begin_item(&mut self, span: Span, explicit: Option<(Vec<InputToken>, Span)>) {
+        let frame = self
+            .list_frames
+            .iter()
+            .rev()
+            .find(|frame| !frame.environment.is_quote_like())
+            .cloned();
+        let environment = frame
+            .as_ref()
+            .map_or(ListEnvironment::Itemize, |frame| frame.environment);
+        let kind_depth = frame.as_ref().map_or(1, |frame| frame.kind_depth);
+        let explicit = explicit.map(|(tokens, arg_span)| {
+            // `\descriptionlabel`: `\normalfont\bfseries #1`.
+            let base = if environment == ListEnvironment::Description {
+                TextStyle::BOLD
+            } else {
+                TextStyle::default()
+            };
+            let content = self.inlines_from_tokens(tokens, base);
+            let mut text = String::new();
+            for inline in &content {
+                if let Inline::Text {
+                    text: word,
+                    space_before,
+                    ..
+                } = inline
+                {
+                    if *space_before && !text.is_empty() {
+                        text.push(' ');
+                    }
+                    text.push_str(word);
+                }
+            }
+            ItemLabel::Explicit {
+                content,
+                text,
+                span: arg_span,
+            }
+        });
+        // `label*`: the enclosing enumerate's current label comes first.
+        let enclosing_label = self
+            .list_stack
+            .iter()
+            .rev()
+            .skip(1)
+            .find(|list| list.kind == "enumerate")
+            .map(|list| list.current_label.clone())
+            .unwrap_or_default();
+        let Some(list) = self.list_stack.last_mut() else {
+            return;
+        };
+        list.count += 1;
+        let item = match explicit {
+            Some(item) => item,
+            None if environment == ListEnvironment::Enumerate => {
+                list.counter += 1;
+                let value = list.counter;
+                let item = match (&list.label_star, &list.template) {
+                    (Some(star), _) => ItemLabel::Template {
+                        text: format!(
+                            "{enclosing_label}{}",
+                            lists::template_label(star, value).text()
+                        ),
+                    },
+                    (None, Some(template)) => match template.strip_prefix("label=") {
+                        Some(label) => lists::template_label(label, value),
+                        None => lists::short_label(template, value),
+                    },
+                    (None, None) => lists::default_label(environment, kind_depth, value),
+                };
+                list.current_label = item.text().to_string();
+                item
+            }
+            None => match (&list.template, environment) {
+                (Some(template), ListEnvironment::Itemize) => ItemLabel::Template {
+                    text: apply_text_ligatures(
+                        template.strip_prefix("label=").unwrap_or(template),
+                    ),
+                },
+                _ => lists::default_label(environment, kind_depth, 0),
+            },
+        };
+        self.pending_item_label = Some((item.text().to_string(), span));
+        self.pending_item = Some(item);
+    }
+
+    fn push_list_frame(&mut self, environment: ListEnvironment, options: Vec<ListOption>, begin_span: Span) {
+        let kind_depth = self
+            .list_frames
+            .iter()
+            .filter(|frame| frame.environment == environment)
+            .count() as u8
+            + 1;
+        self.list_frames.push(ListFrame {
+            environment,
+            kind_depth,
+            options,
+            begin_span,
+        });
+    }
+
+    /// `\begin{itemize|enumerate|description}[<options>]`: resolves the
+    /// enumitem keys in force (every matching `\setlist`, then `resume*`'s
+    /// saved keys, then the `\begin` keys) and the counter's start value.
+    fn open_list(&mut self, environment: &str, options: Option<String>, begin_span: Span, start: usize) {
+        let Some(kind) = ListEnvironment::from_name(environment) else {
+            return;
+        };
+        let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+        let kind_depth = self
+            .list_frames
+            .iter()
+            .filter(|frame| frame.environment == kind)
+            .count() as u8
+            + 1;
+        let list_depth = self.list_frames.len() as u8 + 1;
+        let mut effective: Vec<ListOption> = self
+            .setlists
+            .iter()
+            .filter(|(target, _)| target.applies(kind, kind_depth, list_depth))
+            .flat_map(|(_, options)| options.iter().cloned())
+            .collect();
+        let begin_options = options
+            .as_deref()
+            .map(|text| lists::parse_options(text, body, true))
+            .unwrap_or_default();
+        let start_of = |options: &[ListOption]| {
+            options.iter().rev().find_map(|option| match option {
+                ListOption::Start(n) => Some(n - 1),
+                _ => None,
+            })
+        };
+        let mut counter = start_of(&effective).unwrap_or(0);
+        let mut series = None;
+        for option in &begin_options {
+            match option {
+                ListOption::Resume(name) | ListOption::ResumeStar(name) => {
+                    let key = name
+                        .as_ref()
+                        .map_or_else(|| environment.to_string(), |n| format!("series@{n}"));
+                    counter = self.resume_counters.get(&key).copied().unwrap_or(0);
+                    if matches!(option, ListOption::ResumeStar(_)) {
+                        effective.extend(self.resume_keys.get(&key).cloned().unwrap_or_default());
+                    }
+                    self.document_global_state = true;
+                }
+                ListOption::Series(name) => {
+                    series = Some(name.clone());
+                    self.document_global_state = true;
+                }
+                _ => {}
+            }
+        }
+        if let Some(value) = start_of(&begin_options) {
+            counter = value;
+        }
+        effective.extend(begin_options.iter().cloned());
+        let (template, label_star) = effective
+            .iter()
+            .rev()
+            .find_map(|option| match option {
+                ListOption::Label(label) => Some((Some(format!("label={label}")), None)),
+                ListOption::ShortLabel(label) => Some((Some(label.clone()), None)),
+                ListOption::LabelStar(label) => Some((None, Some(label.clone()))),
+                _ => None,
+            })
+            .unwrap_or((None, None));
+        let spacing = self
+            .list_spacing
+            .get(environment)
+            .copied()
+            .unwrap_or_default();
+        self.list_stack.push(OpenList {
+            kind: environment.to_string(),
+            count: 0,
+            template,
+            spacing,
+            start,
+            counter,
+            label_star,
+            current_label: String::new(),
+            series,
+            begin_options,
+        });
+        self.push_list_frame(kind, effective, begin_span);
     }
 
     fn skip_spaces(&mut self) {
@@ -4344,6 +4768,26 @@ fn dimen_source(tokens: &[InputToken]) -> String {
     result
 }
 
+/// Like `token_text`, but control words keep their backslash and braces
+/// are kept (enumitem values such as `label={(\alph*)}`).
+fn token_source(tokens: &[InputToken]) -> String {
+    let mut result = String::new();
+    for input in tokens {
+        match &input.token.kind {
+            TokenKind::Word(text) => result.push_str(text),
+            TokenKind::Command(text) => {
+                result.push('\\');
+                result.push_str(text);
+            }
+            TokenKind::LBrace => result.push('{'),
+            TokenKind::RBrace => result.push('}'),
+            TokenKind::Space | TokenKind::ParBreak => result.push(' '),
+            _ => {}
+        }
+    }
+    result
+}
+
 fn token_text(tokens: &[InputToken]) -> String {
     let mut result = String::new();
     for input in tokens {
@@ -4425,7 +4869,7 @@ fn paragraph_style(environment: &str) -> Option<ParagraphStyle> {
         "center" => Some(ParagraphStyle::Center),
         "flushright" => Some(ParagraphStyle::FlushRight),
         "flushleft" => Some(ParagraphStyle::FlushLeft),
-        "quote" | "quotation" => Some(ParagraphStyle::Quote),
+        "quote" | "quotation" | "verse" => Some(ParagraphStyle::Quote),
         _ => None,
     }
 }

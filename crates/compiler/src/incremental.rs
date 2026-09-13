@@ -417,7 +417,20 @@ fn shift_block(block: &mut Block, changes: &[ChangedBytes], deltas: &[isize]) ->
             shift_inlines(content, changes, deltas)
         }
         Block::FigureCaption { content } => shift_inlines(content, changes, deltas),
-        Block::Styled { style: _, content } => shift_inlines(content, changes, deltas),
+        Block::Styled {
+            style: _,
+            content,
+            lists,
+            line_break_before,
+        } => {
+            for frame in lists.iter_mut() {
+                map_span(&mut frame.begin_span, changes, deltas)?;
+            }
+            if let Some(line_break) = line_break_before {
+                map_span(&mut line_break.span, changes, deltas)?;
+            }
+            shift_inlines(content, changes, deltas)
+        }
         Block::ListItem {
             level: _,
             label,
@@ -426,9 +439,18 @@ fn shift_block(block: &mut Block, changes: &[ChangedBytes], deltas: &[isize]) ->
             extra_gap_after_pt: _,
             leftmargin: _,
             widest_label: _,
+            lists,
+            item,
         } => {
             if let Some((_, span)) = label {
                 map_span(span, changes, deltas)?;
+            }
+            for frame in lists.iter_mut() {
+                map_span(&mut frame.begin_span, changes, deltas)?;
+            }
+            if let Some(crate::parser::ItemLabel::Explicit { content, span, .. }) = item {
+                map_span(span, changes, deltas)?;
+                shift_inlines(content, changes, deltas)?;
             }
             shift_inlines(content, changes, deltas)
         }
