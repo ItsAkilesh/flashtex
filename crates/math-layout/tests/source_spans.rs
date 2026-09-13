@@ -96,6 +96,7 @@ fn tag_everything(list: &mut MathList, next: &mut usize) {
                 tag_everything(below, next);
             }
             Nucleus::Symbol(_)
+            | Nucleus::TextChar(_)
             | Nucleus::BigDelimiter { .. }
             | Nucleus::Glue { .. }
             | Nucleus::Text(_)

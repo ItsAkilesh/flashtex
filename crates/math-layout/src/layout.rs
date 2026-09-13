@@ -108,8 +108,16 @@ fn is_glue(atom: &Atom) -> bool {
 /// (Rule 18a, `shift_up` starts at 0) and `\mathop{x}` centres a character
 /// on the axis (`make_op`), instead of treating a boxed sub-list. Glue is not
 /// a noad and blocks the replacement.
-fn unpacked(nucleus: &Nucleus) -> &Nucleus {
+///
+/// Also returns the source tag of the innermost unpacked atom (`SourceTag::
+/// NONE` when no unpacking happened), so the caller can apply it to the
+/// resulting box before the enclosing atom's own tag only fills in what that
+/// leaves missing (`SourceTag::inherit`'s innermost-wins rule) -- otherwise
+/// an unpacked atom's own span/attribute would be lost in favour of the
+/// outer (unpacked-away) atom's.
+fn unpacked(nucleus: &Nucleus) -> (&Nucleus, SourceTag) {
     let mut n = nucleus;
+    let mut tag = SourceTag::NONE;
     while let Nucleus::List(list) = n {
         match list.atoms.as_slice() {
             [a] if a.class == AtomClass::Ord
@@ -117,12 +125,13 @@ fn unpacked(nucleus: &Nucleus) -> &Nucleus {
                 && a.subscript.is_none()
                 && !matches!(a.nucleus, Nucleus::Glue { .. }) =>
             {
-                n = &a.nucleus
+                n = &a.nucleus;
+                tag = a.tag;
             }
             _ => break,
         }
     }
-    n
+    (n, tag)
 }
 
 impl Engine<'_> {
@@ -204,7 +213,8 @@ impl Engine<'_> {
         }
         // The nucleus, TeX's `delta` (italic correction still to be applied),
         // and whether the nucleus is a bare character (Rule 18a).
-        let (nucleus, delta, is_char) = match unpacked(&atom.nucleus) {
+        let (unpacked_nucleus, unpacked_tag) = unpacked(&atom.nucleus);
+        let (nucleus, delta, is_char) = match unpacked_nucleus {
             Nucleus::Symbol(ch) => match self.glyph(*ch, style) {
                 Some(g) => {
                     let b = MathBox::glyph(&g);
@@ -334,6 +344,8 @@ impl Engine<'_> {
             Nucleus::Underline(body) => (self.make_under(body, style), 0.0, false),
             Nucleus::Styled { style: inner, body } => (self.clean_box(body, *inner), 0.0, false),
         };
+        let mut nucleus = nucleus;
+        nucleus.inherit_tag(unpacked_tag);
         self.make_scripts(nucleus, delta, is_char, atom, style)
     }
 
@@ -440,7 +452,8 @@ impl Engine<'_> {
             Limits::Limits => true,
             Limits::NoLimits => false,
         };
-        let (nucleus, delta) = match unpacked(&atom.nucleus) {
+        let (unpacked_nucleus, unpacked_tag) = unpacked(&atom.nucleus);
+        let (nucleus, delta) = match unpacked_nucleus {
             n @ (Nucleus::Symbol(_) | Nucleus::TextChar(_)) => {
                 let mut g = match n {
                     Nucleus::Symbol(ch) => self.glyph(*ch, style),
@@ -483,6 +496,8 @@ impl Engine<'_> {
                 (self.atom(&inner, AtomClass::Ord, style), 0.0)
             }
         };
+        let mut nucleus = nucleus;
+        nucleus.inherit_tag(unpacked_tag);
         self.op_scripts(nucleus, delta, limits, atom, style)
     }
 
