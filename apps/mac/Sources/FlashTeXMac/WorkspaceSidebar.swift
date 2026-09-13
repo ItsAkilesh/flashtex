@@ -22,15 +22,15 @@ struct WorkspaceSidebar: View {
     var body: some View {
         List {
             ProjectSection()
-            OutlineSection(outline: outline, expanded: $expanded, stale: outlineFor.revision != model.editorRevision)
+            OutlineSection(outline: outline, expanded: $expanded, stale: outlineFor.revision != model.chrome.editorRevision) // throttled (ShellChrome): not per keystroke
             ProblemsSection()
         }
         .listStyle(.sidebar)
         .accessibilityIdentifier(Self.identifier)
         .modifier(ProjectScaffoldSheets()) // New Project / New File / Rename / Delete (ProjectScaffoldViews.swift)
-        .task(id: "\(model.activePath)@\(model.editorRevision)") {
+        .task(id: "\(model.activePath)@\(model.chrome.editorRevision)") {
             // Rescan after a short quiet period; the previous scan is cancelled.
-            let revision = model.editorRevision, path = model.activePath
+            let revision = model.chrome.editorRevision, path = model.activePath
             if outlineFor.revision >= 0 { try? await Task.sleep(for: .milliseconds(150)) }
             guard !Task.isCancelled else { return }
             outline = model.outline
@@ -47,9 +47,12 @@ private struct ProjectSection: View {
     @Environment(ShellModel.self) var model
 
     var body: some View {
-        let listing = model.project.listing
+        // Throttled, change-only copies (ShellChrome.swift): `project.listing`
+        // and `discoverClosure()` read `documents`, so this List (an AppKit
+        // outline view) re-evaluated on every keystroke.
+        let listing = model.chrome.listing
         let kinds = model.documentKinds
-        let closure = model.project.discoverClosure()
+        let closure = model.chrome.closure
         Section {
             ForEach(listing) { doc in
                 SidebarRow(selected: doc.path == model.activePath) {
@@ -243,7 +246,7 @@ private struct ProblemsSection: View {
     @Environment(ShellModel.self) var model
 
     var body: some View {
-        let diags = model.displayedDiagnostics
+        let diags = model.problemsList // change-only (ShellModel): `displayedDiagnostics` reads `result`, replaced per reply
         let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)
         Section {
             if diags.isEmpty {

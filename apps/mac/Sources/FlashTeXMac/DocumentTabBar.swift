@@ -19,7 +19,7 @@ struct DocumentTabBar: View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
-                    ForEach(model.project.listing) { doc in
+                    ForEach(model.chrome.listing) { doc in // throttled, change-only copy (ShellChrome.swift): `project.listing` reads `documents` per keystroke
                         DocumentTab(doc: doc, active: doc.path == model.activePath, kind: model.documentKinds.kind(of: doc.path))
                     }
                 }
@@ -39,9 +39,9 @@ struct DocumentTabBar: View {
             } else {
                 Text("unsaved buffer").font(.caption).foregroundStyle(.secondary)
             }
-            Text("\(model.activeText.utf8.count) B · \((model.activeText as NSString).length) u16")
+            Text("\(model.chrome.activeTextBytes) B · \(model.chrome.activeTextUTF16) u16")
                 .font(.caption).foregroundStyle(.tertiary).monospacedDigit()
-                .help("\(model.activeText.utf8.count) UTF-8 bytes · \((model.activeText as NSString).length) UTF-16 units")
+                .help("\(model.chrome.activeTextBytes) UTF-8 bytes · \(model.chrome.activeTextUTF16) UTF-16 units")
                 .padding(.trailing, 8)
         }
         .frame(height: 30)
@@ -135,9 +135,9 @@ struct ProjectMenu: View {
             // The transitive closure (chapter → section → …), depth-first in
             // source order, indented by depth; cycles and missing files are
             // listed with their reason. Bounded: 8 levels, 256 documents.
-            let closure = model.project.discoverClosure()
+            let closure = model.chrome.closure // throttled copy (ShellChrome): `discoverClosure()` reads the entry text per keystroke
             if closure.nodes.isEmpty {
-                Text("No \\input or \\include in \(model.project.entryPath)")
+                Text("No \\input or \\include in \(model.chrome.entryPath)")
             }
             ForEach(Array(closure.nodes.enumerated()), id: \.offset) { _, n in
                 let indent = String(repeating: "    ", count: max(0, n.depth))
@@ -161,7 +161,7 @@ struct ProjectMenu: View {
                 Text("Open All: \(report.unresolvable.count) unresolvable")
                 ForEach(Array(report.unresolvable.enumerated()), id: \.offset) { _, line in Text(line) }
             }
-            if model.activePath != model.project.entryPath {
+            if model.activePath != model.chrome.entryPath {
                 Divider()
                 Button("Save \(model.activePath)") { Task { await model.project.saveDocument(model.activePath) } }
                     .disabled(model.documentURL == nil)

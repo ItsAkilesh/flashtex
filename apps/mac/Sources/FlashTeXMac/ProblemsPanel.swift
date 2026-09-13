@@ -18,7 +18,10 @@ struct ProblemsPanel: View {
 
     var body: some View {
         @Bindable var model = model
-        let diags = model.displayedDiagnostics
+        // `problemsList` / `resultStatus` are assigned only when they change
+        // (ShellModel); `displayedDiagnostics` reads `result`, which every
+        // reply replaces, and this panel's List re-laid out with each one.
+        let diags = model.problemsList
         let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -30,8 +33,8 @@ struct ProblemsPanel: View {
                         .help("Commands, packages or environments FlashTeX does not implement yet — not mistakes in the source")
                 }
                 if diags.isEmpty { Text("none").font(.caption).foregroundStyle(.secondary) }
-                if let r = model.result, r.status != .ok {
-                    Text(r.status == .recovered ? "recovered: preview shown with provisional rendering" : "compile failed: the previous preview is kept")
+                if let status = model.resultStatus, status != .ok {
+                    Text(status == .recovered ? "recovered: preview shown with provisional rendering" : "compile failed: the previous preview is kept")
                         .font(.caption).foregroundStyle(.orange).lineLimit(1)
                 }
                 Spacer()
@@ -57,7 +60,7 @@ struct ProblemsPanel: View {
                 ContentUnavailableView {
                     Label("No problems", systemImage: "checkmark.circle")
                 } description: {
-                    Text(model.result == nil ? "Compile results list their diagnostics here; the preview is never hidden by them." : "The last compile reported no diagnostics.")
+                    Text(model.resultStatus == nil ? "Compile results list their diagnostics here; the preview is never hidden by them." : "The last compile reported no diagnostics.")
                 }
                 .frame(maxWidth: .infinity, minHeight: 80, maxHeight: .infinity)
             } else {

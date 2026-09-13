@@ -131,6 +131,12 @@ struct FlashTeXMacApp: App {
                 }
         }
         .defaultSize(width: 1500, height: 950) // first launch; the saved frame wins afterwards
+        // The menu bar is part of the App scene graph: any model property a
+        // command reads re-evaluates the whole scene when it changes, and SwiftUI
+        // then re-reads every window's root preferences (toolbar, title…) —
+        // `AppKitWindowController.updateRootView` was ~20 % of the main thread
+        // while typing (FT-071 sample) because `result`/`displayListV2` were
+        // read here per reply. Commands read the change-only mirrors instead.
         .commands {
             NavigationCommands(model: model) // Navigation.swift
             DiagnosticsCommands(model: model) // DiagnosticsPanel.swift: Edit > Copy Diagnostics as Text (⌘⌥C)
@@ -230,12 +236,12 @@ struct FlashTeXMacApp: App {
                 Button("Open Display List (v2)…") { model.openDisplayListV2Panel() } // experimental, PreviewV2View.swift
                 Button("Export PDF…") { model.exportPDF() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
-                    .disabled(model.result == nil)
+                    .disabled(!model.toolbarHasResult)
                 Button("Export PDF via Rust Writer…") { model.exportPDFViaRust() }
                     .keyboardShortcut("e", modifiers: [.command, .option])
-                    .disabled(model.result == nil)
+                    .disabled(!model.toolbarHasResult) // change-only mirror (see .commands)
                 Button("Export PDF (exact, v2)…") { model.exportPDFExact() } // ExactPDFExport.swift
-                    .disabled(model.displayListV2?.frame == nil)
+                    .disabled(!model.toolbarHasV2Frame) // change-only mirror (see .commands)
                 Divider()
                 Button("Attach Built Compiler") { model.attachDiscoveredWorker() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])

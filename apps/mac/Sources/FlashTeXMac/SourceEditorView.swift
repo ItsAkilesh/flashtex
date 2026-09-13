@@ -115,8 +115,12 @@ struct SourceEditorView: NSViewRepresentable {
             if syntaxHighlighting { co.syntax.reset() }
         }
         co.setLineNumbers(showLineNumbers, on: scroll)
-        (tv as? CompletingTextView)?.compileResult = result
-        (tv as? CompletingTextView)?.editorRevision = editorRevision
+        if let completing = tv as? CompletingTextView {
+            // Change-only: the setter rebuilds the completion metadata, and this
+            // update runs on every keystroke, not only when a result arrives.
+            if completing.compileResult?.revision != result?.revision || completing.compileResult != result { completing.compileResult = result }
+            if completing.editorRevision != editorRevision { completing.editorRevision = editorRevision }
+        }
         if let completing = tv as? CompletingTextView, completing.projectFiles != projectFiles { completing.projectFiles = projectFiles }
         if let m = projectIndexMetadata { _ = (tv as? CompletingTextView)?.accept(projectIndex: m) }
         if let edit = pendingEdit, edit.token != co.appliedEditToken {

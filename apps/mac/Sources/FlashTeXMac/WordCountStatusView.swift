@@ -28,7 +28,7 @@ struct WordCountStatusItem: View {
         // The debounced/background rescan is scheduled from here, not from
         // ShellModel, so this feature stays confined to this one view.
         .task(id: model.activePath) { model.wordCount.scheduleUpdate(documents: model.documents) }
-        .onChange(of: model.editorRevision) { _, _ in model.wordCount.scheduleUpdate(documents: model.documents) }
+        .onChange(of: model.chrome.editorRevision) { _, _ in model.wordCount.scheduleUpdate(documents: model.documents) } // throttled (ShellChrome): the scan is debounced anyway
         .onChange(of: model.documents.count) { _, _ in model.wordCount.scheduleUpdate(documents: model.documents) }
     }
 
