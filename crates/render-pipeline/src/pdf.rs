@@ -1,6 +1,13 @@
-//! `--pdf` output through the `pdf` sibling (4bd8c2e).
+//! PDF output through the `pdf` sibling.
 //!
-//! That crate consumes runtime-v1 pages on the negotiated route
+//! Two routes. [`write_pdf_exact`] is the exact route (vendor/pdf re-pinned
+//! to main's `crates/pdf`): the v2 display list goes through the pdf
+//! crate's `v2` adapter and `exact` writer in-process — the bytes
+//! `flashtex-pdf-exact from-v2` produces for the app's Export PDF, and what
+//! `flashtex build` writes. [`write_pdf`] is the older `flashtex-render
+//! --pdf` shim, kept for that flag:
+//!
+//! that route consumes runtime-v1 pages on the negotiated capabilities
 //! (`rules-v1`, `font-hints-v1`): typed rules are drawn as filled
 //! rectangles from their real geometry, and font hints pick the Latin
 //! Modern regular/bold/italic faces (each embedded whole from the local
@@ -24,6 +31,56 @@ pub struct PdfOut {
     pub warnings: Vec<String>,
     /// PostScript name of the embedded document face, if any.
     pub embedded: Option<String>,
+}
+
+/// What the exact route embedded, for a CLI summary line.
+pub struct ExactPdfOut {
+    pub bytes: Vec<u8>,
+    /// One line per embedded font (`/F1 LMRoman12-Regular from …`) and the
+    /// route's own notes, in the order `flashtex-pdf-exact from-v2` prints.
+    pub notes: Vec<String>,
+    pub fonts: usize,
+    pub glyphs: usize,
+    pub images: usize,
+}
+
+/// The exact route in-process: the display list serialised as the
+/// `display_list` envelope (`display-list-v2`, images included) and read
+/// back by the pdf sibling's `v2` adapter — glyph runs by original glyph id
+/// at exact tick positions, fonts resolved by content hash and embedded as
+/// GID-preserving subsets, typed rules, images and links — then rendered by
+/// `exact::render_exact` and structurally self-checked. This is the PDF the
+/// app's "Export PDF" produces through `flashtex-pdf-exact from-v2`.
+///
+/// `font_dirs` are probed first for the font bytes; `project_root` is the
+/// directory `image` items resolve under (`None` refuses images).
+pub fn write_pdf_exact(v2: &DisplayList, font_dirs: &[std::path::PathBuf], project_root: Option<&Path>) -> Result<ExactPdfOut, String> {
+    let envelope = v2.write_json_with("export", true);
+    let options = flashtex_pdf::v2::V2Options { font_dirs: font_dirs.to_vec() };
+    let (doc, report) = flashtex_pdf::v2::from_v2_rooted(&envelope, &options, project_root)?;
+    let rendered = flashtex_pdf::exact::render_exact(&doc).map_err(|e| e.to_string())?;
+    flashtex_pdf::verify::check_structure(&rendered.bytes).map_err(|e| format!("generated PDF failed self-check: {e}"))?;
+    let mut notes = Vec::new();
+    for f in &report.fonts {
+        notes.push(format!(
+            "/{} {} from {}: {} glyph(s), {:?}, program {} bytes{}",
+            f.resource,
+            f.postscript_name,
+            f.path.display(),
+            f.glyphs,
+            f.outcome,
+            f.program_bytes,
+            f.note.as_deref().map_or(String::new(), |n| format!(" ({n})"))
+        ));
+    }
+    notes.extend(report.notes.iter().cloned());
+    Ok(ExactPdfOut {
+        bytes: rendered.bytes,
+        notes,
+        fonts: report.fonts.len(),
+        glyphs: report.glyphs,
+        images: report.images,
+    })
 }
 
 fn hint(h: &v1::FontHint) -> FontHint {

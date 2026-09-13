@@ -313,7 +313,8 @@ pub fn encode_face(
 pub struct Faces<'a> {
     /// Lookup order (see [`Face`]).
     pub face: Face,
-    /// The primary font's resource: a Times variant (WinAnsi bytes) when
+    /// The primary font's resource: a Times variant (WinAnsi bytes) or
+    /// [`Font::Symbol`] (its built-in encoding, tried before Times) when
     /// `face` is [`Face::Times`], an embedded face (glyph ids) when
     /// [`Face::Embedded`].
     pub primary: Font,
@@ -332,14 +333,21 @@ pub fn encode_runs(text: &str, faces: &Faces<'_>) -> Encoded {
         let symbol_run = || symbol_byte(c).map(|b| (Font::Symbol, vec![b]));
         let found = match faces.face {
             Face::Times => {
-                let primary_run = || winansi_byte(c).map(|b| (faces.primary, vec![b]));
                 let embedded_run = || {
                     faces
                         .fallback_lookup
                         .and_then(|f| f(c))
                         .map(|gid| (Font::Embedded, gid.to_be_bytes().to_vec()))
                 };
-                primary_run().or_else(symbol_run).or_else(embedded_run)
+                if faces.primary == Font::Symbol {
+                    // Symbol-hinted items: characters both fonts carry
+                    // (× ÷ ± ·) must come from Symbol, whose metrics layout used.
+                    let times_run = || winansi_byte(c).map(|b| (Font::Times, vec![b]));
+                    symbol_run().or_else(times_run).or_else(embedded_run)
+                } else {
+                    let primary_run = || winansi_byte(c).map(|b| (faces.primary, vec![b]));
+                    primary_run().or_else(symbol_run).or_else(embedded_run)
+                }
             }
             Face::Embedded => {
                 let primary_run = || {

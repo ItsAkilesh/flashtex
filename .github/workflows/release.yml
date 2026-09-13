@@ -158,8 +158,14 @@ jobs:
           mkdir -p "$RUNNER_TEMP/cli" && tar -C "$RUNNER_TEMP/cli" -xzf "dist/flashtex-cli-$VERSION-macos-arm64.tar.gz"
           printf '\\begin{document}\nHello $\\frac{1}{2}$ world.\n\\end{document}\n' > "$RUNNER_TEMP/smoke.tex"
           env -u FLASHTEX_FONT_DIRS -u FLASHTEX_TFM_DIRS -u FLASHTEX_LM_DIR \
-            "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-macos-arm64/bin/flashtex-render" --tex "$RUNNER_TEMP/smoke.tex" --pdf "$RUNNER_TEMP/smoke.pdf"
+            "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-macos-arm64/bin/flashtex" build "$RUNNER_TEMP/smoke.tex" -o "$RUNNER_TEMP/smoke.pdf" --timing
           head -c 8 "$RUNNER_TEMP/smoke.pdf" | grep -q '%PDF-1.'
+          env -u FLASHTEX_FONT_DIRS -u FLASHTEX_TFM_DIRS -u FLASHTEX_LM_DIR \
+            "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-macos-arm64/bin/flashtex" build fixtures/real-world/hw1/HW1.tex -o "$RUNNER_TEMP/hw1.pdf"
+          "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-macos-arm64/bin/flashtex" --version
+          env -u FLASHTEX_FONT_DIRS -u FLASHTEX_TFM_DIRS -u FLASHTEX_LM_DIR \
+            "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-macos-arm64/bin/flashtex-render" --tex "$RUNNER_TEMP/smoke.tex" --pdf "$RUNNER_TEMP/smoke-render.pdf"
+          head -c 8 "$RUNNER_TEMP/smoke-render.pdf" | grep -q '%PDF-1.'
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos
@@ -186,6 +192,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
+            crates/flashtex-cli
             crates/render-pipeline
             crates/compiler
             crates/pdf
@@ -195,7 +202,7 @@ jobs:
         run: |
           set -uo pipefail
           built=(); skipped=()
-          for c in render-pipeline compiler pdf; do
+          for c in flashtex-cli render-pipeline compiler pdf; do
             if (cd "crates/$c" && cargo build --release --locked); then built+=("$c"); else skipped+=("$c"); fi
           done
           echo "built=${built[*]:-}" >> "$GITHUB_OUTPUT"
@@ -209,13 +216,14 @@ jobs:
           scripts/ci/package-cli.sh "$VERSION" linux-x86_64 dist
           (cd dist && sha256sum -- * | tee SHA256SUMS.linux)
       - name: Smoke-test the packaged CLI
-        if: contains(steps.build.outputs.built, 'render-pipeline')
+        if: contains(steps.build.outputs.built, 'flashtex-cli')
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/cli" && tar -C "$RUNNER_TEMP/cli" -xzf "dist/flashtex-cli-$VERSION-linux-x86_64.tar.gz"
           printf '\\begin{document}\nHello $\\frac{1}{2}$ world.\n\\end{document}\n' > "$RUNNER_TEMP/smoke.tex"
-          "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-linux-x86_64/bin/flashtex-render" --tex "$RUNNER_TEMP/smoke.tex" --pdf "$RUNNER_TEMP/smoke.pdf"
+          "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-linux-x86_64/bin/flashtex" build "$RUNNER_TEMP/smoke.tex" -o "$RUNNER_TEMP/smoke.pdf" --timing
           head -c 8 "$RUNNER_TEMP/smoke.pdf" | grep -q '%PDF-1.'
+          "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-linux-x86_64/bin/flashtex" build fixtures/real-world/hw1/HW1.tex -o "$RUNNER_TEMP/hw1.pdf"
       - uses: actions/upload-artifact@v4
         with:
           name: release-linux
@@ -264,7 +272,7 @@ jobs:
             echo "| Asset | What |"
             echo "|---|---|"
             echo "| \`FlashTeX.dmg\` / \`FlashTeX-$VERSION-macos-arm64.dmg\` | The Mac app (macOS 14+, Apple Silicon). Same file under both names; \`install.sh\` on the website fetches \`FlashTeX.dmg\`. |"
-            echo "| \`flashtex-cli-$VERSION-macos-arm64.tar.gz\` | Command-line tools (\`flashtex-render --tex main.tex --pdf main.pdf\`, compiler, pdf) with the bundled fonts/metrics. |"
+            echo "| \`flashtex-cli-$VERSION-macos-arm64.tar.gz\` | The \`flashtex\` CLI (\`flashtex build main.tex\`, check, watch, supported, worker, fonts) plus flashtex-render/compiler/pdf helpers, with the bundled fonts/metrics. |"
             if [ "$LINUX_RESULT" = "success" ]; then
               echo "| \`flashtex-cli-$VERSION-linux-x86_64.tar.gz\` | Command-line tools for Linux x86_64 (built: ${LINUX_BUILT:-none}${LINUX_SKIPPED:+; not built on Linux: $LINUX_SKIPPED}). |"
             else
