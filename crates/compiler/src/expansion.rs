@@ -358,6 +358,8 @@ struct Converter<'d> {
     document_by_path: HashMap<&'d str, usize>,
     /// Engine source id -> document index (`None`: the prelude).
     source_documents: HashMap<u32, Option<usize>>,
+    /// Document index of source 0 (the entry), read without the map.
+    entry: usize,
     out: Vec<ExpandedToken>,
     diagnostics: Vec<Diagnostic>,
     arraystretch: HashMap<(usize, usize), String>,
@@ -399,7 +401,11 @@ impl<'d> Converter<'d> {
         if span.is_synthetic() {
             return None;
         }
-        let document = (*self.source_documents.get(&span.source_id)?)?;
+        let document = if span.source_id == 0 {
+            self.entry
+        } else {
+            (*self.source_documents.get(&span.source_id)?)?
+        };
         let text = self.documents[document].text;
         let (start, end) = (span.start as usize, span.end as usize);
         (end <= text.len() && start <= end).then(|| Span::in_document(DocumentId(document), start, end))
@@ -553,8 +559,10 @@ impl<'d> Converter<'d> {
 
 /// Entry documents at least this large keep a thread-local incremental
 /// cache (see [`expand_project_cached`]); smaller ones re-expand from
-/// scratch, which costs less than the cache bookkeeping.
-pub const INCREMENTAL_MIN_BYTES: usize = 16 * 1024;
+/// scratch. Measured on HW1/HW2 (5 KB): a cached keystroke re-expands in
+/// ~0.17-0.21 ms against ~0.23-0.27 ms from scratch, so real documents use
+/// the cache while unit-test-sized snippets stay on the full path.
+pub const INCREMENTAL_MIN_BYTES: usize = 4 * 1024;
 
 fn limits_for(bytes: usize) -> Limits {
     Limits {
@@ -597,6 +605,7 @@ impl<'d> Converter<'d> {
             documents,
             document_by_path: documents.iter().enumerate().map(|(i, d)| (d.path, i)).collect(),
             source_documents: HashMap::from([(0, Some(entry))]),
+            entry,
             out: Vec::new(),
             diagnostics: Vec::new(),
             arraystretch: HashMap::new(),
