@@ -1242,6 +1242,13 @@ pub fn render_coverage_markdown(inventory: &Inventory) -> String {
          commands and environments together. Supported means handled without an unsupported \
          diagnostic, not typographic parity.\n",
     );
+    // #254 added this caveat to `supported/coverage.md` by hand. That file is
+    // generated, so the note broke `generated_artifacts_are_current` and the
+    // next regeneration would have silently deleted it. It belongs here, where
+    // regeneration reproduces it.
+    out.push_str(
+        "\n**The denominator excludes math-mode symbol commands entirely.** `canonical-latex.tsv`'s candidates are `@findex`/`@EnvIndex` entries from the LaTeX2e reference manual plus each listed package's own source files (see `crates/compiler/scripts/canonical_latex.py`'s header); math symbols such as `\\alpha` and `\\odot` are neither in that manual's index nor in any of the nine package source lists, so they never become candidates and are absent from the table. The compiler tracks math-command support separately (`crates/compiler/src/math.rs`'s `COMMAND_GLYPHS`/`OPERATOR_NAMES`, `crates/compiler/src/supported.rs`'s `Origin::MathSymbol`/`MathOperator`/`MathStructure`; the full list is in `docs/user/compiler.md`'s math tables), but `--supported coverage` does not count them.\n",
+    );
     out
 }
 
