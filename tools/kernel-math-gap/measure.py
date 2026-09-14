@@ -294,7 +294,10 @@ def main():
     # ---- dddot / ddddot -------------------------------------------------
     print("== amsmath \\dddot and \\ddddot: not accents ==\n")
     dd = pdflatex([("a", "a"), ("dot", r"\dot{a}"), ("ddot", r"\ddot{a}"),
-                   ("dddot", r"\dddot{a}"), ("ddddot", r"\ddddot{a}")],
+                   ("dddot", r"\dddot{a}"), ("ddddot", r"\ddddot{a}"),
+                   ("per1", r"\hbox{\normalfont.}"),
+                   ("thin3", r"\hbox{\,\normalfont...}"),
+                   ("thin4", r"\hbox{\,\normalfont....}")],
                   r"\usepackage{amsmath}")
     rows = [(k, "%.5f" % dd[k][0], "%.5f" % dd[k][1], "%.5f" % dd[k][2],
              "%+.5f" % (dd[k][0] - dd["a"][0]))
@@ -302,7 +305,18 @@ def main():
     grid(("expr", "wd", "ht", "dp", "wd - wd(a)"), rows)
     print("  \\dot and \\ddot keep the nucleus width; \\dddot and \\ddddot do\n"
           "  not, because amsmath 744-750 builds them as a \\vbox of text-size\n"
-          "  roman periods over a \\mathop, not as a math accent.\n")
+          "  roman periods over a \\mathop, not as a math accent. The whole\n"
+          "  advance is that \\hbox, exactly:\n")
+    grid(("box", "wd", "the accent it explains", "wd", "diff"),
+         [(r"\hbox{\,\normalfont...}", "%.5f" % dd["thin3"][0],
+           r"\dddot{a}", "%.5f" % dd["dddot"][0],
+           "%+.5f" % (dd["dddot"][0] - dd["thin3"][0])),
+          (r"\hbox{\,\normalfont....}", "%.5f" % dd["thin4"][0],
+           r"\ddddot{a}", "%.5f" % dd["ddddot"][0],
+           "%+.5f" % (dd["ddddot"][0] - dd["thin4"][0])),
+          ("one cmr10 period", "%.5f" % dd["per1"][0],
+           r"\ddddot - \dddot", "%.5f" % (dd["ddddot"][0] - dd["dddot"][0]),
+           "%+.5f" % (dd["ddddot"][0] - dd["dddot"][0] - dd["per1"][0]))])
 
     # ---- sqsubset / sqsupset -------------------------------------------
     print("== \\sqsubset/\\sqsupset: two different designs, by package ==\n")

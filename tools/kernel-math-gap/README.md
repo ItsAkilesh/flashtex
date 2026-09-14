@@ -199,9 +199,12 @@ time would be actively harmful.**
 `\dot` and `\ddot` are real math accents and keep the nucleus width. `\dddot`
 and `\ddddot` do not: `amsmath.sty` 744-750 builds them as
 `\mathop{#1}\limits^{\vbox to-1.4\ex@{\hbox{\,\normalfont ...}}}`, so the dots
-are **text-size roman periods** and the box is as wide as they are — the
-+4.71449 pt is a thin space plus three cmr10 periods, and the fourth period
-adds exactly 2.77779 pt more. Setting them as a combining accent would give
+are **text-size roman periods** and the whole advance is that `\hbox`, exactly:
+`\hbox{\,\normalfont...}` measures **10.00038** and `\dddot{a}` measures
+**10.00038**; `\hbox{\,\normalfont....}` and `\ddddot{a}` both measure
+**12.77817**; the difference between the two accents is **2.77779**, one cmr10
+period, to the last unit. (The +4.71449 in the table is just the excess over
+the nucleus, not the decomposition.) Setting them as a combining accent would give
 roughly the right ink and a 4.7 pt-too-narrow box. They need a raised
 text-size hbox over an operator nucleus, which is new layout machinery rather
 than a table row.
