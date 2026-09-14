@@ -3477,6 +3477,10 @@ impl<'a> Context<'a> {
                 baselineskip: None,
                 vskip_after: Vec::new(),
                 pre_space_after: None,
+                lineskip: None,
+                contributed: None,
+                line_penalty: Vec::new(),
+                depth_after: pagebuild::DepthAfter::default(),
             },
             labels: Vec::new(),
             cache_key: None,
@@ -3774,6 +3778,10 @@ impl<'a> Context<'a> {
             baselineskip: None,
             vskip_after: Vec::new(),
             pre_space_after: None,
+            lineskip: None,
+            contributed: None,
+            line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         BuiltBlock {
             block: pl::ParagraphBlock {
@@ -7394,7 +7402,14 @@ fn assemble_block(
                 }
                 BoxRec::Picture(p) => picture_items(&local, p, source_of, &mut items, &mut used),
                 BoxRec::Table(t) => {
-                    let paint_of = |r: &crate::table::PlacedRule| r.rgb.map_or(Paint::BLACK, |[r, g, b]| Paint { r, g, b, a: 1.0 });
+                    // `device: None`: `crate::tablecolor` has already flattened the
+                    // colortbl colour to sRGB, so the operands pdfTeX would write
+                    // (`k`/`rg`/`g`) are gone by here. Filling this in needs the
+                    // colour resolved by `crate::color` in the compiler instead --
+                    // see `tablecolor`'s module comment.
+                    let paint_of = |r: &crate::table::PlacedRule| {
+                        r.rgb.map_or(Paint::BLACK, |[r, g, b]| Paint { r, g, b, a: 1.0, device: None })
+                    };
                     // colortbl's leaders come before the entry in each cell.
                     for r in &t.fills {
                         items.push(display::Item::Rule(Rule {
