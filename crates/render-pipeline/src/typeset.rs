@@ -347,6 +347,9 @@ struct ParaState {
 const CLUB_PENALTY: i32 = 150;
 const WIDOW_PENALTY: i32 = 150;
 const SEC_PENALTY: i32 = -300;
+/// `\brokenpenalty` (latex.ltx: `\brokenpenalty 100`), added to the penalty
+/// after a line the paragraph broke at a discretionary (TeX §890).
+const BROKEN_PENALTY: i32 = 100;
 const PREDISPLAY_PENALTY: i32 = pagebuild::INF_PENALTY;
 
 /// Sets `run`'s glyphs at `x` on a line (what `layout_paragraph` does for
@@ -2384,6 +2387,7 @@ impl<'a> Context<'a> {
             baselineskip: Some(0.0),
             lineskip: Some(0.0),
             vskip_after: Vec::new(),
+            broken_penalty: Vec::new(),
             pre_space_after: None,
             contributed: Some(contributed),
             line_penalty,
@@ -2813,6 +2817,7 @@ impl<'a> Context<'a> {
             no_interline_after: false,
             baselineskip: sized.map(|s| s.baselineskip_pt),
             vskip_after: vskips_of(&lines, &skips),
+            broken_penalty: broken_of(&lines),
             pre_space_after: None,
             lineskip: None,
             contributed: None,
@@ -3328,6 +3333,7 @@ impl<'a> Context<'a> {
             no_interline_after: false,
             baselineskip: Some(h.baselineskip_pt),
             vskip_after: vskips_of(&lines, &skips),
+            broken_penalty: Vec::new(),
             pre_space_after: None,
             lineskip: None,
             contributed: None,
@@ -3432,6 +3438,7 @@ impl<'a> Context<'a> {
             no_interline_after: false,
             baselineskip: None,
             vskip_after: Vec::new(),
+            broken_penalty: Vec::new(),
             pre_space_after: None,
             lineskip: None,
             contributed: None,
@@ -3508,6 +3515,7 @@ impl<'a> Context<'a> {
             no_interline_after: true,
             baselineskip: None,
             vskip_after: Vec::new(),
+            broken_penalty: Vec::new(),
             pre_space_after: None,
             lineskip: None,
             contributed: None,
@@ -3569,6 +3577,7 @@ impl<'a> Context<'a> {
                 no_interline_after: false,
                 baselineskip: None,
                 vskip_after: Vec::new(),
+                broken_penalty: Vec::new(),
                 pre_space_after: None,
                 lineskip: None,
                 contributed: None,
@@ -3693,6 +3702,7 @@ impl<'a> Context<'a> {
             no_interline_after: false,
             baselineskip: Some(baselineskip_pt),
             vskip_after: vskips_of(&lines, &skips),
+            broken_penalty: Vec::new(),
             pre_space_after: None,
             lineskip: None,
             contributed: None,
@@ -4074,6 +4084,7 @@ impl<'a> Context<'a> {
                 no_interline_after: true,
                 baselineskip: None,
                 vskip_after: Vec::new(),
+                broken_penalty: Vec::new(),
                 pre_space_after: None,
                 lineskip: None,
                 contributed: None,
@@ -4193,6 +4204,7 @@ impl<'a> Context<'a> {
                 no_interline_after: true,
                 baselineskip: None,
                 vskip_after: Vec::new(),
+                broken_penalty: Vec::new(),
                 pre_space_after: None,
                 lineskip: None,
                 contributed: None,
@@ -4328,6 +4340,7 @@ impl<'a> Context<'a> {
             no_interline_after: false,
             baselineskip: None,
             vskip_after: Vec::new(),
+            broken_penalty: Vec::new(),
             pre_space_after: None,
             lineskip: None,
             contributed: None,
@@ -4375,6 +4388,7 @@ impl<'a> Context<'a> {
             no_interline_after: false,
             baselineskip: None,
             vskip_after: Vec::new(),
+            broken_penalty: Vec::new(),
             pre_space_after: None,
             lineskip: None,
             contributed: None,
@@ -4705,6 +4719,7 @@ impl<'a> Context<'a> {
             no_interline_after: false,
             baselineskip: None,
             vskip_after: Vec::new(),
+            broken_penalty: Vec::new(),
             pre_space_after: None,
             lineskip: None,
             contributed: None,
@@ -5127,6 +5142,7 @@ impl<'a> Context<'a> {
             no_interline_after: false,
             baselineskip: Some(normal + JOT),
             vskip_after: vskips,
+            broken_penalty: Vec::new(),
             pre_space_after: None,
             lineskip: None,
             contributed: None,
@@ -5199,6 +5215,19 @@ impl<'a> Context<'a> {
 
 /// The `\\[<dimen>]` skip after each line: a skip recorded at a forced
 /// break lands after the line that break ends.
+/// `\brokenpenalty` per line: TeX's `disc_break` is the flagged break at the
+/// end of the line (a hyphenation point, `\-`, or the empty discretionary
+/// pdfTeX inserts after an explicit hyphen), which `paragraph-layout` reports
+/// as `Line::hyphenated`. The last line's entry is never read (§890 appends
+/// no penalty after it), and an all-zero vector is dropped so blocks without
+/// a hyphenated line keep the empty vector.
+fn broken_of(lines: &pl::Lines) -> Vec<i32> {
+    if !lines.lines.iter().any(|l| l.hyphenated) {
+        return Vec::new();
+    }
+    lines.lines.iter().map(|l| if l.hyphenated { BROKEN_PENALTY } else { 0 }).collect()
+}
+
 fn vskips_of(lines: &pl::Lines, skips: &[(usize, f64)]) -> Vec<f64> {
     if skips.is_empty() {
         return Vec::new();
@@ -5230,6 +5259,7 @@ fn table_cell_block(lines: pl::Lines, items: Vec<pl::Item>, recs: Vec<Option<usi
         no_interline_after: false,
         baselineskip: None,
         vskip_after: Vec::new(),
+        broken_penalty: Vec::new(),
         pre_space_after: None,
         lineskip: None,
         contributed: None,
@@ -6592,6 +6622,7 @@ fn plain_vblock(lines: Vec<(f64, f64)>) -> VBlock {
         no_interline_after: false,
         baselineskip: None,
         vskip_after: Vec::new(),
+        broken_penalty: Vec::new(),
         pre_space_after: None,
         lineskip: None,
         contributed: None,
