@@ -904,7 +904,7 @@ impl MathParser<'_> {
                         return Some(space(mu / 18.0, token.span));
                     }
                     if ch == '|' {
-                        return Some(symbol("∣∣".into(), token.span));
+                        return Some(symbol("‖".into(), token.span));
                     }
                 }
                 Some(symbol(ch.to_string(), span))
@@ -2008,7 +2008,7 @@ impl MathParser<'_> {
                 "lbrace" => Some("{"),
                 "rbrace" => Some("}"),
                 "vert" => Some("|"),
-                "Vert" => Some("∣∣"),
+                "Vert" => Some("‖"),
                 other => command_glyph(other).filter(|_| DELIMITER_COMMANDS.contains(&other)),
             };
             if let Some(glyph) = glyph {
@@ -2031,7 +2031,7 @@ impl MathParser<'_> {
         }
         if delimiter == "|" && token.span.end - token.span.start == 2 {
             self.i += 1;
-            return symbol("∣∣".into(), span.merge(token.span));
+            return symbol("‖".into(), span.merge(token.span));
         }
         if delimiter.chars().count() != 1 || !"()[]{}|./<>".contains(delimiter.as_str()) {
             self.diagnostics.push(Diagnostic::error(
@@ -2889,9 +2889,17 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("rangle", "〉"),
     ("lvert", "∣"),
     ("rvert", "∣"),
-    // Symbol has no double bar U+2016: two real verticalbar glyphs.
-    ("lVert", "∣∣"),
-    ("rVert", "∣∣"),
+    // `\|`/`\Vert`/`\lVert`/`\rVert` are U+2016 DOUBLE VERTICAL LINE, a
+    // different symbol from `\mid`'s U+2223: plain.tex gives `\Vert` the
+    // cmsy `"6B` small variant and the cmex `"0D` extensible recipe, where
+    // `\mid` gets cmsy `"6A`/cmex `"0C`. They differ in width at every size
+    // (5.00002/5.55557 pt against 2.77779/3.33333 at 10 pt), so spelling one
+    // as two of the other is wrong in the box, not only in the ink. The
+    // base-14 Symbol face has no double bar, but U+2016 is drawn from the
+    // pinned Latin Modern Math resource (`crate::lm_math`) exactly as
+    // `\parallel`'s U+2225 already is.
+    ("lVert", "‖"),
+    ("rVert", "‖"),
     ("times", "×"),
     ("div", "÷"),
     ("pm", "±"),
@@ -6182,5 +6190,68 @@ mod package_gating_tests {
             }
         );
         assert_eq!(class("article"), MathPackages::KERNEL);
+    }
+}
+
+/// `\|`/`\Vert` against `\mid`: two different symbols, not one spelled twice.
+#[cfg(test)]
+mod double_bar_tests {
+    use super::*;
+
+    /// `\lVert`/`\rVert`/`\lvert`/`\rvert` are amsmath's, so they need it
+    /// loaded to exist at all (`package_gating_tests`).
+    const AMSMATH: MathPackages = MathPackages {
+        amsmath: true,
+        amssymb: false,
+        amsfonts: false,
+    };
+
+    /// The glyph texts a formula lays out, in order.
+    fn texts(source: &str, packages: MathPackages) -> Vec<String> {
+        let mut diagnostics = Vec::new();
+        let list = parse_tokens(&crate::lexer::tokenize(source), packages, &mut diagnostics);
+        let b = layout(&list, 10.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+        b.items.iter().map(|i| i.text.clone()).collect()
+    }
+
+    /// plain.tex gives `\Vert` cmsy `"6B` and the cmex `"0D` recipe, `\mid`
+    /// cmsy `"6A` and cmex `"0C`. Spelling the first as two of the second put
+    /// a 2.77779 pt bar where a 5.00002 pt one belongs at text size, and the
+    /// 3.33333 pt single-bar extension where the 5.55557 pt double-bar one
+    /// belongs once the delimiter grows.
+    #[test]
+    fn every_spelling_of_the_double_bar_is_one_u2016() {
+        // `\Vert` on its own is still an unsupported command here (it is
+        // only a fence name, `DELIMITER_COMMANDS`); `\|` is its spelling
+        // that parses everywhere.
+        assert_eq!(texts(r"\|", MathPackages::KERNEL), vec!["\u{2016}"]);
+        for source in [r"\lVert", r"\rVert"] {
+            assert_eq!(texts(source, AMSMATH), vec!["\u{2016}"], "{source}");
+        }
+        for source in [r"\left\| x \right\|", r"\left\Vert x \right\Vert"] {
+            let t = texts(source, MathPackages::KERNEL);
+            assert!(
+                t.iter().filter(|s| *s == "\u{2016}").count() == 2
+                    && !t.iter().any(|s| s.contains('\u{2223}')),
+                "{source}: {t:?}"
+            );
+        }
+    }
+
+    /// `\mid` and `\vert` keep the single bar they always had.
+    #[test]
+    fn the_single_bar_commands_are_unchanged() {
+        assert_eq!(texts(r"\mid", MathPackages::KERNEL), vec!["\u{2223}"]);
+        assert_eq!(texts(r"\lvert", AMSMATH), vec!["\u{2223}"]);
+        assert_eq!(texts(r"\rvert", AMSMATH), vec!["\u{2223}"]);
+    }
+
+    /// U+2016 is bound to the same pinned Latin Modern Math resource that
+    /// already carries `\parallel`, so it stays exportable.
+    #[test]
+    fn the_double_bar_is_bound_to_latin_modern_math() {
+        assert!(crate::lm_math::advance('\u{2016}').is_some());
+        assert!(crate::export::unrepresentable("\u{2016}").is_empty());
     }
 }
