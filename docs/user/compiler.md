@@ -246,10 +246,14 @@ and embeds the Latin Modern OpenType faces (plus New Computer Modern Math for
 Without the TFMs the OpenType metrics are used and a `tfm_missing` /
 `math_metrics_opentype` warning says so; a missing required metric set is the
 blocking `required_metrics_unavailable` error, never a silent fallback. The
-bundle covers Latin Modern Roman regular/bold/italic at 5–17 pt and the math
-faces; sans, typewriter and small caps are not bundled. The PDF writer
-resolves each face by content hash in the same directories, so the embedded
-program is exactly the file the layout used.
+bundle covers Latin Modern Roman regular/bold/italic at 5–17 pt, the math
+faces, and — despite older notes here — sans (`lmsans*`, including demi-condensed),
+slanted (`lmromanslant*`/`lmmonoslant*`), small caps (`lmromancaps*`/
+`lmmonocaps*`) and typewriter (`lmmono*`, including bold via `lmmonolt*`):
+`\textsf`/`\texttt`/`\textsl`/small caps all resolve to real bundled faces
+(`crates/render-pipeline/src/fonts.rs`'s `latin_modern_file`), not a
+substitution. The PDF writer resolves each face by content hash in the same
+directories, so the embedded program is exactly the file the layout used.
 
 ## Helper binaries
 
