@@ -2673,9 +2673,21 @@ impl<'a> Context<'a> {
 
     /// A body paragraph (or the part of one before/after a display).
     /// `starts_paragraph` adds `\parskip`; `after_heading` is LaTeX's
-    /// `\@afterheading` (`\clubpenalty 10000`).
-    fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool, style: ParaStyle, list_geom: Option<&ListGeom>) -> Option<BuiltBlock> {
-        let size = self.style.body_size_pt;
+    /// `\@afterheading` (`\clubpenalty 10000`). `sized` sets the paragraph
+    /// at a size other than `\normalsize` with that size's own leading and
+    /// `em` (`abstract`; see [`adapter::SizedPara`]).
+    fn paragraph_block(
+        &mut self,
+        items: &[AItem],
+        indent: bool,
+        starts_paragraph: bool,
+        after_heading: bool,
+        style: ParaStyle,
+        list_geom: Option<&ListGeom>,
+        sized: Option<adapter::SizedPara>,
+    ) -> Option<BuiltBlock> {
+        let size = sized.map_or(self.style.body_size_pt, |s| s.size_pt);
+        let baselineskip = sized.map_or(self.style.baselineskip_pt, |s| s.baselineskip_pt);
         let (mut list, mut recs, labels, mut skips) = self.hlist(items, size, TextStyle::default(), style);
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
@@ -2712,9 +2724,28 @@ impl<'a> Context<'a> {
                 }
             }
         }
-        let params = self.line_params(indent, self.style.baselineskip_pt, style, hang_pt);
+        let mut params = self.line_params(indent, baselineskip, style, hang_pt);
+        // `\list` sets `\parindent\listparindent`, evaluated in the `em`
+        // (`\fontdimen6`) of the font the list's own text is set in.
+        if let (true, Some(em)) = (indent, sized.and_then(|s| s.parindent_em)) {
+            params.parindent = em * self.text_params(TextStyle::default(), size).quad;
+        }
         let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
+        // `\vspace{<n>em}` inside the paragraph's last group (the abstract
+        // head's `\vspace{-.5em}`): `\@vspace` puts it after the line
+        // through `\vadjust`, so it is evaluated in the `em` of the font in
+        // force there — the style of the paragraph's last word.
+        let vspace_after = match sized.map(|s| s.vspace_after_em).filter(|em| *em != 0.0) {
+            Some(em) => {
+                let last = items.iter().rev().find_map(|i| match i {
+                    AItem::Word(w) => w.segments.last().map(|s| s.style.clone()),
+                    _ => None,
+                });
+                em * self.text_params(last.unwrap_or_default(), size).quad
+            }
+            None => 0.0,
+        };
         // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.
         let parskip = self.parskip_of(list_geom);
         let vertical = VBlock {
@@ -2726,16 +2757,24 @@ impl<'a> Context<'a> {
             club_penalty: if after_heading { pagebuild::INF_PENALTY } else { CLUB_PENALTY },
             widow_penalty: WIDOW_PENALTY,
             penalty_after: None,
-            space_after: trailing_skip.map(|pt| {
-                // `\@xcentercr`: `\par \addvspace{-\parskip} \vskip <dimen>`;
-                // the paragraph that follows adds `\parskip` back, so under
-                // `\centering` only the `[<dimen>]` separates the lines.
-                let p = self.style.parskip;
-                if matches!(style, ParaStyle::Center | ParaStyle::FlushRight) { (pt - p.natural, -p.stretch, -p.shrink) } else { (pt, 0.0, 0.0) }
-            }),
+            space_after: match (trailing_skip, vspace_after) {
+                (None, 0.0) => None,
+                (None, pt) => Some((pt, 0.0, 0.0)),
+                (Some(pt), after) => {
+                    // `\@xcentercr`: `\par \addvspace{-\parskip} \vskip <dimen>`;
+                    // the paragraph that follows adds `\parskip` back, so under
+                    // `\centering` only the `[<dimen>]` separates the lines.
+                    let p = self.style.parskip;
+                    Some(if matches!(style, ParaStyle::Center | ParaStyle::FlushRight) {
+                        (pt + after - p.natural, -p.stretch, -p.shrink)
+                    } else {
+                        (pt + after, 0.0, 0.0)
+                    })
+                }
+            },
             no_interline_first: false,
             no_interline_after: false,
-            baselineskip: None,
+            baselineskip: sized.map(|s| s.baselineskip_pt),
             vskip_after: vskips_of(&lines, &skips),
             pre_space_after: None,
             lineskip: None,
@@ -2772,6 +2811,7 @@ impl<'a> Context<'a> {
             addvspace_before,
             endlist_adjust,
             list,
+            sized,
         } = block
         else {
             return;
@@ -2808,8 +2848,40 @@ impl<'a> Context<'a> {
             if let Some(e) = env_open {
                 st.env_vmode = e.vmode;
             }
-            let mut env_before = env_open.map(|e| env_skip(e.vmode));
-            let env_after = env_close.then(|| env_skip(st.env_vmode));
+            // `\@item` opens the environment with `\addvspace{\@topsep}`,
+            // not `\vskip`, and only when `\if@nobreak` is false:
+            //
+            // * `\@xaddvskip` keeps whichever of `\@topsep` and `\lastskip`
+            //   is larger, so a skip the previous block already left
+            //   absorbs it. `\@maketitle`'s trailing `\vskip 1.5em` (15pt
+            //   at a 10pt base, 16.425pt at 11pt) beats `\topsep +
+            //   \partopsep` (10pt / 12pt) at every class size, so an
+            //   `abstract` or a `quote` right after `\maketitle` opens with
+            //   no skip of its own at all.
+            // * right after a heading `\@afterheading` has set
+            //   `\@nobreaktrue`, so `\@nbitem` runs instead:
+            //   `\addvspace{\@outerparskip - \parskip}` cancels `\lastskip`
+            //   and the list's own `\parskip` restores it, leaving exactly
+            //   the heading's after-skip and no `\@topsep` at all.
+            //
+            // Both are read off pdfTeX's vertical list; the probes and the
+            // quoted `\showoutput` glue are in `tests/abstract_env.rs`.
+            let mut env_before = env_open.map(|e| {
+                let (n, stretch, shrink) = env_skip(e.vmode);
+                let last = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
+                if st.after_heading || last >= n {
+                    (0.0, 0.0, 0.0)
+                } else {
+                    (n - last, stretch, shrink)
+                }
+            });
+            // `\endlist` of a list opened at another size takes *that*
+            // size's `\@listi` (`abstract`'s `quotation` under `\small`),
+            // not the class's `\normalsize` one.
+            let env_after = env_close.then(|| match sized.and_then(|s| s.close_skip) {
+                Some(s) => (s.natural, s.stretch, s.shrink),
+                None => env_skip(st.env_vmode),
+            });
             let first_block = blocks.len();
             // TeX's pre_display_size: the width of the line before a
             // display plus 2em; -infinity when nothing precedes it.
@@ -2838,8 +2910,17 @@ impl<'a> Context<'a> {
                         // display's closing `$$` (§1200 resume_after_display).
                         let items = if !first && matches!(items.first(), Some(AItem::Space { .. })) { &items[1..] } else { &items[..] };
                         let (ind, starts, ah) = (*indent && first, first, st.after_heading && first);
-                        let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah), *style as u64, list_fp]);
+                        let sized_fp = sized.map_or(0, |s| {
+                            let mut h = std::collections::hash_map::DefaultHasher::new();
+                            s.size_pt.to_bits().hash(&mut h);
+                            s.baselineskip_pt.to_bits().hash(&mut h);
+                            s.parindent_em.map(f64::to_bits).hash(&mut h);
+                            s.vspace_after_em.to_bits().hash(&mut h);
+                            h.finish()
+                        });
+                        let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah), *style as u64, list_fp, sized_fp]);
                         let st = *style;
+                        let sz = *sized;
                         // `\label` whatsits and a space left in horizontal
                         // mode after a display (the adapter's
                         // `label_line` part): TeX's line_break still sets
@@ -2852,7 +2933,7 @@ impl<'a> Context<'a> {
                         if label_line && !first {
                             blocks.push(ctx.empty_line_block());
                             pre_display = None;
-                        } else if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st, geom)) {
+                        } else if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st, geom, sz)) {
                             pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
                             if std::mem::take(&mut eject) {
                                 b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
@@ -4889,7 +4970,7 @@ impl<'a> Context<'a> {
                     Some(v) => *v += before,
                     None => lead += before,
                 }
-                if let Some(b) = self.paragraph_block(&text.items, false, true, false, ParaStyle::Plain, None) {
+                if let Some(b) = self.paragraph_block(&text.items, false, true, false, ParaStyle::Plain, None, None) {
                     let offset = items.len();
                     let n = b.block.lines.lines.len();
                     for (k, mut line) in b.block.lines.lines.into_iter().enumerate() {
