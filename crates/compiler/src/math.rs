@@ -2861,6 +2861,10 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("varnothing", "∅"),
     ("oplus", "⊕"),
     ("otimes", "⊗"),
+    ("ominus", "⊖"),
+    ("oslash", "⊘"),
+    ("odot", "⊙"),
+    ("bigcirc", "◯"),
     ("wedge", "∧"),
     ("land", "∧"),
     ("lor", "∨"),
@@ -3138,7 +3142,7 @@ fn symbol_class(glyph: &str) -> AtomClass {
         // cmsy "76/"77 (kernel, not amssymb).
         | "⊑" | "⊒" => Rel,
         "+" | "-" | "−" | "*" | "±" | "×" | "÷" | "⋅" | "·" | "∗" | "∪" | "∩" | "∨" | "∧" | "⊕"
-        | "⊗" | "∖" | "∓" | "∘"
+        | "⊗" | "⊖" | "⊘" | "⊙" | "◯" | "∖" | "∓" | "∘"
         // fontmath.ltx 278-279: `\sqcap`/`\sqcup`, `\mathbin` at cmsy "75/"74.
         | "⊓" | "⊔"
         // `\bigtriangledown`; `\bigtriangleup` shares `\triangle`'s glyph
@@ -5418,6 +5422,15 @@ mod spacing_tests {
         let b = laid_out("a+b", SIZE);
         close(x(&b, "+"), width("a", SIZE) + 4.0);
         close(x(&b, "b"), x(&b, "+") + width("+", SIZE) + 4.0);
+    }
+
+    #[test]
+    fn odot_is_a_binary_operator() {
+        for (command, glyph) in [("ominus", "⊖"), ("oslash", "⊘"), ("odot", "⊙"), ("bigcirc", "◯")] {
+            let b = laid_out(&format!("a\\{command} b"), SIZE);
+            close(x(&b, glyph), width("a", SIZE) + 4.0);
+            close(x(&b, "b"), x(&b, glyph) + width(glyph, SIZE) + 4.0);
+        }
     }
 
     #[test]
