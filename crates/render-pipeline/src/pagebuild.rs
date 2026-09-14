@@ -397,6 +397,96 @@ pub fn resolve_regions(list: &[VItem], regions: &[(usize, Region)]) -> Vec<Resol
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedRegion(VRegion);
 
+impl ResolvedRegion {
+    /// The vertical-list indices the region covers.
+    pub fn range(&self) -> std::ops::Range<usize> {
+        self.0.range.clone()
+    }
+}
+
+/// The regions' view of the vertical list: what `\pagegoal` loses at each
+/// index (longtable.sty 229: `\LT@start` subtracts `\ht\LT@foot` from
+/// `\pagegoal` itself, and 274-275 gives it back at `\endlongtable`), and
+/// the `\LT@foot`/`\LT@head` boxes a break inside one needs.
+///
+/// Every page-building path shares it: [`break_pages_regions`],
+/// [`break_pages_inserts_regions`] and `typeset::floatpage::paginate`.
+#[derive(Clone, Copy)]
+pub(crate) struct Regions<'a>(&'a [ResolvedRegion]);
+
+impl<'a> Regions<'a> {
+    pub(crate) fn new(regions: &'a [ResolvedRegion]) -> Regions<'a> {
+        Regions(regions)
+    }
+
+    fn at(&self, i: usize) -> Option<&'a VRegion> {
+        self.0.iter().map(|r| &r.0).find(|r| r.range.contains(&i))
+    }
+
+    /// `\ht\LT@foot` reserved from `\pagegoal` at vertical-list index `i`,
+    /// or `\ht\LT@lastfoot` once the closing foot's rows are reached.
+    pub(crate) fn reserved(&self, i: usize) -> f64 {
+        self.at(i).map_or(0.0, |r| if i >= r.tail { r.tail_foot_height } else { r.foot_height })
+    }
+
+    /// Whether vertical-list index `i` is inside some region.
+    pub(crate) fn contains(&self, i: usize) -> bool {
+        self.at(i).is_some()
+    }
+
+    /// longtable.sty 223: unless the table cannot start on this page at all,
+    /// `\LT@start` ends with `\ifdim\pageshrink>\z@\pageshrink\z@\fi` — the
+    /// glue already on the page (the paragraph's `\parskip`, `\LTpre`'s own
+    /// `minus 4pt`, `\skip\footins`) may no longer be shrunk to buy the
+    /// table another row. Without it the builder squeezes one row too many
+    /// onto the page the table starts on.
+    pub(crate) fn starts_at(&self, i: usize) -> bool {
+        self.0.iter().any(|r| r.0.range.start == i)
+    }
+
+    /// `\LT@output`'s ordinary branch (longtable.sty 513-516) for a page
+    /// that ended at `end`: the foot to append to it and the head to open
+    /// the next one with, when the break fell inside a region and the
+    /// region continues past it.
+    pub(crate) fn at_break(&self, end: usize) -> Option<(Option<Placed3>, Option<Placed3>)> {
+        let r = self.at(end.saturating_sub(1)).filter(|r| end < r.range.end)?;
+        Some((r.foot, r.head))
+    }
+}
+
+/// `page_max_depth` for a page whose first box is `first` (§987
+/// `freeze_page_specs`: `\maxdepth` is copied into `page_max_depth` when
+/// the page's first box is contributed, and never re-read for that page).
+///
+/// `\LT@start` sets `\maxdepth\z@` (longtable.sty 230) at the outer
+/// vertical list, after `\LT@echunk` has closed the first chunk's box but
+/// before `\unvbox\z@` contributes any of its rows — so the zero reaches
+/// the page exactly when the table's first row is also the page's first
+/// box. A table starting under existing material finds `page_max_depth`
+/// already frozen at `\@maxdepth`, and every later page of the table gets
+/// `\@maxdepth` back from `\@makecol`'s `\global\maxdepth\@maxdepth`, so
+/// only the page a table opens is affected. Measured against pdflatex:
+/// 104-longtable-chunk-boundary, whose document begins with the table,
+/// loses one row on its first page and none afterwards.
+fn page_max_depth(base: &PageParams, regions: Regions, first: usize) -> f64 {
+    if regions.starts_at(first) {
+        0.0
+    } else {
+        base.maxdepth
+    }
+}
+
+/// `(height, depth, payload)` of a head or foot box.
+pub(crate) type Placed3 = (f64, f64, (usize, usize));
+
+/// The head or foot box as a vertical-list item, so a page's material can
+/// carry it through the same natural-size and glue-setting passes as the
+/// rest (`\LT@output` puts both inside `\box\@cclv`, which `\@makecol`
+/// then packs).
+fn region_box((height, depth, payload): Placed3) -> VItem {
+    VItem::Box { height, depth, payload }
+}
+
 /// [`break_pages`] with the first `short_pages` pages (page-builder
 /// columns) `short` points shorter: `\@topnewpage` (latex.ltx) lowers
 /// `\@colht` by the height of `\twocolumn[<material>]`'s box plus
@@ -413,14 +503,9 @@ pub fn break_pages_regions(base: &PageParams, list: &[VItem], short_pages: usize
     let mut pages: Vec<BuiltPage> = Vec::new();
     let mut start = 0usize;
     // `\copy\LT@head\nobreak` at the top of a continuation page.
-    let mut pending_head: Option<(f64, f64, (usize, usize))> = None;
-    let region_at = |i: usize| regions.iter().map(|r| &r.0).find(|r| r.range.contains(&i));
+    let mut pending_head: Option<Placed3> = None;
+    let regions = Regions(regions);
     while start < list.len() {
-        let page_params = PageParams {
-            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
-            ..*base
-        };
-        let p = &page_params;
         // Discard glue/penalties at the top of the page.
         while start < list.len() && !matches!(list[start], VItem::Box { .. }) {
             start += 1;
@@ -428,11 +513,15 @@ pub fn break_pages_regions(base: &PageParams, list: &[VItem], short_pages: usize
         if start >= list.len() {
             break;
         }
+        let page_params = PageParams {
+            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
+            maxdepth: page_max_depth(base, regions, start),
+            ..*base
+        };
+        let p = &page_params;
         // `\pagegoal` loses `\ht\LT@foot` for as long as the page's
         // material is inside a longtable, and `\maxdepth` is zero there.
-        let reserved = |i: usize| {
-            region_at(i).map_or(0.0, |r| if i >= r.tail { r.tail_foot_height } else { r.foot_height })
-        };
+        let reserved = |i: usize| regions.reserved(i);
         let head = pending_head.take();
         let mut st = PageState::new();
         let mut best: Option<(usize, i64)> = None; // (break index, cost)
@@ -485,6 +574,9 @@ pub fn break_pages_regions(base: &PageParams, list: &[VItem], short_pages: usize
                     fired = Some(best.map_or(i, |(bi, _)| bi));
                     break;
                 }
+            }
+            if regions.starts_at(i) {
+                st.shrink = 0.0;
             }
             match &list[i] {
                 VItem::Box { height, depth, payload } => {
@@ -548,11 +640,16 @@ pub fn break_pages_regions(base: &PageParams, list: &[VItem], short_pages: usize
             None => list.len(),
         };
         let ejected = matches!(list.get(end), Some(VItem::Penalty(pen)) if *pen <= EJECT_PENALTY);
+        // A page the longtable output routine ends carries `\vss` after
+        // `\copy\LT@foot` (longtable.sty 513), which takes the column's
+        // whole slack and leaves the finite glue at its natural size.
+        let region_break = fired.is_some() && end < list.len() && regions.at_break(end).is_some();
         // `\@makecol` sets every column `\vbox to\@colht`: material taller
         // than the column shrinks whatever the page style (`\raggedbottom`'s
         // `\@textbottom` and `\newpage`'s `\vfil` only stretch); a short
         // page stretches only under `\flushbottom` at an ordinary break.
         let set = match glue_set(p, &list[start..end]) {
+            _ if region_break => 0.0,
             g if g < 0.0 => g,
             g if p.flushbottom && fired.is_some() && !ejected => g,
             _ => 0.0,
@@ -601,14 +698,14 @@ pub fn break_pages_regions(base: &PageParams, list: &[VItem], short_pages: usize
         // `\LT@output`: a page broken inside the table ends with
         // `\LT@foot` and the next one opens with `\LT@head`.
         if fired.is_some() && end < list.len() {
-            if let Some(r) = region_at(end.saturating_sub(1)).filter(|r| end < r.range.end) {
-                if let Some((h, d, payload)) = r.foot {
+            if let Some((foot, head)) = regions.at_break(end) {
+                if let Some((h, d, payload)) = foot {
                     let baseline = total + depth + h;
                     total = baseline;
                     depth = d;
                     page.lines.push(Placed { payload, baseline, height: h, depth: d });
                 }
-                pending_head = r.head;
+                pending_head = head;
             }
         }
         let _ = (total, depth);
@@ -800,7 +897,9 @@ impl<'a> InsertState<'a> {
     /// §1008–§1010 for an insertion arriving with the page at `total`,
     /// `depth` and `shrink` (TeX's `page_so_far`); `stretch`/`shrink` get
     /// `\skip\footins` when the class first appears on the page.
-    fn append(&mut self, list: Vec<VItem>, height_plus_depth: f64, at: Option<usize>, total: f64, depth: f64, stretch: &mut f64, shrink: &mut f64) {
+    /// `reserve` is what a longtable region has already taken off
+    /// `\pagegoal` (`\ht\LT@foot`), which the note must fit above.
+    fn append(&mut self, list: Vec<VItem>, height_plus_depth: f64, at: Option<usize>, total: f64, depth: f64, reserve: f64, stretch: &mut f64, shrink: &mut f64) {
         let index = self.page.len();
         if !self.started {
             // §1009: `\box\footins` is void at the start of a page.
@@ -815,7 +914,7 @@ impl<'a> InsertState<'a> {
             return;
         }
         self.last_ins = Some(index);
-        let delta = self.goal - total - depth + *shrink;
+        let delta = self.goal - reserve - total - depth + *shrink;
         if (height_plus_depth <= 0.0 || height_plus_depth <= delta + 1e-9) && height_plus_depth + self.height <= self.ins.max + 1e-9 {
             self.goal -= height_plus_depth;
             self.height += height_plus_depth;
@@ -823,7 +922,7 @@ impl<'a> InsertState<'a> {
             return;
         }
         // §1010: split the insertion.
-        let w = (self.goal - total - depth).min(self.ins.max - self.height);
+        let w = (self.goal - reserve - total - depth).min(self.ins.max - self.height);
         let (at_break, best_hd, pi) = vert_break(&list, w, self.ins.split_max_depth);
         self.height += best_hd;
         self.goal -= best_hd;
@@ -841,22 +940,45 @@ impl<'a> InsertState<'a> {
 /// (`\skip\footins`, `\footnoterule`) in the column box `\vbox
 /// to\@colht`. Returns the pages and each page's note area.
 pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize, short: f64, ins: &Insertions) -> (Vec<BuiltPage>, Vec<Option<InsertArea>>) {
+    break_pages_inserts_regions(base, list, short_pages, short, ins, &[])
+}
+
+/// [`break_pages_inserts`] with longtable regions. `\pagegoal` carries both
+/// charges at once: `\LT@start` subtracts `\ht\LT@foot` from it
+/// (longtable.sty 229) and TeX's insertion machinery subtracts
+/// `\skip\footins` and the notes (§1009), so a note and a continuation foot
+/// compete for the same page. `\LT@output` ends such a page by putting
+/// `\copy\LT@foot` inside `\box\@cclv` *before* calling `\@makecol` (487-517),
+/// so the foot is part of the column body the notes are set under, and the
+/// next page opens with `\copy\LT@head\nobreak`.
+pub fn break_pages_inserts_regions(
+    base: &PageParams,
+    list: &[VItem],
+    short_pages: usize,
+    short: f64,
+    ins: &Insertions,
+    regions: &[ResolvedRegion],
+) -> (Vec<BuiltPage>, Vec<Option<InsertArea>>) {
     let mut pages: Vec<BuiltPage> = Vec::new();
     let mut areas: Vec<Option<InsertArea>> = Vec::new();
     let mut start = 0usize;
     let mut held: Vec<PageIns> = Vec::new();
+    let regions = Regions(regions);
+    // `\copy\LT@head\nobreak` at the top of a continuation page.
+    let mut pending_head: Option<Placed3> = None;
     loop {
-        let page_params = PageParams {
-            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
-            ..*base
-        };
-        let p = &page_params;
         while start < list.len() && !matches!(list[start], VItem::Box { .. }) {
             start += 1;
         }
         if start >= list.len() && held.is_empty() {
             break;
         }
+        let page_params = PageParams {
+            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
+            maxdepth: page_max_depth(base, regions, start),
+            ..*base
+        };
+        let p = &page_params;
         let mut st = PageState::new();
         let mut is = InsertState::new(ins, p.vsize);
         // Held-over insertions are contributed ahead of the page's material.
@@ -867,24 +989,35 @@ pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize
             st.total = p.topskip;
             st.has_box = true;
         }
+        // `\copy\LT@head\nobreak`: the continuation head is on the page
+        // before any of its material, so it is what `\topskip` measures to
+        // and what the first note sees as `\pagetotal`.
+        let head = pending_head.take();
+        if let Some((h, d, _)) = head {
+            st.total = (p.topskip - h).max(0.0) + h;
+            st.depth = d;
+            st.has_box = true;
+        }
+        let head_reserve = regions.reserved(start);
         for h in std::mem::take(&mut held) {
-            is.append(h.list, h.height_plus_depth, None, st.total, st.depth, &mut st.stretch, &mut st.shrink);
+            is.append(h.list, h.height_plus_depth, None, st.total, st.depth, head_reserve, &mut st.stretch, &mut st.shrink);
         }
         let mut best: Option<(usize, i64)> = None;
         let mut best_ins: Option<usize> = is.last_ins;
         let mut fired: Option<usize> = None;
         let mut i = start;
-        let cost = |st: &PageState, is: &InsertState, pi: i32| -> i64 {
-            let b = if st.total < is.goal {
+        let cost = |st: &PageState, is: &InsertState, pi: i32, reserve: f64| -> i64 {
+            let goal = is.goal - reserve;
+            let b = if st.total < goal {
                 if st.fil {
                     0
                 } else {
-                    badness(is.goal - st.total, st.stretch)
+                    badness(goal - st.total, st.stretch)
                 }
-            } else if st.total - is.goal > st.shrink {
+            } else if st.total - goal > st.shrink {
                 AWFUL_BAD
             } else {
-                badness(st.total - is.goal, st.shrink)
+                badness(st.total - goal, st.shrink)
             };
             let c = if b < AWFUL_BAD {
                 if pi <= EJECT_PENALTY {
@@ -914,7 +1047,7 @@ pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize
                 _ => 0,
             };
             if legal && st.has_box {
-                let c = cost(&st, &is, pi);
+                let c = cost(&st, &is, pi, regions.reserved(i));
                 if best.map_or(true, |(_, lc)| c <= lc) {
                     best = Some((i, c));
                     best_ins = is.last_ins;
@@ -923,6 +1056,9 @@ pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize
                     fired = Some(best.map_or(i, |(bi, _)| bi));
                     break;
                 }
+            }
+            if regions.starts_at(i) {
+                st.shrink = 0.0;
             }
             match &list[i] {
                 VItem::Box { height, depth, payload } => {
@@ -935,7 +1071,7 @@ pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize
                         st.depth = p.maxdepth;
                     }
                     st.lines.push(Placed { payload: *payload, baseline, height: *height, depth: *depth });
-                    if st.total > is.goal + st.shrink + 1e-9 && st.lines.len() > 1 {
+                    if st.total > is.goal - regions.reserved(i) + st.shrink + 1e-9 && st.lines.len() > 1 {
                         if let Some((bi, _)) = best {
                             fired = Some(bi);
                             break;
@@ -944,7 +1080,7 @@ pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize
                     for &n in ins.after.get(payload).map(Vec::as_slice).unwrap_or(&[]) {
                         let note = ins.notes[n].clone();
                         let hd = natural_height_plus_depth(&note);
-                        is.append(note, hd, Some(i), st.total, st.depth, &mut st.stretch, &mut st.shrink);
+                        is.append(note, hd, Some(i), st.total, st.depth, regions.reserved(i), &mut st.stretch, &mut st.shrink);
                     }
                 }
                 VItem::Glue { width, stretch, shrink, fil } => {
@@ -963,7 +1099,7 @@ pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize
         // The document's end (`\clearpage`: `\vfil\penalty-\@M`) is a
         // breakpoint like any other once insertions are on the page.
         if fired.is_none() && !is.page.is_empty() {
-            let c = cost(&st, &is, EJECT_PENALTY);
+            let c = cost(&st, &is, EJECT_PENALTY, regions.reserved(list.len().saturating_sub(1)));
             if c == AWFUL_BAD {
                 if let Some((bi, _)) = best {
                     fired = Some(bi);
@@ -1003,10 +1139,38 @@ pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize
             }
         }
         let has_notes = placed_notes.iter().any(|l| !l.is_empty());
-        let body = if body_less { &list[0..0] } else { &list[start..end] };
+        // `\LT@output`: the continuation head opens the page and the foot
+        // closes it, both inside `\box\@cclv`, so `\@makecol` packs them
+        // with the rest of the body and the notes go under the foot.
+        let mut body_owned: Vec<VItem> = Vec::new();
+        if let Some(h) = head {
+            body_owned.push(region_box(h));
+        }
+        if !body_less {
+            body_owned.extend_from_slice(&list[start..end]);
+        }
+        // `\LT@output` builds `\box\@cclv` as `\vbox{\unvbox\@cclv
+        // \copy\LT@foot \vss}` and only then calls `\@makecol`, so the
+        // `\vss` is inside the body, ahead of `\skip\footins`: it takes the
+        // column's whole slack and pushes the note block to the foot of the
+        // page, leaving every finite glue at its natural size.
+        let mut region_break = false;
+        if fired.is_some() && end < list.len() {
+            if let Some((foot, next_head)) = regions.at_break(end) {
+                if let Some(f) = foot {
+                    body_owned.push(region_box(f));
+                }
+                pending_head = next_head;
+                region_break = true;
+            }
+        }
+        let body: &[VItem] = &body_owned;
         if !has_notes {
-            // The page as `break_pages_shortened` sets it.
+            // The page as `break_pages_shortened` sets it; a page the
+            // longtable output routine ended carries `\vss`, which absorbs
+            // the difference and leaves the finite glue alone.
             let set = match glue_set(p, body) {
+                _ if region_break => 0.0,
                 g if g < 0.0 => g,
                 g if p.flushbottom && fired.is_some() && !ejected => g,
                 _ => 0.0,
@@ -1042,7 +1206,7 @@ pub fn break_pages_inserts(base: &PageParams, list: &[VItem], short_pages: usize
                 areas.push(None);
             }
         } else {
-            let (page, area) = make_column(p, body, body_less, ejected || fired.is_none(), &placed_notes, ins);
+            let (page, area) = make_column(p, body, body_less, region_break || ejected || fired.is_none(), &placed_notes, ins);
             pages.push(page);
             areas.push(Some(area));
         }
