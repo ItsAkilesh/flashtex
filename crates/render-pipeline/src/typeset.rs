@@ -2848,7 +2848,33 @@ impl<'a> Context<'a> {
             if let Some(e) = env_open {
                 st.env_vmode = e.vmode;
             }
-            let mut env_before = env_open.map(|e| env_skip(e.vmode));
+            // `\@item` opens the environment with `\addvspace{\@topsep}`,
+            // not `\vskip`, and only when `\if@nobreak` is false:
+            //
+            // * `\@xaddvskip` keeps whichever of `\@topsep` and `\lastskip`
+            //   is larger, so a skip the previous block already left
+            //   absorbs it. `\@maketitle`'s trailing `\vskip 1.5em` (15pt
+            //   at a 10pt base, 16.425pt at 11pt) beats `\topsep +
+            //   \partopsep` (10pt / 12pt) at every class size, so an
+            //   `abstract` or a `quote` right after `\maketitle` opens with
+            //   no skip of its own at all.
+            // * right after a heading `\@afterheading` has set
+            //   `\@nobreaktrue`, so `\@nbitem` runs instead:
+            //   `\addvspace{\@outerparskip - \parskip}` cancels `\lastskip`
+            //   and the list's own `\parskip` restores it, leaving exactly
+            //   the heading's after-skip and no `\@topsep` at all.
+            //
+            // Both are read off pdfTeX's vertical list; the probes and the
+            // quoted `\showoutput` glue are in `tests/abstract_env.rs`.
+            let mut env_before = env_open.map(|e| {
+                let (n, stretch, shrink) = env_skip(e.vmode);
+                let last = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
+                if st.after_heading || last >= n {
+                    (0.0, 0.0, 0.0)
+                } else {
+                    (n - last, stretch, shrink)
+                }
+            });
             // `\endlist` of a list opened at another size takes *that*
             // size's `\@listi` (`abstract`'s `quotation` under `\small`),
             // not the class's `\normalsize` one.

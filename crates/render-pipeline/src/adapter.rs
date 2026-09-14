@@ -1476,8 +1476,7 @@ pub fn adapt_cached(
     // own shape (the centred `\small\bfseries` head and the `\small`
     // `quotation`) is read from the source bytes here, before the
     // `env_close` pass below derives the closing skips from the styles.
-    let (abstract_limits, superseded) = crate::abstractenv::apply(texts, &mut blocks, &style);
-    limitations.extend(abstract_limits);
+    let superseded = crate::abstractenv::apply(texts, &mut blocks, &style);
     // `\end{...}`: the last paragraph of a run of same-style paragraphs
     // closes the environment (two adjacent environments of one style are
     // read as one; the compiler does not mark the boundary).

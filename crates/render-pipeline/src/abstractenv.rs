@@ -70,13 +70,25 @@
 //!                                   plus \partopsep 2pt, NOT 8pt+2pt
 //! ```
 //!
-//! Only the one-column `article`/`report` form is set here. The
-//! `\if@twocolumn` branch is an unnumbered `\section*` and the `titlepage`
-//! branch (report's and book's default, or article's `titlepage` option) is
-//! a page of its own between `\null\vfil`s; both are reported as
-//! limitations rather than approximated. `book.cls` defines no `abstract`
-//! environment at all, so its `\begin{abstract}` keeps the compiler's
-//! "not implemented" warning.
+//! The `\if@twocolumn` branch (article.cls 378-379) is set too, as what it
+//! is: `\section*{\abstractname}`, an unnumbered `\Large\bfseries` head at
+//! the *column* measure with the body as ordinary `\normalsize` paragraphs.
+//! Its reference is `fixtures/real-world/conf-paper`, where pdfLaTeX's head
+//! is `SFBX1440` at the column's left edge and the body `SFRM1000`.
+//!
+//! The `titlepage` branch (report's and book's default, or article's
+//! `titlepage` option) — a page of its own between `\null\vfil`s — is not
+//! set; the compiler's own limitation stands. `book.cls` defines no
+//! `abstract` environment at all, so its `\begin{abstract}` keeps the
+//! compiler's "not implemented" warning.
+//!
+//! One thing this environment made visible that is not specific to it: the
+//! opening `\addvspace{\@topsep}` of every `\list`/`\trivlist` obeys
+//! `\@xaddvskip`, and right after a heading `\@nbitem` replaces it
+//! altogether. `\@maketitle`'s trailing `\vskip 1.5em` is larger than
+//! `\topsep + \partopsep` at every class size, so an `abstract` opened
+//! right after `\maketitle` contributes no skip of its own. See
+//! `tests/abstract_env.rs`.
 
 use flashtex_compiler::Span;
 
@@ -147,40 +159,45 @@ fn argument_at(text: &str, at: usize, name: &str) -> Option<usize> {
     (inner[..close].trim() == name).then_some(at + skipped + 1 + close + 1)
 }
 
-/// Which branch of the environment this document takes, when it is one
-/// this module does not set (`None`: the one-column form, which it does).
-///
-/// Neither is reported again. The compiler's own "environment 'abstract' is
-/// not implemented; its body is typeset as plain text" is already exactly
-/// true of both, and it is superseded only for the form that is now set; a
-/// second message would change the diagnostics of every two-column document
-/// whose layout this leaves untouched.
-fn unsupported(style: &Stylesheet) -> Option<&'static str> {
-    let g = style.class_geometry.as_ref()?;
-    if g.options.twocolumn {
-        // article.cls 379: `\section*{\abstractname}` at `\normalsize` and
-        // the column measure — a different shape, not a narrower one.
-        return Some("two-column");
-    }
+/// Which of the environment's three forms this document takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Branch {
+    /// article.cls 380-386: `\small`, a centred head, a `quotation`.
+    OneColumn,
+    /// article.cls 378-379: `\section*{\abstractname}` — an unnumbered
+    /// `\Large\bfseries` head at `\normalsize` and the *column* measure,
+    /// and the body as ordinary paragraphs. A different shape, not a
+    /// narrower one: no `\small`, no `quotation`, no centring.
+    TwoColumn,
+    /// article.cls 367-375 (report's and book's default, or article's
+    /// `titlepage` option): a page of its own between `\null\vfil`s,
+    /// inside `\titlepage`. Not set here; the compiler's own limitation
+    /// stands.
+    TitlePage,
+}
+
+fn branch(style: &Stylesheet) -> Branch {
+    let Some(g) = style.class_geometry.as_ref() else { return Branch::OneColumn };
     if g.options.titlepage {
-        // article.cls 367-375 (report's and book's default): a page of its
-        // own between `\null\vfil`s, inside `\titlepage`.
-        return Some("titlepage");
+        // `\if@titlepage` is tested first (article.cls 366).
+        return Branch::TitlePage;
     }
-    None
+    if g.options.twocolumn {
+        return Branch::TwoColumn;
+    }
+    Branch::OneColumn
 }
 
 /// Rewrites the plain paragraphs the compiler produced for each `abstract`
-/// body into the class's own shape, and inserts the centred head before
-/// them. Returns one limitation per environment that is not the one-column
-/// form, and the source spans whose compiler diagnostic the pipeline now
-/// supersedes.
-pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> (Vec<(&'static str, Span, String)>, Vec<Span>) {
-    let mut limitations = Vec::new();
+/// body into the class's own shape and inserts its head before them.
+/// Returns the source spans whose compiler diagnostic the pipeline now
+/// supersedes — one per environment actually set, so a `titlepage`
+/// document's warning (and `book`'s) survives untouched.
+pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec<Span> {
     let mut superseded = Vec::new();
     // `book.cls` has no `abstract`; the compiler's warning is the truth.
     if style.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Book) {
-        return (limitations, superseded);
+        return superseded;
     }
     let small = style.small();
     // Innermost-last so the inserted head never moves a range not yet done.
@@ -188,9 +205,10 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> (Ve
     for (d, text) in texts.iter().enumerate() {
         found.extend(ranges(text).into_iter().map(|r| (d, r)));
     }
+    let form = branch(style);
     for (document, range) in found.into_iter().rev() {
         let span = Span::in_document(flashtex_compiler::DocumentId(document), range.begin.0, range.begin.1);
-        if unsupported(style).is_some() {
+        if form == Branch::TitlePage {
             continue;
         }
         let inside = |b: &Block| -> bool {
@@ -201,6 +219,19 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> (Ve
             continue;
         };
         let last = blocks.iter().rposition(inside).unwrap_or(first);
+        if form == Branch::TwoColumn {
+            // `\section*`'s before-skip is negative, so `\@startsection`
+            // leaves `\@afterindentfalse`: the first paragraph of the body
+            // is not indented. Everything else the class sets for this
+            // branch is what the compiler already produced — `\normalsize`
+            // paragraphs at the column measure.
+            if let Some(Block::Paragraph { indent, .. }) = blocks.get_mut(first) {
+                *indent = false;
+            }
+            blocks.insert(first, section_head_block(texts, document, range));
+            superseded.push(span);
+            continue;
+        }
         for block in &mut blocks[first..=last] {
             let Block::Paragraph { indent, style: para_style, env_open, list, sized, .. } = block else { continue };
             // `\list` sets `\parindent\listparindent`, and `\@item`'s
@@ -214,7 +245,7 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> (Ve
             // every class size `\normalsize`'s `\topsep + \partopsep`
             // (10/12/13pt) is larger than `\small`'s plus `\parskip`
             // (6/9/12pt), and `\@xaddvskip` adds nothing to a larger
-            // `\lastskip`. See `quotation_open_skip_is_absorbed`.
+            // `\lastskip`.
             *env_open = None;
             *list = None;
             *sized = Some(SizedPara {
@@ -228,7 +259,7 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> (Ve
         blocks.insert(first, head_block(texts, document, range, &small));
         superseded.push(span);
     }
-    (limitations, superseded)
+    superseded
 }
 
 /// `\begin{center}{\bfseries \abstractname\vspace{-.5em}\vspace{\z@}}
@@ -271,6 +302,35 @@ fn head_block(texts: &[&str], document: usize, range: Range, small: &crate::styl
             // `\topsep`/`\partopsep` hold, which `\small` has not touched.
             close_skip: None,
         }),
+    }
+}
+
+/// `\section*{\abstractname}` (article.cls 379), the `\if@twocolumn`
+/// branch: an unnumbered level-1 heading, so `\Large\bfseries` at the
+/// column measure with `\@startsection`'s own skips. Starred, so `number`
+/// is empty and no `\sectionmark` is issued.
+fn section_head_block(texts: &[&str], document: usize, range: Range) -> Block {
+    let name = abstract_name(texts).unwrap_or_else(|| ABSTRACTNAME.to_string());
+    let src = CharSrc {
+        document: flashtex_compiler::DocumentId(document),
+        start: range.begin.0,
+        end: range.begin.1,
+    };
+    let word = Word {
+        segments: vec![Segment {
+            chars: name.chars().map(|_| src).collect(),
+            text: name.clone(),
+            style: TextStyle::default(),
+        }],
+    };
+    Block::Heading {
+        level: 1,
+        items: vec![Item::Word(word)],
+        eject_before: false,
+        vspace_before: 0.0,
+        number: String::new(),
+        title: name,
+        span: Span::in_document(flashtex_compiler::DocumentId(document), range.begin.0, range.begin.1),
     }
 }
 
