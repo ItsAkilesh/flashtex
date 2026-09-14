@@ -1659,6 +1659,7 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     private let table = NSTableView()
     /// Documentation pane under the list: the selected candidate's kind,
     /// origin and — for commands/environments — its syntax (IntelliSense style).
+    private var chrome: PopupChrome?
     private let docTitle = NSTextField(labelWithString: "")
     private let docBody = NSTextField(wrappingLabelWithString: "")
     private let docHint = NSTextField(labelWithString: "↑↓ choose · ⏎ insert · esc close")
@@ -1737,10 +1738,49 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         contentView?.wantsLayer = true
         contentView?.layer?.cornerRadius = 8
         contentView?.layer?.borderWidth = 1
-        contentView?.layer?.borderColor = NSColor.separatorColor.cgColor
         backgroundColor = .clear
         isOpaque = false
-        contentView?.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        // The chrome colours are re-resolved on every appearance change; see
+        // `PopupChrome`. A CGColor taken here would be frozen against whatever
+        // appearance was current at init.
+        chrome = PopupChrome(view: contentView)
+        chrome?.refresh()
+    }
+
+    /// Keeps the panel's layer-backed chrome in step with the effective
+    /// appearance.
+    ///
+    /// `CALayer` takes `CGColor`s, which carry no appearance: they are resolved
+    /// once, from whatever appearance is current when they are assigned. This
+    /// panel is built before it is attached to a window, so a colour set in
+    /// `init` is resolved against the *application's* appearance rather than the
+    /// window's, and it then never changes when the user (or the system) switches
+    /// between light and dark. That left the documentation pane painted with the
+    /// dark `windowBackgroundColor` while its text used the light `labelColor`,
+    /// which is the unreadable combination the owner reported.
+    ///
+    /// Text colours are unaffected: `NSTextField.textColor` holds the dynamic
+    /// `NSColor` and resolves it at draw time, which is why only the chrome was wrong.
+    final class PopupChrome {
+        private weak var view: NSView?
+        private var observation: NSKeyValueObservation?
+
+        init(view: NSView?) {
+            self.view = view
+            observation = view?.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+                self?.refresh()
+            }
+        }
+
+        /// Resolves `windowBackgroundColor`/`separatorColor` against the view's
+        /// current appearance and applies them.
+        func refresh() {
+            guard let view, let layer = view.layer else { return }
+            view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                layer.backgroundColor = NSColor.windowBackgroundColor.cgColor
+                layer.borderColor = NSColor.separatorColor.cgColor
+            }
+        }
     }
 
     override var canBecomeKey: Bool { false }
