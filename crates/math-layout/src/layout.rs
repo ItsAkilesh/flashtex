@@ -5,7 +5,7 @@
 //! numbers below are TeX's when the Computer Modern adapter is used.
 
 use crate::boxes::{BoxKind, Child, Flex, MathBox};
-use crate::mathlist::{Atom, AtomClass, Limits, MathList, Nucleus};
+use crate::mathlist::{Atom, AtomClass, BigSizing, Limits, MathList, Nucleus};
 use crate::metrics::{Extensible, Glyph, MathFontMetrics, MathParams};
 use crate::source::SourceTag;
 use crate::spacing::{Space, between};
@@ -251,8 +251,8 @@ impl Engine<'_> {
                 tag_delimiters(&mut b, atom.delimiter_tags);
                 (b, 0.0, false)
             }
-            Nucleus::BigDelimiter { delim, factor } => {
-                (self.make_big_delimiter(*delim, *factor), 0.0, false)
+            Nucleus::BigDelimiter { delim, sizing } => {
+                (self.make_big_delimiter(*delim, *sizing), 0.0, false)
             }
             Nucleus::Phantom {
                 body,
@@ -953,25 +953,41 @@ impl Engine<'_> {
         MathBox::hlist(vec![open, body, close])
     }
 
-    /// amsmath `\bBigg@` (`amsmath.sty`: `\left#2\vcenter to#1\big@size{}\right.`
-    /// inside `\@mathmeasure` with `\nulldelimiterspace\z@`; `\big@size` =
-    /// 1.2`\ht\Mathstrutbox@` + 1.2`\dp\Mathstrutbox@`, the text font's `(`).
+    /// `\big`/`\Big`/`\bigg`/`\Bigg` under either definition ([`BigSizing`]).
     /// The inner formula is text style whatever the outer style is.
-    fn make_big_delimiter(&mut self, delim: Option<char>, factor: f64) -> MathBox {
+    ///
+    /// Both spellings are `\left<delim><empty box><no delimiter>`, so the
+    /// delimiter comes from Rule 19 applied to that empty box; the two
+    /// differ in the box.
+    ///
+    /// * amsmath (`\vcenter to <factor>\big@size{}`) straddles the axis:
+    ///   height `s/2 + a`, depth `s/2 - a`, so δ = `s/2` and the target
+    ///   `2δ` is `s` itself.
+    /// * the kernel (`\vbox to <pt>{}`) has height `pt` and depth **0**, so
+    ///   δ = `max(pt - a, a)` and the target is `2 max(pt - a, a)`. For
+    ///   `\Big` at 10pt that is `2 max(11.5 - 2.5, 2.5)` = 18pt, which is
+    ///   why the kernel's `\Big[` lands on `cmex` `h` (18.00017pt) at every
+    ///   body size while amsmath's follows the math size.
+    fn make_big_delimiter(&mut self, delim: Option<char>, sizing: BigSizing) -> MathBox {
         let p = self.params(Style::TEXT);
-        let strut = self
-            .m
-            .text_glyph('(', crate::metrics::SizeClass::Text)
-            .map(|g| g.height + g.depth)
-            .unwrap_or(p.size);
-        let size = factor * 1.2 * strut;
         let a = p.axis_height;
-        // The empty `\vcenter to size`: height size/2 + a, depth size/2 - a.
-        let (vh, vd) = (size / 2.0 + a, size / 2.0 - a);
+        // `target` is Rule 19's 2δ; `(vh, vd)` the empty box's own height
+        // and depth, which the result is still at least as large as.
+        let (target, vh, vd) = match sizing {
+            BigSizing::Amsmath { factor } => {
+                let strut = self
+                    .m
+                    .text_glyph('(', crate::metrics::SizeClass::Text)
+                    .map(|g| g.height + g.depth)
+                    .unwrap_or(p.size);
+                let s = factor * 1.2 * strut;
+                (s, s / 2.0 + a, s / 2.0 - a)
+            }
+            BigSizing::Kernel { pt } => (2.0 * (pt - a).max(a), pt, 0.0),
+        };
         let mut items = Vec::new();
         if let Some(ch) = delim {
-            // Rule 19 with δ = size/2 exactly.
-            let wanted = (size * p.delimiter_factor).max(size - p.delimiter_shortfall);
+            let wanted = (target * p.delimiter_factor).max(target - p.delimiter_shortfall);
             let d = self.left_right_delimiter(Some(ch), wanted, Style::TEXT, &p);
             items.push(d);
         }
