@@ -56,6 +56,13 @@ request-date = []
 # (crates/compiler and crates/math-layout of branch
 # agent/kabir-claude/amsmath-inline); off until vendor/ is re-pinned.
 amsmath-inline = []
+# The compiler gates package-provided math commands on the packages the
+# document loaded, which gave `text_builtins::text_kern` a required `amsmath`
+# parameter (amsmath renews `\thinspace`/`\negthinspace` to `.1667em`). Only
+# `kern_command_text`'s reverse lookup here reads that function. Off until
+# vendor/ is re-pinned past the compiler change; turning it on is then a
+# one-line default-feature edit, like `amsmath-inline` was.
+compiler-package-gating = []
 # Per-glyph source spans inside math (math-layout `SourceTag`, PR #161):
 # math clusters and rules get the provenance of the atom that produced them
 # (sub/superscripts, fraction parts, `\left`/`\right` delimiters, ...) instead
