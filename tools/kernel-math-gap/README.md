@@ -31,8 +31,11 @@ each, `Rel` 5mu both sides = 2.77778 pt each, `Punct` 3mu after only.
 
 `measure.py` prints the class it *measures* beside the class the TeX source
 *declares*, and flags any disagreement. On TeX Live 2025 pdfTeX
-3.141592653-2.6-1.40.27 all 20 measurable commands agree — the declarations
-quoted below are confirmed, not assumed.
+3.141592653-2.6-1.40.27 all 18 commands that get a class check agree, with zero
+mismatches — the nine latexsym symbols, `\sqsubset`/`\sqsupset`, and the seven
+pieces. The declarations quoted below for those 18 are confirmed, not assumed.
+`\dddot`/`\ddddot` and `\mathscr` are measured by box, not by class: neither is
+a `\DeclareMathSymbol`, so there is no declared class to check them against.
 
 ## The seven pieces are not extensible-assembly parts
 
