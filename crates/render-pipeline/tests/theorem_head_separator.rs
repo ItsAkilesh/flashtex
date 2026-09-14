@@ -51,19 +51,40 @@ Run the Euclidean algorithm on the pair.
 \end{document}
 ";
 
-/// The gap between the run whose text ends `prefix` and the next run on the
-/// same line.
+/// The gap between the end of the head that starts with `prefix` and the
+/// body that follows it, on the same line.
+///
+/// The head is not one run. `Theorem 1.` is the environment's name and the
+/// stepped counter, which the pipeline paints as separate runs with their own
+/// source spans, so "the run starting `Theorem`" is only the first half of the
+/// head and what follows it is the counter -- with an ordinary interword space
+/// in front, not `\thm@headsep`. Measuring from there yields 4.155 bp
+/// (cmbx10's space at 10.95 pt) and reads as a missing separator. The head
+/// ends at `\the\thm@headpunct`, so this walks forward over the head's runs
+/// until one ends with that punctuation and measures from *that* run. `proof`,
+/// whose head is the single run `Proof.`, is unaffected either way.
 fn gap_after(words: &[Word], prefix: &str) -> f64 {
-    let i = words
+    let start = words
         .iter()
         .position(|w| w.text.starts_with(prefix))
         .unwrap_or_else(|| panic!("no run starting {prefix:?} in {words:?}"));
+    let baseline = words[start].baseline;
+    let same_line = |w: &&Word| (w.baseline - baseline).abs() < 0.01;
+    let mut i = start;
+    while !words[i].text.ends_with('.') {
+        i = words
+            .iter()
+            .skip(i + 1)
+            .position(|w| same_line(&w))
+            .map(|offset| i + 1 + offset)
+            .unwrap_or_else(|| panic!("the head starting {prefix:?} never ends with its punctuation"));
+    }
     let head = &words[i];
     let next = words
         .iter()
         .skip(i + 1)
-        .find(|w| (w.baseline - head.baseline).abs() < 0.01)
-        .unwrap_or_else(|| panic!("nothing follows {prefix:?} on its line"));
+        .find(same_line)
+        .unwrap_or_else(|| panic!("nothing follows the head starting {prefix:?} on its line"));
     next.x - (head.x + head.width)
 }
 
