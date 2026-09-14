@@ -4109,7 +4109,11 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
         .and_then(|src| crate::amsthm::head_separator(src, inlines, size));
     let pending_head_sep: std::cell::Cell<Option<(f64, f64, f64)>> = std::cell::Cell::new(None);
     // Pushes the space `space_between` found, or the theorem head's own glue
-    // in its place.
+    // in its place. Every caller must reach this whenever a head separator is
+    // pending, not only when the source had a space to replace: amsthm's head
+    // ends with `\ignorespaces`, so `\begin{theorem}Body` has no source gap
+    // at all, and a caller that skips the call on `!has_space` drops the
+    // separator instead of substituting it.
     let push_gap = |items: &mut Vec<Item>, space: bool, style: TextStyle, factor: u32| {
         if let Some((pt, stretch_pt, shrink_pt)) = pending_head_sep.take() {
             items.push(Item::HSpace { pt, stretch_pt, shrink_pt });
@@ -4295,7 +4299,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     style.medium = !compiler_style.bold;
                     style.italic |= compiler_style.italic;
                 }
-                if has_space {
+                if has_space || pending_head_sep.get().is_some() {
                     let mut gap_style = space_style(texts, styles, prev_end, *span, style);
                     gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
                     push_gap(&mut items, has_space, gap_style, factor);
@@ -4313,7 +4317,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 let has_space = space_between(prev_end, prev_span, *span, Some("\\rule"), after_control_word);
                 let mut style = style_at(styles_of(span.document), span.start);
                 style.size_cpt = declared_size(compiler_style.size, size);
-                if has_space {
+                if has_space || pending_head_sep.get().is_some() {
                     let mut gap_style = space_style(texts, styles, prev_end, *span, style);
                     gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
                     push_gap(&mut items, has_space, gap_style, factor);
@@ -4332,7 +4336,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 let has_space = space_between(prev_end, prev_span, *span, word.as_deref(), after_control_word);
                 let mut style = style_at(styles_of(span.document), span.start);
                 style.size_cpt = declared_size(compiler_style.size, size);
-                if has_space {
+                if has_space || pending_head_sep.get().is_some() {
                     let mut gap_style = space_style(texts, styles, prev_end, *span, style);
                     gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
                     push_gap(&mut items, has_space, gap_style, factor);
@@ -4352,7 +4356,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 let mut style = style_at(styles_of(span.document), span.start);
                 let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
                 style.size_cpt = declared_size(compiler_style.size, size);
-                if has_space {
+                if has_space || pending_head_sep.get().is_some() {
                     let mut gap_style = space_style(texts, styles, prev_end, *span, style);
                     gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
                     push_gap(&mut items, has_space, gap_style, factor);
@@ -4403,7 +4407,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 }
                 let has_space = space_between(prev_end, prev_span, *span, Some(text), after_control_word);
                 after_control_word = false;
-                if has_space {
+                if has_space || pending_head_sep.get().is_some() {
                     // TeX sizes an interword space with the font current
                     // where the space token is read ("Plain, \textbf{bold}"
                     // gets a regular space, "\textbf{bold words}" a bold one,
