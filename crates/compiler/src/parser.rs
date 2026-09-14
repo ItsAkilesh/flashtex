@@ -5827,37 +5827,53 @@ fn url_segments(text: &str) -> Vec<&str> {
     segments
 }
 
-/// Expands tabs to the next multiple of 8 columns (a common editor default;
-/// real TeX has no tab stops of its own and would simply treat a raw tab as
-/// an ordinary space, which this crate treats as too lossy for source code)
-/// and, for a starred `\verb*`/`verbatim*`, marks every resulting literal
-/// space with a middle dot. That dot is a deliberate, honest stand-in for
-/// TeX's `\textvisiblespace`: the Core 14 Courier face has no such glyph, and
-/// a middle dot is both WinAnsi-safe (see `export.rs`) and a widely
-/// recognised "visible space" mark on its own. CRLF line endings are not
-/// specially handled; a trailing `\r` is kept as a literal character.
+/// Renders one raw verbatim source line for layout: a tab becomes exactly one
+/// space, and for a starred `\verb*`/`verbatim*` every resulting space becomes
+/// a middle dot. CRLF line endings are not specially handled; a trailing `\r`
+/// is kept as a literal character.
+///
+/// **Tabs are one space, not a column stop.** `\@vobeytabs` in `latex.ltx`
+/// makes TAB active and `\let`s it to `\@xobeytab`, which is `\let` to
+/// `\@xobeysp` (`= \nobreakspace = \leavevmode\nobreak\ `); `verbatim*`
+/// re-points both through `\@setupverbvisibletab`. Either way a tab is
+/// whatever *one* space is — TeX has no tab stops, and nothing in the
+/// expansion depends on the current column. pdfTeX 3.141592653-2.6-1.40.27
+/// (TeX Live 2025) confirms it: in `\showbox`, `<TAB>one` in `verbatim`
+/// yields a single `\glue 5.24995` (cmtt10's `\fontdimen2`, stretch and
+/// shrink both 0) — byte-identical to the one-literal-space baseline — and
+/// glyph origins in the generated PDF put the first letter at these offsets
+/// from the left text edge:
+///
+/// | source line          | measured | one-space rule | old 8-column rule |
+/// |----------------------|----------|----------------|-------------------|
+/// | `<TAB>Q`             |  5.23 bp | 5.23 bp (1)    | 41.84 bp (8)      |
+/// | `ab<TAB>W`           | 15.69 bp | 15.69 bp (3)   | 41.84 bp (8)      |
+/// | `abcdefgh<TAB>R`     | 47.07 bp | 47.07 bp (9)   | 83.99 bp (16)     |
+/// | `abc<TAB><TAB>T`     | 26.15 bp | 26.15 bp (5)   | 83.99 bp (16)     |
+/// | `<TAB><TAB><TAB>Y`   | 15.69 bp | 15.69 bp (3)   | 125.99 bp (24)    |
+///
+/// (`abcdefg<TAB>E` at 41.84 bp is the one column where the two rules happen
+/// to agree, which is why it alone cannot settle the question.) `verbatim*`
+/// measures identically. This function used to expand to the next multiple of
+/// 8 columns, which encoded a *text-editor* convention rather than anything
+/// pdflatex does.
+///
+/// **The middle dot is a width-equivalent stand-in.** On pdfTeX
+/// `\verbvisiblespace` is `\asciispace` = `\char32`, and cmtt10's slot 32 is
+/// `/visiblespace` — U+2423 OPEN BOX. The Core 14 Courier face this crate
+/// lays out on has no U+2423 at all, so some substitute is unavoidable. A
+/// middle dot is the honest choice because it costs nothing geometrically:
+/// Courier's AFM width table is uniform, and `periodcentered` (U+00B7) and
+/// `space` (U+0020) both advance 600/1000 em — 6.0 pt at the 10 pt body size
+/// — so the substitution moves no glyph. It is also WinAnsi-safe (see
+/// `export.rs`) and a widely recognised "visible space" mark on its own.
 fn verbatim_display(line: &str, starred: bool) -> String {
-    const TAB_STOP: usize = 8;
     const VISIBLE_SPACE: char = '\u{B7}';
     let mut out = String::with_capacity(line.len());
-    let mut column = 0usize;
     for ch in line.chars() {
         match ch {
-            '\t' => {
-                let spaces = TAB_STOP - (column % TAB_STOP);
-                for _ in 0..spaces {
-                    out.push(if starred { VISIBLE_SPACE } else { ' ' });
-                }
-                column += spaces;
-            }
-            ' ' => {
-                out.push(if starred { VISIBLE_SPACE } else { ' ' });
-                column += 1;
-            }
-            _ => {
-                out.push(ch);
-                column += 1;
-            }
+            '\t' | ' ' => out.push(if starred { VISIBLE_SPACE } else { ' ' }),
+            _ => out.push(ch),
         }
     }
     out
@@ -7446,15 +7462,36 @@ mod tests {
         assert_eq!(lines[0].text, "a\u{B7}b");
     }
 
+    /// A tab in `verbatim` is one space, never a jump to a column stop: LaTeX
+    /// `\let`s the active tab to `\@xobeysp`, and pdflatex measurably puts the
+    /// following glyph exactly one cmtt10 space (5.24995 pt) further along, at
+    /// every starting column. See `verbatim_display` for the measurements.
     #[test]
-    fn verbatim_expands_tabs_to_the_next_stop() {
-        let source = "\\begin{verbatim}\n\ta\n\\end{verbatim}";
+    fn verbatim_sets_a_tab_as_a_single_space_not_a_column_stop() {
+        // Column 0, column 2, column 8 and two consecutive tabs. Under the old
+        // 8-column rule these would have been 8, 8, 16 and 16 cells wide.
+        let source = "\\begin{verbatim}\n\ta\nab\tcd\nabcdefgh\tX\nabc\t\tX\n\\end{verbatim}";
         let parsed = parse(source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         let Block::Verbatim { lines, .. } = &parsed.blocks[0] else {
             panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[0]);
         };
-        assert_eq!(lines[0].text, format!("{}a", " ".repeat(8)));
+        let texts: Vec<&str> = lines.iter().map(|l| l.text.as_str()).collect();
+        assert_eq!(texts, [" a", "ab cd", "abcdefgh X", "abc  X"]);
+    }
+
+    /// `\@setupverbvisibletab` points the active tab at the same visible-space
+    /// box as an ordinary space, so a starred tab is one dot, not eight.
+    #[test]
+    fn verbatim_star_sets_a_tab_as_a_single_visible_space() {
+        let source = "\\begin{verbatim*}\n\ta\nabc\t\tX\n\\end{verbatim*}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let Block::Verbatim { lines, .. } = &parsed.blocks[0] else {
+            panic!("expected a Block::Verbatim, got {:?}", parsed.blocks[0]);
+        };
+        let texts: Vec<&str> = lines.iter().map(|l| l.text.as_str()).collect();
+        assert_eq!(texts, ["\u{B7}a", "abc\u{B7}\u{B7}X"]);
     }
 
     #[test]
