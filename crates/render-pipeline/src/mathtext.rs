@@ -468,8 +468,8 @@ impl MathFontMetrics for TextRunMetrics<'_> {
         self.inner.radical_extensible(size)
     }
 
-    fn extension_glyph(&self, code: u8, ch: char) -> Option<Glyph> {
-        self.inner.extension_glyph(code, ch)
+    fn extension_glyph(&self, code: u8, ch: char, size: SizeClass) -> Option<Glyph> {
+        self.inner.extension_glyph(code, ch, size)
     }
 
     fn text_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
