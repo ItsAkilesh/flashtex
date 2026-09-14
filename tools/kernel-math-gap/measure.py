@@ -56,8 +56,28 @@ LATEXSYM = [
 ]
 LATEXSYM_ALSO = [("sqsubset", "Rel", 0x3C), ("sqsupset", "Rel", 0x3D)]
 
-# The amssymb/amsfonts command usually recommended in place of each latexsym
-# one, with the class *that* command carries.
+# amsfonts.sty 151-162 provides all nine ITSELF when latexsym is not loaded --
+# `\@ifpackageloaded{latexsym}{\@tempswafalse}{\@tempswatrue}` -- and it keeps
+# the kernel classes: \lhd \unlhd \rhd \unrhd are re-declared \mathbin on the
+# same AMSa slots the \vartriangle* relations use, and \Join is a \mathrel
+# composite of AMSb "6F and "6E with \mkern-13.8mu. So `\usepackage{amssymb}`
+# alone already answers all nine; nothing has to be aliased.
+AMSFONTS_OWN = [
+    ("mho",     "Ord", "amsfonts 101, AMSb \"66"),
+    ("Join",    "Rel", "amsfonts 161, AMSb \"6F + \\mkern-13.8mu + \"6E"),
+    ("Box",     "Ord", "amsfonts 152, \\let to \\square AMSa \"03"),
+    ("Diamond", "Ord", "amsfonts 153, \\let to \\lozenge AMSa \"06"),
+    ("leadsto", "Rel", "amsfonts 154, \\let to \\rightsquigarrow AMSa \"20"),
+    ("lhd",     "Bin", "amsfonts 159, AMSa \"43 as \\mathbin"),
+    ("unlhd",   "Bin", "amsfonts 160, AMSa \"45 as \\mathbin"),
+    ("rhd",     "Bin", "amsfonts 161, AMSa \"42 as \\mathbin"),
+    ("unrhd",   "Bin", "amsfonts 162, AMSa \"44 as \\mathbin"),
+]
+
+# The amssymb command often recommended in place of each latexsym one. This is
+# the NAIVE alias, and the table below shows it is the wrong move: amsfonts
+# does not do this, and four of these carry a different class from the command
+# they would replace.
 AMS_STANDIN = {
     "mho":     ("mho", "Ord", "amsfonts.sty 101, AMSb \"66"),
     "Join":    (None,  None,  "no amssymb equivalent exists"),
@@ -172,8 +192,47 @@ def main():
                      "ok" if m == cls and abs(res) < 1e-3 else "MISMATCH"))
     grid(("command", "slot", "declared", "wd($sym$)", "measured", ""), rows)
 
+    # ---- what amsfonts gives under the SAME names ------------------------
+    print("== the same nine names under \\usepackage{amssymb}, no latexsym ==\n")
+    items = []
+    for n, _, _ in AMSFONTS_OWN:
+        items.append((n, "\\" + n))
+        if not a.tex_only:
+            items.append((n + "X", "a\\%s b" % n))
+    own = {}
+    for tag, pre in (("amssymb", r"\usepackage{amssymb}"),
+                     ("amsfonts", r"\usepackage{amsfonts}"),
+                     ("both", r"\usepackage{latexsym}\usepackage{amssymb}")):
+        own[tag] = pdflatex(items, pre)
+    rows = []
+    for n, cls, where in AMSFONTS_OWN:
+        r = own["amssymb"]
+        if n not in r:
+            rows.append(("\\" + n, cls, "%.5f" % got[n][0], "ABSENT", "-", where))
+            continue
+        w = r[n][0]
+        m = classify(w, r[n + "X"][0] - CTRL)[0] if not a.tex_only else cls
+        rows.append(("\\" + n, cls, "%.5f" % got[n][0], "%.5f %s" % (w, m),
+                     "%+.5f" % (w - got[n][0]), where))
+    grid(("command", "declared", "lasy wd", "amssymb wd + class", "delta",
+          "amsfonts declaration"), rows)
+    same = all(own["amsfonts"].get(n) == own["amssymb"].get(n)
+               for n, _, _ in AMSFONTS_OWN)
+    print("  amsfonts alone gives exactly what amssymb gives: %s" % same)
+    clash = [n for n, _, _ in AMSFONTS_OWN
+             if own["both"].get(n) != got.get(n)]
+    print("  with BOTH packages loaded, amsfonts leaves latexsym's design\n"
+          "  alone for every name except: %s"
+          % (", ".join("\\" + n for n in clash) or "(none)"))
+    for n in clash:
+        print("    \\%-8s latexsym %.5f/%.5f/%.5f  ->  both %.5f/%.5f/%.5f"
+              % ((n,) + got[n] + own["both"][n]))
+    print("  because amsfonts 101's \\ams@DeclareMathSymbol is `\\global\\let\n"
+          "  #1\\undefined` then re-declare -- an unconditional override that\n"
+          "  sits OUTSIDE the \\if@tempswa latexsym guard at 151-162.\n")
+
     # ---- latexsym vs the amssymb stand-in -------------------------------
-    print("== substituting the amssymb command usually recommended ==\n")
+    print("== the NAIVE alias, for contrast: it changes four classes ==\n")
     subs = [(v[0], "\\" + v[0]) for v in AMS_STANDIN.values() if v[0]]
     amsw = pdflatex(subs, r"\usepackage{amssymb}")
     rows = []

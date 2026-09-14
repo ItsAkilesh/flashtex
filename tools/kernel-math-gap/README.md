@@ -87,9 +87,15 @@ private parts; exposing them would let a document build a construct the engine
 cannot draw at the right metrics, when the composed command already draws
 correctly. The diagnosis belongs in the gating arm #230 adds.
 
-## latexsym: what substitution actually costs
+## latexsym: amsfonts already answers all nine, correctly
 
-`latexsym.sty` declares eleven commands against `lasy10`. Measured:
+**This section replaces an earlier draft of it that was wrong.** The first
+version of this file said aliasing the nine to amssymb "changes the atom class
+of four of them", and recommended transcribing lasy10's metrics as constants.
+That is true of the *naive* alias `\lhd` → `\vartriangleleft`, but it is not
+what amsfonts does, and the naive alias is not the option on the table.
+
+`latexsym.sty` declares eleven commands against `lasy10`:
 
 | command | lasy slot | class | advance @10pt |
 | --- | --- | --- | ---: |
@@ -101,65 +107,68 @@ correctly. The diagnosis belongs in the gating arm #230 adds.
 | `\lhd` `\unlhd` `\rhd` `\unrhd` | `"01`-`"04` | **Bin** | 7.77780 |
 | `\sqsubset` `\sqsupset` | `"3C` `"3D` | Rel | 7.77780 |
 
-Aliasing each to "the amssymb equivalent everybody recommends" is **not** the
-harmless answer it looks like:
+**`amsfonts.sty` 151-162 provides all nine itself**, guarded by
+`\@ifpackageloaded{latexsym}{\@tempswafalse}{\@tempswatrue}` — so a document
+that loads `amssymb` (or `amsfonts`) and not `latexsym` already has every one
+of them, from msam/msbm, **with the kernel classes intact**:
 
-| latexsym | stand-in | advance delta | other damage |
+| command | declared | lasy wd | amssymb wd + class | delta | amsfonts declaration |
+| --- | --- | ---: | --- | ---: | --- |
+| `\mho` | Ord | 7.22223 | 7.22223 Ord | **+0.00000** | 101, AMSb `"66` |
+| `\Join` | Rel | 7.22223 | 7.88913 Rel | +0.66690 | 161, AMSb `"6F` + `\mkern-13.8mu` + `"6E` |
+| `\Box` | Ord | 7.47224 | 7.77780 Ord | +0.30556 | 152, `\let` to `\square` AMSa `"03` |
+| `\Diamond` | Ord | 7.91673 | 6.66669 Ord | −1.25004 | 153, `\let` to `\lozenge` AMSa `"06` |
+| `\leadsto` | Rel | 10.00002 | 10.00002 Rel | **+0.00000** | 154, `\let` to `\rightsquigarrow` AMSa `"20` |
+| `\lhd` | **Bin** | 7.77780 | 7.77780 **Bin** | **+0.00000** | 159, AMSa `"43` as `\mathbin` |
+| `\unlhd` | **Bin** | 7.77780 | 7.77780 **Bin** | **+0.00000** | 160, AMSa `"45` as `\mathbin` |
+| `\rhd` | **Bin** | 7.77780 | 7.77780 **Bin** | **+0.00000** | 161, AMSa `"42` as `\mathbin` |
+| `\unrhd` | **Bin** | 7.77780 | 7.77780 **Bin** | **+0.00000** | 162, AMSa `"44` as `\mathbin` |
+
+**Every class is right and six of the nine are advance-exact.** The four
+triangles keep `\mathbin` because amsfonts re-declares them on the AMSa slots
+rather than `\let`ting them to the `\vartriangle*` relations — which is exactly
+the trap the naive alias falls into:
+
+| latexsym | naive alias | advance delta | what it breaks |
 | --- | --- | ---: | --- |
-| `\mho` | `\mho` (AMSb `"66`) | 0 | none — exact |
-| `\leadsto` | `\rightsquigarrow` | 0 | none — exact |
-| `\Box` | `\square` | +0.30556 | |
-| `\Diamond` | `\lozenge` | −1.25004 | |
 | `\lhd` | `\vartriangleleft` | 0 | **Bin → Rel, +1.11111 pt of glue** |
 | `\unlhd` | `\trianglelefteq` | 0 | **Bin → Rel, +1.11111 pt** |
 | `\rhd` | `\vartriangleright` | 0 | **Bin → Rel, +1.11111 pt** |
 | `\unrhd` | `\trianglerighteq` | 0 | **Bin → Rel, +1.11111 pt** |
-| `\Join` | — none exists — | | |
 
-Four of the nine **change atom class**. That is not a font problem and no font
-can fix it: amssymb genuinely declares those four as relations where latexsym
-declares them as binary operators, so every occurrence moves by 1.11111 pt.
-One of the nine has no stand-in at all.
+Same glyph, same slot, wrong class. Use the amsfonts declarations, not the
+`\vartriangle*` names.
 
-### The recommendation, and how it differs from #201's
+One exception to the guard, which `measure.py` checks: with **both** packages
+loaded, amsfonts leaves latexsym's design alone for every name except `\mho`
+(lasy ht 6.83331 → msbm 6.88889, advance unchanged), because amsfonts 101's
+`\ams@DeclareMathSymbol` is `\global\let#1\undefined` then re-declare — an
+unconditional override sitting *outside* the `\if@tempswa` guard. Load order
+does not change it.
 
-#201 recommended not bundling `lasy`, on three grounds: no OpenType `lasy`
-exists in TeX Live 2025, the licence of the TFM cannot be verified to the
-repo's pinned standard from a Nix store path, and substituting a bundled face
-is visibly wrong — `\Diamond` at New Computer Modern Math's U+25C7 is
-**10.25000 pt against lasy's 7.91673, +2.33327 pt**. `fontprobe.py` reproduces
-that number exactly, and adds that Latin Modern Math has no U+25C7 at all.
+### Recommendation
 
-All of that is right, and this lane agrees `lasy` should not be bundled. But
-the conclusion drawn from it — "do nothing, alias to amssymb" — does not
-follow, because **the +2.33 pt objection is an objection to taking the
-substitute's advance, not to substituting the ink**, and the table above shows
-aliasing costs 1.11111 pt on four commands that the advance argument never
-looks at.
+**Provide all nine through the amsfonts declarations the generator already
+reads, gated on amssymb/amsfonts, and do not bundle lasy.**
 
-The route that survives every measurement above is #201's own option (b), with
-one change that removes its blocker:
+`gen_amssymb.py` already parses `amsfonts.sty` (#212, #230), msam/msbm metrics
+are already bundled — `FLASHTEX_TFM_DIRS` includes
+`texmf/fonts/tfm/public/amsfonts/symbols`, and `\mathbb` already draws from
+msbm — and #230's `provider` field is exactly the gate this needs. Nothing new
+has to be bundled, licensed, or transcribed.
 
-- Declare all eleven commands with **lasy10's advances and lasy10's atom
-  classes, transcribed as eleven constants** measured from pdflatex. Line
-  breaking and inter-atom spacing then match pdflatex *exactly*, for all
-  eleven, including the four `\mathbin` ones.
-- Paint the ink from the nearest bundled glyph (the U+2127/U+22C8/U+25A1/
-  U+25C7/U+21DD/U+22B2-5 column of `fontprobe.py`), and **report the
-  substituted design**, exactly as `\mathcal` already does.
-- Gate the eleven behind `\usepackage{latexsym}` through #230's `provider`
-  mechanism, so a document that never loads latexsym is unaffected.
+The residual, which should be *reported* rather than hidden: a document that
+loads `latexsym` and not `amssymb` gets lasy10 in pdflatex, where this route
+sets the msam/msbm design. Six of the nine are identical anyway; the three that
+differ are `\Box` +0.30556, `\Join` +0.66690 and `\Diamond` −1.25004 pt. That
+is a far smaller error than any font-substitution route, and much smaller than
+the 2.33 pt that painting `\Diamond` from New Computer Modern Math's U+25C7
+would cost (10.25000 against lasy's 7.91673; `fontprobe.py` reproduces #201's
+figure, and Latin Modern Math has no U+25C7 at all).
 
-The change: #201 treated this as blocked on licence-verifying `lasy10.tfm` on a
-machine with a docs tree. It is not. Eleven advances measured from pdflatex are
-facts about TeX's output, not a copyrightable font program, and the repo
-already carries exactly this kind of constant for `\varnothing` (msbm's advance)
-and `\smallint` (cmsy's). Nothing needs to be bundled or licensed.
-
-Honest cost of that route: the ink is wrong for seven of the eleven — visibly
-so for `\Diamond`, whose nearest bundled shape is a different design — and
-`\Join`'s U+22C8 is the closest shape rather than the same one. That is a
-reported substitution, not a silent one, which is the standard `\mathcal` set.
+This supersedes the earlier recommendation in this file to transcribe eleven
+lasy10 constants: that would have been real work for a *worse* result than
+using declarations the generator already reads.
 
 ## `\sqsubset` / `\sqsupset` — already closed twice, in two open PRs
 
