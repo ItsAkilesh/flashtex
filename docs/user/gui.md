@@ -566,7 +566,6 @@ as you type it; the caret is a block outside insert mode.
   ⌘⇧R); a menu item for the preview-controller helper route, so Find in
   Project, Rename Citation, Durable History and `\cite` navigation need the
   environment-variable launch described under *Compiling*.
-- Completion does not pop up while typing (open it with ⌃Space / Esc); signature help does.
 - `\includegraphics` outside a `figure`/`table` float (and its `trim`/`clip`/
   `viewport` keys), tables, bibliographies and other constructs listed under
   [Supported LaTeX](compiler.md#supported-latex) render as diagnostics, not
