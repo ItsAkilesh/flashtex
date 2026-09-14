@@ -52,8 +52,8 @@ final class CompletionAutoCloseTests: XCTestCase {
     /// The real editor in a window, its coordinator, and a manual scan executor.
     private func editor(autoClosePairs: Set<Character> = ["{"])
         throws -> (tv: CompletingTextView, co: SourceEditorView.Coordinator, exec: ManualExecutor, box: TextBox) {
-        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let box = TextBox()
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(box: box, pairs: autoClosePairs))
@@ -274,7 +274,14 @@ final class CompletionAutoCloseTests: XCTestCase {
             let expected = "\\begin{" + Completion.environmentSnippet(name, indent: "").text
             XCTAssertEqual(tv.string, expected, "\(name): exactly the template, no stray closer")
             XCTAssertFalse(tv.string.hasSuffix("}}"), "\(name): no doubled brace at the end")
-            XCTAssertEqual(co.pendingClosers, [], "\(name)")
+            // `figure` parks the caret inside `\includegraphics{}`, so that
+            // closer is tracked for overtype; `itemize` parks it after `\item `,
+            // where nothing is. Either way: exactly the closer at the caret.
+            let caret = tv.selectedRange().location
+            let ns = tv.string as NSString
+            let atCaret = caret < ns.length ? ns.substring(with: NSRange(location: caret, length: 1)).first : nil
+            let tracked = (atCaret.map(SourceEditorView.BraceMatcher.isCloser) ?? false) ? [caret] : []
+            XCTAssertEqual(co.pendingClosers, tracked, "\(name): only a closer the caret sits before is tracked")
             assertClosersMatchTheText(co, tv)
             // Tab reaches every placeholder and ends inside the buffer.
             let stops = Completion.environmentSnippet(name, indent: "").stops.map { $0 + 7 }

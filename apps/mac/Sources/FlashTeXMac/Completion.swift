@@ -2506,6 +2506,13 @@ final class CompletingTextView: NSTextView {
         let range = rangeConsumingStaleCloser(s.range, inserting: item.snippet?.text ?? item.insertText)
         if let snippet = item.snippet {
             insertSnippet(snippet, replacing: range, kind: item.kind)
+        } else if range.length != s.range.length {
+            // AppKit's `insertCompletion` recomputes the range it replaces from
+            // `rangeForUserCompletion` (the bare token) instead of using the one
+            // it is handed, so a grown range never reaches the storage through
+            // it — measured: the stale `}` survived as `\end{itemize}}`. This
+            // one goes in directly, with the same effect and one undo step.
+            insertPlainCompletion(item.insertText, replacing: range)
         } else {
             insertCompletion(item.insertText, forPartialWordRange: range, movement: NSReturnTextMovement, isFinal: true)
         }
@@ -2530,6 +2537,19 @@ final class CompletingTextView: NSTextView {
               let closer = ns.substring(with: NSRange(location: end, length: 1)).first,
               EditorKeyHandling.supersedesTrackedCloser(inserted, closer: closer) else { return range }
         return NSRange(location: range.location, length: range.length + 1)
+    }
+
+    /// What `insertCompletion(_:forPartialWordRange:movement:isFinal:)` does —
+    /// replace the range, leave the caret after the word, one undo step — for
+    /// the range this view chose rather than the one AppKit would recompute.
+    private func insertPlainCompletion(_ word: String, replacing range: NSRange) {
+        breakUndoCoalescing()
+        guard shouldChangeText(in: range, replacementString: word) else { return }
+        textStorage?.replaceCharacters(in: range, with: word)
+        didChangeText() // registers the undo step, fires textDidChange
+        undoManager?.setActionName("Insert Completion")
+        setSelectedRange(NSRange(location: range.location + (word as NSString).length, length: 0))
+        breakUndoCoalescing()
     }
 
     /// One undo step: the typed partial token is closed off first so ⌘Z
