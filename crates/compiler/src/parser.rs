@@ -3875,6 +3875,11 @@ impl P<'_> {
         self.required_group_bounded(command, command_span, false)
     }
 
+    /// `long`: a `\long` argument (`\@footnotetext`), where a blank line is
+    /// an ordinary paragraph break inside the argument rather than its end.
+    /// An argument that is never closed at all is still closed at the end of
+    /// its first paragraph, so a missing brace cannot swallow the document.
+
     fn required_group_bounded(
         &mut self,
         command: &str,
@@ -4762,7 +4767,9 @@ impl P<'_> {
         let text = if name == "footnotemark" {
             None
         } else {
-            let (tokens, _) = self.required_group(name, span);
+            // `\@footnotetext` is `\long` (latex.ltx): a blank line inside
+            // the argument is a paragraph break in the note, not its end.
+            let (tokens, _) = self.required_group_bounded(name, span, true);
             Some(self.footnote_inlines(tokens, span))
         };
         para.push(Inline::Footnote {
