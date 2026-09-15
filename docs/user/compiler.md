@@ -617,10 +617,10 @@ Canonical sources:
 | `\uline` | `{...}` | ulem underline: 0.4pt rule under the argument (single-line; needs ulem) |
 | `\underline` | `{...}` | kernel text underline: TeXbook Rule 10 math-rule under an unbreakable hbox |
 | `\sout` | `{...}` | ulem strike-out: 0.4pt rule 0.55ex above the baseline (single-line; needs ulem) |
-| `\so` | `{...}` | soul letterspacing: 0.14em kern between the argument's letters (single-line; needs soul) |
-| `\hl` | `{...}` | soul highlight: the argument on a yellow box (single-line; needs soul) |
 | `\newtheorem` | `{env}[counter]{name}` | defines a numbered theorem-like environment (amsthm) |
 | `\theoremstyle` | `{style}` | selects the amsthm style for following \newtheorem |
+| `\so` | `{...}` | soul letterspacing: 0.25em kern between the argument's letters, 0.65em word spaces (0.55em at the edges) (single-line; needs soul) |
+| `\hl` | `{...}` | soul highlight: yellow behind-text rule at the argument's natural width, 0.75ex deeper (single-line; needs soul) |
 | `\\` |  | line break; an optional [length] is consumed |
 | `\,` |  | text kern .16667em (\thinspace) |
 | `\!` |  | text kern -.16667em (\negthinspace) |
@@ -906,7 +906,7 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `multicol` | `` | multicols and multicols* with preface, \columnbreak, \raggedcolumns (columns set by the render pipeline) |
 | `natbib` | `numbers, authoryear, round, square, angle, curly, comma, semicolon, colon, nobibstyle, bibstyle, sectionbib, longnamesfirst, nonamebreak` | \citet/\citep/\citealt/\citealp/\citeauthor/\citeyear/\citeyearpar/\citenum/\citetext and the \cite it redefines, with [Author(Year)] \bibitem labels; sort, compress, super and openbib are diagnosed |
 | `ulem` | `normalem` | \uline: 0.4pt rule under the argument (single-line); \sout: 0.4pt strike at 0.55ex; \emph is not redefined |
-| `soul` | `` | \so: letterspaced argument (0.14em between letters, single-line); \hl: argument on a yellow box; \st stays unsupported |
+| `soul` | `` | \so: letterspaced argument (0.25em between letters, 0.65em word spaces, 0.55em at the edges, single-line); \hl: yellow behind-text rule at natural width, 0.75ex deeper (single-line); \st stays unsupported |
 
 Any other package, or these packages with other options, is recorded and reported as recognised but not implemented.
 <!-- END GENERATED supported-latex -->
