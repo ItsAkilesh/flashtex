@@ -7,10 +7,47 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+/// The Python interpreter these fixtures run their stub compiler under.
+///
+/// Unlike the executable-script fixtures in `stdio.rs`, this one launches the
+/// interpreter directly and passes the script as an argument, so it needs no
+/// shebang line and no executable permission bit and is portable as soon as the
+/// interpreter itself is found. The absolute `/usr/bin/python3` is kept on Unix
+/// (it is the path the project's other fixtures assume, and hard-coding it keeps
+/// the test independent of `PATH`); Windows has no fixed install location for
+/// Python, so the name is resolved through `PATH` instead, trying `python3`
+/// before `python` because the bare `python` alias is more often shadowed by the
+/// Microsoft Store stub.
+#[cfg(unix)]
+const PYTHON: &str = "/usr/bin/python3";
+#[cfg(windows)]
+fn python() -> &'static str {
+    static RESOLVED: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    RESOLVED.get_or_init(|| {
+        for name in ["python3", "python"] {
+            if Command::new(name)
+                .arg("-c")
+                .arg("pass")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+            {
+                return name;
+            }
+        }
+        panic!("these fixtures need a working python3 on PATH");
+    })
+}
+#[cfg(unix)]
+fn python() -> &'static str {
+    PYTHON
+}
 fn command(dir: &std::path::Path, body: &str) -> Command {
     let path = dir.join("compiler.py");
     std::fs::write(&path, body).unwrap();
-    let mut command = Command::new("/usr/bin/python3");
+    let mut command = Command::new(python());
     command.arg(path);
     command
 }

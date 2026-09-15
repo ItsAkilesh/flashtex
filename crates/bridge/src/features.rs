@@ -36,13 +36,16 @@ mod tests {
     use flashtex_compiler::{
         diagnostics::Diagnostic,
         lexer::tokenize,
-        math::{parse_tokens, MathList},
+        math::{parse_tokens, MathList, MathPackages},
     };
 
     fn parse(source: &str) -> (MathList, Vec<Diagnostic>) {
         let tokens = tokenize(source);
         let mut diagnostics = Vec::new();
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        // These are unconditionally-supported kernel constructs
+        // (STRUCTURAL_MATH_FEATURES), never package-gated ones, so no
+        // package needs to be "loaded" for this drift check to be honest.
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         (list, diagnostics)
     }
 
