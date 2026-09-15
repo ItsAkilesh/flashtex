@@ -1438,6 +1438,12 @@ impl MathParser<'_> {
     }
 
     fn command_atom(&mut self, name: String, span: Span) -> MathAtom {
+        // Expansion-pass side channel: a bare `\refstepcounter`'s
+        // `\@currentlabel` marker is invisible inside math, exactly like the
+        // real command (which the engine runs with no output tokens).
+        if name == "flashtexcurrentlabel" {
+            return space(0.0, span);
+        }
         // The `amsfonts.sty` math alphabets (`\mathbb` 108, `\mathfrak` 106)
         // and its two obsolete spellings exist only once the package is
         // loaded; base LaTeX2e has no definition for any of the four, so
@@ -2447,6 +2453,9 @@ impl MathParser<'_> {
             match &token.kind {
                 TokenKind::Word(w) if w == "]" => break,
                 TokenKind::Word(w) => text.push_str(w),
+                // The `\refstepcounter` side-channel marker never reaches
+                // user-visible text.
+                TokenKind::Command(name) if name == "flashtexcurrentlabel" => {}
                 TokenKind::Command(name) => {
                     text.push('\\');
                     text.push_str(name);
@@ -2868,6 +2877,10 @@ impl MathParser<'_> {
                     ));
                     push_text_piece(&mut pieces, "\\\\", style);
                 }
+                // The `\refstepcounter` side-channel marker never reaches
+                // user-visible text (and must not leak its internal name
+                // into a diagnostic).
+                TokenKind::Command(name) if name == "flashtexcurrentlabel" => {}
                 TokenKind::Command(name) => {
                     if let Some(nested_style) = text_command_style(&name, style) {
                         let (nested, nested_span) =
