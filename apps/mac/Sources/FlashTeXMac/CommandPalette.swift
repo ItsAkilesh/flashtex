@@ -53,6 +53,23 @@ enum CommandPaletteModel {
         return ranked.sorted { ($0.rank, $0.index) < ($1.rank, $1.index) }.map(\.row)
     }
 
+    /// A leading-colon line jump (`:42`, `:42:7`, `:+5` / `:-5`). Nil when the
+    /// query is not that form, so ordinary command filtering still runs.
+    static func lineJumpInput(from query: String) -> String? {
+        let t = query.trimmingCharacters(in: .whitespaces)
+        guard t.hasPrefix(":"), t.count > 1 else { return nil }
+        if case .success = EditorNavigation.parseLineTarget(t) { return t }
+        return nil
+    }
+
+    /// Palette `:N` route: resolve against the active buffer and select. False
+    /// when `query` is not a colon jump (the caller should run a command row).
+    @MainActor
+    static func performLineJump(_ query: String, model: ShellModel) -> Bool {
+        guard let input = lineJumpInput(from: query) else { return false }
+        return model.applyGoToLine(input)
+    }
+
     /// Runs `command` through the same model operations its menu item uses.
     /// Returns false for commands that cannot be run from the palette.
     @MainActor
@@ -95,6 +112,7 @@ enum CommandPaletteModel {
         case .goToMatching: model.goToMatching()
         case .goToDefinition: model.goToDefinition() // ShellModel+EditorNavigation.swift
         case .goToSymbol: model.editorNavigation.symbolPickerShown = true
+        case .goToLine: model.presentGoToLine()
         case .selectEnvironment: model.selectEnvironment()
         case .wrapInEnvironment: model.editorNavigation.wrapShown = true
         case .renameSymbol: model.presentRenameSymbol()
@@ -147,6 +165,9 @@ struct PaletteEntry: Identifiable, Equatable {
         case file(path: String, open: Bool, from: String?)
         case outline(DocumentOutline.Item)
         case citation(name: String, detail: String, definedIn: String?)
+        /// `:N` / `:N:C` / `:+N` query: not a scope, a jump. #476 has no
+        /// typed `:` prefix (colons are only in internal ids like `file:`).
+        case lineJump
     }
     let id: String
     let title: String
@@ -289,6 +310,18 @@ struct CommandPalette: View {
     }
 
     private func filteredEntries() -> [PaletteEntry] {
+        // `:42` is a query prefix, not a scope: it short-circuits Files /
+        // Sections / … the same way the old palette replaced its list.
+        if let jump = CommandPaletteModel.lineJumpInput(from: query) {
+            let preview: String = {
+                switch EditorNavigation.resolveLineTarget(model.activeText, input: jump, caret: model.caretUTF16) {
+                case .success(let t): return "Go to line \(t.line), column \(t.column)"
+                case .failure(let h): return h.message
+                }
+            }()
+            return [PaletteEntry(id: "goto:\(jump)", title: preview,
+                                 context: "⏎ jumps · esc closes", payload: .lineJump)]
+        }
         let entries = allEntries()
         let terms = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
         guard !terms.isEmpty else { return entries }
@@ -355,6 +388,10 @@ struct CommandPalette: View {
         case .citation(_, _, let definedIn):
             dismiss()
             if let definedIn { model.switchOrNote(definedIn) }
+        case .lineJump:
+            let q = query
+            dismiss()
+            DispatchQueue.main.async { _ = CommandPaletteModel.performLineJump(q, model: model) }
         }
     }
 }
@@ -388,6 +425,8 @@ private struct PaletteRow: View {
             Image(systemName: OutlineItemStyle.icon(item)).foregroundStyle(OutlineItemStyle.color(item))
         case .citation:
             Image(systemName: "quote.opening").foregroundStyle(DS.Colors.typeLabel)
+        case .lineJump:
+            Image(systemName: "number").foregroundStyle(DS.Colors.textSecondary)
         }
     }
 
@@ -409,6 +448,7 @@ private struct PaletteRow: View {
         case .file(let path, let open, _): return "\(path), \(open ? "open" : "not open"); activate to show it"
         case .outline(let item): return "\(item.command) \(item.title), line \(item.line); activate to select it"
         case .citation(let name, _, _): return "citation \(name); activate to open its bibliography source"
+        case .lineJump: return "\(entry.title); activate to jump"
         }
     }
 }
