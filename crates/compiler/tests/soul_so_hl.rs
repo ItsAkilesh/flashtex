@@ -171,6 +171,83 @@ fn so_and_hl_compose_both_ways() {
     assert_eq!(text_of(&inlines).replace(' ', ""), "Textabhere.");
 }
 
+/// Multi-word `\so` kerns only WITHIN words: real soul.sty's `\so` inserts
+/// its letterskip inside a word while the natural interword space is left
+/// alone, never additionally kerned. A piece starting a new word (first
+/// character of a run whose original `space_before` was true) must have no
+/// `Inline::Kern` immediately before it.
+#[test]
+fn so_multiword_kerns_within_words_not_across_spaces() {
+    // Exact sequence pin for `\so{ab cd}`: one kern inside each word, none
+    // across the word space (the "c" keeps its original `space_before`).
+    let source = soul_doc("\\so{ab cd}");
+    assert!(
+        parse(&source).diagnostics.is_empty(),
+        "\\so{{ab cd}} silent: {:?}",
+        parse(&source).diagnostics
+    );
+    let inlines = paragraph_inlines(&source);
+    let sig: Vec<String> = inlines
+        .iter()
+        .map(|inline| match inline {
+            Inline::Text {
+                text, space_before, ..
+            } => format!("T({text},{space_before})"),
+            Inline::Kern { .. } => "K".to_string(),
+            other => format!("OTHER({other:?})"),
+        })
+        .collect();
+    assert_eq!(
+        sig,
+        vec![
+            "T(a,true)",
+            "K",
+            "T(b,false)",
+            "T(c,true)",
+            "K",
+            "T(d,false)"
+        ],
+        "no kern across the word space: {inlines:?}"
+    );
+
+    // Invariant + kern counts across word shapes: two short words, three
+    // words of different lengths, and the single-word case (3 kerns).
+    for (body, want_kerns) in [
+        ("\\so{ab cd}", 2),
+        ("\\so{a bb ccc}", 3),
+        ("\\so{text}", 3),
+    ] {
+        let source = soul_doc(body);
+        assert!(
+            parse(&source).diagnostics.is_empty(),
+            "{body} silent: {:?}",
+            parse(&source).diagnostics
+        );
+        let inlines = paragraph_inlines(&source);
+        for pair in inlines.windows(2) {
+            if matches!(pair[1], Inline::Text { space_before: true, .. }) {
+                assert!(
+                    !matches!(pair[0], Inline::Kern { .. }),
+                    "no kern across the word space in {body}: {inlines:?}"
+                );
+            }
+        }
+        let kerns = inlines
+            .iter()
+            .filter(|i| matches!(i, Inline::Kern { .. }))
+            .count();
+        assert_eq!(kerns, want_kerns, "kern count for {body}: {inlines:?}");
+        assert_eq!(
+            text_of(&inlines).replace(' ', ""),
+            body
+                .trim_start_matches("\\so{")
+                .trim_end_matches('}')
+                .replace(' ', ""),
+            "letters preserved for {body}"
+        );
+    }
+}
+
 /// Out of scope: soul `\st` keeps its exact `unknown_command` error, with
 /// or without the package.
 #[test]

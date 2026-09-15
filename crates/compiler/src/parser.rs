@@ -7753,8 +7753,11 @@ fn is_spaced_letter(inline: &Inline) -> bool {
 }
 
 /// soul `\so`: split text runs into single letters and kern every two
-/// adjacent letters. Pieces keep their style, span and (for the first
-/// piece) `space_before`; the caller sets the command site's flag.
+/// adjacent letters WITHIN a word. A piece starting a new word (first
+/// character of a run whose original `space_before` was true) keeps the
+/// natural interword space with no added kern, like soul.sty's letterskip.
+/// Pieces keep their style, span and (for the first piece) `space_before`;
+/// the caller sets the command site's flag.
 fn space_out_letters(content: &[Inline]) -> Vec<Inline> {
     let kern = soul_letterskip();
     let mut out = Vec::with_capacity(content.len() * 2);
@@ -7762,14 +7765,20 @@ fn space_out_letters(content: &[Inline]) -> Vec<Inline> {
         if let Inline::Text { text, span, style, space_before } = inline {
             let mut first = true;
             for c in text.chars() {
+                // A first character carrying the run's `space_before` opens a
+                // new word: the interword space stays un-kerned.
+                let word_start = first && *space_before;
                 let piece = Inline::Text {
                     text: c.to_string(),
                     span: *span,
                     style: *style,
-                    space_before: first && *space_before,
+                    space_before: word_start,
                 };
                 first = false;
-                if is_spaced_letter(&piece) && out.last().is_some_and(is_spaced_letter) {
+                if !word_start
+                    && is_spaced_letter(&piece)
+                    && out.last().is_some_and(is_spaced_letter)
+                {
                     if let Some(Inline::Text { style: left, .. }) = out.last() {
                         out.push(Inline::Kern {
                             amount: kern.clone(),
