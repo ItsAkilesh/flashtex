@@ -1,15 +1,15 @@
 import AppKit
 import SwiftUI
 
-/// The IDE title bar (context/PROMPT-appearance-overhaul.md §6): transparent
-/// title bar over a full-size content view, hidden title, no separator
-/// hairline, compact toolbar — the window reads as one chrome surface with
-/// the toolbar sitting on it, VS Code/JetBrains-fashion, instead of a stock
-/// Aqua band. The macOS 14 path is `NSWindow` configuration (below); the
-/// macOS 15 SwiftUI equivalents are applied where available in ContentView.
-///
-/// Deliberately *not* chased to the Ghostty level (drag strips, hidden
-/// traffic lights): transparent + hidden + unified is enough for the look.
+/// The IDE title bar (context/PROMPT-appearance-overhaul.md §6, reshaped by
+/// the owner's #653 feedback): transparent title bar over a full-size
+/// content view, hidden title, no separator hairline, and an EMPTY
+/// `NSToolbar` kept solely so AppKit gives the title bar its unified-compact
+/// height and centres the traffic lights in it. The controls themselves are
+/// `TitleBarRow` (TitleBar.swift), drawn as content in that region,
+/// IntelliJ-fashion — macOS 26 floats real toolbar items on Liquid Glass
+/// platters, which is exactly the look the owner rejected. The row carries
+/// its own drag surface, one step further toward Ghostty than before.
 struct WindowChromeConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> ChromeApplyingView { ChromeApplyingView() }
     func updateNSView(_ view: ChromeApplyingView, context: Context) {}
@@ -35,6 +35,11 @@ struct WindowChromeConfigurator: NSViewRepresentable {
                                                        object: window, queue: .main) { _ in
                     MainActor.assumeIsolated { Self.apply(to: window) }
                 },
+                // AppKit re-lays the standard buttons out on resize.
+                NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification,
+                                                       object: window, queue: .main) { _ in
+                    MainActor.assumeIsolated { Self.apply(to: window) }
+                },
             ]
         }
 
@@ -46,8 +51,11 @@ struct WindowChromeConfigurator: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.titlebarSeparatorStyle = .none
-            window.toolbarStyle = .unifiedCompact
-            window.toolbar?.displayMode = .iconOnly
+            // No toolbar at all: an NSToolbar installs asynchronously and
+            // changes `contentLayoutRect` while the content is already laying
+            // out (snapshot captures differed run to run by the 4pt that
+            // costs). TitleBarRow reserves the title-bar region itself.
+            window.toolbar = nil
             window.backgroundColor = DS.NSColors.windowChrome
         }
     }
