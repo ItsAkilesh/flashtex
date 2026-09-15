@@ -8662,10 +8662,41 @@ pub fn assemble(
     style: &Stylesheet,
     _fonts: &FontSet,
     laid: Laid,
+    diagnostics: Vec<Diagnostic>,
+    cache: Option<&RenderCache>,
+    page_color: Option<flashtex_compiler::color::DeviceColor>,
+    default_color: Option<flashtex_compiler::color::DeviceColor>,
+) -> DisplayList {
+    assemble_windowed(project_id, revision, documents, style, _fonts, laid, diagnostics, cache, page_color, default_color, None)
+}
+
+/// [`assemble`] materialising only `window`'s pages
+/// (`protocol/proposals/display-list-v2-window.md`).
+///
+/// Every page is still laid out, numbered and measured; pages outside the
+/// window get [`display::PageContent::Elided`] and their glyph items are never
+/// built. Every block is still *visited*, in the same order, because the font
+/// closure and the `math_resource_profile` / `math_glyph_unmapped` diagnostics
+/// are derived from assembly over the whole document — a window that assembled
+/// only its own blocks would emit a quietly smaller closure and fewer
+/// diagnostics. What the window changes is retention, not the traversal: an
+/// assembled block reaching no windowed page is dropped as soon as it has been
+/// harvested, and is not put in the cache.
+///
+/// With `window == None` this is `assemble`, byte for byte.
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_windowed(
+    project_id: &str,
+    revision: u64,
+    documents: &[SourceDocument<'_>],
+    style: &Stylesheet,
+    _fonts: &FontSet,
+    laid: Laid,
     mut diagnostics: Vec<Diagnostic>,
     cache: Option<&RenderCache>,
     page_color: Option<flashtex_compiler::color::DeviceColor>,
     default_color: Option<flashtex_compiler::color::DeviceColor>,
+    window: Option<display::PageWindow>,
 ) -> DisplayList {
     let paths: Vec<Rc<str>> = documents.iter().map(|d| Rc::from(d.path)).collect();
     let empty: Rc<str> = Rc::from("");
@@ -8679,18 +8710,82 @@ pub fn assemble(
     // (cached across requests by the block's key), then placed per page by
     // integer tick/byte moves.
     let text_x = style.text_x_pt;
-    let mut assembled: Vec<Option<Rc<incremental::AssembledBlock>>> = Vec::with_capacity(laid.blocks.len());
-    for block in &laid.blocks {
+    // The effective window, clamped against the page count layout produced.
+    let window = window.and_then(|w| w.clamped(laid.pages.pages.len() as u32));
+    let resident = |number: u32| window.is_none_or(|w| w.contains(number));
+
+    // Where each block's lines land on a RESIDENT page: block index ->
+    // [(page index, line index)]. Built from `Laid`, which already holds every
+    // placement; it costs one pair per placed resident line and it is what lets
+    // the block loop below emit into pages directly instead of keeping every
+    // `AssembledBlock` alive until the page loop.
+    let mut lands: Vec<Vec<(u32, u32)>> = vec![Vec::new(); laid.blocks.len()];
+    for (pi, page) in laid.pages.pages.iter().enumerate() {
+        if !resident(page.number) {
+            continue;
+        }
+        for (li, placed) in page.lines.iter().enumerate() {
+            if let Some(slot) = lands.get_mut(placed.paragraph) {
+                slot.push((pi as u32, li as u32));
+            }
+        }
+    }
+
+    // Resident pages collect their items per line index, so that streaming by
+    // block still emits each page's items in line order — the order the page
+    // loop produced them in before.
+    let mut per_line: Vec<Option<Vec<Vec<display::Item>>>> = laid
+        .pages
+        .pages
+        .iter()
+        .map(|p| if resident(p.number) { Some(vec![Vec::new(); p.lines.len()]) } else { None })
+        .collect();
+
+    // Harvested in block order and emitted after the loop, so that the
+    // diagnostics vector keeps today's shape: every `math_resource_profile`
+    // first, then every `math_glyph_unmapped`.
+    let mut profiles: BTreeMap<String, String> = BTreeMap::new();
+    let mut unmapped_seen = BTreeSet::new();
+    let mut unmapped_diags: Vec<Diagnostic> = Vec::new();
+    let mut keep_assembled: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    // `required_features` is the third closure that must stay whole-document
+    // (§3), beside the font set and the diagnostics, and it is derived from
+    // item kinds and paints. So it is harvested here, in the same pass, from
+    // every block — including the blocks whose only pages are elided and
+    // whose items are about to be dropped.
+    //
+    // The harvest walks every block, and a block placed on no page at all
+    // would contribute a feature no page paints. That direction is the safe
+    // one — a consumer told to support `rule` when nothing draws one loses
+    // nothing, while a consumer *not* told is the failure this exists to
+    // prevent — and §9's equality gate pins the two together for every
+    // document it covers, so an over-announcement would show up as a windowed
+    // reply differing from the unwindowed one rather than passing silently.
+    let mut doc_features = display::DocumentFeatures::default();
+    // `default_color` writes a device colour into every glyph run and rule
+    // that carries none, after placement; whether the document has one to
+    // write into is therefore part of the harvest.
+    let mut any_painted_item = false;
+
+    for (bi, block) in laid.blocks.iter().enumerate() {
         let hit = block
             .cache_key
             .and_then(|(k, _, _)| cache.and_then(|c| c.assembled(k)))
             .filter(|a| block.cache_key.is_some_and(|(_, d, _)| *a.path == *paths.get(d.0).map_or("", |p| &**p)));
+        // Unwindowed, every block is wanted whether or not a page placed it,
+        // so the cache behaves exactly as it did before this change. Windowed,
+        // a block reaching no resident page is harvested and dropped.
+        let wanted = window.is_none() || !lands[bi].is_empty();
         let a = match hit {
             Some(a) => a,
             None => {
                 let built = assemble_block(block, &laid.recs, &laid.maths, text_x, &source_of, &paths, &empty);
                 match (cache, block.cache_key) {
-                    (Some(c), Some((k, _, _))) => c.insert_assembled(k, built),
+                    // A block no resident page uses is harvested and dropped;
+                    // caching it is exactly the retention the window exists to
+                    // remove. Unwindowed, `wanted` is true for every placed
+                    // block, so this is today's behaviour.
+                    (Some(c), Some((k, _, _))) if wanted => c.insert_assembled(k, built),
                     _ => Rc::new(built),
                 }
             }
@@ -8698,25 +8793,92 @@ pub fn assemble(
         for f in &a.faces {
             used.entry(f.font_id.clone()).or_insert_with(|| f.clone());
         }
-        assembled.push(Some(a));
-    }
-    let mut pages = Vec::new();
-    for (pi, page) in laid.pages.pages.iter().enumerate() {
-        let mut items: Vec<display::Item> = Vec::new();
-        for (li, placed) in page.lines.iter().enumerate() {
-            let block = &laid.blocks[placed.paragraph];
-            let Some(a) = assembled[placed.paragraph].as_ref() else { continue };
+        for it in a.lines.iter().flatten() {
+            doc_features.note(it);
+            any_painted_item |= matches!(it, display::Item::GlyphRun(_) | display::Item::Rule(_));
+        }
+        for (tfm, face, exact) in &a.resources {
+            if !exact {
+                profiles.entry(tfm.clone()).or_insert(face.clone());
+            }
+        }
+        // Glyphs TeX's metrics placed that the OpenType face cannot draw
+        // (extensible assemblies, unknown chains): reported, not faked.
+        for (font, code, ch) in &a.unmapped {
+            if unmapped_seen.insert((font.clone(), *code)) {
+                let span = block.recs.iter().flatten().find_map(|r| match &laid.recs[*r] {
+                    BoxRec::Math(mi) => Some(laid.maths[*mi].span),
+                    BoxRec::Rule { span, .. } => Some(*span),
+                    BoxRec::Picture(p) => Some(p.span),
+                    BoxRec::Table(t) => Some(t.span),
+                    BoxRec::ColorBox(c) => Some(c.span),
+                    BoxRec::Leader { .. } => None,
+                    BoxRec::Underline(u) => Some(u.span),
+                    BoxRec::Text { .. } => None,
+                });
+                unmapped_diags.push(Diagnostic::warning(
+                    "math_glyph_unmapped",
+                    format!("{font} code {code:#04x} ('{ch}') has no Latin Modern Math glyph mapping; nothing drawn for it"),
+                    span.map(|s| vec![source_of(s)]).unwrap_or_default(),
+                ));
+            }
+        }
+        let delta = block.cache_key.map_or(0, |(_, _, b)| b as isize - a.base as isize);
+        for &(pi, li) in &lands[bi] {
+            let page = &laid.pages.pages[pi as usize];
+            let placed = &page.lines[li as usize];
             let Some(line_items) = a.lines.get(placed.line) else { continue };
             let dy = Tick::from_tex_pt(placed.baseline_y);
-            let dx = laid.line_dx.get(pi).and_then(|d| d.get(li)).map_or(Tick(0), |d| Tick::from_tex_pt(*d));
-            let delta = block.cache_key.map_or(0, |(_, _, b)| b as isize - a.base as isize);
+            let dx = laid.line_dx.get(pi as usize).and_then(|d| d.get(li as usize)).map_or(Tick(0), |d| Tick::from_tex_pt(*d));
+            let slot = &mut per_line[pi as usize].as_mut().expect("a landing page is resident")[li as usize];
             for it in line_items {
                 let mut item = incremental::place_item(it, dy, &a.path, delta);
                 if dx.0 != 0 {
                     display::shift_x(&mut item, dx);
                 }
-                items.push(item);
+                slot.push(item);
             }
+        }
+        if wanted {
+            if let Some((k, _, _)) = block.cache_key {
+                keep_assembled.insert(k);
+            }
+        }
+        // `a` drops here unless the assembled cache or another `Rc` holds it.
+    }
+    // The page-level items the loop above never saw: float images belong to a
+    // page rather than to a block, and `\pagecolor` paints a rule under every
+    // page. Both are document-wide facts even when the page carrying them is
+    // elided.
+    for (_, it) in &laid.images {
+        doc_features.note(it);
+    }
+    if page_color.is_some() && !laid.pages.pages.is_empty() {
+        doc_features.rule = true;
+        doc_features.device_color = true;
+    }
+    if default_color.is_some() && any_painted_item {
+        doc_features.device_color = true;
+    }
+
+    // The assembled cache is scoped to the window: a scroll through a long
+    // document must not accumulate every page it passed (§5.4). `blocks` and
+    // `adapted` are untouched -- they are what keeps the next window cheap.
+    if window.is_some() {
+        if let Some(c) = cache {
+            c.retain_assembled(&keep_assembled);
+        }
+    }
+
+    let mut pages = Vec::new();
+    for (pi, page) in laid.pages.pages.iter().enumerate() {
+        let Some(lines) = per_line[pi].take() else {
+            pages.push(display::Page::elided(page.number, Tick::from_tex_pt(page.width), Tick::from_tex_pt(page.height)));
+            continue;
+        };
+        let mut items: Vec<display::Item> = Vec::with_capacity(lines.iter().map(Vec::len).sum());
+        for line in lines {
+            items.extend(line);
         }
         items.extend(laid.images.iter().filter(|(n, _)| *n == page.number).map(|(_, it)| it.clone()));
         if let Some(color) = default_color {
@@ -8746,12 +8908,7 @@ pub fn assemble(
                 }),
             );
         }
-        pages.push(display::Page {
-            number: page.number,
-            width: Tick::from_tex_pt(page.width),
-            height: Tick::from_tex_pt(page.height),
-            items,
-        });
+        pages.push(display::Page::resident(page.number, Tick::from_tex_pt(page.width), Tick::from_tex_pt(page.height), items));
     }
     // Resource selection provenance: which outline resource drew each TFM
     // font's glyphs. The roman family has exact optical siblings
@@ -8761,14 +8918,6 @@ pub fn assemble(
     // Collected over every provider (cached blocks keep the provider that
     // built them), then emitted in TFM-name order without a source so the
     // report does not depend on which block was built first.
-    let mut profiles: BTreeMap<String, String> = BTreeMap::new();
-    for a in assembled.iter().flatten() {
-        for (tfm, face, exact) in &a.resources {
-            if !exact {
-                profiles.entry(tfm.clone()).or_insert(face.clone());
-            }
-        }
-    }
     for (tfm, face) in profiles {
         diagnostics.push(Diagnostic::warning(
             "math_resource_profile",
@@ -8776,31 +8925,9 @@ pub fn assemble(
             Vec::new(),
         ));
     }
-    // Glyphs TeX's metrics placed that the OpenType face cannot draw
-    // (extensible assemblies, unknown chains): reported, not faked.
-    let mut reported = BTreeSet::new();
-    for (block, a) in laid.blocks.iter().zip(assembled.iter()) {
-        let Some(a) = a else { continue };
-        for (font, code, ch) in &a.unmapped {
-            if reported.insert((font.clone(), *code)) {
-                let span = block.recs.iter().flatten().find_map(|r| match &laid.recs[*r] {
-                    BoxRec::Math(mi) => Some(laid.maths[*mi].span),
-                    BoxRec::Rule { span, .. } => Some(*span),
-                    BoxRec::Picture(p) => Some(p.span),
-                    BoxRec::Table(t) => Some(t.span),
-                    BoxRec::ColorBox(c) => Some(c.span),
-                    BoxRec::Leader { .. } => None,
-                    BoxRec::Underline(u) => Some(u.span),
-                    BoxRec::Text { .. } => None,
-                });
-                diagnostics.push(Diagnostic::warning(
-                    "math_glyph_unmapped",
-                    format!("{font} code {code:#04x} ('{ch}') has no Latin Modern Math glyph mapping; nothing drawn for it"),
-                    span.map(|s| vec![source_of(s)]).unwrap_or_default(),
-                ));
-            }
-        }
-    }
+    // Harvested in the block loop above, in the same block order, so this
+    // vector is what it has always been.
+    diagnostics.extend(unmapped_diags);
     let fonts = used
         .values()
         .map(|f| FontResource {
@@ -8832,6 +8959,8 @@ pub fn assemble(
         fonts,
         pages,
         diagnostics,
+        window,
+        document_features: Some(doc_features),
     }
 }
 
@@ -9742,6 +9871,10 @@ fn math_items(
                     width: Tick::from_tex_pt(g.width),
                     height: hh,
                 },
+                // The carets are derived from `text_start_byte` and
+                // `hit_rect` (`Cluster::first_caret`), and the run's
+                // `end_caret` is `None`, so this cluster's carets are what
+                // the explicit `first`/`last: None` used to spell out.
                 provenance: Provenance::Source(glyph_src),
             });
             continue;
@@ -9898,7 +10031,7 @@ impl Tick {
 pub fn documents_referenced(list: &DisplayList) -> BTreeSet<DocumentId> {
     let mut out = BTreeSet::new();
     for p in &list.pages {
-        for it in &p.items {
+        for it in p.items().into_iter().flatten() {
             if let display::Item::GlyphRun(r) = it {
                 for c in &r.clusters {
                     for s in c.provenance.sources() {
