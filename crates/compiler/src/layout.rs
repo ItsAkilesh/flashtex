@@ -2283,6 +2283,7 @@ fn visit_inline_references(inlines: &[Inline], visitor: &mut impl FnMut(&str, Sp
             }
             Inline::Transform(b) => visit_inline_references(&b.content, visitor),
             Inline::Underline(u) => visit_inline_references(&u.content, visitor),
+            Inline::TextScript(t) => visit_inline_references(&t.content, visitor),
             _ => {}
         }
     }
@@ -2750,6 +2751,29 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                                 height_pt: round2(u.thickness_pt),
                             }),
                         });
+                }
+            }
+            Inline::TextScript(t) => {
+                if !t.space_before {
+                    c.x = c.content_end;
+                }
+                // `\@textsuperscript` / `\@textsubscript` set the `\mbox`
+                // at the `\sf@size` of the current size, raised like this
+                // layout's own footnote marks (cmsy10 `sup1`).
+                let (mark_size, raise) =
+                    footnotes::textscript_size_and_raise(size, t.superscript);
+                let start_page = c.pages.len();
+                let start_item = c.pages.last().map_or(0, |page| page.items.len());
+                emit(c, &t.content, mark_size, font);
+                for (i, page) in c.pages.iter_mut().enumerate().skip(start_page - 1) {
+                    let from = if i == start_page - 1 {
+                        start_item.min(page.items.len())
+                    } else {
+                        0
+                    };
+                    for item in &mut page.items[from..] {
+                        item.baseline_y_pt = round2(item.baseline_y_pt - raise);
+                    }
                 }
             }
         }

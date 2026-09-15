@@ -49,6 +49,18 @@ const FOOTINS_MAX_PT: f64 = 8.0 * 72.0;
 const MARK_BOX_EM: f64 = 1.8;
 /// cmsy10 `sup1` (fontdimen 13): the raise of a text-style superscript.
 const MARK_RAISE_EM: f64 = 0.412892;
+
+/// `\@textsuperscript` / `\@textsubscript` geometry for this layout: the
+/// `\sf@size` of `size` (the same table footnote marks use) and the mark
+/// raise, negated for subscripts. Shared with `layout::emit`'s
+/// `Inline::TextScript` arm so marks and text scripts always agree.
+pub(super) fn textscript_size_and_raise(size: f64, superscript: bool) -> (f64, f64) {
+    let raise = MARK_RAISE_EM * size;
+    (
+        Metrics::for_body(size).text_mark_size,
+        if superscript { raise } else { -raise },
+    )
+}
 /// `\footnoterule`: `\kern-3pt` above the notes, then a 0.4pt `\hrule`.
 const RULE_KERN_PT: f64 = 3.0;
 const RULE_THICKNESS_PT: f64 = 0.4;
