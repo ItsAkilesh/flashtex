@@ -91,8 +91,8 @@ fn color_persists_across_paragraphs_but_not_environments() {
 #[test]
 fn font_changes_keep_the_colour_and_macros_carry_it() {
     let p = doc(
-        "\\usepackage[dvipsnames]{xcolor}\\newcommand{\\hl}[1]{\\textcolor{RoyalBlue}{#1}}",
-        "{\\color{red}\\bfseries a \\normalfont b} \\hl{word} \\section{Head \\textcolor{Maroon}{Tail}}",
+        "\\usepackage[dvipsnames]{xcolor}\\newcommand{\\bluehl}[1]{\\textcolor{RoyalBlue}{#1}}",
+        "{\\color{red}\\bfseries a \\normalfont b} \\bluehl{word} \\section{Head \\textcolor{Maroon}{Tail}}",
     );
     assert!(p.diagnostics.is_empty(), "{:?}", messages(&p));
     assert_eq!(color_of(&p, "a").as_deref(), Some("1 0 0 rg"));

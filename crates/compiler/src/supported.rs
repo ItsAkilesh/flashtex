@@ -310,6 +310,8 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("uline", "{...}", "ulem underline: 0.4pt rule under the argument (single-line; needs ulem)"),
     ("underline", "{...}", "kernel text underline: TeXbook Rule 10 math-rule under an unbreakable hbox"),
     ("sout", "{...}", "ulem strike-out: 0.4pt rule 0.55ex above the baseline (single-line; needs ulem)"),
+    ("so", "{...}", "soul letterspacing: 0.14em kern between the argument's letters (single-line; needs soul)"),
+    ("hl", "{...}", "soul highlight: the argument on a yellow box (single-line; needs soul)"),
     ("thinspace", "", "text kern .16667em (math: thin muskip)"),
     ("negthinspace", "", "text kern -.16667em"),
     ("medspace", "", "text kern .2222em"),
@@ -943,6 +945,11 @@ const PACKAGES: &[(&str, &str, &str)] = &[
         "ulem",
         "normalem",
         "\\uline: 0.4pt rule under the argument (single-line); \\sout: 0.4pt strike at 0.55ex; \\emph is not redefined",
+    ),
+    (
+        "soul",
+        "",
+        "\\so: letterspaced argument (0.14em between letters, single-line); \\hl: argument on a yellow box; \\st stays unsupported",
     ),
 ];
 

@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use crate::bib;
 use crate::date::TodayDate;
-use crate::color::{Colors, DeviceColor};
+use crate::color::{ColorSpace, Colors, DeviceColor};
 use crate::diagnostics::Diagnostic;
 use crate::expansion::{self, ExpansionSite};
 use crate::lexer::{apply_text_ligatures, tokenize_document, Token, TokenKind};
@@ -1110,6 +1110,8 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "uline",
     "underline",
     "sout",
+    "so",
+    "hl",
 ];
 
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
@@ -2790,6 +2792,10 @@ impl P<'_> {
                 };
                 self.text_underline_cmd(name, span, para, geom);
             }
+            // soul `\so` (letterspacing) and `\hl` (highlight) need the
+            // package; soul `\st` (strikethrough, GH-330's ulem-side work)
+            // stays unimplemented and keeps its `unknown_command` error.
+            "so" | "hl" => self.soul_command(name, span, para),
             "thinspace" | "negthinspace" | "medspace" | "negmedspace" | "thickspace"
             | "negthickspace" | "enspace" => {
                 if let Some(amount) = text_builtins::text_kern(name, self.math_packages.amsmath) {
@@ -6371,6 +6377,57 @@ impl P<'_> {
         })));
     }
 
+    /// soul `\so{text}` (letterspacing) or `\hl{text}` (highlight). Without
+    /// soul, the package commands diagnose and typeset the argument as
+    /// plain text, like the ulem commands above.
+    fn soul_command(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let (tokens, argument_span) = self.required_group(name, span);
+        let full = span.merge(argument_span);
+        if !self.packages.iter().any(|package| package == "soul") {
+            self.diags.push(Diagnostic::command_error(
+                name,
+                format!("\\{name} needs \\usepackage{{soul}}"),
+                Some(full),
+                Some("typeset the argument as plain text".into()),
+            ));
+            para.extend(self.box_inlines(tokens));
+            return;
+        }
+        if name == "hl" {
+            // soul's highlight is the argument on a yellow box: exactly the
+            // xcolor `\colorbox` node (same paint path in the pipeline) with
+            // xcolor's own yellow instead of a user-supplied fill.
+            let content = self.box_inlines(tokens);
+            let yellow = DeviceColor::from_billionths(ColorSpace::Cmyk, &[0, 0, 1_000_000_000, 0])
+                .unwrap_or(DeviceColor::BLACK);
+            para.push(Inline::ColorBox(Box::new(ColorBox {
+                fill: yellow,
+                frame: None,
+                content,
+                fboxsep_pt: self.fboxsep_pt,
+                fboxrule_pt: self.fboxrule_pt,
+                span: full,
+                space_before,
+            })));
+            return;
+        }
+        // `\so`: soul's letterspaced argument (soul.sty's `\sodef\so`
+        // letterskip). The argument as ordinary inlines with that kern
+        // between every two adjacent letters, so the existing kern machinery
+        // lays it out wider with no new node type. The first piece keeps the
+        // command site's `space_before`, since the content splices directly
+        // into the paragraph (a wrapper would carry it instead).
+        let mut spaced = space_out_letters(&self.box_inlines(tokens));
+        match spaced.first_mut() {
+            Some(Inline::Text { space_before: first, .. }) => *first = space_before,
+            Some(Inline::ColorBox(b)) => b.space_before = space_before,
+            Some(Inline::Underline(u)) => u.space_before = space_before,
+            _ => {}
+        }
+        para.extend(spaced);
+    }
+
     fn text_logo(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
         let space_before = self.space_precedes(self.i - 1);
         if let Some(logo) = TextLogo::from_command(name) {
@@ -7415,6 +7472,9 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // `\uline` and `\sout` are implemented; `\emph` is not redefined
         // (ulem's default `ULforem`) and `\uuline` stays unsupported if used.
         "ulem" => options.iter().all(|option| *option == "normalem"),
+        // `\so` and `\hl` are implemented (soul takes no package options);
+        // `\st` stays unsupported if used.
+        "soul" => options.is_empty(),
         _ => false,
     }
 }
@@ -7666,6 +7726,65 @@ fn preamble_source(text: &str, has_document: bool, tokens: &[InputToken]) -> Str
     end.filter(|end| *end <= text.len() && text.is_char_boundary(*end))
         .map_or("", |end| &text[..end])
         .to_string()
+}
+
+/// soul.sty `\sodef\so`'s letterskip (`.14em`) between the letters, as a
+/// font-relative kern like the text-mode kerns above.
+fn soul_letterskip() -> TextDimen {
+    TextDimen {
+        negative: false,
+        integer: 0,
+        frac: vec![1, 4],
+        unit: text_builtins::DimenUnit::Em,
+    }
+}
+
+/// Whether an inline is one letterspaceable letter for `\so`: a single
+/// non-whitespace character of a text run. Word spaces, boxes, rules and
+/// math keep their own spacing, so no kern touches them.
+fn is_spaced_letter(inline: &Inline) -> bool {
+    match inline {
+        Inline::Text { text, .. } => {
+            let mut chars = text.chars();
+            matches!(chars.next(), Some(c) if !c.is_whitespace()) && chars.next().is_none()
+        }
+        _ => false,
+    }
+}
+
+/// soul `\so`: split text runs into single letters and kern every two
+/// adjacent letters. Pieces keep their style, span and (for the first
+/// piece) `space_before`; the caller sets the command site's flag.
+fn space_out_letters(content: &[Inline]) -> Vec<Inline> {
+    let kern = soul_letterskip();
+    let mut out = Vec::with_capacity(content.len() * 2);
+    for inline in content {
+        if let Inline::Text { text, span, style, space_before } = inline {
+            let mut first = true;
+            for c in text.chars() {
+                let piece = Inline::Text {
+                    text: c.to_string(),
+                    span: *span,
+                    style: *style,
+                    space_before: first && *space_before,
+                };
+                first = false;
+                if is_spaced_letter(&piece) && out.last().is_some_and(is_spaced_letter) {
+                    if let Some(Inline::Text { style: left, .. }) = out.last() {
+                        out.push(Inline::Kern {
+                            amount: kern.clone(),
+                            span: *span,
+                            style: *left,
+                        });
+                    }
+                }
+                out.push(piece);
+            }
+        } else {
+            out.push(inline.clone());
+        }
+    }
+    out
 }
 
 /// The kern a control-symbol token (`\,` lexed as the word `,` with a
