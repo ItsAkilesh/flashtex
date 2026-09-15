@@ -21,8 +21,9 @@ pub(crate) const MATH_COMMANDS: &[&str] = &[
     "dots", "ldots", "dotsc", "dotso", "cdots", "dotsb", "dotsm", "dotsi", "iint", "lbrace",
     "rbrace", "iiint", "bmod", "mod", "dfrac", "tfrac", "cfrac", "frac", "begin", "sqrt", "overset",
     "stackrel", "underset", "binom", "dbinom", "tbinom", "mathbf", "textbf", "boxed", "overline",
-    "underline", "tag", "pmod", "text", "bigl", "bigr", "quad", "qquad", "mathbb", "hat", "bar",
+    "underline", "underbar", "tag", "pmod", "text", "bigl", "bigr", "quad", "qquad", "mathbb", "hat", "bar",
     "vec", "tilde", "dot", "ddot", "check", "breve", "acute", "grave", "widehat", "widetilde",
+    "dddot", "ddddot", "mathring",
     "overbrace", "underbrace", "overrightarrow", "overleftarrow", "overleftrightarrow",
     "num", "qty", "unit", "si", "SI", "numlist", "numrange", "qtylist", "qtyrange", "SIlist",
     "SIrange", "ang", "sisetup",
@@ -48,7 +49,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "vskip", "hskip", "kern", "enspace", "thinspace", "negthinspace", "hline", "cline",
     "multicolumn", "tabularnewline", "arraystretch",
     // Fonts and text symbols.
-    "textsuperscript", "textsubscript", "underbar", "LaTeX",
+    "textsuperscript", "textsubscript", "LaTeX",
     "LaTeXe", "TeX", "dag", "ddag", "S", "P", "copyright", "pounds", "textbackslash",
     "textasciitilde", "textasciicircum", "textbar", "textless", "textgreater", "textendash",
     "textemdash", "textbullet", "textperiodcentered", "textquoteleft", "textquoteright",
@@ -73,14 +74,13 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "intertext", "shortintertext", "substack", "sideset", "xrightarrow", "xleftarrow", "overbrace",
     "underbrace", "overleftarrow", "overrightarrow", "mathcal", "mathfrak", "mathscr", "pmb",
     "limits", "nolimits", "displaylimits", "colon", "eqqcolon", "Coloneqq", "Eqqcolon",
-    "vcentcolon", "dblcolon", "vdots", "ddots", "iff",
-    "implies", "impliedby",
-    "genfrac", "operatornamewithlimits", "dddot", "ddddot", "cancel", "bcancel", "xcancel",
-    "cancelto", "numberwithin", "allowdisplaybreaks", "mathring", "lvert", "rvert", "lVert",
+    "vcentcolon", "dblcolon", "vdots", "ddots", "iff", "implies", "impliedby",
+    "genfrac", "operatornamewithlimits", "cancel", "bcancel", "xcancel",
+    "cancelto", "numberwithin", "allowdisplaybreaks", "lvert", "rvert", "lVert",
     "rVert", "varepsilon", "vartheta", "varphi", "varrho", "varsigma", "varpi", "digamma",
     "varkappa", "hbar", "hslash", "ell", "wp", "Re", "Im", "aleph", "beth", "gimel", "emptyset",
     "varnothing", "nabla", "partial", "infty", "forall", "exists", "nexists", "neg", "lnot", "top",
-    "bot", "angle", "measuredangle", "triangle", "square", "blacksquare", "Box", "Diamond",
+    "bot", "angle", "measuredangle", "triangle", "square", "blacksquare", "Diamond",
     "clubsuit", "diamondsuit", "heartsuit", "spadesuit", "flat", "natural", "sharp", "prime",
     "backprime", "surd", "mathstrut", "not", "neq", "ne", "leq", "le", "geq", "ge", "ll", "gg",
     "leqslant", "geqslant", "approx", "cong", "equiv", "sim", "simeq", "propto", "subset", "supset",
@@ -101,7 +101,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
 /// Environments this compiler implements outside math mode.
 #[rustfmt::skip]
 const IMPLEMENTED_ENVIRONMENTS: &[&str] = &[
-    "document", "figure", "center", "flushright", "flushleft", "quote", "quotation", "itemize",
+    "document", "figure", "frame", "center", "flushright", "flushleft", "quote", "quotation", "itemize",
     "enumerate", "equation", "equation*", "displaymath", "gather", "gather*", "align", "align*",
     "alignat", "alignat*", "flalign", "flalign*", "eqnarray", "eqnarray*", "multline", "multline*",
     "tiny", "scriptsize", "footnotesize", "small", "normalsize",
@@ -117,7 +117,6 @@ const KNOWN_UNIMPLEMENTED_ENVIRONMENTS: &[&str] = &[
     "list", "trivlist", "picture", "math", "gathered", "multlined",
     "subequations", "proof", "tikzpicture", "lstlisting", "minted",
     "wrapfigure", "subfigure", "comment", "landscape", "filecontents",
-    "frame",
 ];
 
 fn implemented_commands() -> impl Iterator<Item = &'static str> {
