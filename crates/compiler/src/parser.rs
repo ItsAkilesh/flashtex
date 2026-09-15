@@ -623,6 +623,35 @@ pub enum FontSizeLevel {
     Huge2,
 }
 
+impl FontSizeLevel {
+    /// One step up (`delta > 0`) or down (`delta < 0`) the same
+    /// `\tiny`..`\Huge` table the absolute declarations resolve from
+    /// (`layout::size_declaration_pt`), relative to the size currently in
+    /// effect (`None` is `\normalsize`, which sits between `\small` and
+    /// `\large`). Clamps at the ends: stepping down past `\tiny` holds at
+    /// `\tiny`, stepping up past `\Huge` holds at `\Huge`.
+    pub fn stepped(current: Option<FontSizeLevel>, delta: i32) -> Option<FontSizeLevel> {
+        const ORDER: [Option<FontSizeLevel>; 10] = [
+            Some(FontSizeLevel::Tiny),
+            Some(FontSizeLevel::ScriptSize),
+            Some(FontSizeLevel::FootnoteSize),
+            Some(FontSizeLevel::Small),
+            None,
+            Some(FontSizeLevel::Large1),
+            Some(FontSizeLevel::Large2),
+            Some(FontSizeLevel::Large3),
+            Some(FontSizeLevel::Huge1),
+            Some(FontSizeLevel::Huge2),
+        ];
+        let index = ORDER
+            .iter()
+            .position(|level| *level == current)
+            .unwrap_or(4) as i32;
+        let stepped = (index + delta).clamp(0, ORDER.len() as i32 - 1) as usize;
+        ORDER[stepped]
+    }
+}
+
 impl TextStyle {
     pub const BOLD: TextStyle = TextStyle {
         bold: true,
@@ -648,6 +677,8 @@ pub(crate) fn style_command(name: &str) -> bool {
             | "textrm"
             | "textsf"
             | "textnormal"
+            | "larger"
+            | "smaller"
     )
 }
 
@@ -729,6 +760,12 @@ fn apply_style(style: TextStyle, name: &str) -> TextStyle {
         "LARGE" => next.size = Some(FontSizeLevel::Large3),
         "huge" => next.size = Some(FontSizeLevel::Huge1),
         "Huge" => next.size = Some(FontSizeLevel::Huge2),
+        // relsize's relative steps: one step up/down the same table,
+        // from whatever size is currently in effect (see
+        // `FontSizeLevel::stepped`). Unlike the absolute declarations
+        // above, these read `next.size` rather than overwriting it.
+        "larger" => next.size = FontSizeLevel::stepped(next.size, 1),
+        "smaller" => next.size = FontSizeLevel::stepped(next.size, -1),
         _ => {}
     }
     // Font commands (`\normalfont`, `\bf`) never change the colour.
@@ -989,6 +1026,8 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "LARGE",
     "huge",
     "Huge",
+    "larger",
+    "smaller",
     "cite",
     "citet",
     "citep",
@@ -2577,6 +2616,32 @@ impl P<'_> {
                 self.note_links_unclickable(span.merge(text_span));
                 let style = self.style;
                 para.extend(self.inlines_from_tokens(text_tokens, style));
+            }
+            // `\larger`/`\smaller` (relsize): one step up/down the size
+            // table relative to the size currently in effect (see
+            // `FontSizeLevel::stepped`). With a braced argument the step is
+            // scoped to it, exactly like `\textbf{...}`; without one it is
+            // a declaration for the rest of the scope, like `\Large` — the
+            // real package's own two forms.
+            "larger" | "smaller" => {
+                self.skip_spaces();
+                let next = apply_style(self.style, name);
+                if let Some(open) = self.closed_group_start() {
+                    // Re-enter the argument as an ordinary group so math and
+                    // other commands inside it are parsed normally.
+                    self.i += 1;
+                    self.open_group(open);
+                    self.style = next;
+                } else if matches!(
+                    self.peek().map(|token| &token.kind),
+                    Some(TokenKind::LBrace)
+                ) {
+                    // Unbalanced brace: `required_group` reports it, scoped.
+                    let (tokens, _) = self.required_group(name, span);
+                    para.extend(self.inlines_from_tokens(tokens, next));
+                } else {
+                    self.style = next;
+                }
             }
             _ if style_command(name) => {
                 self.skip_spaces();
@@ -9406,6 +9471,80 @@ mod tests {
         assert_eq!(size_of(&items, "Big"), 17.28);
         assert_eq!(size_of(&items, "still"), 17.28);
         assert_eq!(size_of(&items, "big"), 17.28);
+    }
+
+    #[test]
+    fn larger_is_one_step_up_from_the_size_in_effect() {
+        // No `\documentclass`, so the body size is the 12pt class's own
+        // table: `\small` is 10.95pt and one step up is `\normalsize` at
+        // exactly the body size — not `\large`'s fixed 14.4pt.
+        let (parsed, items) = items(r"{\small d \larger{X}}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "d"), 10.95);
+        assert_eq!(size_of(&items, "X"), crate::layout::BODY_SIZE_PT);
+    }
+
+    #[test]
+    fn smaller_is_one_step_down_from_the_size_in_effect() {
+        // `\Large` is 17.28pt in the 12pt table; one step down is `\large`
+        // at 14.4pt — not `\small`'s fixed size.
+        let (parsed, items) = items(r"{\Large g \smaller{X}}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "g"), 17.28);
+        assert_eq!(size_of(&items, "X"), 14.4);
+    }
+
+    #[test]
+    fn larger_composes_across_nesting() {
+        // Two nested `\larger`s from `\normalsize` are two steps
+        // (`\large` then `\Large`), not one clamped step.
+        let (parsed, items) = items(r"\larger{\larger{X}}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "X"), 17.28);
+    }
+
+    #[test]
+    fn relative_steps_clamp_at_the_ends_of_the_table() {
+        // Five steps down from `\normalsize` would leave the table; the
+        // size holds at `\tiny` (6.0pt) instead of erroring or wrapping.
+        let (parsed_tiny, tiny_items) =
+            items(r"{\smaller{\smaller{\smaller{\smaller{\smaller{T}}}}}}");
+        assert!(
+            parsed_tiny.diagnostics.is_empty(),
+            "{:?}",
+            parsed_tiny.diagnostics
+        );
+        assert_eq!(size_of(&tiny_items, "T"), 6.0);
+        // Likewise one step up from `\Huge` holds at `\Huge` (24.88pt).
+        let (parsed_top, top_items) = items(r"{\Huge h \larger{X}}");
+        assert!(
+            parsed_top.diagnostics.is_empty(),
+            "{:?}",
+            parsed_top.diagnostics
+        );
+        assert_eq!(size_of(&top_items, "h"), 24.88);
+        assert_eq!(size_of(&top_items, "X"), 24.88);
+    }
+
+    #[test]
+    fn larger_without_an_argument_is_a_declaration_for_the_scope() {
+        // The real package's declaration form: the step applies to the rest
+        // of the scope and the group restores the old size afterwards.
+        let (parsed, items) = items(r"{\small \larger up} down");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "up"), crate::layout::BODY_SIZE_PT);
+        assert_eq!(size_of(&items, "down"), crate::layout::BODY_SIZE_PT);
+    }
+
+    #[test]
+    fn absolute_large_is_unaffected_by_relative_sizes() {
+        // `\large` always resolves to its fixed table size, regardless of
+        // the size in effect around it.
+        let (parsed, items) = items(r"{\small d} \large{X} {\large Y}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "d"), 10.95);
+        assert_eq!(size_of(&items, "X"), 14.4);
+        assert_eq!(size_of(&items, "Y"), 14.4);
     }
 
     #[test]
