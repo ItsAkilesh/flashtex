@@ -7,23 +7,31 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-/// The Python interpreter these fixtures run their stub compiler under.
-///
-/// Unlike the executable-script fixtures in `stdio.rs`, this one launches the
-/// interpreter directly and passes the script as an argument, so it needs no
-/// shebang line and no executable permission bit and is portable as soon as the
-/// interpreter itself is found. The absolute `/usr/bin/python3` is kept on Unix
-/// (it is the path the project's other fixtures assume, and hard-coding it keeps
-/// the test independent of `PATH`); Windows has no fixed install location for
-/// Python, so the name is resolved through `PATH` instead, trying `python3`
-/// before `python` because the bare `python` alias is more often shadowed by the
-/// Microsoft Store stub.
-#[cfg(unix)]
-const PYTHON: &str = "/usr/bin/python3";
-#[cfg(windows)]
-fn python() -> &'static str {
-    static RESOLVED: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
-    RESOLVED.get_or_init(|| {
+/// The interpreter for the fake compilers (#207): `FLASHTEX_TEST_PYTHON`, else
+/// `/usr/bin/python3` when it exists (what CI has always used), else the first
+/// `python3` on `PATH` (NixOS has no `/usr/bin/python3`). Windows has no
+/// `/usr/bin/python3`, so this also accepts `python3.exe`/`python.exe` and
+/// falls back to launching `python3` then `python` by name.
+fn python3() -> std::path::PathBuf {
+    if let Some(path) = std::env::var_os("FLASHTEX_TEST_PYTHON") {
+        return path.into();
+    }
+    let system = std::path::PathBuf::from("/usr/bin/python3");
+    if system.is_file() {
+        return system;
+    }
+    if let Some(path) = std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths).find_map(|dir| {
+            ["python3", "python3.exe", "python", "python.exe"]
+                .into_iter()
+                .map(|name| dir.join(name))
+                .find(|candidate| candidate.is_file())
+        })
+    }) {
+        return path;
+    }
+    #[cfg(windows)]
+    {
         for name in ["python3", "python"] {
             if Command::new(name)
                 .arg("-c")
@@ -34,20 +42,20 @@ fn python() -> &'static str {
                 .status()
                 .is_ok_and(|s| s.success())
             {
-                return name;
+                return std::path::PathBuf::from(name);
             }
         }
-        panic!("these fixtures need a working python3 on PATH");
-    })
-}
-#[cfg(unix)]
-fn python() -> &'static str {
-    PYTHON
+        panic!("these fixtures need a working python3 on PATH or FLASHTEX_TEST_PYTHON");
+    }
+    #[cfg(not(windows))]
+    {
+        system
+    }
 }
 fn command(dir: &std::path::Path, body: &str) -> Command {
     let path = dir.join("compiler.py");
     std::fs::write(&path, body).unwrap();
-    let mut command = Command::new(python());
+    let mut command = Command::new(python3());
     command.arg(path);
     command
 }

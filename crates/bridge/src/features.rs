@@ -42,10 +42,9 @@ mod tests {
     fn parse(source: &str) -> (MathList, Vec<Diagnostic>) {
         let tokens = tokenize(source);
         let mut diagnostics = Vec::new();
-        // These are unconditionally-supported kernel constructs
-        // (STRUCTURAL_MATH_FEATURES), never package-gated ones, so no
-        // package needs to be "loaded" for this drift check to be honest.
-        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
+        // These probes carry no document, so no package is loaded: the
+        // kernel's own math is what a feature check should see.
+        let list = parse_tokens(&tokens, MathPackages::default(), &mut diagnostics);
         (list, diagnostics)
     }
 
