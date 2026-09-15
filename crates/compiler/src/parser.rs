@@ -624,31 +624,105 @@ pub enum FontSizeLevel {
 }
 
 impl FontSizeLevel {
-    /// One step up (`delta > 0`) or down (`delta < 0`) the same
-    /// `\tiny`..`\Huge` table the absolute declarations resolve from
-    /// (`layout::size_declaration_pt`), relative to the size currently in
-    /// effect (`None` is `\normalsize`, which sits between `\small` and
-    /// `\large`). Clamps at the ends: stepping down past `\tiny` holds at
-    /// `\tiny`, stepping up past `\Huge` holds at `\Huge`.
-    pub fn stepped(current: Option<FontSizeLevel>, delta: i32) -> Option<FontSizeLevel> {
-        const ORDER: [Option<FontSizeLevel>; 10] = [
-            Some(FontSizeLevel::Tiny),
-            Some(FontSizeLevel::ScriptSize),
-            Some(FontSizeLevel::FootnoteSize),
-            Some(FontSizeLevel::Small),
-            None,
-            Some(FontSizeLevel::Large1),
-            Some(FontSizeLevel::Large2),
-            Some(FontSizeLevel::Large3),
-            Some(FontSizeLevel::Huge1),
-            Some(FontSizeLevel::Huge2),
-        ];
-        let index = ORDER
+    /// The ten `\tiny`..`\Huge` levels in table order (`None` is
+    /// `\normalsize`), shared by the closest-match search below.
+    const ORDER: [Option<FontSizeLevel>; 10] = [
+        Some(FontSizeLevel::Tiny),
+        Some(FontSizeLevel::ScriptSize),
+        Some(FontSizeLevel::FootnoteSize),
+        Some(FontSizeLevel::Small),
+        None,
+        Some(FontSizeLevel::Large1),
+        Some(FontSizeLevel::Large2),
+        Some(FontSizeLevel::Large3),
+        Some(FontSizeLevel::Huge1),
+        Some(FontSizeLevel::Huge2),
+    ];
+
+    /// Real `relsize.sty` semantics for `\larger` (`delta > 0`) and
+    /// `\smaller` (`delta < 0`): scale the ACTUAL current point size
+    /// (`None` is `\normalsize`, i.e. exactly `body_size_pt`) by ×1.2 (or
+    /// ÷1.2), then switch to whichever defined level's real point value
+    /// (`layout::size_declaration_pt` for this document's 10/11/12pt class
+    /// table) is CLOSEST to that target — not "one slot along the table",
+    /// which only agrees when the ladder is a uniform ×1.2 progression
+    /// (false below `\normalsize` and at the top of every standard class).
+    /// A `|delta| > 1` repeats the single step, matching nested
+    /// `\larger{\larger{...}}`. Clamps at the ends: past `\tiny`/`\Huge`
+    /// the closest defined size is the end itself, so the size holds.
+    pub fn stepped(
+        current: Option<FontSizeLevel>,
+        delta: i32,
+        body_size_pt: f64,
+    ) -> Option<FontSizeLevel> {
+        if delta == 0 {
+            return current;
+        }
+        let mut result = current;
+        for _ in 0..delta.unsigned_abs() {
+            result = Self::closest_step(result, delta.signum(), body_size_pt);
+        }
+        result
+    }
+
+    /// One ×1.2 (`direction > 0`) or ÷1.2 step with closest-match pickup.
+    fn closest_step(
+        current: Option<FontSizeLevel>,
+        direction: i32,
+        body_size_pt: f64,
+    ) -> Option<FontSizeLevel> {
+        let point_size = |level: Option<FontSizeLevel>| match level {
+            None => body_size_pt,
+            Some(level) => crate::layout::size_declaration_pt(level, body_size_pt),
+        };
+        let current_pt = point_size(current);
+        let target = if direction > 0 {
+            current_pt * 1.2
+        } else {
+            current_pt / 1.2
+        };
+        let distance = |level: Option<FontSizeLevel>| (point_size(level) - target).abs();
+        let best = Self::ORDER
             .iter()
-            .position(|level| *level == current)
-            .unwrap_or(4) as i32;
-        let stepped = (index + delta).clamp(0, ORDER.len() as i32 - 1) as usize;
-        ORDER[stepped]
+            .map(|&level| distance(level))
+            .fold(f64::INFINITY, f64::min);
+        // Every level tied for closest (float noise tolerated). The 12pt
+        // class has `\huge` and `\Huge` numerically identical, so ties are
+        // real, not just theoretical.
+        const EPS: f64 = 1e-9;
+        let tied: Vec<(usize, Option<FontSizeLevel>, f64)> = Self::ORDER
+            .iter()
+            .enumerate()
+            .map(|(index, &level)| (index, level, point_size(level)))
+            .filter(|&(_, level, _)| distance(level) <= best + EPS)
+            .collect();
+        // Never answer a step with a same-size no-op while a different,
+        // equally close size exists: drop the candidates that change
+        // nothing unless every tied candidate is the size already in
+        // effect (the clamp at either end of the table).
+        let changed: Vec<(usize, Option<FontSizeLevel>, f64)> = tied
+            .iter()
+            .copied()
+            .filter(|&(_, _, pt)| (pt - current_pt).abs() > EPS)
+            .collect();
+        let pool = if changed.is_empty() { tied } else { changed };
+        // Any remaining tie (e.g. `\huge`/`\Huge`) keeps moving in the
+        // step's direction: the extreme point value that way, and the
+        // extreme table index within it, deterministically.
+        let pick = if direction > 0 {
+            pool.iter().max_by(|a, b| {
+                a.2.partial_cmp(&b.2)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.0.cmp(&b.0))
+            })
+        } else {
+            pool.iter().min_by(|a, b| {
+                a.2.partial_cmp(&b.2)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.0.cmp(&b.0))
+            })
+        };
+        pick.map(|&(_, level, _)| level).unwrap_or(current)
     }
 }
 
@@ -722,7 +796,11 @@ pub(crate) fn style_declaration(name: &str) -> bool {
 }
 
 /// The style after applying one style command or declaration to `style`.
-fn apply_style(style: TextStyle, name: &str) -> TextStyle {
+/// `body_size_pt` is the document's own body size (`class_size_pt`, i.e.
+/// the 10/11/12pt class table selector); only the relative `\larger` /
+/// `\smaller` steps read it, everything else resolves its level later in
+/// `layout` against the same body size.
+fn apply_style(style: TextStyle, name: &str, body_size_pt: f64) -> TextStyle {
     let mut next = style;
     match name {
         "textbf" | "bfseries" => next.bold = true,
@@ -749,7 +827,9 @@ fn apply_style(style: TextStyle, name: &str) -> TextStyle {
         }
         // `\sc` is `\normalfont\scshape`: upright roman here.
         "sc" => next = TextStyle::default(),
-        "tt" | "rm" | "sf" => next = apply_style(TextStyle::default(), &format!("{name}family")),
+        "tt" | "rm" | "sf" => {
+            next = apply_style(TextStyle::default(), &format!("{name}family"), body_size_pt)
+        }
         "tiny" => next.size = Some(FontSizeLevel::Tiny),
         "scriptsize" => next.size = Some(FontSizeLevel::ScriptSize),
         "footnotesize" => next.size = Some(FontSizeLevel::FootnoteSize),
@@ -760,12 +840,12 @@ fn apply_style(style: TextStyle, name: &str) -> TextStyle {
         "LARGE" => next.size = Some(FontSizeLevel::Large3),
         "huge" => next.size = Some(FontSizeLevel::Huge1),
         "Huge" => next.size = Some(FontSizeLevel::Huge2),
-        // relsize's relative steps: one step up/down the same table,
-        // from whatever size is currently in effect (see
+        // relsize's relative steps: scale the actual current point size
+        // by ×1.2 (or ÷1.2) and take the closest defined size (see
         // `FontSizeLevel::stepped`). Unlike the absolute declarations
         // above, these read `next.size` rather than overwriting it.
-        "larger" => next.size = FontSizeLevel::stepped(next.size, 1),
-        "smaller" => next.size = FontSizeLevel::stepped(next.size, -1),
+        "larger" => next.size = FontSizeLevel::stepped(next.size, 1, body_size_pt),
+        "smaller" => next.size = FontSizeLevel::stepped(next.size, -1, body_size_pt),
         _ => {}
     }
     // Font commands (`\normalfont`, `\bf`) never change the colour.
@@ -2617,15 +2697,16 @@ impl P<'_> {
                 let style = self.style;
                 para.extend(self.inlines_from_tokens(text_tokens, style));
             }
-            // `\larger`/`\smaller` (relsize): one step up/down the size
-            // table relative to the size currently in effect (see
-            // `FontSizeLevel::stepped`). With a braced argument the step is
-            // scoped to it, exactly like `\textbf{...}`; without one it is
-            // a declaration for the rest of the scope, like `\Large` — the
-            // real package's own two forms.
+            // `\larger`/`\smaller` (relsize): scale the actual current
+            // point size by ×1.2 (or ÷1.2) and take the closest defined
+            // size (see `FontSizeLevel::stepped`). With a braced argument
+            // the step is scoped to it, exactly like `\textbf{...}`;
+            // without one it is a declaration for the rest of the scope,
+            // like `\Large` — the real package's own two forms.
             "larger" | "smaller" => {
                 self.skip_spaces();
-                let next = apply_style(self.style, name);
+                let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+                let next = apply_style(self.style, name, body);
                 if let Some(open) = self.closed_group_start() {
                     // Re-enter the argument as an ordinary group so math and
                     // other commands inside it are parsed normally.
@@ -2645,7 +2726,8 @@ impl P<'_> {
             }
             _ if style_command(name) => {
                 self.skip_spaces();
-                let next = apply_style(self.style, name);
+                let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+                let next = apply_style(self.style, name, body);
                 if let Some(open) = self.closed_group_start() {
                     // Re-enter the argument as an ordinary group so math and
                     // other commands inside it are parsed normally.
@@ -2657,7 +2739,10 @@ impl P<'_> {
                     para.extend(self.inlines_from_tokens(tokens, next));
                 }
             }
-            _ if style_declaration(name) => self.style = apply_style(self.style, name),
+            _ if style_declaration(name) => {
+                let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+                self.style = apply_style(self.style, name, body)
+            }
             "hfill" | "hfil" => para.push(Inline::HFill { span, leader: FillLeader::None }),
             "hrulefill" => para.push(Inline::HFill { span, leader: FillLeader::Rule }),
             "dotfill" => para.push(Inline::HFill { span, leader: FillLeader::Dots }),
@@ -5583,7 +5668,8 @@ impl P<'_> {
         if text.is_empty() {
             return;
         }
-        let style = apply_style(self.style, "ttfamily");
+        let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+        let style = apply_style(self.style, "ttfamily", body);
         for (index, piece) in url_pieces(text).into_iter().enumerate() {
             match piece {
                 UrlPiece::Run(run) => para.push(Inline::Text {
@@ -6058,10 +6144,12 @@ impl P<'_> {
                     }
                 }
                 TokenKind::Command(name) if style_command(name) => {
-                    pending = Some(apply_style(style, name));
+                    let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+                    pending = Some(apply_style(style, name, body));
                 }
                 TokenKind::Command(name) if style_declaration(name) => {
-                    style = apply_style(style, name);
+                    let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+                    style = apply_style(style, name, body);
                 }
                 TokenKind::LBrace => {
                     saved.push(style);
@@ -9492,6 +9580,74 @@ mod tests {
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(size_of(&items, "g"), 17.28);
         assert_eq!(size_of(&items, "X"), 14.4);
+    }
+
+    #[test]
+    fn larger_from_footnotesize_lands_on_normalsize() {
+        // Real `relsize.sty` (v4.1, 12pt class): `10 × 1.2 = 12.0` is an
+        // EXACT match for `\normalsize` — not one table slot up (`\small`,
+        // 10.95pt), which the old ordinal-step approach produced.
+        let (parsed, items) = items(r"{\footnotesize f \larger{X}}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "f"), 10.0);
+        assert_eq!(size_of(&items, "X"), crate::layout::BODY_SIZE_PT);
+    }
+
+    #[test]
+    fn smaller_from_normalsize_lands_on_footnotesize() {
+        // Real `relsize.sty` (v4.1, 12pt class): `12 / 1.2 = 10.0` is an
+        // exact match for `\footnotesize` — probably the single most common
+        // real-world use of `\smaller`, and the reverse of the case above.
+        // The old ordinal-step approach produced `\small` (10.95pt).
+        let (parsed, items) = items(r"{\normalsize n \smaller{X}}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "n"), crate::layout::BODY_SIZE_PT);
+        assert_eq!(size_of(&items, "X"), 10.0);
+    }
+
+    #[test]
+    fn smaller_from_huge_changes_size() {
+        // Real `relsize.sty` (v4.1, 12pt class): `24.88 / 1.2 ≈ 20.73`,
+        // closest to `\LARGE` (20.74pt). The old ordinal-step approach
+        // stepped Huge2 → Huge1, which are numerically IDENTICAL in the
+        // 12pt table — no visible size change at all.
+        let (parsed, items) = items(r"{\Huge h \smaller{X}}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "h"), 24.88);
+        assert_eq!(size_of(&items, "X"), 20.74);
+        assert_ne!(size_of(&items, "X"), size_of(&items, "h"));
+    }
+
+    #[test]
+    fn relative_steps_follow_the_active_documentclass_table() {
+        // Closest-match runs against the document's own 10/11/12pt class
+        // table, not just the 12pt default: 11pt `\normalsize` (11.0pt)
+        // ÷ 1.2 ≈ 9.17 lands on `\footnotesize` (9.0pt), skipping `\small`
+        // (10.0pt), which an ordinal step would have picked; 10pt
+        // `\footnotesize` (8.0pt) × 1.2 = 9.6 lands on `\normalsize`.
+        for (class_option, body, word, expected_pt) in [
+            ("11pt", r"{\normalsize n \smaller{X}}", "X", 9.0),
+            ("10pt", r"{\footnotesize f \larger{X}}", "X", 10.0),
+        ] {
+            let source =
+                format!("\\documentclass[{class_option}]{{article}}\\begin{{document}}{body}\\end{{document}}");
+            let parsed = parse(&source);
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "{class_option}: {:?}",
+                parsed.diagnostics
+            );
+            let output =
+                crate::incremental::compile_full(&source, layout::LayoutConstraints::default());
+            let size = output
+                .pages
+                .iter()
+                .flat_map(|page| &page.items)
+                .find(|item| item.text == word)
+                .unwrap_or_else(|| panic!("{class_option}: no item {word:?}"))
+                .font_size_pt;
+            assert_eq!(size, expected_pt, "{class_option} {word}");
+        }
     }
 
     #[test]
