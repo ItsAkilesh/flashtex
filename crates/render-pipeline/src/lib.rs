@@ -46,7 +46,7 @@ pub mod toc;
 pub mod typeset;
 pub mod v1;
 
-pub use display::DisplayList;
+pub use display::{DisplayList, PageWindow};
 pub use fonts::FontSet;
 pub use incremental::RenderCache;
 pub use style::Stylesheet;
@@ -58,6 +58,10 @@ use flashtex_compiler::parser::SourceDocument;
 pub struct Rendered {
     /// Display list v2 (the authoritative geometry).
     pub v2: DisplayList,
+    /// The effective page window, when this render was windowed
+    /// (`protocol/proposals/display-list-v2-window.md`). `None` is a complete
+    /// compile: every page's items were built.
+    pub window: Option<PageWindow>,
     /// Wall-clock milliseconds spent in `render` (parse + layout + output).
     pub elapsed_ms: f64,
     /// Layout passes run (1 unless `\pageref` needed page numbers).
@@ -143,6 +147,32 @@ pub fn render_cached(
     fonts: &FontSet,
     options: &RenderOptions,
     cache: Option<&RenderCache>,
+) -> Rendered {
+    render_windowed(documents, entry_path, revision, project_id, fonts, options, cache, None)
+}
+
+/// [`render_cached`] materialising only `window`'s pages.
+///
+/// Layout still runs over the whole document — page breaking, `\pageref`,
+/// floats and contents lists are global and a window over them would change
+/// the output. Only assembly is windowed: pages outside it are present, laid
+/// out and measured, with [`display::PageContent::Elided`] instead of items.
+/// `window == None` is [`render_cached`], byte for byte.
+///
+/// A windowed result is an incomplete view, not a complete compile: it must
+/// not be exported to PDF, used as a delta base, or used to authorise a source
+/// action on a page it did not materialise
+/// (`protocol/proposals/display-list-v2-window.md` §4.1).
+#[allow(clippy::too_many_arguments)]
+pub fn render_windowed(
+    documents: &[SourceDocument<'_>],
+    entry_path: &str,
+    revision: u64,
+    project_id: &str,
+    fonts: &FontSet,
+    options: &RenderOptions,
+    cache: Option<&RenderCache>,
+    window: Option<PageWindow>,
 ) -> Rendered {
     let started = std::time::Instant::now();
     // FT-063: float environments are blanked (same byte length) before the
@@ -232,6 +262,20 @@ pub fn render_cached(
     let superseded = toc::superseded_commands(entry_text);
     let is_superseded = |s: &flashtex_compiler::Span| s.document.0 == entry_index && superseded.binary_search(&s.start).is_ok();
     let max_passes = if adapter::Labels::needs_pages(&parsed) || has_lists { MAX_LABEL_PASSES } else { 1 };
+    // The previous request's converged page tables seed the first pass --
+    // the role LaTeX's `.aux` file plays between runs. A keystroke that
+    // moves no page number then converges on pass 1 and the page-number
+    // relayout is saved; convergence is verified against the seed exactly
+    // as it is verified against a pass's own output below, so an edit that
+    // does move a page relays out with fresh tables as before.
+    if max_passes > 1 {
+        if let Some(c) = cache {
+            if let Some((pages, toc_pages)) = c.label_seed(project_id) {
+                labels.pages = pages;
+                labels.toc_pages = toc_pages;
+            }
+        }
+    }
     let mut passes = 0;
     loop {
         passes += 1;
@@ -299,6 +343,9 @@ pub fn render_cached(
             pages.retain(|key, _| !toc::is_key(key));
             if pages == labels.pages && toc_pages == labels.toc_pages {
                 // Converged: the numbers shown are the pages they sit on.
+                if let Some(c) = cache {
+                    c.store_label_seed(project_id, &pages, &toc_pages);
+                }
             } else if passes < max_passes {
                 labels.pages = pages;
                 labels.toc_pages = toc_pages;
@@ -313,8 +360,9 @@ pub fn render_cached(
                 ));
             }
         }
-        let v2 = typeset::assemble(project_id, revision, documents, &doc.style, fonts, laid, diagnostics, cache, doc.page_color, doc.default_color);
+        let v2 = typeset::assemble_windowed(project_id, revision, documents, &doc.style, fonts, laid, diagnostics, cache, doc.page_color, doc.default_color, window);
         return Rendered {
+            window: v2.window,
             v2,
             elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
             passes,

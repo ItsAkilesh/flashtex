@@ -97,10 +97,19 @@ func hostAndCapture<V: View>(
     controller.view.frame = CGRect(origin: .zero, size: size)
     window.contentViewController = controller
     window.setContentSize(size)
-    window.makeKeyAndOrderFront(nil)
+    // Never key: whether a parked window wins key status is a race against
+    // the app's other windows (it differed between record and verify runs
+    // once the tab fill followed `controlActiveState`), so every surface is
+    // captured in the deterministic non-key state.
+    window.orderFrontRegardless()
     // Real run-loop turns: List/NSTableView rows only populate in a window,
     // `.toolbar` installs asynchronously, and `.task`s need to run.
     RunLoop.main.run(until: Date(timeIntervalSinceNow: settle))
+    // Re-assert the exact size before capture: hosting invalidations during
+    // the settle can nudge the window a point or two (observed 902 for a
+    // 900pt surface in full-suite runs), which shifts every pixel of the
+    // comparison.
+    if window.frame.size != size { window.setContentSize(size) }
     window.layoutIfNeeded()
     defer { window.orderOut(nil) }
     guard let cg = windowServerCapture(of: window) else { return nil }

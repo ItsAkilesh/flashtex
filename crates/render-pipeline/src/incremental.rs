@@ -16,7 +16,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -70,6 +70,17 @@ pub struct AdaptedBlock {
     pub base: usize,
 }
 
+/// The converged label page tables of one project's last request — the
+/// role LaTeX's `.aux` file plays between runs. `render_cached` seeds its
+/// first pass from them and verifies convergence against them exactly as
+/// it verifies a pass's own output, so a stale seed costs a pass and never
+/// changes what converged output looks like.
+struct LabelSeed {
+    project: String,
+    pages: BTreeMap<String, u32>,
+    toc_pages: BTreeMap<String, String>,
+}
+
 #[derive(Default)]
 pub struct RenderCache {
     blocks: RefCell<HashMap<u64, Rc<CachedBlock>>>,
@@ -85,6 +96,7 @@ pub struct RenderCache {
     assembled_hits: Cell<u64>,
     assembled_misses: Cell<u64>,
     label_passes: Cell<u64>,
+    label_seed: RefCell<Option<LabelSeed>>,
 }
 
 /// Every `RenderCache` counter since creation (`RenderCache::counters`).
@@ -174,6 +186,22 @@ impl RenderCache {
         rc
     }
 
+    /// Drops every assembled block whose key is not in `keep`.
+    ///
+    /// The window's materialisation cache
+    /// (`protocol/proposals/display-list-v2-window.md` §5.4): `blocks` and
+    /// `adapted` stay whole-document, because they are what makes
+    /// re-materialising a page cheap, but the glyph-level `assembled` entries
+    /// are the bulk of the bytes and only the resident pages' are worth
+    /// holding. Without this a viewer scrolling a long document accumulates
+    /// every page it has passed and the window buys nothing over a session.
+    ///
+    /// Never called on an unwindowed render: a complete compile keeps
+    /// everything it built, exactly as before.
+    pub fn retain_assembled(&self, keep: &std::collections::HashSet<u64>) {
+        self.assembled.borrow_mut().retain(|k, _| keep.contains(k));
+    }
+
     pub fn len(&self) -> usize {
         self.blocks.borrow().len()
     }
@@ -218,6 +246,26 @@ impl RenderCache {
     /// Records one layout pass of `render_cached` (measurement only).
     pub(crate) fn note_label_pass(&self) {
         bump(&self.label_passes);
+    }
+
+    /// The previous request's converged `\label` page table and
+    /// contents-list page texts for `project`, if that is the project this
+    /// cache last converged — the starting point of the next request's
+    /// first pass. `None` for another project or before any convergence.
+    pub(crate) fn label_seed(&self, project: &str) -> Option<(BTreeMap<String, u32>, BTreeMap<String, String>)> {
+        let seed = self.label_seed.borrow();
+        let seed = seed.as_ref().filter(|s| s.project == project)?;
+        Some((seed.pages.clone(), seed.toc_pages.clone()))
+    }
+
+    /// Stores the tables a request converged on (`render_cached`). Never
+    /// called for a request that hit the pass limit without converging.
+    pub(crate) fn store_label_seed(&self, project: &str, pages: &BTreeMap<String, u32>, toc_pages: &BTreeMap<String, String>) {
+        *self.label_seed.borrow_mut() = Some(LabelSeed {
+            project: project.to_string(),
+            pages: pages.clone(),
+            toc_pages: toc_pages.clone(),
+        });
     }
 
     /// Hit and miss counts for every map, plus label passes, since creation.
