@@ -161,7 +161,14 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p "$SNAPSHOT_ARTIFACTS"
-          swift test 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
+          # --skip IMECompositionTests: #681's abort (SIGABRT inside
+          # XCTSwiftErrorObservation, closed as machine state, signature
+          # still present) kills the xctest process mid-run and truncates
+          # everything alphabetically after it -- ~59 suite files, including
+          # ShellSnapshotTests, never execute. #681's own closing conclusion
+          # sanctioned this skip provided both sides of any comparison carry
+          # it; local runs should pass the same flag.
+          swift test --skip IMECompositionTests 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
       - name: Upload swift test log
         if: always()
         uses: actions/upload-artifact@v4
