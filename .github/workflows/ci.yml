@@ -164,6 +164,10 @@ jobs:
           swift test --skip 'FlashTeXMacTests\.IMECompositionTests' 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
       - name: swift test -- IMECompositionTests alone (non-gating, GH#681)
         working-directory: apps/mac
+        # `always()`, not the default `success()`: the whole point is that this
+        # suite is reported even when the gating run above fails, otherwise the
+        # split silently drops it again.
+        if: always()
         continue-on-error: true
         run: |
           set -o pipefail
