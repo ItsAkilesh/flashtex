@@ -1,15 +1,6 @@
 import AppKit
 import Foundation
 
-/// TEMPORARY (#681) unbuffered stderr trace, active only when FLASHTEX_FT_TRACE
-/// is set, so it costs nothing in the app. Removed once #681 is root-caused.
-public nonisolated(unsafe) var ftTraceOn = false
-@inline(never)
-public func ftTrace(_ s: String) {
-    guard ftTraceOn else { return }
-    FileHandle.standardError.write(Data("IME-TRACE \(s)\n".utf8))
-}
-
 // Keystroke -> paint latency instrumentation and the programmatic typing bench.
 //
 // Nothing here needs Accessibility permission: keystrokes are observed with an
@@ -334,9 +325,7 @@ final class TypingBench {
     /// so a queued paint hop would otherwise lose its revision to a newer one.
     static func nextRunLoopTurn(_ block: @escaping @MainActor () -> Void) {
         CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
-            ftTrace("nextRunLoopTurn BLOCK enter")
             MainActor.assumeIsolated { block() }
-            ftTrace("nextRunLoopTurn BLOCK exit")
         }
         CFRunLoopWakeUp(CFRunLoopGetMain())
     }

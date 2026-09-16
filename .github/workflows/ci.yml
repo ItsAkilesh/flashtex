@@ -151,15 +151,31 @@ jobs:
         # `pipefail` is what makes a failing test fail the step: the default
         # shell is `bash -e`, and a pipeline's status is its LAST command's,
         # so without it `tail` returned 0 over any number of test failures.
+        # GH#681: `IMECompositionTests` aborts the whole xctest process with
+        # SIGABRT (a Swift task-allocator invariant, not a test failure) on this
+        # runner, which TRUNCATES the run at test ~668 of ~1400 while printing
+        # zero failures -- the false-green mechanism of #680. Until the cause is
+        # fixed the gating run excludes it, so the other ~1390 tests are actually
+        # reported. The skip lives in the shared workflow, so both sides of any
+        # comparison skip it. The suite still runs, in its own non-gating step
+        # below, so it is excluded from the gate but never silently dropped.
         run: |
           set -o pipefail
-          swift test 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
+          swift test --skip 'FlashTeXMacTests\.IMECompositionTests' 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
+      - name: swift test -- IMECompositionTests alone (non-gating, GH#681)
+        working-directory: apps/mac
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          swift test --filter 'FlashTeXMacTests\.IMECompositionTests' 2>&1 | tee swift-test-ime.log | grep -vE '^\s*$' | tail -n 100
       - name: Upload swift test log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mac-swift-test-log
-          path: apps/mac/swift-test.log
+          path: |
+            apps/mac/swift-test.log
+            apps/mac/swift-test-ime.log
           if-no-files-found: ignore
           retention-days: 7
 

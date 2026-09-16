@@ -22,14 +22,10 @@ final class IMECompositionTests: XCTestCase {
     static let insertAt = ("\\begin{document}\nHello " as NSString).length
 
     private func caretAtInsertionPoint(_ h: IMEHarness) async throws {
-        imeTrace("caret: setSelectedRange…")
         h.textView.setSelectedRange(NSRange(location: Self.insertAt, length: 0))
-        imeTrace("caret: turn…")
         try await h.turn()
-        imeTrace("caret: turn done; caretUTF16=\(h.model.caretUTF16) caretByte=\(h.model.caretByte)")
         XCTAssertEqual(h.model.caretUTF16, Self.insertAt)
         XCTAssertEqual(h.model.caretByte, Self.insertAt, "ASCII prefix: bytes equal UTF-16 units")
-        imeTrace("caret: done")
     }
 
     private func expected(inserting s: String) -> String {
@@ -325,37 +321,24 @@ final class IMECompositionTests: XCTestCase {
     // MARK: (a') IME cancel against the helper
 
     func testCancelledCompositionLeavesTheHelperAndLedgerUntouched() async throws {
-        ftTraceOn = true // #681 diagnosis: only this test traces the product paths
-        defer { ftTraceOn = false }
-        imeTrace("cancel: BODY ENTER")
         let h = try await IMEHarness.attached("cancel", text: Self.original)
-        defer { imeTrace("cancel: DEFER running"); h.close(); imeTrace("cancel: DEFER done") }
+        defer { h.close() }
         let model = h.model
-        imeTrace("cancel: caret…")
         try await caretAtInsertionPoint(h)
         let rev = model.editorRevision
-        for step in ["か", "かん", "漢"] {
-            imeTrace("cancel: compose(\(step))…")
-            h.compose(step)
-            imeTrace("cancel: compose(\(step)) done marked=\(h.hasMarkedText)")
-        }
+        for step in ["か", "かん", "漢"] { h.compose(step) }
         XCTAssertTrue(h.hasMarkedText)
-        imeTrace("cancel: cancel()…")
         h.cancel()
-        imeTrace("cancel: cancel() done marked=\(h.hasMarkedText)")
         XCTAssertFalse(h.hasMarkedText)
         XCTAssertEqual(h.string, Self.original)
         XCTAssertEqual(model.activeText, Self.original)
         XCTAssertEqual(model.editorRevision, rev)
-        imeTrace("cancel: holds#1…")
         try await h.holds("nothing submitted after a cancel", for: 0.3) {
             model.controllerState.inFlight == nil && model.controllerState.durable["main.tex"]?.revision == 1
         }
-        imeTrace("cancel: helperDocument…")
         let doc = try await h.helperDocument()
         XCTAssertEqual(doc.revision, 1)
         XCTAssertEqual(doc.text, Self.original)
-        imeTrace("cancel: historyLabels#1…")
         let (ledgerUndo, _) = try await h.historyLabels()
         XCTAssertEqual(ledgerUndo, [])
         // Measured (AppKit, macOS 26): a cancelled composition leaves ONE undo
@@ -363,25 +346,19 @@ final class IMECompositionTests: XCTestCase {
         // registering path). Undoing it must be a no-op for the buffer, the
         // model and the helper — never a revision or a durable edit.
         let undo = try XCTUnwrap(h.textView.undoManager)
-        imeTrace("cancel: canUndo=\(undo.canUndo) name='\(undo.undoActionName)'")
         print("IME cancel test: canUndo after cancel = \(undo.canUndo) (undoActionName '\(undo.undoActionName)')")
         if undo.canUndo {
-            imeTrace("cancel: undo.undo()…")
             undo.undo()
-            imeTrace("cancel: undo returned; turn…")
             try await h.turn()
             XCTAssertEqual(h.string, Self.original, "undoing the leftover action changes nothing")
             XCTAssertEqual(model.activeText, Self.original)
             XCTAssertEqual(model.editorRevision, rev, "no revision from the leftover undo action")
             XCTAssertFalse(h.hasMarkedText)
-            imeTrace("cancel: holds#2…")
             try await h.holds("nothing submitted after the leftover undo", for: 0.3) {
                 model.controllerState.inFlight == nil && model.controllerState.durable["main.tex"]?.revision == 1
             }
-            imeTrace("cancel: historyLabels#2…")
             let (undoLabels, _) = try await h.historyLabels()
             XCTAssertEqual(undoLabels, [])
         }
-        imeTrace("cancel: BODY DONE")
     }
 }

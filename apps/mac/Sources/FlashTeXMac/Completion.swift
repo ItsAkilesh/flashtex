@@ -1671,11 +1671,7 @@ final class CompletionScheduler {
     /// Head-of-run-loop delivery (see `WorkerClient.deliver`): a plain
     /// `DispatchQueue.main.async` waits for AppKit to reach the dispatch port.
     nonisolated private static func onMain(_ block: @escaping @Sendable () -> Void) {
-        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
-            ftTrace("completion onMain BLOCK enter")
-            block()
-            ftTrace("completion onMain BLOCK exit")
-        }
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue, block)
         CFRunLoopWakeUp(CFRunLoopGetMain())
     }
 }
@@ -2219,9 +2215,7 @@ final class CompletingTextView: NSTextView {
     }
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
-        ftTrace("CompletingTextView.shouldChangeText enter \(affectedCharRange)")
         let ok = super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
-        ftTrace("CompletingTextView.shouldChangeText -> \(ok)")
         if ok { shiftSnippetStops(edit: affectedCharRange, replacementLength: (replacementString as NSString?)?.length ?? 0) }
         return ok
     }
@@ -2908,8 +2902,6 @@ final class CompletingTextView: NSTextView {
     }
 
     override func didChangeText() {
-        ftTrace("CompletingTextView.didChangeText enter")
-        defer { ftTrace("CompletingTextView.didChangeText exit") }
         super.didChangeText()
         textChanged()
         signatureHelpAfterTextChange()
@@ -2945,8 +2937,6 @@ final class CompletingTextView: NSTextView {
         guard storageObserver == nil, let storage = textStorage else { return }
         storageObserver = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification,
                                                                  object: storage, queue: nil) { [weak self] note in
-            ftTrace("storageObserver(Completing) enter")
-            defer { ftTrace("storageObserver(Completing) exit") }
             guard let storage = note.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) else { return }
             self?.textChanged()
         }
