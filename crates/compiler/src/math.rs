@@ -1580,10 +1580,14 @@ impl MathParser<'_> {
                     word.len(),
                     "word tokens must be split before math parsing"
                 );
-                // The lexer turns the control symbols `\,` `\:` `\;` into a
-                // one-character word spanning two source bytes; in math they are
-                // thin/medium/thick spaces (3, 4 and 5 mu), not punctuation.
-                if token.span.end - token.span.start == 2 {
+                // A control symbol (`\,` `\:` `\;` …) lexes as a one-character
+                // word; in math the spacing ones are thin/medium/thick spaces
+                // (3, 4 and 5 mu), not punctuation. The escaped identity comes
+                // from the lexer's `control_symbol` mark — never from span
+                // length, which macro expansion rebinds to the invocation
+                // (issue #756: `\,` inside `\newcommand{\dd}{…}` carries
+                // `\dd`'s 3-byte span, not the 2-byte `\,` span).
+                if token.control_symbol {
                     let mu = match ch {
                         ',' => 3.0,
                         ':' | '>' => 4.0,
@@ -5487,6 +5491,10 @@ fn split_word_tokens(tokens: &[Token]) -> Vec<Token> {
             for (offset, ch) in word.char_indices() {
                 out.push(Token {
                     kind: TokenKind::Word(ch.to_string()),
+                    // Control symbols are always one character, so a split
+                    // piece of a marked word keeps the mark; ordinary word
+                    // runs stay unmarked, however they were produced.
+                    control_symbol: token.control_symbol,
                     span: if source_matches_word {
                         Span::in_document(
                             token.span.document,
