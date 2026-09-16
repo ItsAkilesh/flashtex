@@ -317,22 +317,6 @@ final class PreviewControllerClient {
     }
 
     /// Main run-loop delivery with an explicit wake-up (see `WorkerClient.deliver`).
-    /// The last `maxStderrTailBytes` of the helper's stderr, trimmed, or nil
-    /// when it said nothing. Evidence only -- no control flow reads this.
-    var recentStderr: String? {
-        let tail = stateLock.withLock { stderrTail }.trimmingCharacters(in: .whitespacesAndNewlines)
-        return tail.isEmpty ? nil : tail
-    }
-
-    private func noteStderr(_ s: String) {
-        stateLock.withLock {
-            stderrTail += s
-            if stderrTail.utf8.count > Self.maxStderrTailBytes {
-                stderrTail = String(stderrTail.suffix(Self.maxStderrTailBytes))
-            }
-        }
-    }
-
     private func deliver(_ block: @escaping @Sendable () -> Void) {
         CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue, block)
         CFRunLoopWakeUp(CFRunLoopGetMain())
