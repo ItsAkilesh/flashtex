@@ -190,6 +190,24 @@ pub enum Item {
     Logo { logo: TextLogo, style: TextStyle, span: Span },
     /// `\rule[<raise>]{<width>}{<height>}` (compiler `Inline::Rule`).
     Rule { rule: TextRule, style: TextStyle, span: Span },
+    /// amsthm's `\qedsymbol`, i.e. `\openbox`: the proof-end marker
+    /// `\end{proof}` appends after an `\hfill`.
+    ///
+    /// It is not a character. amsthm.sty defines it as four rules in an
+    /// `\hbox`,
+    ///
+    /// ```text
+    /// \hbox to.77778em{\hfil\vrule\vbox to.675em{\hrule width.6em\vfil\hrule}\vrule\hfil}
+    /// ```
+    ///
+    /// — an *open* square 0.6 em wide and 0.675 em tall drawn with 0.4 pt
+    /// rules. The compiler has no inline for it yet and emits the code point
+    /// U+220E (END OF PROOF) instead, which is a *filled* square and which
+    /// Latin Modern has no glyph for at all, so the marker came out blank
+    /// (`missing_glyph`, GH#443). `typeset::Context::qed_items` sets the real
+    /// box; `style` is the font in force at the marker (its quad is the `em`)
+    /// and `span` is `\end{proof}`.
+    QedBox { style: TextStyle, span: Span },
     /// A text-mode kern (`\,`, `\thinspace`, `\enspace`, ...; compiler
     /// `Inline::Kern`), in ems of the current face.
     Kern { amount: TextDimen, style: TextStyle },
@@ -8372,6 +8390,31 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
                 after_control_word = word.as_deref().is_some_and(|w| w.len() > 2);
+            }
+            // amsthm's automatic `\qedsymbol` (GH#443). `\end{proof}` appends
+            // exactly two inlines, an `Inline::HFill` with no leader and an
+            // `Inline::Text` holding U+220E, and gives both the *same* span —
+            // the `\end{proof}` bytes. That pair is the compiler's marker (it
+            // emits U+220E nowhere else); a U+220E typed in the source is a
+            // lone text inline with its own span and still sets whatever the
+            // font has. Latin Modern has no U+220E glyph, so the text arm
+            // below would warn `missing_glyph` and draw nothing; amsthm never
+            // wanted a character here in the first place.
+            Inline::Text { text, span, .. }
+                if text == "\u{220E}"
+                    && prev_span == Some(*span)
+                    && matches!(items.last(), Some(Item::HFill { leader: FillLeader::None, .. })) =>
+            {
+                let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
+                let mut style = style_at(styles_of(span.document), span.start);
+                style.size_cpt = declared_size(compiler_style.size, size);
+                prev_size_cpt = style.size_cpt;
+                items.push(Item::QedBox { style, span: *span });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = false;
             }
             Inline::Text { text, span, .. } if text == " " && text_of(span.document).get(span.start..span.end) == Some("\\ ") => {
                 // `\ ` (control space, lexed as the word " "): interword glue at

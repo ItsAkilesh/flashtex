@@ -435,6 +435,11 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 (span.start.wrapping_sub(base)).hash(h);
                 (span.end.wrapping_sub(base)).hash(h);
             }
+            Item::QedBox { style, span } => {
+                style.hash(h);
+                (span.start.wrapping_sub(base)).hash(h);
+                (span.end.wrapping_sub(base)).hash(h);
+            }
             Item::Kern { amount, style } => {
                 amount.hash(h);
                 style.hash(h);
@@ -871,7 +876,7 @@ pub fn relocate_items(items: &[Item], delta: isize) -> Vec<Item> {
                 shift_span(span, delta);
                 shift_math(list, delta);
             }
-            Item::Logo { span, .. } | Item::Rule { span, .. } => shift_span(span, delta),
+            Item::Logo { span, .. } | Item::Rule { span, .. } | Item::QedBox { span, .. } => shift_span(span, delta),
             Item::Footnote { span, text, .. } => {
                 shift_span(span, delta);
                 if let Some(t) = text {

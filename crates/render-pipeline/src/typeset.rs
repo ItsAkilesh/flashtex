@@ -940,6 +940,60 @@ impl<'a> Context<'a> {
         (run, self.recs.len() - 1)
     }
 
+    /// One rule of an [`Context::qed_items`] box: an hbox `width` wide whose
+    /// painted rectangle is `height` tall and sits `bottom` above the
+    /// baseline.
+    fn qed_rule(&mut self, size: f64, span: Span, width: f64, height: f64, bottom: f64) -> (pl::Item, Option<usize>) {
+        self.recs.push(BoxRec::Rule { width, height, bottom, span });
+        let run = pl::GlyphRun {
+            font: MATH_SENTINEL,
+            size,
+            glyphs: Vec::new(),
+            width,
+            height: bottom + height,
+            depth: 0.0,
+            source: span.start..span.end,
+        };
+        (pl::Item::Box(run), Some(self.recs.len() - 1))
+    }
+
+    /// amsthm's `\qedsymbol` (adapter `Item::QedBox`, GH#443), which is
+    /// `\openbox`:
+    ///
+    /// ```text
+    /// \hbox to.77778em{\hfil\vrule\vbox to.675em{\hrule width.6em\vfil\hrule}\vrule\hfil}
+    /// ```
+    ///
+    /// Four rules, not a character: an open square `.6em` wide and `.675em`
+    /// tall, sitting on the baseline, drawn with `\vrule`/`\hrule` at TeX's
+    /// default 0.4 pt thickness (absolute — it does not scale with the font),
+    /// centred by the two `\hfil` in an hbox `.77778em` wide. `em` is the
+    /// current font's quad, so the box grows with `\large` exactly as the
+    /// pdflatex oracle does (`tests/qed_box.rs`).
+    ///
+    /// The two horizontal rules share the vbox's width, so the second is
+    /// pulled back over the first with a kern; kerns between boxes are not
+    /// legal break points, so the whole mark stays on one line.
+    fn qed_items(&mut self, style: TextStyle, size: f64, span: Span) -> Vec<(pl::Item, Option<usize>)> {
+        /// `\vrule`/`\hrule` with no `width`/`height`: `\z@` plus TeX's
+        /// default rule thickness, 0.4 pt (tex.web §463).
+        const RULE_PT: f64 = 0.4;
+        let quad = self.text_params(style, size).quad;
+        let width = 0.6 * quad;
+        let height = 0.675 * quad;
+        // Each `\hfil` of the `\hbox to.77778em`.
+        let pad = (0.77778 * quad - (width + 2.0 * RULE_PT)) / 2.0;
+        let mut out = Vec::with_capacity(7);
+        out.push((pl::Item::kern(pad), None));
+        out.push(self.qed_rule(size, span, RULE_PT, height, 0.0));
+        out.push(self.qed_rule(size, span, width, RULE_PT, height - RULE_PT));
+        out.push((pl::Item::kern(-width), None));
+        out.push(self.qed_rule(size, span, width, RULE_PT, 0.0));
+        out.push(self.qed_rule(size, span, RULE_PT, height, 0.0));
+        out.push((pl::Item::kern(pad), None));
+        out
+    }
+
     /// `\TeX`/`\LaTeX`/`\LaTeXe` (compiler `Inline::Logo`): one box per glyph
     /// at the x `text_builtins::layout_logo` computes from this face's TFM
     /// metrics, joined by kerns (not break points: no glue follows them),
@@ -2200,6 +2254,12 @@ impl<'a> Context<'a> {
                 AItem::Logo { logo, style, span } => {
                     let style = merge_base(*style, base);
                     for (item, rec) in self.logo_items(*logo, style, style.size_or(size), *span) {
+                        push(&mut out, &mut recs, item, rec);
+                    }
+                }
+                AItem::QedBox { style, span } => {
+                    let style = merge_base(*style, base);
+                    for (item, rec) in self.qed_items(style, style.size_or(size), *span) {
                         push(&mut out, &mut recs, item, rec);
                     }
                 }
