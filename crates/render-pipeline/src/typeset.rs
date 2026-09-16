@@ -8170,7 +8170,10 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         let (_, natural) = pagebuild::natural_layout(&p, &pagebuild::vlist(&p, &vb), true);
         let fils = 3.0 + if style.raggedbottom { 1e-4 } else { 0.0 };
         let fil = ((style.text_height_pt - natural) / fils).max(0.0);
-        for at in if start == last_material { vec![start] } else { vec![start, last_material] } {
+        // `\null\vfil` and `\par\vfil\null`: the two are one glue when the
+        // abstract set no body at all.
+        let takers = if start == last_material { 1 } else { 2 };
+        for &at in [start, last_material].iter().take(takers) {
             let v = &mut blocks[at].vertical;
             v.space_after = Some(match v.space_after {
                 Some((n, s, k)) => (n + fil, s, k),
