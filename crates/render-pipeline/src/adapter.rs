@@ -2676,6 +2676,9 @@ fn split_at_page_breaks<'p>(
     style: &Stylesheet,
 ) -> Vec<Unit<'p>> {
     let theorem_envs = theorem_environments(texts);
+    // `\end{abstract}` is an `\endtrivlist` only in the one-column branch
+    // (see [`crate::abstractenv::end_is_endtrivlist`]).
+    let abstract_ends_trivlist = crate::abstractenv::end_is_endtrivlist(style);
     let mut units = Vec::new();
     let mut prev_end: Option<Span> = None;
     // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
@@ -2873,7 +2876,7 @@ fn split_at_page_breaks<'p>(
                                 || prev_end.is_none()
                                 || has_blank_line(before)
                                 || find_command(before, "par").is_some()
-                                || gap_has_trivlist_end(before, &theorem_envs);
+                                || gap_has_trivlist_end(before, &theorem_envs, abstract_ends_trivlist);
                             if let Some(i) = stack.len().checked_sub(1) {
                                 if list_vmode_by_depth.len() <= i {
                                     list_vmode_by_depth.resize(i + 1, false);
@@ -2994,7 +2997,7 @@ fn split_at_page_breaks<'p>(
                 || prev_end.is_none()
                 || has_blank_line(before)
                 || find_command(before, "par").is_some()
-                || gap_has_trivlist_end(before, &theorem_envs);
+                || gap_has_trivlist_end(before, &theorem_envs, abstract_ends_trivlist);
             Some(EnvOpen { vmode, skips: None })
         });
         // `\@endpe`: a plain paragraph right after `\end{...}` (no blank line
@@ -5010,8 +5013,54 @@ fn gap_has_list_end(gap: &str) -> Option<&'static str> {
 const TRIVLIST_ENVS: [&str; 9] =
     ["center", "flushleft", "flushright", "quote", "quotation", "verse", "verbatim", "verbatim*", "abstract"];
 
-/// Whether `gap` closes an environment whose `\end` is `\endtrivlist`, so
-/// TeX is in vertical mode on the other side of it.
+/// Whether the material immediately before `at` ends with the `\end` of a
+/// `\trivlist`-derived environment, so `\@endparenv` has just put that
+/// environment's `\addvspace\@topsepadd` on the vertical list.
+///
+/// [`crate::listings`] asks this because a `lstlisting` opens with a
+/// `\vspace`, not an `\addvspace`, so the skip the previous `\end` left is
+/// *added to* rather than shared with it and has to survive the pass that
+/// undoes the `flushleft` lowering.
+///
+/// Theorem-like environments are deliberately not counted: `\@thm` assigns
+/// `\@topsepadd` outright from `\thm@postskip`, which is not the
+/// `\@trivlist` value this answer stands for, and
+/// `\end{thm}\begin{lstlisting}` measures correct without it. `abstract` is
+/// not counted either, for a sharper reason: its `\end` is an
+/// `\endtrivlist` only in one column, and its `\@topsepadd` is then
+/// `\small`'s (6/9/12 pt, not the body's 10/12/13) — both branches are
+/// already exact without this, one because the body block closes the
+/// environment itself and one because there is no list to close.
+pub(crate) fn ends_trivlist_env_before(text: &str, at: usize) -> bool {
+    let before = text.get(..at).unwrap_or("").trim_end();
+    let Some(end) = before.rfind("\\end") else { return false };
+    let rest = before[end + "\\end".len()..].trim_start();
+    let Some(rest) = rest.strip_prefix('{') else { return false };
+    let Some((name, after)) = rest.split_once('}') else { return false };
+    let name = name.trim();
+    after.trim().is_empty() && name != "abstract" && (LIST_ENVS.contains(&name) || TRIVLIST_ENVS.contains(&name))
+}
+
+/// The environments that are *not* a `\trivlist` but whose `\end` still
+/// ends with a `\par`, so TeX is in vertical mode after it all the same.
+///
+/// `lstlisting` is the measured one. It is emphatically not a `\trivlist` —
+/// `\lst@Init` opens no list, it sets the body as an ordinary paragraph
+/// under `\parshape` (which is why [`crate::listings`] clears the
+/// `flushleft` lowering's `env_open`) — so it must never join
+/// [`TRIVLIST_ENVS`]. But `\lst@DeInit` runs `\par\removelastskip` and then,
+/// for a display listing, `\par\penalty-50\vspace\lst@belowskip`
+/// (listings.sty 1802-1826), and that `\par` leaves vertical mode exactly as
+/// `\@endparenv`'s does. Measured: `\end{lstlisting}\begin{center}` (and
+/// `flushleft`, `flushright`, `quote`, `quotation`, `verse`, `itemize`,
+/// `enumerate`, `description`) was 1.993 bp short at 10 pt and 2.989 bp at
+/// 11 and 12 pt — one `\partopsep` — while `\end{lstlisting}\begin{thm}`,
+/// which takes no `\partopsep` at all, was already right.
+const VMODE_END_ENVS: [&str; 2] = ["lstlisting", "lstlisting*"];
+
+/// Whether `gap` closes an environment whose `\end` leaves TeX in vertical
+/// mode, so the `\begin` beside it takes `\partopsep` with no blank line
+/// between them.
 ///
 /// `\@endparenv` ends `\par \addvspace\@topsepadd \@endpetrue`: the `\par`
 /// is what leaves vertical mode, and it does so for *every* `\trivlist`,
@@ -5021,16 +5070,26 @@ const TRIVLIST_ENVS: [&str; 9] =
 /// `\end`s is read in vertical mode and takes `\partopsep` — with no blank
 /// line and no explicit `\par` between them.
 ///
+/// [`VMODE_END_ENVS`] reaches the same state by another route and is kept
+/// apart from [`TRIVLIST_ENVS`] for that reason: what this predicate is
+/// really asking is "is the next `\begin` read in vertical mode", and
+/// `\endtrivlist` is only the commonest way to get there.
+///
 /// Measured against pdflatex in `tests/vmode_boundary_skips.rs`: every one
 /// of these boundaries steps by `\baselineskip` + `\topsep` + `\partopsep`,
 /// never by `\topsep` alone.
-fn gap_has_trivlist_end(gap: &str, theorem_envs: &std::collections::HashSet<String>) -> bool {
+fn gap_has_trivlist_end(gap: &str, theorem_envs: &std::collections::HashSet<String>, abstract_ends_trivlist: bool) -> bool {
     let Some(end) = rfind_command(gap, "end") else { return false };
     let rest = gap[end + "\\end".len()..].trim_start();
     let Some(rest) = rest.strip_prefix('{') else { return false };
     let Some((name, _)) = rest.split_once('}') else { return false };
     let name = name.trim();
-    LIST_ENVS.contains(&name) || TRIVLIST_ENVS.contains(&name) || theorem_envs.contains(name)
+    if name == "abstract" {
+        // Whether this `\end` is an `\endtrivlist` depends on the class
+        // options, not on the name ([`crate::abstractenv::end_is_endtrivlist`]).
+        return abstract_ends_trivlist;
+    }
+    LIST_ENVS.contains(&name) || TRIVLIST_ENVS.contains(&name) || VMODE_END_ENVS.contains(&name) || theorem_envs.contains(name)
 }
 
 /// The `\setlist[<envs>]{<keys>}` calls of `source`, in order:

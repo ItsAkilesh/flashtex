@@ -188,6 +188,27 @@ fn branch(style: &Stylesheet) -> Branch {
     Branch::OneColumn
 }
 
+/// Whether `\end{abstract}` is an `\endtrivlist` in *this* document, so the
+/// `\begin` beside it is read in vertical mode and takes `\partopsep`
+/// ([`crate::adapter`]'s `gap_has_trivlist_end`).
+///
+/// Only [`Branch::OneColumn`] is. article.cls 386 closes the environment
+/// with `\if@twocolumn\else\endquotation\fi`: in two columns the body is
+/// ordinary paragraphs under a `\section*` and the `\end` expands to
+/// *nothing at all*, so there is no `\@endparenv` and no `\par`. #728 put
+/// `abstract` in `TRIVLIST_ENVS` unconditionally, having swept only the
+/// one-column branch, which made every two-column
+/// `\end{abstract}\begin{center|quote|verbatim|itemize|enumerate|
+/// description}` 1.992 bp long at 10 pt, 2.989 at 11 pt and 2.988 at 12 pt
+/// — one `\partopsep` that pdflatex does not put there. (`\begin{thm}`,
+/// which takes no `\partopsep` at all, was right either way.) The
+/// `titlepage` branch and `book`, which has no `abstract`, are not
+/// `\endtrivlist` either; the compiler's own warning stands for them.
+pub(crate) fn end_is_endtrivlist(style: &Stylesheet) -> bool {
+    !style.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Book)
+        && branch(style) == Branch::OneColumn
+}
+
 /// Rewrites the plain paragraphs the compiler produced for each `abstract`
 /// body into the class's own shape and inserts its head before them.
 /// Returns the source spans whose compiler diagnostic the pipeline now
@@ -281,24 +302,45 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
 /// whose skip rides on the `center`'s `env_close` rather than on the body,
 /// was already right).
 ///
-/// The `\if@twocolumn` branch inserts its `\section*` head the same way and
-/// so takes the same treatment, but measured it changes nothing there: the
-/// heading's own `\@startsection` before-skip already decided where the head
-/// sits, and every two-column probe (10/11/12 pt, after an `itemize`, after
-/// a `center`, and alone) comes out byte-identical with and without this.
-/// It is here because the *position* argument holds for both branches, not
-/// because a measurement asked for it.
+/// The `\if@twocolumn` branch inserts a `\section*` head the same way, and
+/// the same argument applies to it — but its head is a [`Block::Heading`],
+/// which has no `addvspace_before` to take the skip, so #728's version of
+/// this function fell straight out of its `let else` and left the body
+/// carrying it. That is the whole of the two-column `abstract`-after-a-list
+/// error #728 measured and filed: `\end{itemize}\begin{abstract}` set the
+/// *body* 3.985 bp low at 10 pt, 4.483 at 11 pt and 4.981 at 12 pt while
+/// the head itself was exact to the bp, and `center`, `verbatim`,
+/// `lstlisting` and a plain paragraph before it — none of which leave a
+/// skip on the body — were exact too. `\@startsection` has already spent
+/// that `\addvspace`: with `\lastskip` at the list's `\@topsepadd` and a
+/// negative before-skip, `\@xaddvskip` takes the else branch and folds the
+/// two into one glue *above* the head, which is why the head lands right
+/// and nothing of it is left to fire below. So here the skip is dropped
+/// rather than moved, and the control that says the drop is right rather
+/// than merely smaller is a real `\section*{Abstract}` in the same
+/// position, which pdflatex and the pipeline already agree on exactly.
 fn take_lead(body: &mut Block, head: &mut Block) {
-    let (
-        Block::Paragraph {
-            eject_before: b_eject,
-            vspace_before: b_vspace,
-            addvspace_before: b_addvspace,
-            addvspace_flex: b_addflex,
-            vspace_flex: b_vflex,
-            endlist_adjust: b_endlist,
-            ..
-        },
+    let Block::Paragraph {
+        eject_before: b_eject,
+        vspace_before: b_vspace,
+        addvspace_before: b_addvspace,
+        addvspace_flex: b_addflex,
+        vspace_flex: b_vflex,
+        endlist_adjust: b_endlist,
+        ..
+    } = body
+    else {
+        return;
+    };
+    let (eject, vspace, addvspace, addflex, vflex, endlist) = (
+        std::mem::replace(b_eject, false),
+        std::mem::replace(b_vspace, 0.0),
+        std::mem::replace(b_addvspace, 0.0),
+        std::mem::replace(b_addflex, (0.0, 0.0)),
+        std::mem::replace(b_vflex, (0.0, 0.0)),
+        std::mem::replace(b_endlist, 0.0),
+    );
+    match head {
         Block::Paragraph {
             eject_before: h_eject,
             vspace_before: h_vspace,
@@ -307,17 +349,26 @@ fn take_lead(body: &mut Block, head: &mut Block) {
             vspace_flex: h_vflex,
             endlist_adjust: h_endlist,
             ..
-        },
-    ) = (body, head)
-    else {
-        return;
-    };
-    *h_eject = std::mem::replace(b_eject, false);
-    *h_vspace = std::mem::replace(b_vspace, 0.0);
-    *h_addvspace = std::mem::replace(b_addvspace, 0.0);
-    *h_addflex = std::mem::replace(b_addflex, (0.0, 0.0));
-    *h_vflex = std::mem::replace(b_vflex, (0.0, 0.0));
-    *h_endlist = std::mem::replace(b_endlist, 0.0);
+        } => {
+            *h_eject = eject;
+            *h_vspace = vspace;
+            *h_addvspace = addvspace;
+            *h_addflex = addflex;
+            *h_vflex = vflex;
+            *h_endlist = endlist;
+        }
+        Block::Heading {
+            eject_before: h_eject,
+            vspace_before: h_vspace,
+            ..
+        } => {
+            // `\newpage` and `\vspace` still travel with the position; the
+            // `\addvspace` does not, for the reason above.
+            *h_eject = eject;
+            *h_vspace = vspace;
+        }
+        _ => {}
+    }
 }
 
 /// `\begin{center}{\bfseries \abstractname\vspace{-.5em}\vspace{\z@}}
