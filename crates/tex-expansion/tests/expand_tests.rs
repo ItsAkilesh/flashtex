@@ -736,3 +736,48 @@ fn past_a_nesting_limit_the_extra_group_or_conditional_is_ignored_and_expansion_
     assert_eq!(messages[0], "conditional nesting limit exceeded");
     assert!(messages[1..].iter().any(|m| m.starts_with("Extra ")), "{messages:?}");
 }
+
+#[test]
+fn newtheorem_reserved_name_reports_collision_not_missing_control_sequence() {
+    // GitHub issue #700: `\newtheorem{def}` collides with the `\def`
+    // primitive. Real pdflatex refuses the declaration ("LaTeX Error:
+    // Command \def already defined."); without the check the bad name
+    // reached `\begin{def}`, which executed `\def` and failed with a
+    // generic "Missing control sequence inserted." instead.
+    let r = expand_str(r"\newtheorem{def}{Definition}\begin{def}A test.\end{def}");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\def already defined."], "{messages:?}");
+    assert!(!messages.iter().any(|m| m.contains("Missing control sequence")), "{messages:?}");
+    // The rejected environment is skipped; its body still typesets.
+    assert_eq!(text(&r.tokens), "A test.");
+}
+
+#[test]
+fn newtheorem_free_name_passes_through_silently() {
+    let r = expand_str(r"\newtheorem{defn}{Definition}\begin{defn}A test.\end{defn}");
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let out = text(&r.tokens);
+    assert!(out.contains("A test."), "{out:?}");
+    // The declaration reaches the typesetter, which owns theorem counters.
+    assert!(out.contains("\\newtheorem "), "{out:?}");
+}
+
+#[test]
+fn newtheorem_rejection_leaves_the_shadowed_primitive_usable() {
+    // Only the rejected `\begin{def}`/`\end{def}` are diverted; a later
+    // `\def` still defines.
+    let r = expand_str(r"\newtheorem{def}{Definition}\def\foo{hi}\foo");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\def already defined."], "{messages:?}");
+    assert_eq!(text(&r.tokens), "hi");
+}
+
+#[test]
+fn newtheorem_second_declaration_of_the_same_name_errors() {
+    // Like `\newenvironment`, a repeated declaration keeps the first
+    // definition and reports the collision once per redeclaration.
+    let r = expand_str(r"\newtheorem{thm}{Theorem}\newtheorem{thm}{Theorem}");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\thm already defined."], "{messages:?}");
+    assert!(text(&r.tokens).contains("\\newtheorem "), "{:?}", r.tokens);
+}

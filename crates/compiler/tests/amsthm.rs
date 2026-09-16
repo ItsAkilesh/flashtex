@@ -372,6 +372,43 @@ fn the_ams_trio_is_silent_and_an_unimplemented_package_still_warns() {
     }
 }
 
+/// GitHub issue #700: `\newtheorem{def}` collides with the reserved TeX
+/// primitive `\def` (real pdflatex: "LaTeX Error: Command \def already
+/// defined."). The declaration must report that collision by name — one
+/// precise diagnostic — instead of letting `\begin{def}` execute the
+/// shadowed primitive and fail with a generic "Missing control sequence
+/// inserted.".
+#[test]
+fn reserved_primitive_name_reports_collision_not_missing_control_sequence() {
+    let source = r"\documentclass{article}
+\usepackage{amsthm}
+\newtheorem{def}{Definition}
+\begin{document}
+\begin{def}
+A test.
+\end{def}
+\end{document}";
+    let msgs = messages(source);
+    assert_eq!(msgs, [r"LaTeX Error: Command \def already defined."], "{msgs:?}");
+}
+
+/// Ordinary theorem names are unaffected: no diagnostics at all.
+#[test]
+fn ordinary_theorem_name_is_silent() {
+    let source = r"\documentclass{article}
+\usepackage{amsthm}
+\newtheorem{defn}{Definition}
+\begin{document}
+\begin{defn}
+A test.
+\end{defn}
+\end{document}";
+    let msgs = messages(source);
+    assert!(msgs.is_empty(), "{msgs:?}");
+    let texts = plain_texts(source);
+    assert!(texts.contains(&"Definition 1".to_string()), "{texts:?}");
+}
+
 #[test]
 fn unregistered_environment_name_still_reports_the_generic_gap() {
     // A name that was never `\newtheorem`-declared is not silently treated

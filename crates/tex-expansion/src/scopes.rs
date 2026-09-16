@@ -184,6 +184,7 @@ pub enum Primitive {
     DeclareRobustCommand,
     NewEnvironment,
     RenewEnvironment,
+    NewTheorem,
     Begin,
     End,
     NewCounter,

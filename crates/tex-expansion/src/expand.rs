@@ -167,6 +167,14 @@ pub(crate) struct State {
     pub group_limit_reported: bool,
     /// The same for "conditional nesting limit exceeded".
     pub conditional_limit_reported: bool,
+    /// Environment names whose `\newtheorem` declaration was rejected for
+    /// colliding with an already-defined command (e.g. `\newtheorem{def}`).
+    /// The declaration is swallowed, so `\begin{name}`/`\end{name}` would
+    /// otherwise execute the shadowed primitive (`\def`) and fail with a
+    /// generic "Missing control sequence inserted."; instead they are
+    /// skipped silently — the declaration's diagnostic already reported
+    /// the collision.
+    pub rejected_theorem_envs: HashSet<String>,
 }
 
 impl State {
@@ -208,6 +216,7 @@ impl State {
             pending_font_switch,
             group_limit_reported,
             conditional_limit_reported,
+            rejected_theorem_envs,
         } = self;
         conditionals == &new.conditionals
             && *pending_global == new.pending_global
@@ -229,6 +238,7 @@ impl State {
             && (Rc::ptr_eq(font_switches, &new.font_switches) || font_switches == &new.font_switches)
             && *group_limit_reported == new.group_limit_reported
             && *conditional_limit_reported == new.conditional_limit_reported
+            && rejected_theorem_envs == &new.rejected_theorem_envs
             && match (after_assignment, &new.after_assignment) {
                 (None, None) => true,
                 (Some(a), Some(b)) => crate::scopes::token_eq_mapped(a, b, f),
@@ -338,6 +348,7 @@ const PRIMITIVE_TABLE: &[(&str, Primitive)] = &[
     ("DeclareRobustCommand", Primitive::DeclareRobustCommand),
     ("newenvironment", Primitive::NewEnvironment),
     ("renewenvironment", Primitive::RenewEnvironment),
+    ("newtheorem", Primitive::NewTheorem),
     ("begin", Primitive::Begin),
     ("end", Primitive::End),
     ("newcounter", Primitive::NewCounter),
@@ -2534,6 +2545,10 @@ impl Engine {
                 self.do_newenvironment(p, tok.span);
                 Step::Continue
             }
+            NewTheorem => {
+                self.do_newtheorem(tok);
+                Step::Continue
+            }
             Begin => {
                 self.do_begin(&tok);
                 Step::Continue
@@ -3123,6 +3138,210 @@ impl Engine {
         );
     }
 
+    /// `\newtheorem[*]{name}[shared]{title}[within]` (amsthm): counters,
+    /// styles, and heads belong to the typesetting layer, so a free name's
+    /// declaration passes through untouched for the host parser — but a
+    /// name that collides with an already-defined command (a TeX primitive
+    /// like `\def`, or any user macro) is diagnosed here, the way
+    /// `\newenvironment` refuses a taken name. Real LaTeX says "LaTeX
+    /// Error: Command \<name> already defined."; without the check the
+    /// declaration silently registers, and the later `\begin{name}`
+    /// executes the shadowed primitive and fails further downstream with
+    /// a generic "Missing control sequence inserted." instead.
+    fn do_newtheorem(&mut self, tok: Token) {
+        let span = tok.span;
+        // `\@ifstar`: spaces precede the star, the way the host parser's
+        // `take_optional_star` reads it (unlike `\newcommand*`).
+        let mut back = Vec::new();
+        loop {
+            match self.next_raw() {
+                Some(p) if matches!(p.tok.kind, TokenKind::Char(_, CatCode::Space)) => back.push(p),
+                Some(p) => {
+                    self.push_pending(vec![p]);
+                    break;
+                }
+                None => break,
+            }
+        }
+        let star = match self.peek_one() {
+            Some(t) if matches!(t.kind, TokenKind::Char('*', CatCode::Other)) => {
+                self.next_raw_token();
+                true
+            }
+            _ => false,
+        };
+        if star {
+            back.push(Pending { tok: Token::new(TokenKind::Char('*', CatCode::Other), span), frozen: false, origin: None });
+        }
+        let name_group = self.scan_through_group();
+        let name = name_group
+            .iter()
+            .filter(|p| {
+                !matches!(
+                    p.tok.kind,
+                    TokenKind::Char(_, CatCode::BeginGroup) | TokenKind::Char(_, CatCode::EndGroup)
+                )
+            })
+            .map(|p| p.tok.display_name().replace('\\', ""))
+            .collect::<String>()
+            .trim()
+            .to_string();
+        back.extend(name_group);
+        if let Some(shared) = self.scan_through_bracket() {
+            back.extend(shared);
+        }
+        back.extend(self.scan_through_group());
+        if let Some(within) = self.scan_through_bracket() {
+            back.extend(within);
+        }
+        if !name.is_empty() && self.st.scopes.is_defined(&name) {
+            self.err(format!("LaTeX Error: Command \\{name} already defined."), span);
+            // Swallow the declaration (as `\newenvironment` does on a
+            // collision): the typesetter must never see the bad name, and
+            // `\begin{name}`/`\end{name}` below skip it silently instead
+            // of executing the shadowed command.
+            self.st.rejected_theorem_envs.insert(name);
+            return;
+        }
+        if !name.is_empty() {
+            // Claim `\name`/`\end{name}` the way `\newenvironment` claims
+            // its commands, so `\begin{name}` no longer reports the
+            // environment undefined and a later `\newcommand` on either
+            // name is refused, as in LaTeX. Both are host commands: still
+            // emitted unchanged for the typesetter, which owns the actual
+            // declaration (scanned above, handed back below).
+            self.st.scopes.assign_cs(&name, Meaning::Primitive(Primitive::Host), true);
+            self.st.scopes.assign_cs(&format!("end{name}"), Meaning::Primitive(Primitive::Host), true);
+        }
+        // Hand the declaration back exactly as read: the leader bypasses
+        // re-dispatch through the output queue (like a prefix carried
+        // ahead of an unmodelled command in `prefix_before_content`), and
+        // the arguments re-enter the input with spans, origins, and freeze
+        // flags intact, so they expand downstream exactly as before.
+        if self.prefix_pending() {
+            let mut prefixes = Vec::new();
+            for (on, prefix) in [
+                (self.st.pending_global, "global"),
+                (self.st.pending_long, "long"),
+                (self.st.pending_outer, "outer"),
+                (self.st.pending_protected, "protected"),
+            ] {
+                if on {
+                    prefixes.push(Token::synthetic(TokenKind::ControlSequence(prefix.into())));
+                }
+            }
+            self.clear_prefixes();
+            self.emit_queue.push(tok);
+            for prefix in prefixes.into_iter().rev() {
+                self.emit_queue.push(prefix);
+            }
+        } else {
+            self.emit_queue.push(tok);
+        }
+        self.push_pending(back);
+    }
+
+    /// Scan a `{...}` group completely raw (no expansion), returning every
+    /// token *including* the outer braces (and any spaces before them), so
+    /// a `\newtheorem` declaration can be handed back to the input
+    /// untouched. Otherwise mirrors `scan_braced_group_pending(false)`.
+    fn scan_through_group(&mut self) -> Vec<Pending> {
+        let mut out = Vec::new();
+        loop {
+            match self.next_raw() {
+                Some(p) => match p.tok.kind {
+                    TokenKind::Char(_, CatCode::Space) => out.push(p),
+                    TokenKind::Char(_, CatCode::BeginGroup) => {
+                        out.push(p);
+                        break;
+                    }
+                    _ => {
+                        // Missing '{': TeX says "Missing { inserted" and
+                        // treats the single token as the whole group.
+                        self.err("Missing { inserted.", p.tok.span);
+                        out.push(p);
+                        return out;
+                    }
+                },
+                None => return out,
+            }
+        }
+        let mut depth = 1i32;
+        loop {
+            let pending = match self.next_raw() {
+                Some(p) => p,
+                None => break,
+            };
+            match &pending.tok.kind {
+                TokenKind::Char(_, CatCode::BeginGroup) => {
+                    depth += 1;
+                    out.push(pending);
+                }
+                TokenKind::Char(_, CatCode::EndGroup) => {
+                    depth -= 1;
+                    out.push(pending);
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => out.push(pending),
+            }
+        }
+        out
+    }
+
+    /// Scan `[...]` (spaces skipped ahead, as LaTeX's `\@ifnextchar`
+    /// does), returning every token *including* the brackets, or `None`
+    /// when no `[` follows (the lookahead, spaces included, is pushed
+    /// back). Lets a `\newtheorem` declaration be handed back untouched;
+    /// otherwise mirrors `scan_bracketed_optional`.
+    fn scan_through_bracket(&mut self) -> Option<Vec<Pending>> {
+        let mut out = Vec::new();
+        loop {
+            match self.next_raw() {
+                Some(p) if matches!(p.tok.kind, TokenKind::Char(_, CatCode::Space)) => out.push(p),
+                Some(p) => {
+                    if !matches!(p.tok.kind, TokenKind::Char('[', CatCode::Other)) {
+                        // Not a bracket argument: unread everything, in
+                        // order (`push_pending` reads from index 0).
+                        out.push(p);
+                        self.push_pending(out);
+                        return None;
+                    }
+                    out.push(p);
+                    break;
+                }
+                None => {
+                    self.push_pending(out);
+                    return None;
+                }
+            }
+        }
+        let mut brace_depth = 0i32;
+        loop {
+            let p = match self.next_raw() {
+                Some(p) => p,
+                None => break,
+            };
+            match &p.tok.kind {
+                TokenKind::Char(']', CatCode::Other) if brace_depth == 0 => {
+                    out.push(p);
+                    break;
+                }
+                TokenKind::Char(_, CatCode::BeginGroup) => {
+                    brace_depth += 1;
+                    out.push(p);
+                }
+                TokenKind::Char(_, CatCode::EndGroup) => {
+                    brace_depth -= 1;
+                    out.push(p);
+                }
+                _ => out.push(p),
+            }
+        }
+        Some(out)
+    }
+
     /// `\begin{name}`: LaTeX opens a group, records `\@currenvir`, then
     /// runs `\name`. `\begin{document}` runs `\@begindocumenthook` and
     /// emits a `\document` marker; verbatim environments read raw text.
@@ -3145,6 +3364,14 @@ impl Engine {
             self.do_verbatim_env(&name, tok);
             return;
         }
+        if self.st.rejected_theorem_envs.contains(&name) {
+            // The `\newtheorem{name}` declaration was rejected for
+            // colliding with an already-defined command, and swallowed:
+            // skip the environment silently (no group, no `\name`
+            // invocation) instead of executing the shadowed command. The
+            // declaration's diagnostic already reported the collision.
+            return;
+        }
         if !self.st.scopes.is_defined(&name) {
             // LaTeX: "Environment name undefined." -- we still open the
             // group and pass `\name` through, since many environments are
@@ -3165,6 +3392,12 @@ impl Engine {
                 Pending { tok: Token::new(TokenKind::ControlSequence("enddocument".into()), tok.span), frozen: true, origin: None },
                 Pending { tok: Token::synthetic(TokenKind::ControlSequence("flashtex@stop".into())), frozen: false, origin: None },
             ]);
+            return;
+        }
+        if self.st.rejected_theorem_envs.contains(&name) {
+            // Matches the `\begin{name}` skip above: the declaration was
+            // rejected and swallowed, so there is no group to close and no
+            // `\end{name}` to run.
             return;
         }
         // \@checkend: the current environment must be this one. Compared
@@ -5338,6 +5571,7 @@ fn primitive_name(p: Primitive) -> &'static str {
         DeclareRobustCommand => "DeclareRobustCommand",
         NewEnvironment => "newenvironment",
         RenewEnvironment => "renewenvironment",
+        NewTheorem => "newtheorem",
         Begin => "begin",
         End => "end",
         NewCounter => "newcounter",
@@ -5735,7 +5969,7 @@ fn is_format_level(p: Primitive) -> bool {
     matches!(
         p,
         Newif | Newcount | Newdimen | Newskip | Newtoks | NewCommand | RenewCommand | ProvideCommand | DeclareRobustCommand
-            | NewEnvironment | RenewEnvironment | Begin | End | NewCounter | SetCounter | AddToCounter | StepCounter
+            | NewEnvironment | RenewEnvironment | NewTheorem | Begin | End | NewCounter | SetCounter | AddToCounter | StepCounter
             | RefStepCounter | AddToReset | RemoveFromReset | CounterWithin | CounterWithout | Label | Value | Arabic
             | RomanLower | RomanUpper | AlphLower | AlphUpper | Fnsymbol | NewLength | SetToWidth | SetToHeight
             | SetToDepth | DefineKey | SetKeys | FlashtexSetlist | Verb | StopInput
@@ -5899,6 +6133,7 @@ fn base_state(tex_only: bool) -> State {
         pending_font_switch: None,
         group_limit_reported: false,
         conditional_limit_reported: false,
+        rejected_theorem_envs: HashSet::new(),
     }
 }
 
