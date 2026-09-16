@@ -1305,14 +1305,7 @@ pub fn adapt_cached(
     let leadings: Vec<ParLeading> = parsed.block_par_leading.clone();
     #[cfg(not(feature = "par-leading"))]
     let leadings: Vec<ParLeading> = vec![None; parsed.blocks.len()];
-    // A boxed or folded paragraph can leave compiler metadata for a block the
-    // adapter does not emit. Without a one-to-one pairing, use body leading
-    // for every block rather than attaching a neighboring paragraph's value.
-    let leadings = if leadings.len() == parsed.blocks.len() {
-        leadings
-    } else {
-        vec![None; parsed.blocks.len()]
-    };
+    debug_assert_eq!(leadings.len(), parsed.blocks.len());
     let paired: Vec<(CBlock, ParLeading)> = parsed
         .blocks
         .iter()
