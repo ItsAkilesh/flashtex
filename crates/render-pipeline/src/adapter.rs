@@ -1229,6 +1229,7 @@ pub fn adapt_cached(
         amsmath_cmex10 = package.split(',').any(|o| o.trim() == "cmex10");
     }
     style.cmex_designs = crate::style::cmex_designs(&parsed.packages, amsmath_cmex10);
+    style.math_roman_lm = crate::style::math_roman_lm(&parsed.packages);
     #[cfg(feature = "amsmath-inline")]
     let mathtools = parsed.packages.iter().any(|p| p == "mathtools");
     // `\parskip` from apply_preamble_lengths: `\addtolength` keeps class
