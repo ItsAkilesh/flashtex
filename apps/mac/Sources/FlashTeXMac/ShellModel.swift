@@ -160,6 +160,12 @@ final class ShellModel {
     // fires for the toolbar exactly when something it shows changes.
     private(set) var toolbarHasResult = false
     private(set) var toolbarHasV2Frame = false
+    /// A complete (non-windowed) v2 display list with at least one page: what
+    /// `File > Export PDF…` and `File > Print…` both need, change-only so the
+    /// File menu and the toolbar do not re-evaluate on every frame. The strict
+    /// refusal (historical preview, missing `flashtex-pdf-exact`) is
+    /// `exportPDFRefusal()`; this only decides whether the item is enabled.
+    private(set) var toolbarExportable = false
     private(set) var toolbarProblemCount = 0
     /// `result?.pages.count`, change-only, so File > Print… can refuse a failed
     /// or empty-page result without the App scene reading `result` per reply.
@@ -222,8 +228,15 @@ final class ShellModel {
         if toolbarHasResult != hasResult { toolbarHasResult = hasResult }
         let pages = result?.pages.count ?? 0
         if toolbarPageCount != pages { toolbarPageCount = pages }
+        let retained = displayListV2?.retained?.frame
         let hasFrame = displayListV2?.frame != nil
         if toolbarHasV2Frame != hasFrame { toolbarHasV2Frame = hasFrame }
+        // A windowed frame stays exportable: Export re-renders the whole
+        // document (WholeDocumentList.swift). Whether that route is actually
+        // available is a filesystem question, so it is answered when the
+        // command runs (`exportPDFRefusal`), not on every frame here.
+        let exportable = retained.map { !$0.list.pages.isEmpty } ?? false
+        if toolbarExportable != exportable { toolbarExportable = exportable }
         let diagnostics = displayedDiagnostics
         if toolbarProblemCount != diagnostics.count { toolbarProblemCount = diagnostics.count }
         if problemsList != diagnostics { problemsList = diagnostics }
@@ -240,6 +253,9 @@ final class ShellModel {
     var captureInboxVisible = ProcessInfo.processInfo.environment["FLASHTEX_SHOW_CAPTURES"] == "1" // View > Captures (⌘⇧I)
     var workerLog: [String] = []
     @ObservationIgnored private var worker: WorkerClient?
+    /// The running worker's executable, for tools that need to run the same
+    /// producer one-shot (`WholeDocumentList.swift`).
+    var attachedWorkerExecutable: URL? { worker?.isRunning == true ? worker?.executable : nil }
     /// How the current worker was launched, so an abnormal exit can relaunch
     /// the same executable (bounded: `maxWorkerRelaunches` per minute).
     @ObservationIgnored private var workerLaunch: (url: URL, arguments: [String])?
