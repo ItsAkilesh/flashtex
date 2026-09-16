@@ -254,7 +254,7 @@ final class DocumentFilesState {
                 client.send({ ProjectFilesV1.ReadRequest(id: $0, path: name) }, as: ProjectFilesV1.Read.self, completion: done)
             }, late: { [weak self] result in
                 self?.lateReplies.append("read \(name): \(Self.describe(result))")
-                self?.note("late reply to read \(name) arrived after \(Int(self?.helperTimeout ?? 0)) s; ignored (buffer untouched)")
+                self?.note("late reply to read \(name) arrived after \(String(format: "%.1f", self?.helperTimeout ?? 0)) s; ignored (buffer untouched)")
             })
             switch outcome {
             case .reply(let r):
@@ -265,8 +265,8 @@ final class DocumentFilesState {
                 note("helper read of \(name) failed: \(f.text)")
                 return .failed(f.text)
             case .timedOut(let t):
-                note("helper did not answer read of \(name) within \(Int(t)) s; buffer untouched")
-                return .failed("no reply from the project-files helper within \(Int(t)) s")
+                note("helper did not answer read of \(name) within \(String(format: "%.1f", t)) s; buffer untouched")
+                return .failed("no reply from the project-files helper within \(String(format: "%.1f", t)) s")
             }
         }
     }
@@ -323,8 +323,8 @@ final class DocumentFilesState {
                 note("helper save of \(name) failed: \(f.text); buffer kept unsaved")
                 return .failed(f.text)
             case .timedOut(let t):
-                note("helper did not confirm the save of \(name) within \(Int(t)) s; buffer kept unsaved (a late receipt will be reconciled)")
-                return .failed("no save receipt from the project-files helper within \(Int(t)) s")
+                note("helper did not confirm the save of \(name) within \(String(format: "%.1f", t)) s; buffer kept unsaved (a late receipt will be reconciled)")
+                return .failed("no save receipt from the project-files helper within \(String(format: "%.1f", t)) s")
             }
         }
     }
@@ -350,7 +350,7 @@ final class DocumentFilesState {
             switch outcome {
             case .reply(let s): result = .success(s)
             case .failed(let f): result = .failure(.init(f.text))
-            case .timedOut(let t): result = .failure(.init("no status reply from the project-files helper within \(Int(t)) s"))
+            case .timedOut(let t): result = .failure(.init("no status reply from the project-files helper within \(String(format: "%.1f", t)) s"))
             }
         }
         if case .success(let s) = result { lastDiskState = s.state }
