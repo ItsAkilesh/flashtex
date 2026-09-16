@@ -183,6 +183,34 @@ fn the_optional_argument_is_declared_not_implemented() {
 }
 
 #[test]
+fn the_abstract_to_lstlisting_boundary_follows_the_command_too() {
+    // The issue's other measurement. `\end{abstract}\begin{lstlisting}`
+    // was 5.977/8.966/11.955 bp long at 10/11/12 pt, and the cause is the
+    // same one: read as one-column, the `abstract` is a `\small`
+    // `quotation` whose `\endlist` adds `\small`'s `\topsep +
+    // \partopsep` (6/9/12 pt) that the two-column branch never has.
+    // #738 measured the `lstlisting` skips themselves; nothing about them
+    // is column-dependent, so getting the mode right is the whole fix.
+    const DOC: &str = "\\documentclass[SIZE]{article}\n\\usepackage{listings}\n\\twocolumn\n\
+\\begin{document}\n\\begin{abstract}\nAaa\n\\end{abstract}\n\\begin{lstlisting}\ncode\n\
+\\end{lstlisting}\nAfter text.\n\\end{document}\n";
+    // `(size, Abstract head, Aaa, code, After)` pdflatex baselines in bp.
+    // The boundary itself: code - Aaa = 17.932 / 19.527 / 20.424, where the
+    // engine gave 23.910 / 28.493 / 32.379.
+    for (size, head, body, code, after) in [
+        ("10pt", 134.765, 156.586, 174.518, 192.451),
+        ("11pt", 140.742, 165.094, 184.621, 204.148),
+        ("12pt", 137.753, 164.038, 184.462, 204.885),
+    ] {
+        let (_, words) = layout(&DOC.replace("SIZE", size));
+        close(word(&words, "Abstract").baseline, head, &format!("{size} head"));
+        close(word(&words, "Aaa").baseline, body, &format!("{size} abstract body"));
+        close(word(&words, "code").baseline, code, &format!("{size} listing after the abstract"));
+        close(word(&words, "After").baseline, after, &format!("{size} after the listing"));
+    }
+}
+
+#[test]
 fn the_lstlisting_boundaries_follow_the_command_too() {
     // The other half of GH#743: `lstlisting`'s two boundary skips were
     // 5.977/8.966/11.955 bp out in a `\twocolumn` document, for the same
