@@ -676,6 +676,8 @@ final class SyntaxPainter {
         guard let storage = tv.textStorage else { return }
         observer = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification,
                                                           object: storage, queue: nil) { [weak self] note in
+            ftTrace("storageObserver(Syntax) enter")
+            defer { ftTrace("storageObserver(Syntax) exit") }
             MainActor.assumeIsolated {
                 guard let self, let storage = note.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) else { return }
                 let edited = storage.editedRange

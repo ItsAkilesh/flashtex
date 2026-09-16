@@ -2945,6 +2945,8 @@ final class CompletingTextView: NSTextView {
         guard storageObserver == nil, let storage = textStorage else { return }
         storageObserver = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification,
                                                                  object: storage, queue: nil) { [weak self] note in
+            ftTrace("storageObserver(Completing) enter")
+            defer { ftTrace("storageObserver(Completing) exit") }
             guard let storage = note.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) else { return }
             self?.textChanged()
         }

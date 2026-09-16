@@ -62,10 +62,13 @@ enum ExactPDFExport {
         p.arguments = args
         let stdout = Pipe(), stderr = Pipe()
         p.standardOutput = stdout; p.standardError = stderr
-        var outData = Data(), errData = Data()
+        // The drains are read back after a bounded wait that can expire while
+        // they are still running, so they publish under a lock rather than
+        // writing captured vars the caller may read concurrently.
+        let drained = Drained()
         let group = DispatchGroup()
-        group.enter(); DispatchQueue.global().async { outData = stdout.fileHandleForReading.readDataToEndOfFile(); group.leave() }
-        group.enter(); DispatchQueue.global().async { errData = stderr.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+        group.enter(); DispatchQueue.global().async { let d = stdout.fileHandleForReading.readDataToEndOfFile(); drained.put(out: d); group.leave() }
+        group.enter(); DispatchQueue.global().async { let d = stderr.fileHandleForReading.readDataToEndOfFile(); drained.put(err: d); group.leave() }
         try p.run()
         let deadline = DispatchTime.now() + timeout
         let waiter = DispatchGroup()
@@ -74,10 +77,33 @@ enum ExactPDFExport {
             p.terminate()
             _ = waiter.wait(timeout: .now() + 5)
         }
-        group.wait()
+        // `timeout` bounded the process, not the pipes. `terminate()` is SIGTERM
+        // to the direct child only: if it ignores the signal, or a descendant it
+        // spawned still holds the write ends, `readDataToEndOfFile` never sees
+        // EOF and an unbounded `group.wait()` blocks this thread forever. In the
+        // Mac test bundle that thread is the main thread, so the whole xctest
+        // process hangs with no output and no failure (observed: a 65-minute
+        // hang in SearchableTextTests, main thread parked in
+        // `_dispatch_group_wait_slow`). Bound it, escalate to SIGKILL, and
+        // report whatever was drained.
+        if group.wait(timeout: .now() + 10) == .timedOut {
+            if p.isRunning { kill(p.processIdentifier, SIGKILL) }
+            _ = group.wait(timeout: .now() + 5)
+        }
         let bytes = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
+        let (outData, errData) = drained.read()
         return Outcome(exitCode: p.terminationStatus, stdout: String(decoding: outData, as: UTF8.self),
                        stderr: String(decoding: errData, as: UTF8.self), bytes: bytes)
+    }
+
+    /// Both pipe drains' output, published under a lock: the bounded wait above
+    /// can return while a drain is still running.
+    private final class Drained: @unchecked Sendable {
+        private let lock = NSLock()
+        private var out = Data(), err = Data()
+        func put(out d: Data) { lock.lock(); out = d; lock.unlock() }
+        func put(err d: Data) { lock.lock(); err = d; lock.unlock() }
+        func read() -> (Data, Data) { lock.lock(); defer { lock.unlock() }; return (out, err) }
     }
 }
 
