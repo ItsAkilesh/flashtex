@@ -312,10 +312,23 @@ impl Stylesheet {
         // article/report/book guard it (`\if@twoside\else\raggedbottom\fi`);
         // letter.cls line 404 is a plain `\raggedbottom` with no guard at
         // all, so a `[twoside]` letter is ragged-bottom too.
+        //
+        // `\raggedbottom`/`\flushbottom` and `\sloppy` read the **class
+        // option**, not `\if@twocolumn`: article.cls 631-640 runs
+        // `\if@twoside\else\raggedbottom\fi` and `\if@twocolumn \twocolumn
+        // \sloppy \flushbottom \fi` once, as the last thing `\documentclass`
+        // does. A `\twocolumn` command in the document -- or `\usepackage
+        // [twocolumn]{geometry}`, which is a package and so later still --
+        // runs long afterwards and changes neither, exactly as it changes
+        // neither `\parindent` nor `\textwidth` (`size1<n>.clo`). Measured:
+        // a `\twocolumn` article whose page 1 has slack sets its columns at
+        // natural `\baselineskip`; reading the command here stretched the
+        // `\parskip` at each paragraph and put the foot of page 1 5.04 bp
+        // (10 pt) low.
         s.raggedbottom = doc.options.kind == flashtex_class_geometry::ClassKind::Letter
-            || !(doc.flags.twoside || doc.flags.twocolumn);
+            || !(doc.flags.twoside || doc.options.twocolumn);
         s.columnseprule_pt = frame_pt(frame.columnseprule);
-        if doc.flags.twocolumn {
+        if doc.options.twocolumn {
             s.tolerance = 9999.0;
             s.emergency_stretch_pt = 3.0 * s.body_size_pt;
         }

@@ -7749,6 +7749,96 @@ const TABCOLSEP_PT: f64 = 6.0;
 /// -\dbltextfloatsep` takes back off its own box.
 const DBLTEXTFLOATSEP_PT: f64 = 20.0;
 
+/// [`pagebuild::natural_layout`] with the height TeX gives a `\vbox` whose
+/// list ends in glue, which `\@topnewpage`'s `\vskip -\dbltextfloatsep`
+/// makes it: the depth of the last box counts toward the height instead of
+/// becoming the box's depth. When the list already ends in glue that depth
+/// is in the total, so nothing is added.
+fn natural_box(p: &pagebuild::PageParams, list: &[pagebuild::VItem]) -> (Vec<pagebuild::Placed>, f64) {
+    let (placed, total) = pagebuild::natural_layout(p, list, false);
+    let trailing = list
+        .iter()
+        .rev()
+        .find_map(|i| match i {
+            pagebuild::VItem::Box { depth, .. } => Some(*depth),
+            pagebuild::VItem::Glue { .. } => Some(0.0),
+            pagebuild::VItem::Penalty(_) => None,
+        })
+        .unwrap_or(0.0);
+    (placed, total + trailing)
+}
+
+/// Merges a sub-[`Context`] -- one built against a `Stylesheet` of its own,
+/// which is the only way to set material at a width other than
+/// `\columnwidth` -- back into `ctx`. Its box and math records are appended
+/// and every index into them fixed up. Returns where its blocks landed.
+pub(crate) fn absorb(ctx: &mut Context, mut sub: Context, mut sub_blocks: Vec<BuiltBlock>, blocks: &mut Vec<BuiltBlock>) -> usize {
+    let (rec_off, math_off, block_off) = (ctx.recs.len(), ctx.maths.len(), blocks.len());
+    let fix = |b: &mut BuiltBlock| {
+        for r in b.recs.iter_mut().flatten() {
+            *r += rec_off;
+        }
+        b.cache_key = None;
+    };
+    let mut recs = std::mem::take(&mut sub.recs);
+    for r in &mut recs {
+        match r {
+            BoxRec::Math(m) => *m += math_off,
+            BoxRec::Table(t) => {
+                let mut tr = (**t).clone();
+                for piece in &mut tr.pieces {
+                    fix(&mut piece.block);
+                }
+                *t = Rc::new(tr);
+            }
+            _ => {}
+        }
+    }
+    ctx.recs.extend(recs);
+    ctx.maths.extend(std::mem::take(&mut sub.maths));
+    for b in &mut sub_blocks {
+        fix(b);
+    }
+    blocks.append(&mut sub_blocks);
+    for d in sub.take_diagnostics() {
+        if !ctx.diagnostics.iter().any(|x| x.code == d.code && x.message == d.message && x.sources == d.sources) {
+            ctx.diagnostics.push(d);
+        }
+    }
+    block_off
+}
+
+/// `\@topnewpage`'s box (latex.ltx 20466-20505):
+///
+/// ```text
+/// \vbox{\hsize\textwidth \@parboxrestore \col@number\@ne #1 \vskip -\dbltextfloatsep}
+/// ```
+///
+/// The material is set once, at the full `\textwidth`, with
+/// `\@parboxrestore`'s zero `\parindent` and `\parskip` -- which is what
+/// [`Context::box_blocks`] already sets a box's body with. Returns the
+/// triple `top_title` carries: where the blocks landed, their lines at
+/// their natural positions in the box, and the box's natural height.
+fn top_material_box(ctx: &mut Context, body: &[Block], blocks: &mut Vec<BuiltBlock>, span: Span) -> Option<(usize, Vec<pagebuild::Placed>, f64)> {
+    let mut wide = ctx.style.clone();
+    wide.text_width_pt = crate::style::frame_pt(ctx.style.class_geometry.as_deref()?.frame.text_width);
+    let first = {
+        let mut sub = Context::with_texts(ctx.fonts, &wide, ctx.paths, ctx.texts);
+        let mut sub_blocks: Vec<BuiltBlock> = Vec::new();
+        sub.box_blocks(body, &mut sub_blocks, span, false);
+        absorb(ctx, sub, sub_blocks, blocks)
+    };
+    let p = page_params(ctx.style);
+    let vb: Vec<VBlock> = blocks[first..].iter().map(|b| b.vertical.clone()).collect();
+    let (placed, height) = natural_box(&p, &pagebuild::vlist(&p, &vb));
+    // The lines are placed in the box, not in a column: they must not be
+    // contributed to the page's vertical list as well.
+    for b in &mut blocks[first..] {
+        b.vertical.lines.clear();
+    }
+    Some((first, placed, height))
+}
+
 /// Reports a `\twocolumn[<material>]` case `\@topnewpage` handles and this
 /// page builder does not, against the title block's first source span.
 fn top_title_warning(ctx: &mut Context, blocks: &[BuiltBlock], first: usize, message: &str) {
@@ -7816,6 +7906,17 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // placed in the box, and the box height plus `\dbltextfloatsep` that
     // both columns of the first page lose.
     let mut top_title: Option<(usize, Vec<pagebuild::Placed>, f64)> = None;
+    // `\twocolumn[<material>]`: the optional argument is the page's first
+    // material and `\@topnewpage` sets it in a box above both columns. The
+    // adapter has already cut it out of `doc.blocks`; an empty one
+    // (`\twocolumn[]`) is a box of no height and leaves the page alone.
+    if let Some((body, span)) = doc.top_material.as_ref().filter(|(b, _)| !b.is_empty()) {
+        if n_columns > 1 {
+            top_title = top_material_box(ctx, body, &mut blocks, *span);
+        } else {
+            ctx.box_blocks(body, &mut blocks, *span, false);
+        }
+    }
     // `\sectionmark`/`\chaptermark` as defined by the last `\ps@headings` or
     // `\ps@myheadings` (`\ps@plain`/`\ps@empty` leave them alone).
     let mut mark_rules: Vec<flashtex_class_geometry::MarkRule> = geo.map(|g| g.mark_rules.clone()).unwrap_or_default();

@@ -44,9 +44,10 @@
 //! starts a new page, and the columns change from that page on — sets the
 //! state every `\if@twocolumn` test reads, but not the column count of the
 //! pages. That case is reported, not silently approximated. So is
-//! `\twocolumn[<material>]`, whose argument LaTeX sets at the full
-//! `\textwidth` above both columns (`\@topnewpage`); the compiler drops it
-//! with a diagnostic of its own.
+//! `\twocolumn[<material>]` on a command that is *not* the document's
+//! first material, which `\@topnewpage` cannot set either (it opens with
+//! `\@nodocument`). The argument of a command that is, this module finds
+//! for the pipeline to box ([`ColumnMode::top_material`]).
 
 /// Two-column mode over one document's source.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -67,6 +68,12 @@ pub struct ColumnMode {
     /// the entry document. `\twocolumn` inside an `\input` file is not
     /// seen, the same limitation `adapter::body_commands` has.
     document: usize,
+    /// `(byte of the `[`, byte of the `]`)` of the optional argument of a
+    /// `\twocolumn` that *is* the document's first material — the only
+    /// place `\@topnewpage` can run (it opens with `\@nodocument`, and a
+    /// `\twocolumn` after material would have to change the column count
+    /// of the pages, which is [`ColumnMode::unmodelled`]).
+    top: Option<(usize, usize)>,
 }
 
 /// Every `\twocolumn`/`\onecolumn` in `source`, outside comments, in order,
@@ -137,6 +144,66 @@ fn first_material(source: &str) -> usize {
     }
 }
 
+/// The `[` that `\twocolumn`'s `\@ifnextchar [` sees after the command
+/// ends at `end`, if any.
+///
+/// `\@ifnextchar` skips space tokens, so spaces, tabs and one newline may
+/// stand between; a *blank* line is a `\par`, which is not a space token
+/// and does not reach the `[`.
+fn optional_bracket(source: &str, end: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut i = end;
+    let mut newlines = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' => {
+                newlines += 1;
+                if newlines > 1 {
+                    return None;
+                }
+                i += 1;
+            }
+            b' ' | b'\t' | b'\r' => i += 1,
+            b'[' => return Some(i),
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// The `]` that ends `\long\def\@topnewpage[#1]`'s delimited argument: the
+/// first one outside braces and outside comments. A nested `[` does not
+/// count — TeX matches a delimited parameter against the delimiter text
+/// alone, at brace level zero.
+fn closing_bracket(source: &str, open: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut i = open + 1;
+    let mut depth = 0i32;
+    while i < bytes.len() {
+        match bytes[i] {
+            // A control symbol is one character long, so `\]`, `\%`, `\{`
+            // and `\\` never delimit, comment or nest.
+            b'\\' => i += 2,
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                i += 1;
+            }
+            b']' if depth == 0 => return Some(i),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
 impl ColumnMode {
     /// The mode of `source` under a class whose `twocolumn` option is
     /// `class_option`.
@@ -147,16 +214,32 @@ impl ColumnMode {
             later: Vec::new(),
             spans: Vec::new(),
             document,
+            top: None,
         };
         for (at, end, on) in switches(source) {
             mode.spans.push((at, end));
             if at <= material {
                 mode.start = on;
+                // `\@topnewpage` runs `\@nodocument` first, so only a
+                // `\twocolumn` that is itself the document's first material
+                // can carry the box; one in the preamble is an error in
+                // LaTeX, and one after material is `unmodelled`.
+                if on && at == material {
+                    mode.top = optional_bracket(source, end).and_then(|open| closing_bracket(source, open).map(|close| (open, close)));
+                }
             } else {
                 mode.later.push((at, on));
             }
         }
         mode
+    }
+
+    /// The byte offsets of the `[` and `]` around `\twocolumn`'s optional
+    /// argument, when the command is the document's first material.
+    /// `\@topnewpage` sets what lies between them in a `\textwidth` box
+    /// above both columns of the page the command starts.
+    pub fn top_material(&self) -> Option<(usize, usize)> {
+        self.top
     }
 
     /// Byte ranges of the `\twocolumn`/`\onecolumn` commands themselves.
@@ -258,4 +341,53 @@ mod tests {
         assert!(!m.start());
         assert!(m.unmodelled().is_empty());
     }
+
+    #[test]
+    fn the_first_materials_twocolumn_carries_the_topnewpage_box() {
+        let src = "\\begin{document}\n\\twocolumn[Banner]\nAaa\n\\end{document}\n";
+        let m = scan_test(src, false);
+        let (open, close) = m.top_material().expect("an optional argument");
+        assert_eq!(&src[open..=close], "[Banner]");
+    }
+
+    #[test]
+    fn the_argument_ends_at_the_first_bracket_outside_braces() {
+        // TeX matches `\@topnewpage`'s delimited parameter at brace level
+        // zero, so the `]` inside the group does not end it.
+        let src = "\\begin{document}\n\\twocolumn[{\\Large a]b} c]\nAaa\n\\end{document}\n";
+        let m = scan_test(src, false);
+        let (open, close) = m.top_material().unwrap();
+        assert_eq!(&src[open..=close], "[{\\Large a]b} c]");
+    }
+
+    #[test]
+    fn a_preamble_twocolumn_carries_no_box() {
+        // `\@topnewpage` runs `\@nodocument` first: this is a LaTeX error,
+        // not a banner.
+        let m = scan_test("\\twocolumn[Banner]\n\\begin{document}\nAaa\n\\end{document}\n", false);
+        assert!(m.start());
+        assert_eq!(m.top_material(), None);
+    }
+
+    #[test]
+    fn a_twocolumn_after_material_carries_no_box() {
+        let m = scan_test("\\begin{document}\nAaa\n\n\\twocolumn[Banner]\nBbb\n\\end{document}\n", false);
+        assert_eq!(m.top_material(), None);
+        assert_eq!(m.unmodelled(), vec![(22, true)]);
+    }
+
+    #[test]
+    fn a_blank_line_before_the_bracket_is_a_par_and_not_an_argument() {
+        // `\@ifnextchar [` skips space tokens; a blank line is a `\par`.
+        let m = scan_test("\\begin{document}\n\\twocolumn\n\n[Banner]\nAaa\n\\end{document}\n", false);
+        assert_eq!(m.top_material(), None);
+    }
+
+    #[test]
+    fn onecolumn_takes_no_optional_argument() {
+        let m = scan_test("\\begin{document}\n\\onecolumn[Banner]\nAaa\n\\end{document}\n", true);
+        assert!(!m.start());
+        assert_eq!(m.top_material(), None);
+    }
+
 }
