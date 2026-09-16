@@ -3098,20 +3098,6 @@ impl<'a> Context<'a> {
                     }
                 }
             }
-            // `\addvspace`: only the excess over the skip the previous
-            // block already left (`\@xaddvskip`).
-            if *addvspace_before != 0.0 {
-                let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
-                vspace += (addvspace_before - prev_after).max(0.0);
-                // `\@xaddvskip` keeps whichever skip is larger *whole*: when
-                // the previous block's trailing skip wins, its own stretch
-                // and shrink are what survive, so the list skip's are not
-                // added on top of them.
-                if prev_after <= 0.0 {
-                    flex.0 += addvspace_flex.0;
-                    flex.1 += addvspace_flex.1;
-                }
-            }
             // `\begin{center}`/`\begin{quote}`: `\addvspace{\topsep}` (plus
             // `\partopsep` from vertical mode) before the first paragraph;
             // `\end{...}` adds the same after the last (`\@endparenv`).
@@ -3120,6 +3106,33 @@ impl<'a> Context<'a> {
                 let p = if vmode { ctx.style.partopsep } else { crate::style::Skip::default() };
                 (t.natural + p.natural, t.stretch + p.stretch, t.shrink + p.shrink)
             };
+            // The environment's own opening `\addvspace\@topsep`, when this
+            // block opens one. It competes for the same `\lastskip` as
+            // `addvspace_before` (the `\@topsepadd` a list closed just
+            // before left behind), and two `\addvspace`s keep the larger —
+            // they never sum. So it is resolved here, before the
+            // `addvspace_before` bookkeeping, rather than added on top of
+            // it: `\end{itemize}\begin{quote}` used to be 10pt + 8pt = 18pt
+            // where pdflatex puts max(10pt, 10pt) = 10pt.
+            let env_natural = env_open.map_or(0.0, |e| match e.skips {
+                Some(s) => s.open.natural,
+                None => env_skip(e.vmode).0,
+            });
+            // `\addvspace`: only the excess over the skip the previous
+            // block already left (`\@xaddvskip`).
+            if *addvspace_before != 0.0 {
+                let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
+                vspace += (addvspace_before - prev_after).max(0.0);
+                // `\@xaddvskip` keeps whichever skip is larger *whole*: when
+                // the previous block's trailing skip wins, its own stretch
+                // and shrink are what survive, so the list skip's are not
+                // added on top of them. The environment's own opening skip
+                // wins the same way, and brings its own flex with it.
+                if prev_after <= 0.0 && env_natural <= *addvspace_before {
+                    flex.0 += addvspace_flex.0;
+                    flex.1 += addvspace_flex.1;
+                }
+            }
             if let Some(e) = env_open {
                 st.env_vmode = e.vmode;
                 st.env_skips = e.skips;
@@ -3147,7 +3160,14 @@ impl<'a> Context<'a> {
                     Some(s) => (s.open.natural, s.open.stretch, s.open.shrink),
                     None => env_skip(e.vmode),
                 };
-                let last = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
+                // `\lastskip` as `\@item`'s `\addvspace\@topsep` sees it:
+                // the previous block's trailing skip, already raised to
+                // `addvspace_before` above when that was the larger.
+                let last = blocks
+                    .last()
+                    .and_then(|b| b.vertical.space_after)
+                    .map_or(0.0, |s| s.0)
+                    .max(*addvspace_before);
                 if st.after_heading || last >= n {
                     (0.0, 0.0, 0.0)
                 } else {

@@ -2863,14 +2863,17 @@ fn split_at_page_breaks<'p>(
                             let before = &g[..b];
                             // `\endtrivlist`'s `\@endparenv` leaves TeX in
                             // vertical mode, so a `\begin{<list>}` that
-                            // directly follows another list's `\end` is read
-                            // in vertical mode too and takes `\partopsep` —
-                            // no blank line or `\par` needed.
+                            // directly follows another `\trivlist`'s `\end`
+                            // is read in vertical mode too and takes
+                            // `\partopsep` — no blank line or `\par` needed.
+                            // That is every list, but also `center`,
+                            // `quote`, `quotation`, `verse` and a theorem
+                            // ([`gap_has_trivlist_end`]).
                             list_vmode = prev_vmode
                                 || prev_end.is_none()
                                 || has_blank_line(before)
                                 || find_command(before, "par").is_some()
-                                || gap_has_list_end(before).is_some();
+                                || gap_has_trivlist_end(before, &theorem_envs);
                             if let Some(i) = stack.len().checked_sub(1) {
                                 if list_vmode_by_depth.len() <= i {
                                     list_vmode_by_depth.resize(i + 1, false);
@@ -2984,7 +2987,14 @@ fn split_at_page_breaks<'p>(
             };
             let begin = rfind_command(gap, "begin")?;
             let before = &gap[..begin];
-            let vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
+            // A preceding `\end{<trivlist>}` is `\@endparenv`, whose `\par`
+            // leaves vertical mode just as a blank line would, so this
+            // `\begin` takes `\partopsep` too ([`gap_has_trivlist_end`]).
+            let vmode = prev_vmode
+                || prev_end.is_none()
+                || has_blank_line(before)
+                || find_command(before, "par").is_some()
+                || gap_has_trivlist_end(before, &theorem_envs);
             Some(EnvOpen { vmode, skips: None })
         });
         // `\@endpe`: a plain paragraph right after `\end{...}` (no blank line
@@ -4981,6 +4991,39 @@ fn gap_has_list_end(gap: &str) -> Option<&'static str> {
     let end = rfind_command(gap, "end")?;
     let rest = gap[end + "\\end".len()..].trim_start();
     LIST_ENVS.into_iter().find(|env| rest.strip_prefix('{').is_some_and(|r| r.starts_with(&format!("{env}}}"))))
+}
+
+/// The paragraph-shape environments that are a `\trivlist` or a `\list` but
+/// whose `\item`s the compiler does *not* report as `CBlock::ListItem`:
+/// article.cls builds `center`/`flushleft`/`flushright` with `\trivlist
+/// \centering \item\relax` and `quote`/`quotation`/`verse` with
+/// `\list{}{...}\item\relax`.
+///
+/// They matter here only for what their `\end` leaves behind, which is the
+/// same `\endtrivlist` -> `\@endparenv` every list ends with.
+const TRIVLIST_ENVS: [&str; 6] = ["center", "flushleft", "flushright", "quote", "quotation", "verse"];
+
+/// Whether `gap` closes an environment whose `\end` is `\endtrivlist`, so
+/// TeX is in vertical mode on the other side of it.
+///
+/// `\@endparenv` ends `\par \addvspace\@topsepadd \@endpetrue`: the `\par`
+/// is what leaves vertical mode, and it does so for *every* `\trivlist`,
+/// not only the four [`LIST_ENVS`] the compiler reports as list items.
+/// `center`, `quote`, `quotation`, `verse` and an amsthm theorem are all
+/// `\trivlist`s too, so a `\begin` that directly follows one of their
+/// `\end`s is read in vertical mode and takes `\partopsep` — with no blank
+/// line and no explicit `\par` between them.
+///
+/// Measured against pdflatex in `tests/vmode_boundary_skips.rs`: every one
+/// of these boundaries steps by `\baselineskip` + `\topsep` + `\partopsep`,
+/// never by `\topsep` alone.
+fn gap_has_trivlist_end(gap: &str, theorem_envs: &std::collections::HashSet<String>) -> bool {
+    let Some(end) = rfind_command(gap, "end") else { return false };
+    let rest = gap[end + "\\end".len()..].trim_start();
+    let Some(rest) = rest.strip_prefix('{') else { return false };
+    let Some((name, _)) = rest.split_once('}') else { return false };
+    let name = name.trim();
+    LIST_ENVS.contains(&name) || TRIVLIST_ENVS.contains(&name) || theorem_envs.contains(name)
 }
 
 /// The `\setlist[<envs>]{<keys>}` calls of `source`, in order:
