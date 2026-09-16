@@ -604,6 +604,51 @@ impl<'a> TextRunMetrics<'a> {
         dims
     }
 
+    /// The `\hbox{.}` period `\vdots`/`\ddots` are built from, shaped in the
+    /// document's own text font rather than the math-alphabet's hardcoded
+    /// OT1 Computer Modern route ([`MathFontMetrics::text_glyph`]).
+    ///
+    /// `\hbox` leaves math mode entirely, so the period is ordinary text at
+    /// `\f@size` -- it must follow `\usepackage[T1]{fontenc}` the way a real
+    /// character in running text does, unlike a math alphabet letter, which
+    /// `fontmath.ltx` pins to OT1 `cmr` regardless of the document's text
+    /// encoding (the route [`shape_run`]'s `key: Some(_)` branch and
+    /// [`Family::Roman`](crate::mathtex) still use, correctly, for those).
+    /// Going through [`shape_run`] with `key: None` resolves
+    /// `fonts.resolve(family, Role::Text { .. }, size)`, the same call an
+    /// ordinary text run makes, so a T1 document gets the `ec`/`ec-lm`
+    /// period and an OT1 one keeps the Computer Modern period -- unlike
+    /// `text_glyph`, which is always the latter. At the round design sizes
+    /// (10pt, 12pt) OT1 `cmr` and T1 `ec` share the same METAFONT period, so
+    /// this makes no visible difference; at 11pt, `ec` has its own native
+    /// 10.95pt design where OT1's `cmr10` is linearly scaled up from its
+    /// 10pt one, so the period heights (and with them the box the first
+    /// baseline of the page is measured against) differ by 0.059bp -- inside
+    /// the project's gates, but a real, measured encoding-dependence bug.
+    fn period_glyph(&self) -> Option<Glyph> {
+        let at = self.inner.params(SizeClass::Text).size;
+        let first_slot = {
+            let runs = self.runs.borrow();
+            runs.last().map_or(0, |r| r.first_slot + r.slots())
+        };
+        let mut notices = Vec::new();
+        let run = shape_run(self.fonts, self.shaper, self.family, None, false, ".", at, first_slot, &mut notices)?;
+        self.notices.borrow_mut().extend(notices);
+        let g = Glyph {
+            font_id: MathFontId(RUN_FONT_BASE + run.first_slot as u32),
+            gid: 0,
+            ch: '.',
+            size: at,
+            width: run.hbox.width,
+            height: run.hbox.height,
+            depth: run.hbox.depth,
+            italic: run.italic,
+            skew: 0.0,
+        };
+        self.runs.borrow_mut().push(run);
+        Some(g)
+    }
+
     /// `\vdots` / `\ddots` built the kernel's way (see [`BuiltBody::Dots`]),
     /// out of the *text*-size roman period.
     ///
@@ -621,7 +666,7 @@ impl<'a> TextRunMetrics<'a> {
     /// `\lineskip` branch is unreachable for any period under 4pt tall
     /// (`\lineskiplimit` is `\z@` here), so a clamp at zero stands in for it.
     fn dot_stack(&self, diagonal: bool, size: SizeClass, tag: ml::SourceTag) -> ml::MathBox {
-        let Some(g) = self.text_glyph('.', SizeClass::Text) else {
+        let Some(g) = self.period_glyph() else {
             return ml::MathBox::empty();
         };
         let dot = || ml::MathBox::glyph(&g).with_tag(tag);
