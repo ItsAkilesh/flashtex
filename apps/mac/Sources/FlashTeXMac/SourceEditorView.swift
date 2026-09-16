@@ -1391,6 +1391,8 @@ struct SourceEditorView: NSViewRepresentable {
         /// scan cancelled at the head of the next run-loop turn, i.e. after the
         /// keystroke that started the step has enqueued that scan.
         private func compositionStep(_ tv: NSTextView) {
+            ftTrace("compositionStep enter (step \(compositionSteps + 1))")
+            defer { ftTrace("compositionStep exit") }
             compositionSteps += 1
             commitFromComposition = true
             lastUserEditNs = MonotonicClock.nowNs() // composing is typing for the navigation guard

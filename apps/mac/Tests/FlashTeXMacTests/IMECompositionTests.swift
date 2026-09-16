@@ -325,6 +325,8 @@ final class IMECompositionTests: XCTestCase {
     // MARK: (a') IME cancel against the helper
 
     func testCancelledCompositionLeavesTheHelperAndLedgerUntouched() async throws {
+        ftTraceOn = true // #681 diagnosis: only this test traces the product paths
+        defer { ftTraceOn = false }
         imeTrace("cancel: BODY ENTER")
         let h = try await IMEHarness.attached("cancel", text: Self.original)
         defer { imeTrace("cancel: DEFER running"); h.close(); imeTrace("cancel: DEFER done") }

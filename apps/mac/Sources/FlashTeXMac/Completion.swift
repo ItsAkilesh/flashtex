@@ -1671,7 +1671,11 @@ final class CompletionScheduler {
     /// Head-of-run-loop delivery (see `WorkerClient.deliver`): a plain
     /// `DispatchQueue.main.async` waits for AppKit to reach the dispatch port.
     nonisolated private static func onMain(_ block: @escaping @Sendable () -> Void) {
-        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue, block)
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
+            ftTrace("completion onMain BLOCK enter")
+            block()
+            ftTrace("completion onMain BLOCK exit")
+        }
         CFRunLoopWakeUp(CFRunLoopGetMain())
     }
 }
