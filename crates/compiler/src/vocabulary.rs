@@ -39,7 +39,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     // LaTeX2e document structure and front matter.
     "part", "chapter", "subsubsection", "appendix", "maketitle",
     "title", "author", "date", "thanks", "and", "today", "tableofcontents", "listoffigures",
-    "listoftables", "abstractname", "footnote", "footnotemark", "footnotetext", "marginpar",
+    "listoftables", "abstractname", "footnote", "footnotemark", "footnotetext",
     "index", "glossary", "bibliography", "bibliographystyle", "bibitem", "cite", "nocite",
     // Boxes, spacing, breaking and page control.
     "centering", "raggedright", "raggedleft", "linespread", "vfill", "hss", "vss", "vbox",
