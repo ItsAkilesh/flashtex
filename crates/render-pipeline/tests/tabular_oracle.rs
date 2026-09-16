@@ -16,7 +16,6 @@
 //! This mirrors `oracle.py check`, which is the corpus's own harness but is
 //! not run by CI. Keeping the two in step is the point: CI runs `cargo test`,
 //! so whatever this file does not measure is not measured at all.
-#![cfg(feature = "par-leading")]
 
 mod common;
 
@@ -112,6 +111,7 @@ fn reference_rules(page: &Value) -> Vec<Rule> {
 }
 
 #[test]
+#[cfg_attr(not(feature = "par-leading"), ignore = "requires the par-leading feature")]
 fn tabular_fixtures_match_pdflatex() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../compiler/tests/tabular_corpus");
     if !std::path::Path::new(dir).is_dir() {
