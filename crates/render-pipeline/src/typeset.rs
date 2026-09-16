@@ -6874,6 +6874,51 @@ pub fn convert_math_classed(
                 let atom_class = if left.is_empty() && right.is_empty() { ml::AtomClass::Ord } else { ml::AtomClass::Inner };
                 vec![sink.grid_atom(atom_class, cells, columns, left, right, a.span)]
             }
+            // `\text{..}` with nested math (`TextRun`) replaces the old pin's
+            // flat `Nucleus::Text` for the same input, so this arm must set
+            // *something* for every piece or the re-pin would silently drop
+            // the words. It is the old `Text` handling, piece by piece, with
+            // the nested formulas spliced in place; what it does not yet do
+            // is honour a piece's own `TextStyle` (PR #585).
+            #[cfg(feature = "compiler-node-surface")]
+            N::TextRun(pieces) => {
+                let mut parts: Vec<ml::Atom> = Vec::new();
+                for p in pieces {
+                    match p {
+                        flashtex_compiler::math::TextPiece::Text { text, .. } => parts.push(sink.atom(text)),
+                        flashtex_compiler::math::TextPiece::Math(inner) => parts.extend(sub(inner, sink).atoms),
+                    }
+                }
+                vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::List(ml::MathList::new(parts)))]
+            }
+            // `\sideset{_a^b}{_c^d}\sum`: the left pair hangs off an empty
+            // box before the operator, which is what math-layout's
+            // `Atom::left_scripts` sets exactly -- PR #582's job. Until then
+            // the left scripts are set on an empty Ord atom in front of the
+            // operator, so every sub-formula is still painted, just without
+            // the display-style measuring the real construction needs.
+            #[cfg(feature = "compiler-node-surface")]
+            N::SideSet { operator, left_superscript, left_subscript } => {
+                let mut out = Vec::new();
+                if left_superscript.is_some() || left_subscript.is_some() {
+                    let mut lead = ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::List(ml::MathList::new(Vec::new())));
+                    if let Some(l) = left_superscript {
+                        lead = lead.with_sup(sub(l, sink));
+                    }
+                    if let Some(l) = left_subscript {
+                        lead = lead.with_sub(sub(l, sink));
+                    }
+                    out.push(lead);
+                }
+                out.extend(sub(operator, sink).atoms);
+                out
+            }
+            // mathtools `\mathllap`/`\mathrlap`/`\mathclap`: a zero-advance
+            // box whose ink is still painted. math-layout has no lap atom, so
+            // the body is set as an ordinary group -- its ink is right, its
+            // advance is not yet zero.
+            #[cfg(feature = "compiler-node-surface")]
+            N::Lap { body, .. } => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::List(sub(body, sink)))],
             #[cfg(not(feature = "amsmath-inline"))]
             _ => continue,
         };
@@ -7330,6 +7375,25 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
                 math_grids(above, out);
                 math_grids(below, out);
             }
+            // Nuclei only a re-pinned compiler emits: a grid can hide inside
+            // any of their nested lists, so all of them are walked.
+            #[cfg(feature = "compiler-node-surface")]
+            N::TextRun(pieces) => {
+                for p in pieces {
+                    if let flashtex_compiler::math::TextPiece::Math(inner) = p {
+                        math_grids(inner, out);
+                    }
+                }
+            }
+            #[cfg(feature = "compiler-node-surface")]
+            N::SideSet { operator, left_superscript, left_subscript } => {
+                math_grids(operator, out);
+                for l in [left_superscript, left_subscript].into_iter().flatten() {
+                    math_grids(l, out);
+                }
+            }
+            #[cfg(feature = "compiler-node-surface")]
+            N::Lap { body, .. } => math_grids(body, out),
             #[cfg(not(feature = "amsmath-inline"))]
             _ => {}
         }
@@ -7377,6 +7441,22 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                 N::SubArray { rows, .. } => rows.iter().map(math_glue_em).sum(),
                 #[cfg(feature = "amsmath-inline")]
                 N::ExtArrow { above, below, .. } => math_glue_em(above) + math_glue_em(below),
+                // Nuclei only a re-pinned compiler emits: explicit glue can
+                // sit inside any of their nested lists.
+                #[cfg(feature = "compiler-node-surface")]
+                N::TextRun(pieces) => pieces
+                    .iter()
+                    .map(|p| match p {
+                        flashtex_compiler::math::TextPiece::Math(inner) => math_glue_em(inner),
+                        flashtex_compiler::math::TextPiece::Text { .. } => 0.0,
+                    })
+                    .sum(),
+                #[cfg(feature = "compiler-node-surface")]
+                N::SideSet { operator, left_superscript, left_subscript } => {
+                    math_glue_em(operator) + [left_superscript, left_subscript].into_iter().flatten().map(math_glue_em).sum::<f64>()
+                }
+                #[cfg(feature = "compiler-node-surface")]
+                N::Lap { body, .. } => math_glue_em(body),
                 #[cfg(not(feature = "amsmath-inline"))]
                 _ => 0.0,
             };
@@ -7408,6 +7488,11 @@ fn accent_char(a: flashtex_compiler::math::Accent) -> char {
         A::Breve => '\u{02D8}',
         A::Acute => '\u{00B4}',
         A::Grave => '`',
+        // `\mathring` (`\mathaccent"017` in the LaTeX kernel, the ring of
+        // `\r`): U+02DA RING ABOVE, the spacing modifier this table uses for
+        // every non-wide accent. Only a re-pinned compiler can produce it.
+        #[cfg(feature = "compiler-node-surface")]
+        A::Mathring => '\u{02DA}',
     }
 }
 
@@ -7489,6 +7574,32 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
             N::ExtArrow { above, below, .. } => {
                 math_approximations(above, out);
                 math_approximations(below, out);
+            }
+            // Nuclei only a re-pinned compiler emits. The two that this
+            // crate does not set exactly yet say so here, so the
+            // approximation reaches the document's limitations instead of
+            // being invisible; the stacked PRs delete these two lines when
+            // they set the real construction.
+            #[cfg(feature = "compiler-node-surface")]
+            N::TextRun(pieces) => {
+                for p in pieces {
+                    if let flashtex_compiler::math::TextPiece::Math(inner) = p {
+                        math_approximations(inner, out);
+                    }
+                }
+            }
+            #[cfg(feature = "compiler-node-surface")]
+            N::SideSet { operator, left_superscript, left_subscript } => {
+                out.push("\\sideset left scripts set on an empty box before the operator, not measured in display style".to_string());
+                math_approximations(operator, out);
+                for l in [left_superscript, left_subscript].into_iter().flatten() {
+                    math_approximations(l, out);
+                }
+            }
+            #[cfg(feature = "compiler-node-surface")]
+            N::Lap { body, .. } => {
+                out.push("\\mathllap/\\mathrlap/\\mathclap set as an ordinary group: math-layout has no zero-advance lap box".to_string());
+                math_approximations(body, out);
             }
             #[cfg(not(feature = "amsmath-inline"))]
             _ => {}

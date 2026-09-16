@@ -578,6 +578,41 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 hash_math(above, h);
                 hash_math(below, h);
             }
+            // Nuclei only a re-pinned compiler emits. Nested math lists are
+            // hashed through `hash_math` so the key tracks their spans;
+            // the leaf text/alignment fields go in through `Debug`, as the
+            // non-`Hash` fields elsewhere in this crate do.
+            #[cfg(feature = "compiler-node-surface")]
+            Nucleus::TextRun(pieces) => {
+                pieces.len().hash(h);
+                for p in pieces {
+                    match p {
+                        flashtex_compiler::math::TextPiece::Text { text, style } => {
+                            text.hash(h);
+                            format!("{style:?}").hash(h);
+                        }
+                        flashtex_compiler::math::TextPiece::Math(list) => hash_math(list, h),
+                    }
+                }
+            }
+            #[cfg(feature = "compiler-node-surface")]
+            Nucleus::SideSet { operator, left_superscript, left_subscript } => {
+                hash_math(operator, h);
+                for side in [left_superscript, left_subscript] {
+                    match side {
+                        Some(l) => {
+                            1u8.hash(h);
+                            hash_math(l, h);
+                        }
+                        None => 0u8.hash(h),
+                    }
+                }
+            }
+            #[cfg(feature = "compiler-node-surface")]
+            Nucleus::Lap { body, align } => {
+                hash_math(body, h);
+                format!("{align:?}").hash(h);
+            }
             #[cfg(not(feature = "amsmath-inline"))]
             other => format!("{other:?}").hash(h),
         }
@@ -786,6 +821,28 @@ fn shift_math(list: &mut MathList, delta: isize) {
                 shift_math(above, delta);
                 shift_math(below, delta);
             }
+            // Nuclei only a re-pinned compiler emits. Every nested math list
+            // must be shifted, or an edit before the formula leaves the
+            // inner spans pointing at stale bytes.
+            #[cfg(feature = "compiler-node-surface")]
+            Nucleus::TextRun(pieces) => {
+                for p in pieces.iter_mut() {
+                    if let flashtex_compiler::math::TextPiece::Math(list) = p {
+                        shift_math(list, delta);
+                    }
+                }
+            }
+            #[cfg(feature = "compiler-node-surface")]
+            Nucleus::SideSet { operator, left_superscript, left_subscript } => {
+                shift_math(operator, delta);
+                for side in [left_superscript, left_subscript] {
+                    if let Some(l) = side {
+                        shift_math(l, delta);
+                    }
+                }
+            }
+            #[cfg(feature = "compiler-node-surface")]
+            Nucleus::Lap { body, .. } => shift_math(body, delta),
             #[cfg(not(feature = "amsmath-inline"))]
             _ => {}
         }
