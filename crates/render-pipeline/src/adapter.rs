@@ -2861,7 +2861,16 @@ fn split_at_page_breaks<'p>(
                     match opens {
                         Some((g, b)) if list_env_after_begin(&g[b..]) => {
                             let before = &g[..b];
-                            list_vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
+                            // `\endtrivlist`'s `\@endparenv` leaves TeX in
+                            // vertical mode, so a `\begin{<list>}` that
+                            // directly follows another list's `\end` is read
+                            // in vertical mode too and takes `\partopsep` —
+                            // no blank line or `\par` needed.
+                            list_vmode = prev_vmode
+                                || prev_end.is_none()
+                                || has_blank_line(before)
+                                || find_command(before, "par").is_some()
+                                || gap_has_list_end(before).is_some();
                             if let Some(i) = stack.len().checked_sub(1) {
                                 if list_vmode_by_depth.len() <= i {
                                     list_vmode_by_depth.resize(i + 1, false);
@@ -2888,9 +2897,23 @@ fn split_at_page_breaks<'p>(
                                     addvspace_flex.1 += flex.1;
                                 }
                             } else {
-                                addvspace_before += seps.topsep + outer_parskip + if list_vmode { seps.partopsep } else { 0.0 };
-                                addvspace_flex.0 += seps.topsep_skip.stretch + outer_parskip_skip.stretch + if list_vmode { seps.partopsep_skip.stretch } else { 0.0 };
-                                addvspace_flex.1 += seps.topsep_skip.shrink + outer_parskip_skip.shrink + if list_vmode { seps.partopsep_skip.shrink } else { 0.0 };
+                                let p = if list_vmode { seps.partopsep_skip } else { crate::style::Skip::default() };
+                                let open = (
+                                    seps.topsep + outer_parskip + p.natural,
+                                    seps.topsep_skip.stretch + outer_parskip_skip.stretch + p.stretch,
+                                    seps.topsep_skip.shrink + outer_parskip_skip.shrink + p.shrink,
+                                );
+                                // Both are `\addvspace`: the `\@topsepadd` the
+                                // closing list left behind and this `\list`'s
+                                // own `\addvspace\@topsep` keep the larger
+                                // natural skip, they are not summed.
+                                let skip = match list_end_skip.take() {
+                                    Some(end) if end.0 >= open.0 => end,
+                                    _ => open,
+                                };
+                                addvspace_before += skip.0;
+                                addvspace_flex.0 += skip.1;
+                                addvspace_flex.1 += skip.2;
                                 vspace_before -= seps.parsep;
                                 vspace_flex.0 -= seps.parsep_skip.stretch;
                                 vspace_flex.1 -= seps.parsep_skip.shrink;
