@@ -1,5 +1,5 @@
 {
- "fixture": "38-cm-math-roman-boxes-11pt.tex",
+ "fixture": "48-cm-math-roman-boxes-11pt.tex",
  "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
  "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
  "unit": "bp, y from page top",

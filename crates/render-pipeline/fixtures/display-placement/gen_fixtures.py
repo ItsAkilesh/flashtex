@@ -119,12 +119,12 @@ DIGIT_BOXES = "\n".join([SHORT]
     + [line for i, n in enumerate(("1", "2", "3", "4", "5", "6", "7", "8"))
        for line in (_FD % n, LONG if i % 2 == 0 else SHORT)]
     + ["after."])
-F["37-cm-math-roman-boxes"] = doc(DIGIT_BOXES, lmodern=False)
-F["38-cm-math-roman-boxes-11pt"] = doc(DIGIT_BOXES, size="11pt", lmodern=False)
-F["39-cm-math-roman-boxes-12pt"] = doc(DIGIT_BOXES, size="12pt", lmodern=False)
+F["47-cm-math-roman-boxes"] = doc(DIGIT_BOXES, lmodern=False)
+F["48-cm-math-roman-boxes-11pt"] = doc(DIGIT_BOXES, size="11pt", lmodern=False)
+F["49-cm-math-roman-boxes-12pt"] = doc(DIGIT_BOXES, size="12pt", lmodern=False)
 # The same page with `lmodern`, which really does rebind `operators` to `lmr`:
 # the other branch of the same choice, which must not move.
-F["40-lm-math-roman-boxes"] = doc(DIGIT_BOXES)
+F["50-lm-math-roman-boxes"] = doc(DIGIT_BOXES)
 
 
 def main():
