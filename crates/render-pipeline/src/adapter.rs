@@ -9334,6 +9334,23 @@ mod tests {
     /// Every table reads its lengths in one adapt call without rescanning the
     /// source before it: doubling the number of tables about doubles the
     /// time (a prefix scan per table grew it fourfold, #525/#623).
+    ///
+    /// This is a complexity guard, not a benchmark, so it uses an absolute
+    /// ceiling rather than a `t800 < t200 * N` ratio. A ratio over a
+    /// sub-millisecond baseline is fragile: on PR #765 CI this failed as
+    /// "800 tables took 5.044542ms, 200 took 587.834us: not linear", and the
+    /// identical commit passed on a bare re-run with no change -- a few
+    /// hundred microseconds of scheduler noise is a large fraction of a
+    /// ~600us baseline, and the error amplifies because the ratio's margin
+    /// scales with the *smaller* operand. Measured on dev hardware, normal
+    /// 800-table runs (best of 5) take ~1-1.3ms in `--release` and
+    /// ~10-11ms unoptimized. Forcing `length_at_checked` to always fall
+    /// through to `length_at_scan` (i.e. reverting #623 so every table
+    /// rescans the source instead of using the per-document index) makes
+    /// 800 tables take ~1.4s in `--release` -- about a thousandfold jump.
+    /// 300ms sits roughly 250-300x above the normal case and ~5x below the
+    /// reintroduced-quadratic case, so it stays quiet on a loaded machine
+    /// and still fires if the per-table rescan comes back.
     #[test]
     fn table_lengths_scale_linearly_with_the_number_of_tables() {
         let resolve = |tables: usize| {
@@ -9354,7 +9371,10 @@ mod tests {
         eprintln!("table lengths: 200 tables {t200:?}, 400 tables {t400:?}, 800 tables {t800:?}");
         assert_eq!(&l800[..200], &l200[..]);
         assert_eq!(&l200[..5], &[0.0, 1.0, 3.0, 2.0, 3.0]);
-        assert!(t800 < t200 * 8, "800 tables took {t800:?}, 200 took {t200:?}: not linear");
+        assert!(
+            t800 < std::time::Duration::from_millis(300),
+            "800 tables took {t800:?} (200 took {t200:?}, 400 took {t400:?}): quadratic regression suspected, see #623"
+        );
     }
 
     #[test]
