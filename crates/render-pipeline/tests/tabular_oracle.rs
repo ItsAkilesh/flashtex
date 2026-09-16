@@ -16,6 +16,7 @@
 //! This mirrors `oracle.py check`, which is the corpus's own harness but is
 //! not run by CI. Keeping the two in step is the point: CI runs `cargo test`,
 //! so whatever this file does not measure is not measured at all.
+#![cfg(feature = "par-leading")]
 
 mod common;
 

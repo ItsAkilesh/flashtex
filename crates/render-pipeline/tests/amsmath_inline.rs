@@ -6,6 +6,7 @@
 //! Each construct here is asserted to typeset without a `math_limitation`
 //! or `unsupported_*` diagnostic; anything the pipeline still only
 //! approximates is called out in its own test instead of asserted clean.
+#![cfg(feature = "amsmath-inline")]
 
 mod common;
 

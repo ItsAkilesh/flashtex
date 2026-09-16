@@ -578,6 +578,8 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 hash_math(above, h);
                 hash_math(below, h);
             }
+            #[cfg(not(feature = "amsmath-inline"))]
+            other => format!("{other:?}").hash(h),
         }
         match &a.superscript {
             Some(s) => {
@@ -784,6 +786,8 @@ fn shift_math(list: &mut MathList, delta: isize) {
                 shift_math(above, delta);
                 shift_math(below, delta);
             }
+            #[cfg(not(feature = "amsmath-inline"))]
+            _ => {}
         }
         if let Some(s) = &mut a.superscript {
             shift_math(s, delta);

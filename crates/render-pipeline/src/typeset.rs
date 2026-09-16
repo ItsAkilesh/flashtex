@@ -6874,6 +6874,8 @@ pub fn convert_math_classed(
                 let atom_class = if left.is_empty() && right.is_empty() { ml::AtomClass::Ord } else { ml::AtomClass::Inner };
                 vec![sink.grid_atom(atom_class, cells, columns, left, right, a.span)]
             }
+            #[cfg(not(feature = "amsmath-inline"))]
+            _ => continue,
         };
         // Every atom this compiler atom produced maps to its bytes unless a
         // more precise span was already given (a `\left...\right` pair).
@@ -7328,6 +7330,8 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
                 math_grids(above, out);
                 math_grids(below, out);
             }
+            #[cfg(not(feature = "amsmath-inline"))]
+            _ => {}
         }
         if let Some(s) = &a.superscript {
             math_grids(s, out);
@@ -7373,6 +7377,8 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                 N::SubArray { rows, .. } => rows.iter().map(math_glue_em).sum(),
                 #[cfg(feature = "amsmath-inline")]
                 N::ExtArrow { above, below, .. } => math_glue_em(above) + math_glue_em(below),
+                #[cfg(not(feature = "amsmath-inline"))]
+                _ => 0.0,
             };
             own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
         })
@@ -7484,6 +7490,8 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
                 math_approximations(above, out);
                 math_approximations(below, out);
             }
+            #[cfg(not(feature = "amsmath-inline"))]
+            _ => {}
         }
         for part in [&a.superscript, &a.subscript].into_iter().flatten() {
             math_approximations(part, out);

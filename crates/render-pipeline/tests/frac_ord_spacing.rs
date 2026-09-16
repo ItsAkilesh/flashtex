@@ -14,6 +14,7 @@
 //! amsmath), read from its PDF with `tools/visual-oracle/pdftext.py`: the
 //! distance from the numerator `a`'s origin to the origin of `as`. (The
 //! fraction is painted as one glyph run, `ab`, starting at the numerator.)
+#![cfg(feature = "amsmath-inline")]
 
 mod common;
 

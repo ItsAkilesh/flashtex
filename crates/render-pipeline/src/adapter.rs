@@ -1305,7 +1305,14 @@ pub fn adapt_cached(
     let leadings: Vec<ParLeading> = parsed.block_par_leading.clone();
     #[cfg(not(feature = "par-leading"))]
     let leadings: Vec<ParLeading> = vec![None; parsed.blocks.len()];
-    debug_assert_eq!(leadings.len(), parsed.blocks.len());
+    // A boxed or folded paragraph can leave compiler metadata for a block the
+    // adapter does not emit. Without a one-to-one pairing, use body leading
+    // for every block rather than attaching a neighboring paragraph's value.
+    let leadings = if leadings.len() == parsed.blocks.len() {
+        leadings
+    } else {
+        vec![None; parsed.blocks.len()]
+    };
     let paired: Vec<(CBlock, ParLeading)> = parsed
         .blocks
         .iter()
@@ -6730,11 +6737,10 @@ fn kern_amount_matches(spelling: &str, amount: &TextDimen) -> bool {
     })
 }
 
-/// Against a `vendor/compiler` pinned before the package context reached
-/// `text_kern`, there is only the kernel definition to match.
+/// Without package gating, match only the kernel definition.
 #[cfg(not(feature = "compiler-package-gating"))]
 fn kern_amount_matches(spelling: &str, amount: &TextDimen) -> bool {
-    flashtex_compiler::text_builtins::text_kern(spelling).as_ref() == Some(amount)
+    flashtex_compiler::text_builtins::text_kern(spelling, false).as_ref() == Some(amount)
 }
 
 /// [`gap_has_space`] for the bytes after a control word: the whitespace
