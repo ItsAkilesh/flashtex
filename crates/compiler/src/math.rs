@@ -2999,7 +2999,7 @@ impl MathParser<'_> {
             self.i += 1;
             return space(0.0, span.merge(token.span));
         }
-        if delimiter == "|" && token.span.end - token.span.start == 2 {
+        if delimiter == "|" && token.control_symbol {
             self.i += 1;
             return symbol("‖".into(), span.merge(token.span));
         }
@@ -5957,6 +5957,77 @@ mod parse_tests {
             null.size,
             bar.size
         );
+    }
+
+    #[test]
+    fn left_bar_uses_control_symbol_mark_not_span_length() {
+        // Same bug class as issue #756: `take_delimiter` decided `\|`
+        // (double-bar `‖`) vs `|` (single bar) by span byte-length — a
+        // proxy for "literal backslash" that macro expansion rebinds to
+        // the invocation. A 7-byte `\dblbar` wrapping `\left\|` fell
+        // through to a single bar; a 2-byte `\b` wrapping `\left|`
+        // spuriously became `‖`. The lexer's `control_symbol` mark is
+        // the identity signal instead (preserved through expansion and
+        // `split_word_tokens`), so span length must not matter here.
+        let fences = |tokens: &[Token]| -> Vec<String> {
+            let mut diagnostics = Vec::new();
+            let list = parse_tokens(tokens, MathPackages::KERNEL, &mut diagnostics);
+            assert!(diagnostics.is_empty(), "{diagnostics:?}");
+            list.atoms
+                .iter()
+                .filter_map(|atom| match &atom.nucleus {
+                    Nucleus::SizedDelimiter { glyph, .. } => Some(glyph.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        // No regression: literally written delimiters parse as before.
+        assert_eq!(
+            fences(&crate::lexer::tokenize(r"\left\| x \right\|")),
+            ["‖", "‖"]
+        );
+        assert_eq!(
+            fences(&crate::lexer::tokenize(r"\left| x \right|")),
+            ["|", "|"]
+        );
+        // Macro-shaped tokens: the mark decides, however long the
+        // invocation span is. These stand in for delimiter tokens whose
+        // spans expansion rebound to the macro invocation.
+        let stream = |delimiter: Token| -> Vec<Token> {
+            vec![
+                Token {
+                    kind: TokenKind::Command("left".into()),
+                    span: Span::new(0, 5),
+                    control_symbol: false,
+                },
+                delimiter.clone(),
+                Token {
+                    kind: TokenKind::Word("x".into()),
+                    span: Span::new(0, 1),
+                    control_symbol: false,
+                },
+                Token {
+                    kind: TokenKind::Command("right".into()),
+                    span: Span::new(0, 6),
+                    control_symbol: false,
+                },
+                delimiter,
+            ]
+        };
+        // `\|` from a 7-byte `\dblbar` body: still a double bar.
+        let escaped = Token {
+            kind: TokenKind::Word("|".into()),
+            span: Span::new(0, 7),
+            control_symbol: true,
+        };
+        assert_eq!(fences(&stream(escaped)), ["‖", "‖"]);
+        // Literal `|` from a 2-byte `\b` body: still a single bar.
+        let literal = Token {
+            kind: TokenKind::Word("|".into()),
+            span: Span::new(0, 2),
+            control_symbol: false,
+        };
+        assert_eq!(fences(&stream(literal)), ["|", "|"]);
     }
 
     #[test]
