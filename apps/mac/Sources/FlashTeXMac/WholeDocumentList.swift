@@ -62,10 +62,12 @@ enum WholeDocumentList {
         // Drain both pipes from the moment the child starts: a producer that
         // writes a reply before reading could otherwise fill a pipe and
         // deadlock against us while we are still writing the request.
-        var errData = Data()
+        // Published under a lock: the bounded wait below can return while a
+        // drain is still running.
+        let captured = CapturedStderr()
         let drained = DispatchGroup()
         drained.enter(); DispatchQueue.global().async { _ = stdout.fileHandleForReading.readDataToEndOfFile(); drained.leave() }
-        drained.enter(); DispatchQueue.global().async { errData = stderr.fileHandleForReading.readDataToEndOfFile(); drained.leave() }
+        drained.enter(); DispatchQueue.global().async { let d = stderr.fileHandleForReading.readDataToEndOfFile(); captured.put(d); drained.leave() }
         try process.run()
         // The request goes out on its own thread for the same reason.
         drained.enter()
@@ -83,13 +85,32 @@ enum WholeDocumentList {
             if process.isRunning { process.terminate() }
             _ = exited.wait(timeout: .now() + 5)
         }
-        drained.wait()
+        // `timeout` bounded the process, not the pipes. `terminate()` is SIGTERM
+        // to the direct child only: if it ignores it, or a descendant still
+        // holds the write ends, `readDataToEndOfFile` never sees EOF and an
+        // unbounded `drained.wait()` blocks this thread forever. In the Mac test
+        // bundle that thread is the main thread, so the whole xctest process
+        // hangs with no output and no failure (observed twice, main thread
+        // parked in `_dispatch_group_wait_slow` at this line). Bound it,
+        // escalate to SIGKILL, and report whatever was drained.
+        if drained.wait(timeout: .now() + 10) == .timedOut {
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            _ = drained.wait(timeout: .now() + 5)
+        }
         if timedOut {
             throw Failure(description: "\(producer.lastPathComponent) did not finish within \(Int(timeout)) s; terminated")
         }
         let bytes = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
         return Outcome(exitCode: process.terminationStatus,
-                       stderr: String(decoding: errData, as: UTF8.self), bytes: bytes)
+                       stderr: String(decoding: captured.read(), as: UTF8.self), bytes: bytes)
+    }
+
+    /// The stderr drain's output, published under a lock (see the bounded wait).
+    private final class CapturedStderr: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        func put(_ d: Data) { lock.lock(); data = d; lock.unlock() }
+        func read() -> Data { lock.lock(); defer { lock.unlock() }; return data }
     }
 }
 

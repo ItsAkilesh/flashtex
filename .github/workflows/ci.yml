@@ -169,12 +169,28 @@ jobs:
           # sanctioned this skip provided both sides of any comparison carry
           # it; local runs should pass the same flag.
           swift test --skip IMECompositionTests 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
+      - name: swift test -- IMECompositionTests alone (non-gating, GH#681)
+        working-directory: apps/mac
+        # The step above SKIPS this suite, which on its own would turn a loud
+        # crash into a quiet absence -- the same invisibility that hid ~59 suite
+        # files for a day (#680). So it still runs here, in its own step, and
+        # still reports. `continue-on-error` keeps #681's abort off the gate;
+        # `if: always()` runs it even when the gating step failed, which is the
+        # case that matters (without it the first run of this split skipped the
+        # suite entirely). Root cause of #681: SyntaxHighlighter.swift:677.
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          swift test --filter 'FlashTeXMacTests\.IMECompositionTests' 2>&1 | tee swift-test-ime.log | grep -vE '^\s*$' | tail -n 100
       - name: Upload swift test log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mac-swift-test-log
-          path: apps/mac/swift-test.log
+          path: |
+            apps/mac/swift-test.log
+            apps/mac/swift-test-ime.log
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload the snapshots the run actually captured
