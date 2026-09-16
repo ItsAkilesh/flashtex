@@ -22,10 +22,14 @@ final class IMECompositionTests: XCTestCase {
     static let insertAt = ("\\begin{document}\nHello " as NSString).length
 
     private func caretAtInsertionPoint(_ h: IMEHarness) async throws {
+        imeTrace("caret: setSelectedRange…")
         h.textView.setSelectedRange(NSRange(location: Self.insertAt, length: 0))
+        imeTrace("caret: turn…")
         try await h.turn()
+        imeTrace("caret: turn done; caretUTF16=\(h.model.caretUTF16) caretByte=\(h.model.caretByte)")
         XCTAssertEqual(h.model.caretUTF16, Self.insertAt)
         XCTAssertEqual(h.model.caretByte, Self.insertAt, "ASCII prefix: bytes equal UTF-16 units")
+        imeTrace("caret: done")
     }
 
     private func expected(inserting s: String) -> String {
@@ -328,9 +332,15 @@ final class IMECompositionTests: XCTestCase {
         imeTrace("cancel: caret…")
         try await caretAtInsertionPoint(h)
         let rev = model.editorRevision
-        for step in ["か", "かん", "漢"] { h.compose(step) }
+        for step in ["か", "かん", "漢"] {
+            imeTrace("cancel: compose(\(step))…")
+            h.compose(step)
+            imeTrace("cancel: compose(\(step)) done marked=\(h.hasMarkedText)")
+        }
         XCTAssertTrue(h.hasMarkedText)
+        imeTrace("cancel: cancel()…")
         h.cancel()
+        imeTrace("cancel: cancel() done marked=\(h.hasMarkedText)")
         XCTAssertFalse(h.hasMarkedText)
         XCTAssertEqual(h.string, Self.original)
         XCTAssertEqual(model.activeText, Self.original)

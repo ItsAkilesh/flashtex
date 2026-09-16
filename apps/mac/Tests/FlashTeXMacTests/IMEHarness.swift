@@ -242,7 +242,11 @@ final class IMEHarness {
     struct Timeout: Error { var what: String }
 
     /// Lets the current run-loop turn end (SwiftUI updates, coalesced announcements).
-    func turn() async throws { try await Task.sleep(nanoseconds: 30_000_000) }
+    func turn() async throws {
+        imeTrace("turn: sleeping…")
+        try await Task.sleep(nanoseconds: 30_000_000)
+        imeTrace("turn: woke")
+    }
 
     /// Settles for `seconds` and fails if `cond` stops holding at any sample.
     func holds(_ what: String, for seconds: TimeInterval = 0.5, _ cond: @escaping @MainActor () -> Bool) async throws {
