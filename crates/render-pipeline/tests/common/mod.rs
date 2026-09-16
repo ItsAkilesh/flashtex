@@ -77,7 +77,7 @@ pub struct Word {
 pub fn words_of(r: &Rendered) -> Vec<Word> {
     let mut words = Vec::new();
     for page in &r.v2.pages {
-        for it in &page.items {
+        for it in page.resident_items() {
             if let flashtex_render_pipeline::display::Item::GlyphRun(run) = it {
                 let Some(first) = run.glyphs.first() else { continue };
                 let last = run.glyphs.last().expect("non-empty");
@@ -175,7 +175,7 @@ pub fn rules_of(r: &Rendered) -> Vec<Vec<Rule>> {
         .pages
         .iter()
         .map(|p| {
-            p.items
+            p.resident_items()
                 .iter()
                 .filter_map(|it| match it {
                     flashtex_render_pipeline::display::Item::Rule(rule) => Some((rule.x.to_bp(), rule.top.to_bp(), rule.width.to_bp(), rule.height.to_bp())),
