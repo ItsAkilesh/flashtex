@@ -21,6 +21,15 @@ import HostedWindows
 /// Helper observation goes through the shell's own client
 /// (`model.controller`) with `controllerState.awaiting`, so a `document` or
 /// `history_status` reply is observed without being applied to the model.
+/// TEMPORARY (#681) stage trace, written UNBUFFERED to stderr so the last line
+/// survives an abort (`print` to stdout is block-buffered under `swift test`
+/// and loses everything since the last flush, which is why the CI logs show
+/// the crash with no idea how far the test got).
+@inline(never)
+func imeTrace(_ s: String) {
+    FileHandle.standardError.write(Data("IME-TRACE \(s)\n".utf8))
+}
+
 @MainActor
 final class IMEHarness {
     static var helper: URL? {
@@ -75,8 +84,10 @@ final class IMEHarness {
     /// helper (private ledger under the project's temp root), hosts the editor
     /// and waits for durable r1 and the first preview bound to the buffer.
     static func attached(_ name: String, text: String) async throws -> IMEHarness {
+        imeTrace("attached(\(name)) enter; helper=\(Self.helper?.path ?? "nil") compiler=\(ShellModel.locateCompiler()?.path ?? "nil")")
         guard let helper, FileManager.default.isExecutableFile(atPath: helper.path),
               ShellModel.locateCompiler() != nil else {
+            imeTrace("attached(\(name)) -> throwing XCTSkip")
             throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
         }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("ime-\(name)-\(UUID().uuidString)")
@@ -88,12 +99,16 @@ final class IMEHarness {
         model.autoCompile = true
         XCTAssertEqual(model.openTex(at: tex), .opened)
         let h = IMEHarness(model: model, root: root, tex: tex, helper: helper)
+        imeTrace("attached(\(name)) host()…")
         try await h.host()
+        imeTrace("attached(\(name)) attach()…")
         h.attach()
+        imeTrace("attached(\(name)) wait durable r1…")
         try await h.waitUntil("durable r1 and first preview") {
             model.controllerState.durable["main.tex"]?.revision == 1 && model.controllerState.inFlight == nil
                 && model.result?.revision == model.editorRevision
         }
+        imeTrace("attached(\(name)) ready")
         return h
     }
 
@@ -123,10 +138,12 @@ final class IMEHarness {
     }
 
     func close() {
+        imeTrace("close() enter; awaiting=\(model.controllerState.awaiting.keys.sorted())")
         model.detachController()
         window?.orderOut(nil)
         unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT")
         try? FileManager.default.removeItem(at: root)
+        imeTrace("close() done")
     }
 
     // MARK: composition (what the input context does)
@@ -166,6 +183,7 @@ final class IMEHarness {
     /// `document {path}` answered by the running helper.
     func helperDocument(path: String = "main.tex") async throws -> HelperDocument {
         guard let controller = model.controller, controller.isRunning, model.controllerState.ready else {
+            imeTrace("helperDocument -> throwing XCTSkip (controller=\(model.controller != nil) running=\(model.controller?.isRunning ?? false) ready=\(model.controllerState.ready))")
             throw XCTSkip("helper not running")
         }
         let id = try controller.document(path: path)
@@ -182,6 +200,7 @@ final class IMEHarness {
     /// `history_status {path}` answered by the running helper: (undo labels, redo labels).
     func historyLabels(path: String = "main.tex") async throws -> (undo: [String], redo: [String]) {
         guard let controller = model.controller, controller.isRunning, model.controllerState.ready else {
+            imeTrace("historyLabels -> throwing XCTSkip (controller=\(model.controller != nil) running=\(model.controller?.isRunning ?? false) ready=\(model.controllerState.ready))")
             throw XCTSkip("helper not running")
         }
         let id = try controller.send("history_status", ["path": path])
@@ -215,6 +234,7 @@ final class IMEHarness {
             if cond() { return }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
+        imeTrace("waitUntil TIMEOUT: \(what)")
         XCTFail("timed out waiting for \(what)")
         throw Timeout(what: what)
     }

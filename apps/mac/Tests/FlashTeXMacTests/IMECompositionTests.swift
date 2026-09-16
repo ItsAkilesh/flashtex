@@ -321,9 +321,11 @@ final class IMECompositionTests: XCTestCase {
     // MARK: (a') IME cancel against the helper
 
     func testCancelledCompositionLeavesTheHelperAndLedgerUntouched() async throws {
+        imeTrace("cancel: BODY ENTER")
         let h = try await IMEHarness.attached("cancel", text: Self.original)
-        defer { h.close() }
+        defer { imeTrace("cancel: DEFER running"); h.close(); imeTrace("cancel: DEFER done") }
         let model = h.model
+        imeTrace("cancel: caret…")
         try await caretAtInsertionPoint(h)
         let rev = model.editorRevision
         for step in ["か", "かん", "漢"] { h.compose(step) }
@@ -333,12 +335,15 @@ final class IMECompositionTests: XCTestCase {
         XCTAssertEqual(h.string, Self.original)
         XCTAssertEqual(model.activeText, Self.original)
         XCTAssertEqual(model.editorRevision, rev)
+        imeTrace("cancel: holds#1…")
         try await h.holds("nothing submitted after a cancel", for: 0.3) {
             model.controllerState.inFlight == nil && model.controllerState.durable["main.tex"]?.revision == 1
         }
+        imeTrace("cancel: helperDocument…")
         let doc = try await h.helperDocument()
         XCTAssertEqual(doc.revision, 1)
         XCTAssertEqual(doc.text, Self.original)
+        imeTrace("cancel: historyLabels#1…")
         let (ledgerUndo, _) = try await h.historyLabels()
         XCTAssertEqual(ledgerUndo, [])
         // Measured (AppKit, macOS 26): a cancelled composition leaves ONE undo
@@ -346,19 +351,25 @@ final class IMECompositionTests: XCTestCase {
         // registering path). Undoing it must be a no-op for the buffer, the
         // model and the helper — never a revision or a durable edit.
         let undo = try XCTUnwrap(h.textView.undoManager)
+        imeTrace("cancel: canUndo=\(undo.canUndo) name='\(undo.undoActionName)'")
         print("IME cancel test: canUndo after cancel = \(undo.canUndo) (undoActionName '\(undo.undoActionName)')")
         if undo.canUndo {
+            imeTrace("cancel: undo.undo()…")
             undo.undo()
+            imeTrace("cancel: undo returned; turn…")
             try await h.turn()
             XCTAssertEqual(h.string, Self.original, "undoing the leftover action changes nothing")
             XCTAssertEqual(model.activeText, Self.original)
             XCTAssertEqual(model.editorRevision, rev, "no revision from the leftover undo action")
             XCTAssertFalse(h.hasMarkedText)
+            imeTrace("cancel: holds#2…")
             try await h.holds("nothing submitted after the leftover undo", for: 0.3) {
                 model.controllerState.inFlight == nil && model.controllerState.durable["main.tex"]?.revision == 1
             }
+            imeTrace("cancel: historyLabels#2…")
             let (undoLabels, _) = try await h.historyLabels()
             XCTAssertEqual(undoLabels, [])
         }
+        imeTrace("cancel: BODY DONE")
     }
 }
