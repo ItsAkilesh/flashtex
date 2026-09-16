@@ -305,6 +305,8 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("glossary", "{entry}", "glossary entry: accepted, never typeset (no glossary backend)"),
     ("clearpage", "", "forces a page break"),
     ("cleardoublepage", "", "forces a page break (one-sided article)"),
+    ("twocolumn", "[material]", "starts a new two-column page (\\clearpage, then \\if@twocolumn); \\textwidth, \\parindent and the list margins keep the one-column class values, as in LaTeX. The optional full-width material above the columns is not implemented"),
+    ("onecolumn", "", "starts a new one-column page (\\clearpage, then \\if@twocolumn false); \\columnwidth becomes \\textwidth"),
     ("c", "{letter}", "cedilla text accent: the precomposed character the dfu tables declare (tex-text-encoding); without one the bare letter and a warning"),
     ("v", "{letter}", "caron text accent: the precomposed character the dfu tables declare (tex-text-encoding); without one the bare letter and a warning"),
     ("u", "{letter}", "breve text accent: the precomposed character the dfu tables declare (tex-text-encoding); without one the bare letter and a warning"),

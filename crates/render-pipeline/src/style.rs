@@ -142,6 +142,12 @@ pub struct Stylesheet {
     /// The resolved class + geometry frame this stylesheet was built from
     /// ([`Stylesheet::from_resolved`]); `None` for [`Stylesheet::article`].
     pub class_geometry: Option<Box<ResolvedDocument>>,
+    /// `\if@twocolumn` as the document sets it: the class option plus every
+    /// `\twocolumn`/`\onecolumn` in the source, by position
+    /// ([`crate::columns`]). `class_geometry`'s frame and flags follow
+    /// [`crate::columns::ColumnMode::start`]; anything that has to know the
+    /// mode *at a place in the document* asks this.
+    pub columns: crate::columns::ColumnMode,
     /// Character protrusion and font expansion when the preamble loads
     /// `microtype` (`None` otherwise; lines are then broken exactly as
     /// before).
@@ -248,6 +254,7 @@ impl Stylesheet {
             labelsep_pt: list.labelsep.0,
             headings: [heading(1), heading(2), heading(3), heading(4), heading(5)],
             class_geometry: None,
+            columns: crate::columns::ColumnMode::default(),
             microtype: None,
         }
     }

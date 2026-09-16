@@ -176,21 +176,32 @@ enum Branch {
     TitlePage,
 }
 
-fn branch(style: &Stylesheet) -> Branch {
+/// Which branch the `\begin{abstract}` at `at` in document `document`
+/// takes.
+///
+/// `\if@twocolumn` is a *flag the document sets*, not a class option:
+/// `\twocolumn` and `\onecolumn` change it wherever they stand
+/// ([`crate::columns`]). Reading `options.twocolumn` here meant a document
+/// that asked for two columns with the command took the one-column branch
+/// — a centred `\small` head over a `quotation` where pdflatex sets a
+/// `\section*` over ordinary paragraphs (GH#743). So the question is asked
+/// at the environment's own position, and the class option is only where
+/// the answer starts.
+fn branch(style: &Stylesheet, document: usize, at: usize) -> Branch {
     let Some(g) = style.class_geometry.as_ref() else { return Branch::OneColumn };
     if g.options.titlepage {
         // `\if@titlepage` is tested first (article.cls 366).
         return Branch::TitlePage;
     }
-    if g.options.twocolumn {
+    if style.columns.at(document, at) {
         return Branch::TwoColumn;
     }
     Branch::OneColumn
 }
 
-/// Whether `\end{abstract}` is an `\endtrivlist` in *this* document, so the
-/// `\begin` beside it is read in vertical mode and takes `\partopsep`
-/// ([`crate::adapter`]'s `gap_has_trivlist_end`).
+/// Whether the `\end{abstract}` at `at` in document `document` is an
+/// `\endtrivlist`, so the `\begin` beside it is read in vertical mode and
+/// takes `\partopsep` ([`crate::adapter`]'s `gap_has_trivlist_end`).
 ///
 /// Only [`Branch::OneColumn`] is. article.cls 386 closes the environment
 /// with `\if@twocolumn\else\endquotation\fi`: in two columns the body is
@@ -204,9 +215,9 @@ fn branch(style: &Stylesheet) -> Branch {
 /// which takes no `\partopsep` at all, was right either way.) The
 /// `titlepage` branch and `book`, which has no `abstract`, are not
 /// `\endtrivlist` either; the compiler's own warning stands for them.
-pub(crate) fn end_is_endtrivlist(style: &Stylesheet) -> bool {
+pub(crate) fn end_is_endtrivlist(style: &Stylesheet, document: usize, at: usize) -> bool {
     !style.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Book)
-        && branch(style) == Branch::OneColumn
+        && branch(style, document, at) == Branch::OneColumn
 }
 
 /// Rewrites the plain paragraphs the compiler produced for each `abstract`
@@ -226,9 +237,10 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
     for (d, text) in texts.iter().enumerate() {
         found.extend(ranges(text).into_iter().map(|r| (d, r)));
     }
-    let form = branch(style);
     for (document, range) in found.into_iter().rev() {
         let span = Span::in_document(flashtex_compiler::DocumentId(document), range.begin.0, range.begin.1);
+        // Per environment: `\twocolumn` may stand between two of them.
+        let form = branch(style, document, range.begin.0);
         if form == Branch::TitlePage {
             continue;
         }

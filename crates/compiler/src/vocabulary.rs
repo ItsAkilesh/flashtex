@@ -44,7 +44,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     // Boxes, spacing, breaking and page control.
     "centering", "raggedright", "raggedleft", "linespread", "vfill", "hss", "vss", "vbox",
     "makebox", "fbox", "framebox", "parbox", "raisebox", "rule", "newline",
-    "clearpage", "cleardoublepage", "thispagestyle",
+    "clearpage", "cleardoublepage", "thispagestyle", "twocolumn", "onecolumn",
     "indent", "phantom", "hphantom", "vphantom", "smash", "strut", "addvspace",
     "vskip", "kern", "enspace", "thinspace", "negthinspace", "hline", "cline",
     "multicolumn", "tabularnewline", "arraystretch",

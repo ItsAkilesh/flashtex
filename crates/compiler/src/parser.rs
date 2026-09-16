@@ -1281,6 +1281,8 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "newpage",
     "clearpage",
     "cleardoublepage",
+    "twocolumn",
+    "onecolumn",
     "pagebreak",
     "nopagebreak",
     "linebreak",
@@ -3014,6 +3016,13 @@ impl P<'_> {
             "graphicspath" | "allowdisplaybreaks" | "pagestyle" | "thispagestyle" => {
                 self.argument_only_command(name, span)
             }
+            // Preamble or body: latex.ltx's `\twocolumn`/`\onecolumn`, which
+            // both open with `\clearpage` and then set `\if@twocolumn`.
+            // Which columns the page then has is the renderer's business
+            // (it reads the commands' positions from the source, as it
+            // already does for `\pagestyle`); the only thing the parser owes
+            // it is the page break and no "unknown command" error.
+            "twocolumn" | "onecolumn" => self.column_command(name, span, blocks, para),
             // `\hypersetup{key=value,...}` (hyperref): the same keys the
             // package options take, settable anywhere. Every key this
             // compiler recognises is a PDF annotation, outline or metadata
@@ -3398,6 +3407,58 @@ impl P<'_> {
             .unwrap_or(crate::xref::NumberStyle::Arabic);
         self.document_global_state = true;
         para.push(Inline::PageNumbering { style, span });
+    }
+
+    /// `\twocolumn[<material>]` / `\onecolumn` (latex.ltx lines 20256-20275).
+    ///
+    /// Both begin with `\clearpage`, so both end the current page: measured
+    /// against pdflatex (TeX Live 2026, `article`), a `\twocolumn` after a
+    /// paragraph puts the following text on a *new* page, and so does an
+    /// `\onecolumn` in a `[twocolumn]` document. A command with nothing
+    /// typeset before it ships no page, exactly as `\clearpage` does, which
+    /// is why this emits the same [`Block::PageBreak`] the kernel's own
+    /// `\clearpage` does rather than a column-specific node.
+    ///
+    /// The column count itself is not in this IR: the parser has no page
+    /// model, and the renderer already reads `\pagestyle` and friends back
+    /// out of the source by position. What it must not do is let
+    /// `\twocolumn` reach `unsupported`, which would both report an unknown
+    /// command and typeset the optional argument's `[`/`]` as literal text.
+    ///
+    /// `\twocolumn[<material>]` sets `<material>` at the full `\textwidth`
+    /// above both columns (`\@topnewpage`). That is not implemented, and the
+    /// argument is consumed rather than typeset in a column where it does
+    /// not belong — said in a diagnostic, not silently.
+    #[inline(never)]
+    fn column_command(
+        &mut self,
+        name: &str,
+        span: Span,
+        blocks: &mut Vec<Block>,
+        para: &mut Vec<Inline>,
+    ) {
+        let mut span = span;
+        if name == "twocolumn" {
+            if let Some((_, argument)) = self.optional_bracket_argument() {
+                span = span.merge(argument);
+                self.diags.push(Diagnostic::warning(
+                    "the optional argument of \\twocolumn sets material at the full \
+                     \\textwidth above both columns (\\@topnewpage); that is not implemented"
+                        .to_string(),
+                    Some(span),
+                    Some("dropped the argument and started the two-column page".into()),
+                ));
+            }
+        }
+        self.document_global_state = true;
+        // A preamble `\twocolumn`/`\onecolumn` is the usual way to ask for
+        // the whole document, and its `\clearpage` has nothing to ship.
+        if !self.in_body {
+            return;
+        }
+        self.flush_paragraph(blocks, para);
+        blocks.push(Block::PageBreak);
+        self.finish_block_dependencies();
     }
 
     /// Run-in `\paragraph`/`\subparagraph` (see the comment in [`P::command`]).

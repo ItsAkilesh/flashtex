@@ -1195,8 +1195,15 @@ pub fn adapt_cached(
         &class_options,
     );
     let mut resolved = flashtex_class_geometry::resolve(&setup);
+    // `\twocolumn`/`\onecolumn` are commands, not class options: two-column
+    // mode is state the document sets, and the class option is only its
+    // starting value ([`crate::columns`]). `set_twocolumn` runs before
+    // `apply_preamble_lengths`, which rebuilds the frame from `doc.flags`.
+    let columns = crate::columns::ColumnMode::scan(source, entry, resolved.options.twocolumn);
+    resolved.set_twocolumn(columns.start());
     let assigned = apply_preamble_lengths(source, &mut resolved, size, family, setup.geometry.is_some());
     let mut style = Stylesheet::from_resolved(&resolved, family);
+    style.columns = columns;
     // apply_preamble_lengths is the source of truth for `\parindent` /
     // `\parskip` (source order, including `\addtolength` and body
     // assignments). The older `setlength_in` scan only saw `\setlength`
@@ -2094,6 +2101,45 @@ pub fn adapt_cached(
     // `quotation`) is read from the source bytes here, before the
     // `env_close` pass below derives the closing skips from the styles.
     let mut superseded = crate::abstractenv::apply(texts, &mut blocks, &style);
+    // `\twocolumn`/`\onecolumn` are set here, from the source, the same way:
+    // the pinned `vendor/compiler` reports them as unknown commands.
+    superseded.extend(
+        style
+            .columns
+            .spans()
+            .iter()
+            .map(|&(s, e)| Span::in_document(flashtex_compiler::DocumentId(entry), s, e)),
+    );
+    // The page frame is still one frame for the whole document, so a switch
+    // after the first material sets every `\if@twocolumn` test (and its own
+    // page break) but not the column count of the pages it opens.
+    for &(at, on) in &style.columns.unmodelled() {
+        limitations.push((
+            "twocolumn_mid_document",
+            Span::in_document(flashtex_compiler::DocumentId(entry), at, at + if on { "\\twocolumn".len() } else { "\\onecolumn".len() }),
+            format!(
+                "\\{} after the first material starts a new page, but changing the number of \
+                 page columns during a document is not implemented: the rest of the document \
+                 keeps {} column(s)",
+                if on { "twocolumn" } else { "onecolumn" },
+                if style.columns.start() { 2 } else { 1 },
+            ),
+        ));
+    }
+    // `\twocolumn[<material>]` sets its argument at the full `\textwidth`
+    // above both columns (`\@topnewpage`, latex.ltx 20466-20505).
+    for &(_, end) in style.columns.spans() {
+        if source[end..].trim_start().starts_with('[') && source[..end].ends_with("\\twocolumn") {
+            limitations.push((
+                "twocolumn_top_material",
+                Span::in_document(flashtex_compiler::DocumentId(entry), end, end),
+                "the optional argument of \\twocolumn sets material at the full \\textwidth \
+                 above both columns (\\@topnewpage); that is not implemented, so the material \
+                 is set in the first column instead, brackets included"
+                    .to_string(),
+            ));
+        }
+    }
     // Size environments are set here (`apply_size_environments`); the
     // compiler's "environment is not implemented" for them is superseded.
     for (d, st) in styles.iter().enumerate() {
@@ -2242,7 +2288,15 @@ fn clear_page_blocks(texts: &[&str], blocks: &[Block]) -> Vec<usize> {
                 _ => None,
             }?;
             let text = texts.get(at.document.0)?.get(..at.start)?;
-            let clear = text.rfind("\\clearpage").max(text.rfind("\\cleardoublepage"));
+            // `\twocolumn`/`\onecolumn` open with `\clearpage`, not
+            // `\newpage`: in a two-column document they end the *page*, not
+            // the column (measured — pdflatex puts the material after an
+            // `\onecolumn` in a `[twocolumn]` article on a new page).
+            let clear = text
+                .rfind("\\clearpage")
+                .max(text.rfind("\\cleardoublepage"))
+                .max(text.rfind("\\twocolumn"))
+                .max(text.rfind("\\onecolumn"));
             let column = text.rfind("\\newpage").max(text.rfind("\\pagebreak"));
             (clear.is_some() && clear > column).then_some(i)
         })
@@ -2650,7 +2704,11 @@ enum UnitKind<'p> {
     },
 }
 
-const PAGE_BREAKS: [&str; 3] = ["newpage", "clearpage", "pagebreak"];
+/// `\twocolumn` and `\onecolumn` both open with `\clearpage` (latex.ltx
+/// 20256-20275), so both end the page: measured against pdflatex, a
+/// `\twocolumn` after a paragraph puts the following text on a new page,
+/// and so does an `\onecolumn` in a `[twocolumn]` document.
+const PAGE_BREAKS: [&str; 5] = ["newpage", "clearpage", "pagebreak", "twocolumn", "onecolumn"];
 
 /// The character the tie occupies in a compiler text run.
 ///
@@ -2676,9 +2734,6 @@ fn split_at_page_breaks<'p>(
     style: &Stylesheet,
 ) -> Vec<Unit<'p>> {
     let theorem_envs = theorem_environments(texts);
-    // `\end{abstract}` is an `\endtrivlist` only in the one-column branch
-    // (see [`crate::abstractenv::end_is_endtrivlist`]).
-    let abstract_ends_trivlist = crate::abstractenv::end_is_endtrivlist(style);
     let mut units = Vec::new();
     let mut prev_end: Option<Span> = None;
     // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
@@ -2782,6 +2837,11 @@ fn split_at_page_breaks<'p>(
         // The hanging indent and the label box are the pipeline's too
         // (`list_margins`): the compiler reports `leftmargin` as
         // unimplemented.
+        // The gap's own byte offset travels with it: `gap_has_trivlist_end`
+        // asks `\if@twocolumn` *at* the `\end{abstract}` it finds there.
+        let gap_base = |f: Span| -> usize {
+            prev_end.filter(|p| p.document == f.document && p.end <= f.start).map_or(0, |p| p.end)
+        };
         let gap_before = |f: Span| -> Option<&str> {
             match prev_end {
                 Some(p) if p.document == f.document && p.end <= f.start => texts.get(f.document.0).and_then(|t| t.get(p.end..f.start)),
@@ -2851,7 +2911,7 @@ fn split_at_page_breaks<'p>(
                 };
                 let outer_parskip = outer_parskip_skip.natural;
                 if label.is_some() {
-                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b))).or_else(|| {
+                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b, at.document.0, gap_base(at)))).or_else(|| {
                         // `\begin{thebibliography}{<widest>}` is the span of
                         // the compiler's own `References` heading, so the
                         // gap after that heading holds no `\begin`: look
@@ -2859,10 +2919,10 @@ fn split_at_page_breaks<'p>(
                         let p = prev_end.filter(|p| prev_vmode && p.document == at.document && p.start < at.start)?;
                         let g = texts.get(p.document.0)?.get(p.start..at.start)?;
                         let b = rfind_command(g, "begin")?;
-                        g[b..].strip_prefix("\\begin").is_some_and(|r| r.trim_start().starts_with("{thebibliography}")).then_some((g, b))
+                        g[b..].strip_prefix("\\begin").is_some_and(|r| r.trim_start().starts_with("{thebibliography}")).then_some((g, b, p.document.0, p.start))
                     });
                     match opens {
-                        Some((g, b)) if list_env_after_begin(&g[b..]) => {
+                        Some((g, b, gap_doc, gap_base)) if list_env_after_begin(&g[b..]) => {
                             let before = &g[..b];
                             // `\endtrivlist`'s `\@endparenv` leaves TeX in
                             // vertical mode, so a `\begin{<list>}` that
@@ -2876,7 +2936,7 @@ fn split_at_page_breaks<'p>(
                                 || prev_end.is_none()
                                 || has_blank_line(before)
                                 || find_command(before, "par").is_some()
-                                || gap_has_trivlist_end(before, &theorem_envs, abstract_ends_trivlist);
+                                || gap_has_trivlist_end(before, &theorem_envs, style, gap_doc, gap_base);
                             if let Some(i) = stack.len().checked_sub(1) {
                                 if list_vmode_by_depth.len() <= i {
                                     list_vmode_by_depth.resize(i + 1, false);
@@ -2997,7 +3057,7 @@ fn split_at_page_breaks<'p>(
                 || prev_end.is_none()
                 || has_blank_line(before)
                 || find_command(before, "par").is_some()
-                || gap_has_trivlist_end(before, &theorem_envs, abstract_ends_trivlist);
+                || gap_has_trivlist_end(before, &theorem_envs, style, f.document.0, gap_base(f));
             Some(EnvOpen { vmode, skips: None })
         });
         // `\@endpe`: a plain paragraph right after `\end{...}` (no blank line
@@ -5078,16 +5138,28 @@ const VMODE_END_ENVS: [&str; 2] = ["lstlisting", "lstlisting*"];
 /// Measured against pdflatex in `tests/vmode_boundary_skips.rs`: every one
 /// of these boundaries steps by `\baselineskip` + `\topsep` + `\partopsep`,
 /// never by `\topsep` alone.
-fn gap_has_trivlist_end(gap: &str, theorem_envs: &std::collections::HashSet<String>, abstract_ends_trivlist: bool) -> bool {
+///
+/// `gap` starts at byte `base` of document `document`, which `abstract`
+/// needs: whether *that* `\end{abstract}` is an `\endtrivlist` depends on
+/// `\if@twocolumn` where it stands, and `\twocolumn`/`\onecolumn` can
+/// change that between two of them.
+fn gap_has_trivlist_end(
+    gap: &str,
+    theorem_envs: &std::collections::HashSet<String>,
+    style: &Stylesheet,
+    document: usize,
+    base: usize,
+) -> bool {
     let Some(end) = rfind_command(gap, "end") else { return false };
     let rest = gap[end + "\\end".len()..].trim_start();
     let Some(rest) = rest.strip_prefix('{') else { return false };
     let Some((name, _)) = rest.split_once('}') else { return false };
     let name = name.trim();
     if name == "abstract" {
-        // Whether this `\end` is an `\endtrivlist` depends on the class
-        // options, not on the name ([`crate::abstractenv::end_is_endtrivlist`]).
-        return abstract_ends_trivlist;
+        // Whether this `\end` is an `\endtrivlist` depends on two-column
+        // mode where it stands, not on the name
+        // ([`crate::abstractenv::end_is_endtrivlist`]).
+        return crate::abstractenv::end_is_endtrivlist(style, document, base + end);
     }
     LIST_ENVS.contains(&name) || TRIVLIST_ENVS.contains(&name) || VMODE_END_ENVS.contains(&name) || theorem_envs.contains(name)
 }
