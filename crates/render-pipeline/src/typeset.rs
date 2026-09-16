@@ -6979,6 +6979,8 @@ pub fn convert_math_classed(
             // advance is not yet zero.
             #[cfg(feature = "compiler-node-surface")]
             N::Lap { body, .. } => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::List(sub(body, sink)))],
+            #[cfg(not(feature = "amsmath-inline"))]
+            _ => continue,
         };
         // Every atom this compiler atom produced maps to its bytes unless a
         // more precise span was already given (a `\left...\right` pair).
@@ -7452,6 +7454,8 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
             }
             #[cfg(feature = "compiler-node-surface")]
             N::Lap { body, .. } => math_grids(body, out),
+            #[cfg(not(feature = "amsmath-inline"))]
+            _ => {}
         }
         if let Some(s) = &a.superscript {
             math_grids(s, out);
@@ -7513,6 +7517,8 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                 }
                 #[cfg(feature = "compiler-node-surface")]
                 N::Lap { body, .. } => math_glue_em(body),
+                #[cfg(not(feature = "amsmath-inline"))]
+                _ => 0.0,
             };
             own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
         })
@@ -7655,6 +7661,8 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
                 out.push("\\mathllap/\\mathrlap/\\mathclap set as an ordinary group: math-layout has no zero-advance lap box".to_string());
                 math_approximations(body, out);
             }
+            #[cfg(not(feature = "amsmath-inline"))]
+            _ => {}
         }
         for part in [&a.superscript, &a.subscript].into_iter().flatten() {
             math_approximations(part, out);

@@ -618,6 +618,8 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 hash_math(body, h);
                 format!("{align:?}").hash(h);
             }
+            #[cfg(not(feature = "amsmath-inline"))]
+            other => format!("{other:?}").hash(h),
         }
         match &a.superscript {
             Some(s) => {
@@ -846,6 +848,8 @@ fn shift_math(list: &mut MathList, delta: isize) {
             }
             #[cfg(feature = "compiler-node-surface")]
             Nucleus::Lap { body, .. } => shift_math(body, delta),
+            #[cfg(not(feature = "amsmath-inline"))]
+            _ => {}
         }
         if let Some(s) = &mut a.superscript {
             shift_math(s, delta);

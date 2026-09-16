@@ -6810,11 +6810,10 @@ fn kern_amount_matches(spelling: &str, amount: &TextDimen) -> bool {
     })
 }
 
-/// Against a `vendor/compiler` pinned before the package context reached
-/// `text_kern`, there is only the kernel definition to match.
+/// Without package gating, match only the kernel definition.
 #[cfg(not(feature = "compiler-package-gating"))]
 fn kern_amount_matches(spelling: &str, amount: &TextDimen) -> bool {
-    flashtex_compiler::text_builtins::text_kern(spelling).as_ref() == Some(amount)
+    flashtex_compiler::text_builtins::text_kern(spelling, false).as_ref() == Some(amount)
 }
 
 /// [`gap_has_space`] for the bytes after a control word: the whitespace
