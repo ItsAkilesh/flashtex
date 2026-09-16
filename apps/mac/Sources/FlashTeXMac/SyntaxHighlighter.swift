@@ -678,6 +678,7 @@ final class SyntaxPainter {
                                                           object: storage, queue: nil) { [weak self] note in
             ftTrace("storageObserver(Syntax) enter")
             defer { ftTrace("storageObserver(Syntax) exit") }
+            if ftTraceOn { ftTrace("storageObserver(Syntax) SKIPPED (#681 causality probe)"); return }
             MainActor.assumeIsolated {
                 guard let self, let storage = note.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) else { return }
                 let edited = storage.editedRange
