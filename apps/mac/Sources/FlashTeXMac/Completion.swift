@@ -2219,7 +2219,9 @@ final class CompletingTextView: NSTextView {
     }
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
+        ftTrace("CompletingTextView.shouldChangeText enter \(affectedCharRange)")
         let ok = super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
+        ftTrace("CompletingTextView.shouldChangeText -> \(ok)")
         if ok { shiftSnippetStops(edit: affectedCharRange, replacementLength: (replacementString as NSString?)?.length ?? 0) }
         return ok
     }
@@ -2906,6 +2908,8 @@ final class CompletingTextView: NSTextView {
     }
 
     override func didChangeText() {
+        ftTrace("CompletingTextView.didChangeText enter")
+        defer { ftTrace("CompletingTextView.didChangeText exit") }
         super.didChangeText()
         textChanged()
         signatureHelpAfterTextChange()

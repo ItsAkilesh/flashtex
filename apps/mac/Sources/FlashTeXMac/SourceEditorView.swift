@@ -1135,6 +1135,7 @@ struct SourceEditorView: NSViewRepresentable {
         // MARK: delegate
 
         func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString: String?) -> Bool {
+            ftTrace("delegate shouldChangeTextIn \(range) '\(replacementString ?? "nil")'")
             let replacementLength = (replacementString as NSString?)?.length ?? 0
             marks.noteEdit(range: range, replacementLength: replacementLength)
             // Type-over: the closer the user types is the one that was auto-inserted here.
@@ -1212,6 +1213,8 @@ struct SourceEditorView: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
+            ftTrace("delegate textDidChange enter")
+            defer { ftTrace("delegate textDidChange exit") }
             guard let tv = notification.object as? NSTextView else { return }
             TypingBench.shared.textViewDidChange() // stamps the delegate time for keystroke -> paint
             syntax.flush() // the storage notification updated the line model; colours the changed lines now (deferred while composing)
@@ -1256,6 +1259,8 @@ struct SourceEditorView: NSViewRepresentable {
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
+            ftTrace("delegate didChangeSelection enter")
+            defer { ftTrace("delegate didChangeSelection exit") }
             guard let tv = notification.object as? NSTextView else { return }
             if tv.hasMarkedText() { compositionStep(tv); return }
             let range = tv.selectedRange()
