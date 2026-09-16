@@ -151,22 +151,33 @@ jobs:
         # `pipefail` is what makes a failing test fail the step: the default
         # shell is `bash -e`, and a pipeline's status is its LAST command's,
         # so without it `tail` returned 0 over any number of test failures.
-        # GH#681: `IMECompositionTests` aborts the whole xctest process with
-        # SIGABRT (a Swift task-allocator invariant, not a test failure) on this
-        # runner, which TRUNCATES the run at test ~668 of ~1400 while printing
-        # zero failures -- the false-green mechanism of #680. Until the cause is
-        # fixed the gating run excludes it, so the other ~1390 tests are actually
-        # reported. The skip lives in the shared workflow, so both sides of any
-        # comparison skip it. The suite still runs, in its own non-gating step
-        # below, so it is excluded from the gate but never silently dropped.
+        env:
+          # swift-snapshot-testing writes the image it actually captured next
+          # to a failure. It defaults to NSTemporaryDirectory(), which dies
+          # with the runner -- so a snapshot mismatch in CI was reported as
+          # "does not match reference" with no way to see WHAT it captured.
+          # Point it somewhere the upload step below can reach.
+          SNAPSHOT_ARTIFACTS: ${{ github.workspace }}/apps/mac/snapshot-artifacts
         run: |
           set -o pipefail
-          swift test --skip 'FlashTeXMacTests\.IMECompositionTests' 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
+          mkdir -p "$SNAPSHOT_ARTIFACTS"
+          # --skip IMECompositionTests: #681's abort (SIGABRT inside
+          # XCTSwiftErrorObservation, closed as machine state, signature
+          # still present) kills the xctest process mid-run and truncates
+          # everything alphabetically after it -- ~59 suite files, including
+          # ShellSnapshotTests, never execute. #681's own closing conclusion
+          # sanctioned this skip provided both sides of any comparison carry
+          # it; local runs should pass the same flag.
+          swift test --skip IMECompositionTests 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
       - name: swift test -- IMECompositionTests alone (non-gating, GH#681)
         working-directory: apps/mac
-        # `always()`, not the default `success()`: the whole point is that this
-        # suite is reported even when the gating run above fails, otherwise the
-        # split silently drops it again.
+        # The step above SKIPS this suite, which on its own would turn a loud
+        # crash into a quiet absence -- the same invisibility that hid ~59 suite
+        # files for a day (#680). So it still runs here, in its own step, and
+        # still reports. `continue-on-error` keeps #681's abort off the gate;
+        # `if: always()` runs it even when the gating step failed, which is the
+        # case that matters (without it the first run of this split skipped the
+        # suite entirely). Root cause of #681: SyntaxHighlighter.swift:677.
         if: always()
         continue-on-error: true
         run: |
@@ -180,6 +191,17 @@ jobs:
           path: |
             apps/mac/swift-test.log
             apps/mac/swift-test-ime.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload the snapshots the run actually captured
+        # Only on failure: on a green run these are not written at all.
+        # Pair each file with its committed reference under
+        # apps/mac/Tests/DesignSnapshots/__Snapshots__/ to see the difference.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-snapshot-artifacts
+          path: apps/mac/snapshot-artifacts
           if-no-files-found: ignore
           retention-days: 7
 
