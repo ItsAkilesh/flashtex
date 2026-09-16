@@ -1909,7 +1909,7 @@ pub fn adapt_cached(
                             if let Some((rows_span, row)) = math_row_of(inlines, span) {
                                 let rows_rest = texts.get(rows_span.document.0).and_then(|t| t.get(rows_span.start..)).unwrap_or("");
                                 let mut tag = None;
-                                let cells: Vec<MathList> = row.cells.iter().map(|c| strip_tag(texts, c, &mut tag)).collect();
+                                let cells: Vec<MathList> = row.cells.iter().map(|c| strip_tag(texts, c, &mut tag, &mut limitations)).collect();
                                 let number = match tag {
                                     Some(t) => Some((t, row.span)),
                                     None => row.number.clone().map(|n| (format!("({n})"), row.span)),
@@ -1944,7 +1944,7 @@ pub fn adapt_cached(
                             // `\tag` in any display).
                             let rest = texts.get(span.document.0).and_then(|t| t.get(span.start..)).unwrap_or("");
                             let mut tag = None;
-                            let list = strip_tag(texts, &list, &mut tag);
+                            let list = strip_tag(texts, &list, &mut tag, &mut limitations);
                             let (list, eqno) = strip_eqno(texts, list, span);
                             let number = match (tag, eqno) {
                                 (Some(t), _) => Some((t, span)),
@@ -3233,14 +3233,56 @@ fn math_row_of(inlines: &[Inline], span: Span) -> Option<(Span, &flashtex_compil
 /// label text and the `2\quad` glue it inserts, both spanning the command);
 /// the label as set goes to `tag`: `\tagform@`'s parentheses for `\tag`,
 /// none for `\tag*`.
-fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>) -> MathList {
+///
+/// A label the compiler could not flatten to one upright string --
+/// `\tag{hi $x^2$}`, `\tag{\textbf{A}}` (#441) -- arrives as
+/// `Nucleus::TextRun`, a run of text and nested math pieces. It still becomes
+/// a tag here, set as the run's text with a `math_limitation` at the `\tag`
+/// saying the nested math is not set as math; PR #585 replaces that with
+/// amsmath's `\maketag@@@` hbox. **It must never be left as `None`:** the
+/// caller's `None` arm is the *automatic* equation number, so a dropped rich
+/// tag does not look dropped -- `\tag{hi $x^2$}` silently becomes a
+/// plausible `(1)`, and a reader cross-referencing the source cannot tell.
+fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>, notes: &mut Vec<(&'static str, Span, String)>) -> MathList {
     use flashtex_compiler::math::Nucleus;
     let is_tag = |span: Span| texts.get(span.document.0).and_then(|t| t.get(span.start..)).is_some_and(|r| r.starts_with("\\tag"));
     let mut atoms = Vec::with_capacity(list.atoms.len());
     for a in &list.atoms {
         if is_tag(a.span) {
-            if let Nucleus::Text(s) | Nucleus::Symbol(s) = &a.nucleus {
-                *tag = Some(s.clone());
+            match &a.nucleus {
+                Nucleus::Text(s) | Nucleus::Symbol(s) => *tag = Some(s.clone()),
+                // The compiler's interim `2\quad` gap (`INTERIM_TAG_GAP_EM`),
+                // which spans the command too. It is not a label; the
+                // pipeline places the tag itself.
+                Nucleus::Space { .. } => {}
+                // A rich label. `text_run_reference_text` is the flattening
+                // the compiler itself uses for `\eqref` to this tag, so the
+                // set label and the reference to it read alike.
+                #[cfg(feature = "compiler-node-surface")]
+                Nucleus::TextRun(pieces) => {
+                    let text = flashtex_compiler::math::text_run_reference_text(pieces);
+                    notes.push((
+                        "math_limitation",
+                        a.span,
+                        format!(
+                            "\\tag label set as the upright text {text:?}: math and font switches inside a tag are not set as math yet (#441). \
+                             The automatic equation number does not replace it."
+                        ),
+                    ));
+                    *tag = Some(text);
+                }
+                // Anything else: the label cannot be set, so the display is
+                // left unnumbered and the reason is reported. Taking the
+                // automatic number here would print a plausible `(1)` for a
+                // source that says `\tag{..}`, which no reader could catch.
+                _ => {
+                    notes.push((
+                        "math_limitation",
+                        a.span,
+                        "\\tag label could not be set; the display is left unnumbered rather than taking the automatic equation number (#441)".to_string(),
+                    ));
+                    *tag = Some(String::new());
+                }
             }
             continue;
         }
