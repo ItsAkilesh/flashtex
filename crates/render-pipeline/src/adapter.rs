@@ -738,6 +738,10 @@ pub struct Doc {
     /// Indices of the blocks after a `\clearpage`/`\cleardoublepage` (see
     /// `clear_page_blocks`).
     pub page_starts: Vec<usize>,
+    /// Inclusive block index ranges of every `titlepage` `abstract`
+    /// (`abstractenv::page_ranges`): a page of its own, `\vfil`-centred,
+    /// with a page break on each side. Empty for every other document.
+    pub abstract_pages: Vec<(usize, usize)>,
     /// `\begin` commands the compiler reported as unimplemented that the
     /// pipeline sets itself (`abstract`): its diagnostic is dropped, the
     /// way `toc::superseded_commands` drops the contents-list ones.
@@ -2159,6 +2163,9 @@ pub fn adapt_cached(
     superseded.extend(crate::listings::lstset_spans(texts));
     limitations.extend(listing_limitations);
     let page_starts = clear_page_blocks(texts, &blocks);
+    // After `listings::apply`, which can insert blocks: the ranges are
+    // block indices, so they are taken once the block list is final.
+    let abstract_pages = crate::abstractenv::page_ranges(texts, &blocks, &style);
     Doc {
         style,
         blocks,
@@ -2169,6 +2176,7 @@ pub fn adapt_cached(
         default_color: parsed.default_color,
         math_colors: math_colors(&parsed.blocks),
         page_starts,
+        abstract_pages,
         superseded,
     }
 }

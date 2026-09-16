@@ -77,10 +77,45 @@
 //! is `SFBX1440` at the column's left edge and the body `SFRM1000`.
 //!
 //! The `titlepage` branch (report's and book's default, or article's
-//! `titlepage` option) — a page of its own between `\null\vfil`s — is not
-//! set; the compiler's own limitation stands. `book.cls` defines no
-//! `abstract` environment at all, so its `\begin{abstract}` keeps the
-//! compiler's "not implemented" warning.
+//! `titlepage` option) is a page of its own (report.cls 441-450):
+//!
+//! ```tex
+//! \newenvironment{abstract}{%
+//!     \titlepage
+//!     \null\vfil
+//!     \@beginparpenalty\@lowpenalty
+//!     \begin{center}%
+//!       \bfseries \abstractname
+//!       \@endparpenalty\@M
+//!     \end{center}}%
+//!    {\par\vfil\null\endtitlepage}
+//! ```
+//!
+//! It is a *different environment*, not a variant of the one above: no
+//! `\small`, no `\vspace{-.5em}` under the head, no `quotation` — the body
+//! is ordinary `\normalsize` paragraphs at the full measure, and the first
+//! of them is unindented (`\@doendpe` after `\end{center}`). What places it
+//! is the `titlepage` environment around it (report.cls 485-513):
+//! `\newpage`, `\thispagestyle{empty}`, `\setcounter{page}\@ne` on the way
+//! in and `\newpage` (plus, one-sided, `\setcounter{page}\@ne` again) on
+//! the way out. So the abstract is alone on its page and the material after
+//! `\end{abstract}` starts the next one — the page break is half of what
+//! this branch is.
+//!
+//! Between them the two `\vfil`s centre it vertically, and `\newpage`'s own
+//! `\vfil` is a third claimant on the same room, exactly as in the
+//! `titlepage` `\maketitle` ([`crate::typeset::TitleForm::Page`]). The page
+//! builder has no stretchable vertical glue, so — as that `\maketitle` form
+//! already does — the fil is resolved into a rigid skip from the page's
+//! natural height: `typeset::build` lays the abstract's own blocks out, and
+//! `(\textheight - natural) / 3` goes above the head and below the body.
+//! The `\null`s matter and are set: the first fixes the head's distance
+//! from the text top at `\topskip` plus the skips rather than at
+//! `max(\topskip, height)`, and the last carries the interline glue that
+//! ends the page.
+//!
+//! `book.cls` defines no `abstract` environment at all, so its
+//! `\begin{abstract}` keeps the compiler's "not implemented" warning.
 //!
 //! One thing this environment made visible that is not specific to it: the
 //! opening `\addvspace{\@topsep}` of every `\list`/`\trivlist` obeys
@@ -169,10 +204,11 @@ enum Branch {
     /// and the body as ordinary paragraphs. A different shape, not a
     /// narrower one: no `\small`, no `quotation`, no centring.
     TwoColumn,
-    /// article.cls 367-375 (report's and book's default, or article's
-    /// `titlepage` option): a page of its own between `\null\vfil`s,
-    /// inside `\titlepage`. Not set here; the compiler's own limitation
-    /// stands.
+    /// article.cls 367-375 / report.cls 441-450 (report's and book's
+    /// default, or article's `titlepage` option): a page of its own
+    /// between `\null\vfil`s, inside `titlepage`. A `\normalsize` centred
+    /// `\bfseries` head, ordinary full-measure paragraphs under it, and a
+    /// page break on each side.
     TitlePage,
 }
 
@@ -202,8 +238,10 @@ fn branch(style: &Stylesheet) -> Branch {
 /// description}` 1.992 bp long at 10 pt, 2.989 at 11 pt and 2.988 at 12 pt
 /// — one `\partopsep` that pdflatex does not put there. (`\begin{thm}`,
 /// which takes no `\partopsep` at all, was right either way.) The
-/// `titlepage` branch and `book`, which has no `abstract`, are not
-/// `\endtrivlist` either; the compiler's own warning stands for them.
+/// `titlepage` branch is not `\endtrivlist` either — its `\end` is
+/// `\par\vfil\null\endtitlepage`, so what follows starts a page rather
+/// than taking a boundary skip — and `book`, which has no `abstract` at
+/// all, keeps the compiler's warning.
 pub(crate) fn end_is_endtrivlist(style: &Stylesheet) -> bool {
     !style.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Book)
         && branch(style) == Branch::OneColumn
@@ -229,7 +267,7 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
     let form = branch(style);
     for (document, range) in found.into_iter().rev() {
         let span = Span::in_document(flashtex_compiler::DocumentId(document), range.begin.0, range.begin.1);
-        if form == Branch::TitlePage {
+        if form == Branch::TitlePage && !page_form_is_set(style) {
             continue;
         }
         let inside = |b: &Block| -> bool {
@@ -240,6 +278,31 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
             continue;
         };
         let last = blocks.iter().rposition(inside).unwrap_or(first);
+        if form == Branch::TitlePage {
+            // The body is ordinary `\normalsize` paragraphs at the full
+            // measure: whatever the compiler set for the plain text is
+            // already that, so only the environment's own trappings come
+            // off. `\end{center}` leaves `\@endpetrue`, so `\@doendpe`
+            // takes the `\parindent` box off the first of them.
+            for (k, block) in blocks[first..=last].iter_mut().enumerate() {
+                let Block::Paragraph { indent, env_open, env_close, list, sized, .. } = block else { continue };
+                *indent = k != 0;
+                *env_open = None;
+                *env_close = false;
+                *list = None;
+                *sized = None;
+            }
+            // `\titlepage`'s `\newpage` discards whatever skip stood
+            // between the previous block and `\begin{abstract}`: the glue
+            // stays on the page that ends, and the page this opens starts
+            // at `\topskip`. (`typeset::build` supplies the `\null`s, the
+            // page break on each side and the `\vfil` centring; they are
+            // page-level, not block-level.)
+            drop_lead(&mut blocks[first]);
+            blocks.insert(first, page_head_block(texts, document, range));
+            superseded.push(span);
+            continue;
+        }
         if form == Branch::TwoColumn {
             // `\section*`'s before-skip is negative, so `\@startsection`
             // leaves `\@afterindentfalse`: the first paragraph of the body
@@ -368,6 +431,112 @@ fn take_lead(body: &mut Block, head: &mut Block) {
             *h_vspace = vspace;
         }
         _ => {}
+    }
+}
+
+/// Whether the [`Branch::TitlePage`] form is set at all for this document.
+///
+/// `\titlepage` opens with `\if@twocolumn \@restonecoltrue\onecolumn`: in a
+/// two-column document the abstract's page is a *one-column* page and the
+/// document goes back to two columns after it. This pipeline sets the
+/// abstract in the column it finds, which would be a worse answer than
+/// none, so a two-column `titlepage` document keeps the compiler's own
+/// "not implemented" warning instead.
+fn page_form_is_set(style: &Stylesheet) -> bool {
+    !style.class_geometry.as_ref().is_some_and(|g| g.options.twocolumn)
+}
+
+/// Every [`Branch::TitlePage`] abstract of `blocks`, as the inclusive block
+/// index range its page holds (the head this module inserted and the body
+/// paragraphs under it).
+///
+/// Recomputed from the source rather than remembered from [`apply`]:
+/// `listings::apply` runs between the two and may insert blocks of its own,
+/// so an index recorded there would not survive. Block spans do.
+pub fn page_ranges(texts: &[&str], blocks: &[Block], style: &Stylesheet) -> Vec<(usize, usize)> {
+    if branch(style) != Branch::TitlePage || !page_form_is_set(style) {
+        return Vec::new();
+    }
+    if style.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Book) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (d, text) in texts.iter().enumerate() {
+        for range in ranges(text) {
+            let inside = |b: &Block| -> bool {
+                block_span(b).is_some_and(|s| s.document.0 == d && s.start >= range.begin.0 && s.start < range.end.1)
+            };
+            if let (Some(first), Some(last)) = (blocks.iter().position(inside), blocks.iter().rposition(inside)) {
+                out.push((first, last));
+            }
+        }
+    }
+    out.sort_unstable();
+    out
+}
+
+/// Drops the vertical skip and page break the compiler hung on the first
+/// block of a [`Branch::TitlePage`] body: the page break the environment
+/// opens with supersedes both.
+fn drop_lead(body: &mut Block) {
+    let Block::Paragraph {
+        eject_before,
+        vspace_before,
+        addvspace_before,
+        addvspace_flex,
+        vspace_flex,
+        endlist_adjust,
+        ..
+    } = body
+    else {
+        return;
+    };
+    *eject_before = false;
+    *vspace_before = 0.0;
+    *addvspace_before = 0.0;
+    *addvspace_flex = (0.0, 0.0);
+    *vspace_flex = (0.0, 0.0);
+    *endlist_adjust = 0.0;
+}
+
+/// `\begin{center}\bfseries \abstractname\end{center}` (report.cls 446-449),
+/// the `titlepage` head: one centred bold word at `\normalsize` and the
+/// full measure. No `\small` and no `\vspace{-.5em}` — those belong to the
+/// other branch, and neither is in this one.
+fn page_head_block(texts: &[&str], document: usize, range: Range) -> Block {
+    let name = abstract_name(texts).unwrap_or_else(|| ABSTRACTNAME.to_string());
+    let src = CharSrc {
+        document: flashtex_compiler::DocumentId(document),
+        start: range.begin.0,
+        end: range.begin.1,
+    };
+    let word = Word {
+        segments: vec![Segment {
+            chars: name.chars().map(|_| src).collect(),
+            text: name,
+            style: TextStyle { bold: true, ..TextStyle::default() },
+        }],
+    };
+    Block::Paragraph {
+        parts: vec![ParaPart::Lines(vec![Item::Word(word)])],
+        indent: false,
+        style: ParaStyle::Center,
+        // `\null\vfil` leaves vertical mode, so `center`'s `\@trivlist`
+        // takes `\partopsep` as well as `\topsep`; `\end{center}` is an
+        // `\@endparenv`, whose `\addvspace{\@topsepadd}` is the whole of
+        // the gap between the head and the body (10/12/13 pt at 10/11/12
+        // pt, plus the body's own `\baselineskip`).
+        env_open: Some(EnvOpen { vmode: true, skips: None }),
+        env_close: true,
+        eject_before: false,
+        vspace_before: 0.0,
+        addvspace_before: 0.0,
+        addvspace_flex: (0.0, 0.0),
+        vspace_flex: (0.0, 0.0),
+        endlist_adjust: 0.0,
+        list: None,
+        sized: None,
+        leading_pt: None,
     }
 }
 
