@@ -5001,7 +5001,14 @@ fn gap_has_list_end(gap: &str) -> Option<&'static str> {
 ///
 /// They matter here only for what their `\end` leaves behind, which is the
 /// same `\endtrivlist` -> `\@endparenv` every list ends with.
-const TRIVLIST_ENVS: [&str; 6] = ["center", "flushleft", "flushright", "quote", "quotation", "verse"];
+///
+/// `verbatim`/`verbatim*` are here for the same reason: `\@verbatim` is
+/// `\trivlist \item\relax ...` and `\endverbatim` is `\endtrivlist`
+/// (latex.ltx). `abstract` is here for its `\end`: article.cls sets its
+/// one-column form as `\small`, a centred head and a `\quotation`, so
+/// `\end{abstract}` is `\endquotation` -> `\endlist` -> `\endtrivlist`.
+const TRIVLIST_ENVS: [&str; 9] =
+    ["center", "flushleft", "flushright", "quote", "quotation", "verse", "verbatim", "verbatim*", "abstract"];
 
 /// Whether `gap` closes an environment whose `\end` is `\endtrivlist`, so
 /// TeX is in vertical mode on the other side of it.

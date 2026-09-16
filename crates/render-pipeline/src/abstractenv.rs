@@ -228,7 +228,9 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
             if let Some(Block::Paragraph { indent, .. }) = blocks.get_mut(first) {
                 *indent = false;
             }
-            blocks.insert(first, section_head_block(texts, document, range));
+            let mut head = section_head_block(texts, document, range);
+            take_lead(&mut blocks[first], &mut head);
+            blocks.insert(first, head);
             superseded.push(span);
             continue;
         }
@@ -256,10 +258,66 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
                 close_skip: Some(small.topsepadd()),
             });
         }
-        blocks.insert(first, head_block(texts, document, range, &small));
+        let mut head = head_block(texts, document, range, &small);
+        take_lead(&mut blocks[first], &mut head);
+        blocks.insert(first, head);
         superseded.push(span);
     }
     superseded
+}
+
+/// Moves the leading vertical skip of the abstract's first body paragraph
+/// onto the head inserted in front of it.
+///
+/// The compiler hangs whatever stood between the previous block and
+/// `\begin{abstract}` — a closing `\end{itemize}`'s `\addvspace\@topsepadd`,
+/// a `\vspace`, a `\newpage` — on the first block of the body, because that
+/// block *was* what followed. Once the head goes in front of it, the head is
+/// what follows, and the skip has to travel with that position: left on the
+/// body it fires a second time below the head, adding the list's closing
+/// `\@topsepadd` on top of the head's own opening `\addvspace` instead of
+/// sharing one with it (`\end{itemize}\begin{abstract}` was 5.305 bp long at
+/// 10 pt, 5.729 at 11 pt, 6.273 at 12 pt; `\end{center}\begin{abstract}`,
+/// whose skip rides on the `center`'s `env_close` rather than on the body,
+/// was already right).
+///
+/// The `\if@twocolumn` branch inserts its `\section*` head the same way and
+/// so takes the same treatment, but measured it changes nothing there: the
+/// heading's own `\@startsection` before-skip already decided where the head
+/// sits, and every two-column probe (10/11/12 pt, after an `itemize`, after
+/// a `center`, and alone) comes out byte-identical with and without this.
+/// It is here because the *position* argument holds for both branches, not
+/// because a measurement asked for it.
+fn take_lead(body: &mut Block, head: &mut Block) {
+    let (
+        Block::Paragraph {
+            eject_before: b_eject,
+            vspace_before: b_vspace,
+            addvspace_before: b_addvspace,
+            addvspace_flex: b_addflex,
+            vspace_flex: b_vflex,
+            endlist_adjust: b_endlist,
+            ..
+        },
+        Block::Paragraph {
+            eject_before: h_eject,
+            vspace_before: h_vspace,
+            addvspace_before: h_addvspace,
+            addvspace_flex: h_addflex,
+            vspace_flex: h_vflex,
+            endlist_adjust: h_endlist,
+            ..
+        },
+    ) = (body, head)
+    else {
+        return;
+    };
+    *h_eject = std::mem::replace(b_eject, false);
+    *h_vspace = std::mem::replace(b_vspace, 0.0);
+    *h_addvspace = std::mem::replace(b_addvspace, 0.0);
+    *h_addflex = std::mem::replace(b_addflex, (0.0, 0.0));
+    *h_vflex = std::mem::replace(b_vflex, (0.0, 0.0));
+    *h_endlist = std::mem::replace(b_endlist, 0.0);
 }
 
 /// `\begin{center}{\bfseries \abstractname\vspace{-.5em}\vspace{\z@}}
