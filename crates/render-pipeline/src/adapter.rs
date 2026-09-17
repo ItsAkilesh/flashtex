@@ -2348,6 +2348,16 @@ pub fn adapt_cached(
         if let Some(m) = split_top_material(&mut blocks, document, open, close) {
             boxed = Some(open);
             top_material = Some((m, Span::in_document(document, open, close + 1)));
+            // The compiler warns on the `[` that its own IR has no
+            // `\@topnewpage` model ("the material is typeset as ordinary
+            // text instead, brackets included") and deliberately leaves the
+            // tokens where they stand so a renderer that *does* have the box
+            // can cut them back out. This is that renderer, and it just did:
+            // the warning describes an output this pipeline does not
+            // produce, so it is superseded the way `abstract`'s is. The
+            // unboxed case below supersedes it too, replacing it with the
+            // typed `twocolumn_top_material` limitation.
+            superseded.push(Span::in_document(document, open, open));
         }
     }
     // Every optional argument that did *not* become a box: one on a
@@ -2372,6 +2382,11 @@ pub fn adapt_cached(
                  is set in the first column instead, brackets included"
                     .to_string(),
             ));
+            // The compiler's own warning on the same `[` says the same fact
+            // less precisely (it cannot know whether this pipeline boxed the
+            // material); this typed limitation replaces it, so the reader
+            // sees one diagnostic per `\twocolumn[`, not two.
+            superseded.push(Span::in_document(flashtex_compiler::DocumentId(entry), open, open));
         }
     }
     let page_starts = clear_page_blocks(texts, &blocks);
