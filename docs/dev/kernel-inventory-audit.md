@@ -13,9 +13,9 @@ This audit was originally written at commit `06007472` (2026-09-14T08:39:56Z) an
 | | original | current (`dbe3cac8`) | current (this revision) | resolved | moved | still valid |
 | --- | --- | --- | --- | --- | --- | --- |
 | Table 1A (unimplemented) | 153 | 125 | 103 | 22 | 6 → Table 2 | 125 |
-| Table 1B (falsely-flagged) | 61 | 44 | 68 | 16 | 1 → Table 2 | 44 |
+| Table 1B (falsely-flagged) | 61 | 44 | 74 | 16 | 1 → Table 2 | 44 |
 | Table 2 (untested) | 41 | 7 | 6 | 41 | — | 0 carried over; 7 new |
-| **unimplemented total (1A+1B)** | **214** | **169** | **171** | | | |
+| **unimplemented total (1A+1B)** | **214** | **169** | **177** | | | |
 
 86 of the original 255 rows (about a third) changed status in roughly 24 hours. The four rows the independent review flagged (`\hrulefill`, `\dotfill`, `\includeonly` — all Table 1A → resolved; `\displaystyle` — Table 2 → resolved) are among the 79 fully resolved rows, not the whole story: 7 more Table 1A/1B rows are now implemented but still untested (moved into the new Table 2), and dozens of others besides the four named ones flipped.
 
@@ -56,7 +56,7 @@ A third review named 6 canonical rows still missing from every table with high c
 
 **On the remaining ~250 unlisted rows**: a mechanical first-pass sweep (bare `\name` in body text, `\begin{name}...\end{name}`) was run for completeness-checking purposes, but the overwhelming majority of its ~80 raw hits were the same shape of false alarm just demonstrated above — math-mode commands probed in text mode, tabular commands probed outside a `tabular`, register names probed with the wrong operation. Publishing that raw sweep as findings would very likely add a fourth round of incorrect rows instead of fixing the third round's. This document's own recommendation stands: a real generator needs per-command context templates (math vs. text, preamble vs. body, environment-scoped commands), not a single universal probe — the exact thing three consecutive review rounds have now separately rediscovered by hand.
 
-Net effect on the counts below: Table 1A unchanged at 103, Table 1B 68 → 75 (+7: `table`, `list`, `math`, `titlepage`, `indent`, `symbol`, `leftmargin`), Table 2 unchanged at 6. Unimplemented total (1A+1B): 171 → 178.
+Net effect on the counts below: Table 1A unchanged at 103, Table 1B 68 → 74 (+6: `list`, `math`, `titlepage`, `indent`, `symbol`, `leftmargin`), Table 2 unchanged at 6. Unimplemented total (1A+1B): 171 → 177. (`table` was first added here too, then withdrawn: the round-4 review compiled a full document through the real CLI and `table` with `\caption`/`\label`/`\ref` works — the render pipeline's float pre-pass, `crates/render-pipeline/src/floats.rs:151`, handles it before the compiler's not-implemented list applies. A bare `parser::parse` probe is the wrong context for it, the same trap as the length rows.)
 
 ## Table 1A — kernel names with ZERO matches in `crates/compiler/src/` (103)
 
@@ -166,7 +166,7 @@ Net effect on the counts below: Table 1A unchanged at 103, Table 1B 68 → 75 (+
 | environment | filecontents* | `grep -rnwF -e 'filecontents*' crates/compiler/src/` | (no output) |
 | environment | theindex | `grep -rnwF -e 'theindex' crates/compiler/src/` | (no output) |
 
-## Table 1B — names with matches but NO genuine implementation (75)
+## Table 1B — names with matches but NO genuine implementation (74)
 
 The word grep below returns hits, but every hit was read in context and is spurious: `//` comments, `vocabulary.rs` `KNOWN_UNIMPLEMENTED_*` entries (the compiler's own not-implemented list — itself stale in places, see the revision note above: several names it lists are dispatched *before* the fallback that would ever consult it), SI-unit symbol tables (`siunitx.rs`), the `roman()` numeral table (`parser.rs:5775`), tabular column-alignment words, or unrelated Rust identifiers. The "genuine-impl check" column gives the discriminating grep (empty output) proving no dispatch arm, builtin-table entry, or inventory claim exists.
 
@@ -240,11 +240,10 @@ The word grep below returns hits, but every hit was read in context and is spuri
 | command | capitalnewtie | `grep -rnwF -e 'capitalnewtie' crates/compiler/src/` | sole hit is the `text_builtins.rs:166` doc comment: it aliases `\t`, itself unimplemented (see `t` above) — moved from Table 1A (Revision 3) |
 | command | capitaltie | `grep -rnwF -e 'capitaltie' crates/compiler/src/` | sole hit is the `text_builtins.rs:166` doc comment: it aliases `\t`, itself unimplemented (see `t` above) — moved from Table 1A (Revision 3) |
 | command | capitaltilde | `grep -rnwF -e 'capitaltilde' crates/compiler/src/` | sole hit is the `text_builtins.rs:162` doc comment listing it as deliberately absent (see `capitalacute` above) — moved from Table 1A (Revision 3) |
-| environment | table | `grep -rnwF -e 'table' crates/compiler/src/` | `KNOWN_UNIMPLEMENTED_ENVIRONMENTS` (`vocabulary.rs:115`) and a real dispatch check, `float_type == "table"` (`parser.rs:3631`); probed `\begin{table}...\end{table}`: "environment 'table' is not implemented; its body is typeset as plain text" — added Revision 4 |
 | environment | list | `grep -rnwF -e 'list' crates/compiler/src/` | `KNOWN_UNIMPLEMENTED_ENVIRONMENTS` (`vocabulary.rs:117`); probed `\begin{list}{}{}\item x\end{list}`: "environment 'list' is not implemented; its body is typeset as plain text" — added Revision 4 |
 | environment | math | `grep -rnwF -e 'math' crates/compiler/src/` | `KNOWN_UNIMPLEMENTED_ENVIRONMENTS` (`vocabulary.rs:117`); probed `\begin{math}x\end{math}`: "environment 'math' is not implemented; its body is typeset as plain text" — added Revision 4 |
 | environment | titlepage | `grep -rnwF -e 'titlepage' crates/compiler/src/` | `KNOWN_UNIMPLEMENTED_ENVIRONMENTS` (`vocabulary.rs:116`); the other hits are the `\documentclass[titlepage]` *option*, a different feature (`parser.rs:2377-2379,4348`); probed `\begin{titlepage}x\end{titlepage}`: "environment 'titlepage' is not implemented; its body is typeset as plain text" — added Revision 4 |
-| command | indent | `grep -rnwF -e 'indent' crates/compiler/src/` | `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:48`) and a real dispatch arm, `"indent" if in_preamble` etc. (`parser.rs:4657`); probed `\indent x`: "\indent is recognised but paragraph indentation is not implemented" — added Revision 4 |
+| command | indent | `grep -rnwF -e 'indent' crates/compiler/src/` | `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:48`) and a real dispatch arm, `"indent" if in_preamble` etc. (`parser.rs:3958`); probed `\indent x`: "\indent is recognised but paragraph indentation is not implemented" — added Revision 4 |
 | command | symbol | `grep -rnwF -e 'symbol' crates/compiler/src/` | only non-spurious hit is siunitx's own unrelated `"symbol"` key (`siunitx.rs:344`); probed `\symbol{98}`: "\symbol is not supported by this compiler version" — added Revision 4 |
 | command | leftmargin | `grep -rnwF -e 'leftmargin' crates/compiler/src/` | the register itself (as opposed to enumitem's unrelated same-named `\setlist` key, `parser.rs:4735-4738`, which does work) has no `is_preamble_length`/`is_table_length` entry, so `\setlength{\leftmargin}{...}` in the preamble falls to the generic fallback (`parser.rs:4661-4669`): "\setlength{\leftmargin} is recognised but not implemented here" — added Revision 4 |
 
