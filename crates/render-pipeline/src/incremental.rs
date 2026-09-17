@@ -317,7 +317,7 @@ pub fn block_origin(items: &[Item]) -> Option<(DocumentId, usize)> {
             }
             // A table's cell blocks hold absolute record indices and
             // spans: blocks containing one are never cached.
-            Item::Table(_) | Item::ColorBox(_) | Item::Underline(_) => return None,
+            Item::Table(_) | Item::ColorBox(_) | Item::Underline(_) | Item::TextScript(_) => return None,
             Item::Math { span, .. } => {
                 if !note(&CharSrc {
                     document: span.document,
@@ -457,6 +457,11 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                     hash_items(t, base, h);
                 }
             }
+            Item::Marginpar { span, text } => {
+                (span.start.wrapping_sub(base)).hash(h);
+                (span.end.wrapping_sub(base)).hash(h);
+                hash_items(text, base, h);
+            }
             Item::ColorBox(b) => {
                 format!("{b:?}").hash(h);
             }
@@ -465,6 +470,9 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
             }
             Item::Underline(u) => {
                 format!("{u:?}").hash(h);
+            }
+            Item::TextScript(t) => {
+                format!("{t:?}").hash(h);
             }
             Item::LeaveVmode => {}
         }
@@ -886,6 +894,10 @@ pub fn relocate_items(items: &[Item], delta: isize) -> Vec<Item> {
                 if let Some(t) = text {
                     *t = relocate_items(t, delta);
                 }
+            }
+            Item::Marginpar { span, text } => {
+                shift_span(span, delta);
+                *text = relocate_items(text, delta);
             }
             _ => {}
         }

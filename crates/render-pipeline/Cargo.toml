@@ -27,7 +27,7 @@ path = "src/bin/flashtex-render.rs"
 # (`hash_math`/`shift_math`/`math_grids`/`math_glue_em`/`convert_math_classed`)
 # fail to build. `--no-default-features` still builds against a pinned vendor
 # older than this without the new variants.
-default = ["amsmath-inline", "request-date", "compiler-package-gating", "par-leading", "math-class-override"]
+default = ["amsmath-inline", "request-date", "compiler-package-gating", "par-leading", "math-class-override", "compiler-node-surface", "linebreak-skip"]
 # The compiler's `Nucleus::Text` (`\text{...}` in math) is an isolated
 # candidate (crates/preview-controller/docs/handoffs/hw1-text-candidate/
 # candidate.patch on compiler base 1c02a2bc, not on main nor in
@@ -152,6 +152,9 @@ flashtex-pdf = { path = "vendor/pdf" }
 flashtex-font-resources = { path = "vendor/font-resources" }
 flashtex-project-files = { path = "vendor/project-files" }
 flashtex-vector-graphics = { path = "vendor/vector-graphics" }
+# utf8.def / *.dfu declarations and the NFSS text-command tables, for literal
+# UTF-8 input (`src/inputenc.rs`). Already a dependency of vendor/compiler.
+flashtex-tex-text-encoding = { path = "vendor/tex-text-encoding" }
 # The standard-class + geometry page frame (exact sp). A path to the sibling,
 # not a vendor mirror: a `git archive` of this directory alone must also
 # archive `crates/class-geometry` (zero dependencies) next to it.

@@ -444,11 +444,9 @@ fn unraised_colons_match_pdflatex() {
 /// pdfLaTeX builds mathtools' `\coloneqq` as `\vcentcolon\mathrel{\mkern-1.2mu}=`
 /// (same oracle as `ColonOracle`): the colon rises 0.415bp, the `=` starts
 /// 1.2mu (0.797bp) before the colon's advance ends, and the formula is
-/// `29.43333pt` wide. The pinned compiler still emits the precomposed U+2254
-/// `≔` on the baseline for `\coloneqq`; the compiler change that decomposes it
-/// under mathtools is #529.
+/// `29.43333pt` wide. The compiler decomposes `\coloneqq` this way under
+/// mathtools since #529.
 #[test]
-#[ignore = "needs re-pin past #529 (compiler: \\coloneqq decomposes under mathtools)"]
 fn coloneqq_decomposes_like_mathtools() {
     if !lm_available() {
         return;
