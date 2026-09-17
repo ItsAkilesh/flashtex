@@ -632,7 +632,7 @@ pub enum ShoveDirection {
     Right,
 }
 
-/// amsmath `\intertext{..}` (`amsmath.sty` 1186-1199 `\intertext@`) or
+/// amsmath `\intertext{..}` (`amsmath.sty` 1187-1199 `\intertext@`) or
 /// mathtools `\shortintertext{..}` (`mathtools.sty` 1464-1529): a
 /// `\noindent` paragraph in a `\noalign` between two alignment rows.
 #[derive(Debug, Clone, PartialEq)]
@@ -3067,7 +3067,7 @@ impl P<'_> {
             style: TextStyle::default(),
             space_before: true,
         }];
-        content.extend(self.inlines_from_tokens(tokens, TextStyle::default()));
+        content.extend(self.inlines_from_tokens(tokens, TextStyle::default(), false));
         blocks.push(Block::FigureCaption { content });
         self.finish_block_dependencies();
     }
@@ -3209,7 +3209,7 @@ impl P<'_> {
                     Some(TokenKind::Space)
                 );
                 let style = self.style;
-                para.extend(self.inlines_from_tokens(tokens, style));
+                para.extend(self.inlines_from_tokens(tokens, style, false));
                 if trailing_space {
                     para.push(Inline::Text {
                         text: " ".to_string(),
@@ -3801,7 +3801,7 @@ impl P<'_> {
             if !starred {
                 self.set_current_counter(name, Some(number.clone()));
             }
-            let content = self.inlines_from_tokens(tokens, TextStyle::BOLD);
+            let content = self.inlines_from_tokens(tokens, TextStyle::BOLD, false);
             if content.is_empty() {
                 // A missing/empty heading is already diagnosed where
                 // applicable and has nothing to position. Do not create an
@@ -3979,7 +3979,7 @@ impl P<'_> {
                         Some("typeset the caption text as an ordinary paragraph".into()),
                     ));
                     let style = self.style;
-                    para.extend(self.inlines_from_tokens(tokens, style));
+                    para.extend(self.inlines_from_tokens(tokens, style, false));
                 } else {
                     self.push_float_caption("figure", "Figure", tokens, span, blocks, para);
                 }
@@ -4016,7 +4016,7 @@ impl P<'_> {
                         ));
                     }
                     let style = self.style;
-                    para.extend(self.inlines_from_tokens(tokens, style));
+                    para.extend(self.inlines_from_tokens(tokens, style, false));
                 }
             }
             _ => unreachable!("\\{name} is not in this command family"),
@@ -4140,7 +4140,7 @@ impl P<'_> {
             let (text_tokens, text_span) = self.required_group(name, span.merge(url_span));
             self.note_links_unclickable(span.merge(text_span));
             let style = self.style;
-            para.extend(self.inlines_from_tokens(text_tokens, style));
+            para.extend(self.inlines_from_tokens(text_tokens, style, false));
         }
             _ => unreachable!("\\{name} is not in this command family"),
         }
@@ -4222,7 +4222,7 @@ impl P<'_> {
             self.style = next;
         } else {
             let (tokens, _) = self.required_group(name, span);
-            para.extend(self.inlines_from_tokens(tokens, next));
+            para.extend(self.inlines_from_tokens(tokens, next, false));
         }
     }
 
@@ -4317,9 +4317,9 @@ impl P<'_> {
             let (post, _) = self.required_group(name, span);
             let (nobreak, last) = self.required_group(name, span);
             let style = self.style;
-            let pre = plain_inline_text(&self.inlines_from_tokens(pre, style));
-            let post = plain_inline_text(&self.inlines_from_tokens(post, style));
-            let nobreak = plain_inline_text(&self.inlines_from_tokens(nobreak, style));
+            let pre = plain_inline_text(&self.inlines_from_tokens(pre, style, false));
+            let post = plain_inline_text(&self.inlines_from_tokens(post, style, false));
+            let nobreak = plain_inline_text(&self.inlines_from_tokens(nobreak, style, false));
             para.push(Inline::Discretionary {
                 pre,
                 post,
@@ -5920,7 +5920,7 @@ impl P<'_> {
             let close = if depth == 0 { j - 1 } else { j };
             let argument = tokens[open + 1..close].to_vec();
             let before = std::mem::take(&mut segment);
-            out.extend(self.inlines_from_tokens(before, style));
+            out.extend(self.inlines_from_tokens(before, style, false));
             self.document_global_state = true;
             self.footnote_counter += 1;
             let number = match fnsymbol(self.footnote_counter) {
@@ -5947,7 +5947,7 @@ impl P<'_> {
             });
             i = j;
         }
-        out.extend(self.inlines_from_tokens(segment, style));
+        out.extend(self.inlines_from_tokens(segment, style, false));
         out
     }
 
@@ -5974,7 +5974,7 @@ impl P<'_> {
             self.footnote_counter = 0;
             self.set_current_counter("chapter", Some(number));
         }
-        let content = self.inlines_from_tokens(tokens, TextStyle::BOLD);
+        let content = self.inlines_from_tokens(tokens, TextStyle::BOLD, false);
         if content.is_empty() {
             self.current_dependencies.clear();
         } else {
@@ -6035,7 +6035,7 @@ impl P<'_> {
     /// empty, and the box then holds nothing for that line.
     fn letter_date_inlines(&mut self, span: Span) -> Vec<Inline> {
         match self.date.clone() {
-            Some((tokens, _)) => self.inlines_from_tokens(tokens, TextStyle::default()),
+            Some((tokens, _)) => self.inlines_from_tokens(tokens, TextStyle::default(), false),
             None => vec![Inline::Text {
                 text: self.today.latex_today(),
                 span,
@@ -6077,7 +6077,7 @@ impl P<'_> {
         let mut lines: Vec<Vec<Inline>> = Vec::new();
         let mut gaps: Vec<f64> = Vec::new();
         if let Some((address, _)) = self.letter.address.clone() {
-            let address = self.inlines_from_tokens(address, TextStyle::default());
+            let address = self.inlines_from_tokens(address, TextStyle::default(), false);
             let address = split_at_line_breaks(address);
             let last = address.len().saturating_sub(1);
             for (index, line) in address.into_iter().enumerate() {
@@ -6105,7 +6105,7 @@ impl P<'_> {
             .letter
             .recipient
             .clone()
-            .map(|(tokens, _)| self.inlines_from_tokens(tokens, TextStyle::default()))
+            .map(|(tokens, _)| self.inlines_from_tokens(tokens, TextStyle::default(), false))
             .unwrap_or_default();
         let recipient_span = self
             .letter
@@ -6127,7 +6127,7 @@ impl P<'_> {
 
         // 5. the salutation: an ordinary paragraph, so it justifies and
         // wraps like the body that follows it.
-        let content = self.inlines_from_tokens(tokens, TextStyle::default());
+        let content = self.inlines_from_tokens(tokens, TextStyle::default(), false);
         if !content.is_empty() {
             blocks.push(Block::Paragraph(content));
             self.finish_block_dependencies();
@@ -6150,7 +6150,7 @@ impl P<'_> {
         let (tokens, argument_span) = self.required_group("closing", span);
         let full = span.merge(argument_span);
         let parskip = letter_parskip_pt(self.class_size_pt);
-        let closing = self.inlines_from_tokens(tokens, TextStyle::default());
+        let closing = self.inlines_from_tokens(tokens, TextStyle::default(), false);
         let mut lines = split_at_line_breaks(closing);
         let mut gaps = vec![0.0; lines.len()];
         // `\ifx\@empty\fromsig \fromname \else \fromsig \fi`.
@@ -6160,7 +6160,7 @@ impl P<'_> {
             .clone()
             .or_else(|| self.letter.name.clone());
         if let Some((signature, _)) = signature {
-            let signature = self.inlines_from_tokens(signature, TextStyle::default());
+            let signature = self.inlines_from_tokens(signature, TextStyle::default(), false);
             let signature = split_at_line_breaks(signature);
             if let Some(last) = gaps.last_mut() {
                 *last = letter_signature_gap_pt(self.class_size_pt);
@@ -6222,7 +6222,7 @@ impl P<'_> {
             style: TextStyle::default(),
             space_before: false,
         }];
-        content.extend(self.inlines_from_tokens(tokens, TextStyle::default()));
+        content.extend(self.inlines_from_tokens(tokens, TextStyle::default(), false));
         blocks.push(Block::Paragraph(content));
         self.finish_block_dependencies();
     }
@@ -7404,7 +7404,7 @@ impl P<'_> {
                 {
                     self.i += 1;
                     let (tokens, argument_span) = self.required_group(command, token.span);
-                    let content = self.inlines_from_tokens(tokens, TextStyle::default());
+                    let content = self.inlines_from_tokens(tokens, TextStyle::default(), true);
                     // `\ifvmode\else\\\@empty\fi`: a row holding material is
                     // ended first; right after `\\` the text joins the next row.
                     let blank = |t: &Token| {
@@ -8842,7 +8842,12 @@ impl P<'_> {
         }
     }
 
-    fn inlines_from_tokens(&mut self, mut tokens: Vec<InputToken>, base: TextStyle) -> Vec<Inline> {
+    fn inlines_from_tokens(
+        &mut self,
+        mut tokens: Vec<InputToken>,
+        base: TextStyle,
+        if_display_context: bool,
+    ) -> Vec<Inline> {
         // `\xspace` from a macro body inside a heading, caption or style
         // argument never reaches the main token loop, so its lookahead runs
         // here on the same flattened token list instead.
@@ -9118,8 +9123,14 @@ impl P<'_> {
                 // `\intertext`: without this the delimiters fell through to
                 // the catch-all below and the formula typeset as plain text.
                 TokenKind::MathShift | TokenKind::InlineMathOpen | TokenKind::DisplayMathOpen => {
-                    skip_until =
-                        self.flat_math(&expanded, index, style, space_before, &mut content);
+                    skip_until = self.flat_math(
+                        &expanded,
+                        index,
+                        style,
+                        space_before,
+                        if_display_context,
+                        &mut content,
+                    );
                 }
                 TokenKind::Verb { text, starred, .. } => content.push(Inline::Verbatim {
                     text: verbatim_display(text, *starred),
@@ -9162,6 +9173,12 @@ impl P<'_> {
     /// Inline or display math inside `inlines_from_tokens` (a heading, a
     /// caption, a style argument or `\intertext`): `$...$` (with `$$...$$`
     /// display, as in the main token loop), `\(...\)` and `\[...\]`.
+    /// `if_display_context` (true only for `\intertext`/`\shortintertext`)
+    /// reports amsmath's `\if@display` conditional, which stays true inside
+    /// `\intertext` because it sits in a `\noalign` inside the surrounding
+    /// display. The math itself stays text-style inline, so `Inline::Math`
+    /// keeps the delimiter-derived `display` below and only the math-list
+    /// parse sees the conditional; every other caller passes `false`.
     /// Returns the first index after the formula; an unclosed formula is
     /// diagnosed and parsed through the end of the token list.
     fn flat_math(
@@ -9170,6 +9187,7 @@ impl P<'_> {
         open: usize,
         style: TextStyle,
         space_before: bool,
+        if_display_context: bool,
         content: &mut Vec<Inline>,
     ) -> usize {
         let open_span = expanded[open].token.span;
@@ -9180,12 +9198,21 @@ impl P<'_> {
                 expanded.get(open + 1).map(|input| &input.token.kind),
                 Some(TokenKind::MathShift)
             );
+        // `\intertext`/`\shortintertext` sit in a `\noalign` inside the
+        // surrounding display, so amsmath's `\if@display` conditional stays
+        // true there (pdflatex gives `$a\pmod{b}$` the 18mu opening) even
+        // though the math itself stays text-style inline: `display` is
+        // purely delimiter-derived (`\[...\]`/`$$...$$` true, `$...$` and
+        // `\(...\)` false), and `if_display` ORs in the surrounding
+        // conditional for the math-list parse only. Headings, captions and
+        // style arguments (which pass `false`) are unchanged.
         let (close, display) = match &expanded[open].token.kind {
             TokenKind::DisplayMathOpen => (TokenKind::DisplayMathClose, true),
             TokenKind::InlineMathOpen => (TokenKind::InlineMathClose, false),
             _ if doubled => (TokenKind::MathShift, true),
             _ => (TokenKind::MathShift, false),
         };
+        let if_display = display || if_display_context;
         let body_start = if doubled { open + 2 } else { open + 1 };
         // A delimiter inside a text-mode group (notably `$...$` inside
         // `\text{...}`) belongs to the inner formula, not this one — the
@@ -9241,7 +9268,7 @@ impl P<'_> {
             }
             raw.push(input.token.clone());
         }
-        let list = math::parse_tokens_display(&raw, self.math_packages, &mut self.diags, display);
+        let list = math::parse_tokens_display(&raw, self.math_packages, &mut self.diags, if_display);
         let end_span = match found {
             Some(close_at) => {
                 let last = if doubled { close_at + 1 } else { close_at };
@@ -10123,7 +10150,7 @@ impl P<'_> {
             } else {
                 TextStyle::default()
             };
-            let content = self.inlines_from_tokens(tokens, base);
+            let content = self.inlines_from_tokens(tokens, base, false);
             let mut text = String::new();
             for inline in &content {
                 if let Inline::Text {
@@ -13023,10 +13050,51 @@ mod tests {
         );
     }
 
-    /// Math inside `\intertext` stays math: `$x$` (and `\(y\)`) become
-    /// `Inline::Math` instead of being flattened to plain text.
+    /// The first `\intertext` paragraph's inlines of the second align
+    /// row, for a two-row align with one `\intertext`/`\shortintertext`.
+    fn intertext_content(source: &str) -> Vec<Inline> {
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let rows = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(inlines) => Some(inlines),
+                _ => None,
+            })
+            .flatten()
+            .find_map(|i| match i {
+                Inline::MathRows { rows, .. } => Some(rows),
+                _ => None,
+            })
+            .expect("align rows");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[1].intertext.len(), 1);
+        rows[1].intertext[0].content.clone()
+    }
+
+    /// The `em` of the opening-kern space atom \\pmod`/`\\pod`/`\\mod`
+    /// puts right after the preceding atom (`$a\\pmod{b}$` parses as `a`,
+    /// the kern, `(mod`, 6mu, `b`, `)` — the returned atom lands before the
+    /// pending ones): amsmath's
+    /// `\\if@display\\mkern18mu\\else\\mkern8mu\\fi` (resp. 12mu for
+    /// `\\mod`) lands here, so this distinguishes the two branches.
+    fn opening_kern_em(list: &MathList) -> f64 {
+        assert!(list.atoms.len() >= 3, "{:?}", list.atoms);
+        match &list.atoms[1].nucleus {
+            math::Nucleus::Space { em, .. } => *em,
+            other => panic!("expected opening kern atom, got {other:?}"),
+        }
+    }
+
+    /// Math inside `\intertext` stays math but stays inline: `$x$` (and
+    /// `\(y\)`) become `Inline::Math` with `display: false` instead of
+    /// being flattened to plain text. pdflatex sets `\intertext`
+    /// paragraphs in text style (issue #798 needs only amsmath's
+    /// `\if@display` conditional, a separate flag); only `\[...\]` and
+    /// `$$...$$` delimiters give `display: true`.
     #[test]
-    fn intertext_keeps_inline_math_as_math() {
+    fn intertext_math_stays_inline() {
         let source = "\\begin{align} a &= b \\\\ \\intertext{some $x$ and \\(y\\) text} c &= d \\end{align}";
         let parsed = parse(source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
@@ -13050,11 +13118,22 @@ mod tests {
         let maths: Vec<usize> = content
             .iter()
             .filter_map(|i| match i {
-                Inline::Math { list, display: false, .. } => Some(list.atoms.len()),
+                Inline::Math {
+                    list,
+                    display: false,
+                    ..
+                } => Some(list.atoms.len()),
                 _ => None,
             })
             .collect();
         assert_eq!(maths, vec![1, 1]);
+        // No formula is recorded as a display formula.
+        assert!(
+            !content
+                .iter()
+                .any(|i| matches!(i, Inline::Math { display: true, .. })),
+            "{content:?}"
+        );
         let words: Vec<&str> = content
             .iter()
             .filter_map(|i| match i {
@@ -13063,6 +13142,132 @@ mod tests {
             })
             .collect();
         assert_eq!(words, ["some", "and", "text"]);
+    }
+
+    /// `$...$` inside `\intertext` takes amsmath's `\if@display` branch
+    /// (issue #798): pdflatex sets `\intertext{$a\pmod{b}$}` with the
+    /// display 18mu opening (`\mkern18mu`, 49.855pt at 10pt), while the
+    /// formula itself stays text-style inline (`display: false`).
+    #[test]
+    fn intertext_pmod_takes_the_display_branch() {
+        let source = "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\begin{align} a &= b \\\\ \\intertext{$a\\pmod{b}$} c &= d \\end{align}\n\\end{document}";
+        let content = intertext_content(source);
+        assert_eq!(content.len(), 1);
+        match &content[0] {
+            Inline::Math {
+                display: false,
+                list,
+                ..
+            } => assert_eq!(
+                opening_kern_em(list),
+                math::QUAD_EM,
+                "18mu \\if@display opening"
+            ),
+            other => panic!("expected inline math, got {other:?}"),
+        }
+    }
+
+    /// The negative: top-level `$a\pmod{b}$` (main token loop, not
+    /// `\intertext`) keeps the narrower 8mu opening (44.29967pt at 10pt).
+    #[test]
+    fn toplevel_pmod_takes_the_inline_branch() {
+        let source = "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n$a\\pmod{b}$\n\\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let list = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(inlines) => Some(inlines),
+                _ => None,
+            })
+            .flatten()
+            .find_map(|i| match i {
+                Inline::Math {
+                    list,
+                    display: false,
+                    ..
+                } => Some(list),
+                _ => None,
+            })
+            .expect("inline math");
+        assert_eq!(
+            opening_kern_em(list),
+            math::AMSMATH_POD_MU / 18.0,
+            "8mu inline opening"
+        );
+    }
+
+    /// `\shortintertext` shares the `\intertext` code path: the same 18mu
+    /// `\if@display` opening for `$a\pmod{b}$`, still text-style inline.
+    #[test]
+    fn shortintertext_pmod_takes_the_display_branch() {
+        let source = "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\begin{align} a &= b \\\\ \\shortintertext{$a\\pmod{b}$} c &= d \\end{align}\n\\end{document}";
+        let content = intertext_content(source);
+        assert_eq!(content.len(), 1);
+        match &content[0] {
+            Inline::Math {
+                display: false,
+                list,
+                ..
+            } => assert_eq!(
+                opening_kern_em(list),
+                math::QUAD_EM,
+                "18mu \\if@display opening"
+            ),
+            other => panic!("expected inline math, got {other:?}"),
+        }
+    }
+
+    /// `\mod` keys on the same conditional (issue #798 names it too):
+    /// 18mu inside `\intertext`, 12mu at top level, both text-style inline
+    /// where the formula is `$...$`.
+    #[test]
+    fn intertext_mod_takes_the_display_branch() {
+        let source = "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\begin{align} a &= b \\\\ \\intertext{$x\\mod{y}$} c &= d \\end{align}\n\\end{document}";
+        let content = intertext_content(source);
+        assert_eq!(content.len(), 1);
+        match &content[0] {
+            Inline::Math {
+                display: false,
+                list,
+                ..
+            } => assert_eq!(
+                opening_kern_em(list),
+                math::AMSMATH_MOD_DISPLAY_OPENING_MU / 18.0,
+                "18mu \\if@display opening"
+            ),
+            other => panic!("expected inline math, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn toplevel_mod_takes_the_inline_branch() {
+        let source = "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n$x\\mod{y}$\n\\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let list = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(inlines) => Some(inlines),
+                _ => None,
+            })
+            .flatten()
+            .find_map(|i| match i {
+                Inline::Math {
+                    list,
+                    display: false,
+                    ..
+                } => Some(list),
+                _ => None,
+            })
+            .expect("inline math");
+        assert_eq!(
+            opening_kern_em(list),
+            math::AMSMATH_MOD_OPENING_MU / 18.0,
+            "12mu inline opening"
+        );
     }
 
     /// A `$` inside `\text{...}` does not close the surrounding inline
