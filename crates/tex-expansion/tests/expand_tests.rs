@@ -786,6 +786,40 @@ fn newtheorem_rejection_does_not_leak_a_pending_global() {
 }
 
 #[test]
+fn newtheorem_name_is_fully_expanded_before_the_collision_check() {
+    // The name argument is a `\csname`-equivalent context in real TeX: `\n`
+    // expands to `def` before anything checks it, colliding with `\def`
+    // exactly like a literal `\newtheorem{def}{D}` would (review finding
+    // #1), not the unexpanded control sequence name "n".
+    let src = r"\def\n{def}\newtheorem{\n}{D}";
+    let r = expand_str(src);
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\def already defined."], "{messages:?}");
+    // The diagnostic still points at `\newtheorem` in the real source, not
+    // a synthetic span from the macro body that supplied its expanded name.
+    let d = &r.diagnostics[0];
+    assert_eq!(&src[d.span.start as usize..d.span.end as usize], r"\newtheorem", "{d:?}");
+}
+
+#[test]
+fn newtheorem_rejection_is_undone_when_its_group_closes() {
+    // "widget" only collided with a *local* `\def`; once that group closes,
+    // a repeat `\newtheorem{widget}{...}` outside it must succeed cleanly,
+    // and `\begin{widget}`/`\end{widget}` afterwards must actually reach
+    // the typesetter rather than staying silently skipped by a stale
+    // rejection marker (review finding #3: the marker must be
+    // group-scoped, exactly like the local `\def` that caused it).
+    let r = expand_str(
+        r"{\def\widget{}\newtheorem{widget}{Widget}}\newtheorem{widget}{Widget}\begin{widget}\end{widget}",
+    );
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\widget already defined."], "{messages:?}");
+    let out = text(&r.tokens);
+    assert!(out.contains(r"\widget "), "{out:?}");
+    assert!(out.contains(r"\endwidget "), "{out:?}");
+}
+
+#[test]
 fn newtheorem_second_declaration_of_the_same_name_errors() {
     // Like `\newenvironment`, a repeated declaration keeps the first
     // definition and reports the collision once per redeclaration.

@@ -167,14 +167,6 @@ pub(crate) struct State {
     pub group_limit_reported: bool,
     /// The same for "conditional nesting limit exceeded".
     pub conditional_limit_reported: bool,
-    /// Environment names whose `\newtheorem` declaration was rejected for
-    /// colliding with an already-defined command (e.g. `\newtheorem{def}`).
-    /// The declaration is swallowed, so `\begin{name}`/`\end{name}` would
-    /// otherwise execute the shadowed primitive (`\def`) and fail with a
-    /// generic "Missing control sequence inserted."; instead they are
-    /// skipped silently — the declaration's diagnostic already reported
-    /// the collision.
-    pub rejected_theorem_envs: HashSet<String>,
 }
 
 impl State {
@@ -216,7 +208,6 @@ impl State {
             pending_font_switch,
             group_limit_reported,
             conditional_limit_reported,
-            rejected_theorem_envs,
         } = self;
         conditionals == &new.conditionals
             && *pending_global == new.pending_global
@@ -238,7 +229,6 @@ impl State {
             && (Rc::ptr_eq(font_switches, &new.font_switches) || font_switches == &new.font_switches)
             && *group_limit_reported == new.group_limit_reported
             && *conditional_limit_reported == new.conditional_limit_reported
-            && rejected_theorem_envs == &new.rejected_theorem_envs
             && match (after_assignment, &new.after_assignment) {
                 (None, None) => true,
                 (Some(a), Some(b)) => crate::scopes::token_eq_mapped(a, b, f),
@@ -3173,7 +3163,10 @@ impl Engine {
         if star {
             back.push(Pending { tok: Token::new(TokenKind::Char('*', CatCode::Other), span), frozen: false, origin: None });
         }
-        let name_group = self.scan_through_group();
+        // The name is a `\csname`-equivalent context in real TeX: fully
+        // expanded, so `\def\n{def}\newtheorem{\n}{D}` behaves exactly
+        // like `\newtheorem{def}{D}` (issue tracked review finding #1).
+        let name_group = self.scan_through_group(true);
         let name = name_group
             .iter()
             .filter(|p| {
@@ -3190,7 +3183,10 @@ impl Engine {
         if let Some(shared) = self.scan_through_bracket() {
             back.extend(shared);
         }
-        back.extend(self.scan_through_group());
+        // The caption body is stored as a token list and only expanded
+        // when a theorem heading is actually typeset, same as its `back`
+        // treatment below: raw, not expanded here.
+        back.extend(self.scan_through_group(false));
         if let Some(within) = self.scan_through_bracket() {
             back.extend(within);
         }
@@ -3200,7 +3196,7 @@ impl Engine {
             // collision): the typesetter must never see the bad name, and
             // `\begin{name}`/`\end{name}` below skip it silently instead
             // of executing the shadowed command.
-            self.st.rejected_theorem_envs.insert(name);
+            self.st.scopes.reject_theorem_env(&name);
             // A pending `\global` (or `\long`/`\outer`/`\protected`, though
             // none of those apply to `\newtheorem`) must not survive a
             // rejected declaration and leak onto whatever command reads
@@ -3246,11 +3242,17 @@ impl Engine {
         self.push_pending(back);
     }
 
-    /// Scan a `{...}` group completely raw (no expansion), returning every
-    /// token *including* the outer braces (and any spaces before them), so
-    /// a `\newtheorem` declaration can be handed back to the input
-    /// untouched. Otherwise mirrors `scan_braced_group_pending(false)`.
-    fn scan_through_group(&mut self) -> Vec<Pending> {
+    /// Scan a `{...}` group, returning every token *including* the outer
+    /// braces (and any spaces before them) with their real spans and
+    /// catcodes, so a `\newtheorem` declaration can be handed back to the
+    /// input untouched -- unlike `scan_braced_group_pending`, which
+    /// discards the delimiters. With `expand` set, inner tokens are read
+    /// through `next_expanding_raw` (real TeX fully expands a `\csname`
+    /// argument, and `\newtheorem`'s name ends up in one): the brace
+    /// tokens themselves are never expandable, so this still returns their
+    /// original delimiters verbatim, only the content between them
+    /// changes. Otherwise mirrors `scan_braced_group_pending(false)`.
+    fn scan_through_group(&mut self, expand: bool) -> Vec<Pending> {
         let mut out = Vec::new();
         loop {
             match self.next_raw() {
@@ -3271,9 +3273,13 @@ impl Engine {
                 None => return out,
             }
         }
+        if expand {
+            self.st.edef_depth += 1;
+        }
         let mut depth = 1i32;
         loop {
-            let pending = match self.next_raw() {
+            let pending = if expand { self.next_expanding_raw() } else { self.next_raw() };
+            let pending = match pending {
                 Some(p) => p,
                 None => break,
             };
@@ -3291,6 +3297,9 @@ impl Engine {
                 }
                 _ => out.push(pending),
             }
+        }
+        if expand {
+            self.st.edef_depth -= 1;
         }
         out
     }
@@ -3369,7 +3378,7 @@ impl Engine {
             self.do_verbatim_env(&name, tok);
             return;
         }
-        if self.st.rejected_theorem_envs.contains(&name) {
+        if self.st.scopes.is_rejected_theorem_env(&name) {
             // The `\newtheorem{name}` declaration was rejected for
             // colliding with an already-defined command, and swallowed:
             // skip the environment silently (no group, no `\name`
@@ -3399,7 +3408,7 @@ impl Engine {
             ]);
             return;
         }
-        if self.st.rejected_theorem_envs.contains(&name) {
+        if self.st.scopes.is_rejected_theorem_env(&name) {
             // Matches the `\begin{name}` skip above: the declaration was
             // rejected and swallowed, so there is no group to close and no
             // `\end{name}` to run.
@@ -6138,7 +6147,6 @@ fn base_state(tex_only: bool) -> State {
         pending_font_switch: None,
         group_limit_reported: false,
         conditional_limit_reported: false,
-        rejected_theorem_envs: HashSet::new(),
     }
 }
 
