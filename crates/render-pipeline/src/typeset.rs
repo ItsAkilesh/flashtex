@@ -1074,7 +1074,10 @@ impl<'a> Context<'a> {
     /// Shapes one styled segment into a box record and a paragraph-layout box.
     fn text_box(&mut self, seg: &adapter::Segment, size: f64) -> Option<(pl::GlyphRun, usize)> {
         let filtered = self.input_filtered(seg);
-        let seg = filtered.as_ref().unwrap_or(seg);
+        let (seg, reject_cuts): (&adapter::Segment, &[usize]) = match &filtered {
+            Some((seg, cuts)) => (seg, cuts),
+            None => (seg, &[]),
+        };
         let span = seg_span(seg)?;
         let face = self.face(seg.style, size, span);
         // Where the input encoding puts a character outside the font's
@@ -1082,8 +1085,11 @@ impl<'a> Context<'a> {
         // is shaped in pieces split around it. Computed here, not in
         // `text_box_shaped`, because it depends on `self.style.input` -- the
         // *document's* input encoding -- which only applies to text that
-        // actually came from `\inputenc`-decoded source.
-        let cuts: Vec<usize> = match &self.style.input {
+        // actually came from `\inputenc`-decoded source. `reject_cuts` are
+        // folded in too: a rejected character breaks the ligature/kern
+        // program in real pdfLaTeX regardless of whether `input_filtered`
+        // dropped it or kept a plain letter for it.
+        let mut cuts: Vec<usize> = match &self.style.input {
             Some(input) if !seg.text.is_ascii() => seg
                 .text
                 .char_indices()
@@ -1092,6 +1098,7 @@ impl<'a> Context<'a> {
                 .collect(),
             _ => Vec::new(),
         };
+        cuts.extend_from_slice(reject_cuts);
         self.text_box_shaped(seg, size, face, &cuts)
     }
 
@@ -1225,8 +1232,11 @@ impl<'a> Context<'a> {
     /// (`crate::inputenc`): each rejected character is reported at its
     /// source as the LaTeX error pdfLaTeX logs, and removed from the text —
     /// or replaced by the letter pdfLaTeX still sets (`\k a` in OT1 sets
-    /// `a`). `None` when the segment keeps every character.
-    fn input_filtered(&mut self, seg: &adapter::Segment) -> Option<adapter::Segment> {
+    /// `a`). Also returns the byte offset of each rejection in the filtered
+    /// text, for `text_box` to fold into its own ligature/kern cuts (the
+    /// error itself breaks the program there in real pdfLaTeX). `None`
+    /// when the segment keeps every character.
+    fn input_filtered(&mut self, seg: &adapter::Segment) -> Option<(adapter::Segment, Vec<usize>)> {
         let input = self.style.input.as_ref()?;
         if seg.text.is_ascii() {
             return None;
@@ -1256,6 +1266,16 @@ impl<'a> Context<'a> {
         }
         let mut text = String::with_capacity(seg.text.len());
         let mut chars = Vec::with_capacity(seg.chars.len());
+        // Real pdfLaTeX's error at a rejected character (`\GenericError`'s
+        // group) is a non-character command, so it ends the ligature/kern
+        // program there: a kept letter does not kern with what preceded the
+        // rejection, and a fully-dropped character still severs its
+        // neighbours from each other. One byte offset per rejection, at the
+        // boundary right before whatever gets appended for it (nothing, if
+        // dropped): `shape_cut` already drops a cut at offset 0, which is
+        // exactly right here too, since there is nothing before it in this
+        // segment to sever.
+        let mut cuts = Vec::new();
         let mut next = rejected.iter().peekable();
         for (i, c) in seg.text.chars().enumerate() {
             let src = seg.chars.get(i).copied();
@@ -1263,6 +1283,7 @@ impl<'a> Context<'a> {
                 Some((at, _, r)) if *at == i => {
                     let keep = r.keep;
                     next.next();
+                    cuts.push(text.len());
                     keep
                 }
                 _ => Some(c),
@@ -1283,7 +1304,7 @@ impl<'a> Context<'a> {
             });
             self.report_once(format!("input:{}:{}:{}", csrc.document.0, csrc.start, c), d);
         }
-        Some(adapter::Segment { text, chars, style: seg.style })
+        Some((adapter::Segment { text, chars, style: seg.style }, cuts))
     }
 
     /// Marks a text box as the continuation of the word box before it.
