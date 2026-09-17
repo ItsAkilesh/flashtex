@@ -2,12 +2,14 @@
 //!
 //! The compiler's `Inline::Marginpar` carries the one-sided `<right>` note;
 //! the running text carries no mark. The pipeline sets the note at
-//! `\footnotesize` in the right margin, `marginparwidth` wide and
-//! `marginparsep` from the text block. The top of the note aligns with the
-//! top of the calling line, clipped to the text area; close-note collision
-//! avoidance is out of scope (overlapping notes are left overlapping).
-//! Two-column documents keep the one-sided placement (the inter-column gap),
-//! and notes met inside floats or `multicols` are reported, not placed.
+//! `\normalsize`, `marginparwidth` wide and `marginparsep` from the text
+//! block. The note's first line's baseline aligns with the calling line's
+//! baseline (`\@addmarginpar`'s `\vtop`), with no vertical clipping to the
+//! text area; consecutive notes on the same page and side are kept at least
+//! `\marginparpush` apart. In `[twocolumn]`, left-column notes go in the
+//! left margin and right-column notes in the right margin (the outer side
+//! of each column); notes met inside floats or `multicols` are reported,
+//! not placed.
 
 use flashtex_compiler::Span;
 use flashtex_paragraph_layout as pl;
@@ -16,7 +18,6 @@ use crate::adapter::{Item as AItem, ParaStyle, TextStyle};
 use crate::display::Diagnostic;
 use crate::pagebuild::{self, VBlock, VItem};
 
-use super::footnotes::FootnoteParams;
 use super::{broken_of, drop_trailing_break, line_extents, vskips_of, BuiltBlock, Context, CLUB_PENALTY, WIDOW_PENALTY};
 
 /// A margin note's text waiting for placement.
@@ -28,23 +29,27 @@ pub struct MarginparSrc {
 
 impl<'a> Context<'a> {
     /// The note of `self.marginpars[m]` set as running text at
-    /// `\footnotesize`, `width` wide. Like [`footnotes`](super::footnotes)
-    /// minus the `\@makefntext` mark box: a plain paragraph.
+    /// `\normalsize` (`\@marginparreset`: `\reset@font\normalsize...`, not
+    /// `\footnotesize` -- GH-505's original guess), `width` wide. Like
+    /// [`footnotes`](super::footnotes) minus the `\@makefntext` mark box: a
+    /// plain paragraph.
     pub(super) fn marginpar_block(&mut self, m: usize, width: f64) -> Option<BuiltBlock> {
-        let fp = FootnoteParams::of(self.style);
+        let size = self.style.body_size_pt;
+        let baselineskip = self.style.baselineskip_pt;
+        let strut_depth = 0.3 * baselineskip;
         let note = self.marginpars.get(m)?.clone();
-        let (mut list, mut recs, labels, mut skips) = self.hlist(&note.items, fp.size, TextStyle::default(), ParaStyle::Plain);
+        let (mut list, mut recs, labels, mut skips) = self.hlist(&note.items, size, TextStyle::default(), ParaStyle::Plain);
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
         let _ = drop_trailing_break(&mut list, &mut recs, &mut skips, ParaStyle::Plain);
-        let mut params = self.line_params(false, fp.baselineskip, ParaStyle::Plain, 0.0);
+        let mut params = self.line_params(false, baselineskip, ParaStyle::Plain, 0.0);
         params.line_width = width;
         let lines = self.break_paragraph(&list, &params, &note.items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
         let mut extents = line_extents(&lines);
         if let Some(last) = extents.last_mut() {
-            last.1 = last.1.max(fp.strut_depth());
+            last.1 = last.1.max(strut_depth);
         }
         let vertical = VBlock {
             lines: extents,
@@ -58,7 +63,7 @@ impl<'a> Context<'a> {
             space_after: None,
             no_interline_first: false,
             no_interline_after: false,
-            baselineskip: Some(fp.baselineskip),
+            baselineskip: Some(baselineskip),
             vskip_after: vskips_of(&lines, &skips),
             broken_penalty: broken_of(&lines),
             pre_space_after: None,
@@ -71,9 +76,36 @@ impl<'a> Context<'a> {
     }
 }
 
+/// Whether a line's `line_dx` offset (from [`assemble`](super::assemble))
+/// places it in the left (outer) column of a `[twocolumn]` document.
+///
+/// `assemble` computes `dx = text_left(counter) - text_x_pt +
+/// columns[col].offset`; `columns[0].offset` is always zero and
+/// `columns[1].offset` is a page-independent constant, so trying both
+/// possible `text_left` values (odd/even) against both columns and taking
+/// the closest match recovers `col` without needing the page's real
+/// (possibly `\twoside`-shifted) counter here.
+fn is_left_column(ctx: &Context, dx: f64) -> bool {
+    let Some(g) = ctx.style.class_geometry.as_deref() else { return false };
+    if !g.frame.twocolumn || g.frame.columns.len() < 2 {
+        return false;
+    }
+    let col1_offset = crate::style::frame_pt(g.frame.columns[1].offset);
+    let bases = [
+        crate::style::frame_pt(g.frame.odd_text_left) - ctx.style.text_x_pt,
+        crate::style::frame_pt(g.frame.even_text_left) - ctx.style.text_x_pt,
+    ];
+    bases
+        .into_iter()
+        .flat_map(|base| [(base, true), (base + col1_offset, false)])
+        .min_by(|(a, _), (b, _)| (a - dx).abs().total_cmp(&(b - dx).abs()))
+        .is_some_and(|(_, left)| left)
+}
+
 /// Places every anchored margin note: appends its block to `blocks` and its
-/// lines to the calling line's page, shifted into the right margin by the
-/// per-line offset in `line_dx` (which [`assemble`](super::assemble) applies).
+/// lines to the calling line's page, shifted by the per-line offset in
+/// `line_dx` (which [`assemble`](super::assemble) applies) into the outer
+/// margin of the calling line's column.
 pub(super) fn place(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, pages: &mut pl::Pages, line_dx: &mut [Vec<f64>]) {
     let anchors = std::mem::take(&mut ctx.marginpar_anchors);
     if anchors.is_empty() {
@@ -110,10 +142,24 @@ pub(super) fn place(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, pages: &mut
         }
         return;
     }
-    let fp = FootnoteParams::of(ctx.style);
-    let text_top = ctx.style.text_y_pt;
-    let text_bottom = text_top + ctx.style.text_height_pt;
+    // Tracks each note's bottom (in page-top-relative pt) so the next note
+    // on the same page and side leaves at least `\marginparpush` below it
+    // (`\@addmarginpar`'s own stacking rule; the text area itself is never
+    // clamped against).
+    let mut bottom_of: std::collections::HashMap<(usize, bool), f64> = std::collections::HashMap::new();
     for (rec, m) in anchors {
+        // multicol.sty's own real warning: floats and marginpars are not
+        // allowed inside `multicols`. The diagnostic already fired from the
+        // source scan (`multicol::scan`); this is the actual skip.
+        let in_multicols = ctx.multicol.in_region_body
+            || ctx
+                .marginpars
+                .get(m)
+                .map(|n| n.span)
+                .is_some_and(|span| ctx.multicol.contains(span.document.0, span.start));
+        if in_multicols {
+            continue;
+        }
         let Some(&(bi, li)) = line_of.get(&rec) else {
             let src = ctx.marginpars.get(m).map(|n| vec![ctx.source(n.span)]).unwrap_or_default();
             ctx.diagnostics.push(Diagnostic::warning(
@@ -133,13 +179,11 @@ pub(super) fn place(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, pages: &mut
             continue;
         };
         let Some(b) = ctx.marginpar_block(m, width) else { continue };
-        // Stack the note's lines from a candidate top, measure, then clip
-        // to the text area and stack for real.
         let page_params = pagebuild::PageParams {
             vsize: ctx.style.text_height_pt,
             topskip: ctx.style.topskip_pt,
             maxdepth: ctx.style.maxdepth_pt,
-            baselineskip: fp.baselineskip,
+            baselineskip: ctx.style.baselineskip_pt,
             lineskip: ctx.style.lineskip_pt,
             lineskiplimit: ctx.style.lineskiplimit_pt,
             flushbottom: !ctx.style.raggedbottom,
@@ -165,20 +209,23 @@ pub(super) fn place(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, pages: &mut
             }
             (out, y + d - top)
         };
+        // The note is a `\vtop`: its first line's baseline is the point
+        // `\@addmarginpar` places, i.e. the calling line's own baseline.
+        let (trial, height) = stack(0.0);
+        let Some(&(_, first_baseline, ..)) = trial.first() else { continue };
         let call = &pages.pages[pi].lines[pli];
-        let (_, height) = stack(0.0);
-        let mut top = call.baseline_y - call.height;
-        if top < text_top {
-            top = text_top;
-        }
-        if top + height > text_bottom {
-            top = (text_bottom - height).max(text_top);
+        let dx = line_dx.get(pi).and_then(|d| d.get(pli)).copied().unwrap_or(0.0);
+        let left = is_left_column(ctx, dx);
+        let mut top = call.baseline_y - first_baseline;
+        if let Some(&prev_bottom) = bottom_of.get(&(pi, left)) {
+            top = top.max(prev_bottom + ctx.style.marginparpush_pt);
         }
         let (stacked, _) = stack(top);
-        // The note sits `marginparsep` past the text block's right edge,
-        // riding the calling line's own column offset.
-        let dx = line_dx.get(pi).and_then(|d| d.get(pli)).copied().unwrap_or(0.0);
-        let note_dx = dx + ctx.style.text_width_pt + sep;
+        bottom_of.insert((pi, left), top + height);
+        // The note sits `marginparsep` past the outer edge of the calling
+        // line's own column (the right edge normally, the left edge for a
+        // `[twocolumn]` left-column note).
+        let note_dx = if left { dx - sep - width } else { dx + ctx.style.text_width_pt + sep };
         let nb = blocks.len();
         blocks.push(b);
         for (li2, baseline, h, dp) in stacked {

@@ -1,6 +1,6 @@
 //! Margin notes: `\marginpar{note}` sets the note in the right margin at
-//! `\footnotesize`, `marginparwidth` wide and `marginparsep` past the text
-//! block, its top aligned with the calling line and clipped to the page.
+//! `\normalsize`, `marginparwidth` wide and `marginparsep` past the text
+//! block, its first baseline aligned with the calling line's baseline.
 
 mod common;
 
@@ -82,7 +82,7 @@ fn margin_note_sits_marginparsep_past_the_text_block_within_marginparwidth() {
 }
 
 #[test]
-fn margin_note_is_set_in_footnotesize_near_the_calling_line() {
+fn margin_note_is_set_in_normalsize_near_the_calling_line() {
     if !lm_available() {
         eprintln!("skipping: Latin Modern not installed");
         return;
@@ -91,16 +91,16 @@ fn margin_note_is_set_in_footnotesize_near_the_calling_line() {
     let all = runs(&r);
     let notes = note_runs(&all);
     assert_eq!(notes.len(), 2);
-    // `\footnotesize` at 10pt is 8pt; the body is 10pt.
+    // `\@marginparreset` resets to `\normalsize`, same as the body: 10pt.
     for n in &notes {
-        assert_eq!(n.size, Tick::from_tex_pt(8.0), "note size: {:?}", n.size);
+        assert_eq!(n.size, Tick::from_tex_pt(10.0), "note size: {:?}", n.size);
     }
     let body_size = all.iter().find(|r| r.text == "First").expect("body text").size;
     assert_eq!(body_size, Tick::from_tex_pt(10.0));
-    // The note's top aligns with the calling line's top, so its first
-    // baseline sits within one `\baselineskip` (12pt) of that baseline.
+    // The note is a `\vtop`: its first baseline equals the calling line's
+    // own baseline, exactly (up to floating-point noise).
     let call = all.iter().find(|r| r.text == "and").expect("calling line");
-    assert!((notes[0].baseline - call.baseline).abs() < 12.0 * BP, "note baseline {:.3} vs calling line {:.3}", notes[0].baseline, call.baseline);
+    assert!((notes[0].baseline - call.baseline).abs() < 0.1 * BP, "note baseline {:.3} vs calling line {:.3}", notes[0].baseline, call.baseline);
 }
 
 #[test]
@@ -123,6 +123,72 @@ fn margin_note_follows_a_later_calling_line_not_the_paragraph_top() {
         anchor.baseline,
         first.baseline
     );
-    assert!((notes[0].baseline - anchor.baseline).abs() < 12.0 * BP, "note baseline {:.3} vs calling line {:.3}", notes[0].baseline, anchor.baseline);
+    assert!((notes[0].baseline - anchor.baseline).abs() < 0.1 * BP, "note baseline {:.3} vs calling line {:.3}", notes[0].baseline, anchor.baseline);
     assert!((notes[0].baseline - first.baseline).abs() > 12.0 * BP, "note stuck at paragraph top: {:.3}", notes[0].baseline);
+}
+
+#[test]
+fn marginpars_on_nearby_lines_are_kept_marginparpush_apart() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    // Two notes anchored on adjacent lines: without `\marginparpush`
+    // stacking, both would align to their own calling line and overlap.
+    // Distinct note text (rather than `note_runs`'s fixed "side note") lets
+    // the two notes' runs be told apart.
+    let filler = (0..40).map(|i| format!("word{i}")).collect::<Vec<_>>().join(" ");
+    let r = render_one(&body(&format!(
+        "{filler} first\\marginpar{{alpha beta}} more more more more more more more more second\\marginpar{{gamma delta}} tail."
+    )));
+    let all = runs(&r);
+    let first_note: Vec<&Run> = all.iter().filter(|r| r.text == "alpha" || r.text == "beta").collect();
+    let second_note: Vec<&Run> = all.iter().filter(|r| r.text == "gamma" || r.text == "delta").collect();
+    assert_eq!(first_note.len(), 2, "first note words missing: {:?}", all.iter().map(|r| r.text.clone()).collect::<Vec<_>>());
+    assert_eq!(second_note.len(), 2, "second note words missing: {:?}", all.iter().map(|r| r.text.clone()).collect::<Vec<_>>());
+    let first_bottom = first_note.iter().map(|n| n.baseline).fold(f64::MIN, f64::max);
+    let second_top = second_note.iter().map(|n| n.baseline).fold(f64::MAX, f64::min);
+    assert!(second_top > first_bottom, "second note does not sit below the first: {second_top:.3} vs {first_bottom:.3}");
+    // `\marginparpush` at 10pt is 5pt; allow the depth of the first note's
+    // last line on top of that (a strict baseline-to-baseline bound would
+    // need the line's depth, which these runs don't carry).
+    assert!(second_top - first_bottom >= 5.0 * BP - 0.5, "notes closer than marginparpush: gap {:.3}", second_top - first_bottom);
+}
+
+#[test]
+fn marginpar_inside_multicols_is_reported_and_not_placed() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    let src = "\\documentclass{article}\n\\usepackage{multicol}\n\\begin{document}\n\
+        \\begin{multicols}{2}\nFirst words\\marginpar{side note} and the rest of the paragraph continue here.\n\\end{multicols}\n\
+        \\end{document}\n";
+    let r = render_one(src);
+    assert!(
+        r.v2.diagnostics.iter().any(|d| d.message.contains("marginpars") && d.message.contains("multicols")),
+        "expected a multicols/marginpar warning: {:?}",
+        r.v2.diagnostics.iter().map(|d| d.message.clone()).collect::<Vec<_>>()
+    );
+    let all = runs(&r);
+    assert!(note_runs(&all).is_empty(), "the note was placed despite being inside multicols");
+}
+
+#[test]
+fn marginpar_in_the_left_column_of_a_twocolumn_document_goes_in_the_left_margin() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    let src = "\\documentclass[10pt,twocolumn]{article}\n\\begin{document}\n\
+        First words\\marginpar{side note} and the rest of the paragraph continue here.\n\
+        \\end{document}\n";
+    let r = render_one(src);
+    let all = runs(&r);
+    let notes = note_runs(&all);
+    assert_eq!(notes.len(), 2, "note words missing: {:?}", all.iter().map(|r| r.text.clone()).collect::<Vec<_>>());
+    // The call is early enough to fall in the first (left) column.
+    let body_left = all.iter().find(|r| r.text == "First").expect("body text").x;
+    let note_right = notes.iter().map(|n| n.x + n.width).fold(0.0, f64::max);
+    assert!(note_right < body_left, "left-column note not in the left margin: note right {note_right:.3} vs body left {body_left:.3}");
 }
