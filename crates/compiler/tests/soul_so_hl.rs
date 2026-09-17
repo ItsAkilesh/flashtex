@@ -9,9 +9,12 @@
 //!   23.88893pt vs `\so{ab cd}` = 32.05554pt; `x ab y` = 27.77785pt vs
 //!   `x \so{ab} y` = 34.61125pt).
 //! - `\hl` is a yellow behind-text rule at the argument's natural width
-//!   (`word` and `\hl{word}` are both 21.4167pt, same height; only the
-//!   depth changes, to 3.22914pt = 0.75ex). Single-line only: real soul's
-//!   rule follows each line fragment, which this compiler does not do.
+//!   with `xcolor` loaded (`word` and `\hl{word}` are both 21.4167pt wide;
+//!   the height grows to 1.75ex = 7.5347pt and the depth to 0.75ex =
+//!   3.22914pt). Single-line only: real soul's rule follows each line
+//!   fragment, which this compiler does not do; the interword gaps between
+//!   the fragments are not painted either (one `FidelityNote` warning per
+//!   multi-word `\hl`, see GH-828).
 //! - Without soul, `\so`/`\hl` are ordinary undefined names: a user's own
 //!   `\newcommand` wins exactly as in real LaTeX. Both compose
 //!   (`\hl{\so{..}}`, `\so{\hl{..}}`); both need `\usepackage{soul}` for
@@ -166,9 +169,13 @@ fn so_without_soul_diagnoses_and_keeps_text() {
 
 /// Issue #502: `\hl{text}` is a yellow behind-text rule at the argument's
 /// natural width — not unknown, and not a padded box. Real soul draws the
-/// highlight as an underline-style rule BEHIND the text: 10pt `word` and
-/// `\hl{word}` are both 21.4167pt wide with the same height; only the depth
-/// changes (to 3.22914pt = 0.75ex for the rule below the baseline).
+/// highlight as an underline-style rule BEHIND the text (with `xcolor`
+/// loaded): 10pt `word` and `\hl{word}` are both 21.4167pt wide, but the
+/// height grows to 1.75ex (7.5347pt, covering the ascenders) and the depth
+/// to 0.75ex (3.22914pt below the baseline). Without `xcolor` soul degrades
+/// `\hl` to `\ul` geometry, which is why the old prose — and any probe
+/// taken without `xcolor` — wrongly claims the height stays the content's
+/// own.
 #[test]
 fn hl_with_soul_is_a_natural_width_highlight() {
     let source = soul_doc("Text \\hl{word} here.");
@@ -1045,10 +1052,21 @@ fn so_declaration_spans_segments() {
 #[test]
 fn hl_multiword_inner_space_is_natural() {
     let source = soul_doc("\\hl{a b}");
+    // Round-3 finding 3: the unpainted interword gap warns (one
+    // `FidelityNote` per `\\hl`), so this is no longer silent. The fragment
+    // structure below is unchanged.
+    let diagnostics = parse(&source).diagnostics;
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "one gap warning: {diagnostics:?}"
+    );
+    assert_eq!(diagnostics[0].code, Some(DiagnosticCode::FidelityNote));
     assert!(
-        parse(&source).diagnostics.is_empty(),
-        "silent: {:?}",
-        parse(&source).diagnostics
+        diagnostics[0].message.contains("2 words")
+            && diagnostics[0].message.contains("1 interword gap"),
+        "warning names the unpainted gap: {:?}",
+        diagnostics[0].message
     );
     let inlines = paragraph_inlines(&source);
     let boxes: Vec<_> = inlines
@@ -1089,9 +1107,19 @@ fn hl_multiword_inner_space_is_natural() {
 fn ab_gap(body: &str) -> f64 {
     let source = soul_doc(body);
     let parsed = parse(&source);
+    // Round-3 finding 3's one-shot gap warning is expected for multi-word
+    // `\\hl`; anything else must stay silent.
+    let unexpected: Vec<_> = parsed
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            !(diagnostic.code == Some(DiagnosticCode::FidelityNote)
+                && diagnostic.message.starts_with("\\hl spans"))
+        })
+        .collect();
     assert!(
-        parsed.diagnostics.is_empty(),
-        "{body} silent: {:?}",
+        unexpected.is_empty(),
+        "{body} otherwise silent: {:?}",
         parsed.diagnostics
     );
     let constraints = flashtex_compiler::layout::LayoutConstraints {
@@ -1157,10 +1185,19 @@ fn caption_content(source: &str) -> Vec<Inline> {
 fn hl_long_highlight_breaks_between_word_fragments() {
     let body = "\\hl{aa bb cc dd ee ff}";
     let source = soul_doc(body);
+    // Round-3 finding 3: five unpainted gaps, still one diagnostic.
+    let diagnostics = parse(&source).diagnostics;
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "one gap warning for five gaps: {diagnostics:?}"
+    );
+    assert_eq!(diagnostics[0].code, Some(DiagnosticCode::FidelityNote));
     assert!(
-        parse(&source).diagnostics.is_empty(),
-        "silent: {:?}",
-        parse(&source).diagnostics
+        diagnostics[0].message.contains("6 words")
+            && diagnostics[0].message.contains("5 interword gaps"),
+        "warning names the unpainted gaps: {:?}",
+        diagnostics[0].message
     );
     let inlines = paragraph_inlines(&source);
     let boxes: Vec<_> = inlines
@@ -1221,5 +1258,143 @@ fn flat_caption_keeps_so_spacing() {
             .iter()
             .any(|inline| matches!(inline, Inline::Kern { amount, .. } if amount == &want)),
         "letterskip kern in the caption: {content:?}"
+    );
+}
+
+/// Round-3 finding 1, end to end at 10pt (with `xcolor` loaded): a `\\hl{x}`
+/// line carries the oracle depth below the baseline. The next paragraph's
+/// first baseline therefore sits 3.22916pt (0.75ex) of descent below a
+/// highlight line, versus 2.0pt of nominal descent below a plain `x` line —
+/// a 1.22916pt shift. (The 1.75ex top is realised through the same
+/// underline path — see `soul_highlight_fragment_grows_ascent_to_rule_top`
+/// in `layout.rs` — but Core 14's nominal text ascent always dominates it,
+/// so no line-level shift can expose it here.)
+#[test]
+fn hl_line_carries_oracle_depth_in_layout() {
+    fn second_baseline(first: &str) -> f64 {
+        let source = soul_doc(&format!("{first}\n\nnext"));
+        let parsed = parse(&source);
+        assert!(
+            parsed.diagnostics.is_empty(),
+            "{first} silent: {:?}",
+            parsed.diagnostics
+        );
+        let constraints = flashtex_compiler::layout::LayoutConstraints {
+            font_size_pt: 10.0,
+            ..Default::default()
+        };
+        let pages =
+            flashtex_compiler::layout::layout_with_constraints(&parsed.blocks, constraints);
+        pages
+            .iter()
+            .flat_map(|page| &page.items)
+            .find(|item| item.text == "next")
+            .expect("second paragraph laid out")
+            .baseline_y_pt
+    }
+    let shift = second_baseline("\\hl{x}") - second_baseline("x");
+    assert!(
+        (shift - (3.22916 - 2.0)).abs() < 0.05,
+        "highlight line is 0.75ex deep vs 2.0pt nominal: shift {shift}"
+    );
+}
+
+/// Round-3 finding 3 (diagnostic half): the one-shot warning fires exactly
+/// once per multi-word `\\hl`, names the unpainted gaps, and stays silent
+/// everywhere the fill is complete.
+#[test]
+fn hl_gap_warning_is_one_shot_and_names_gaps() {
+    // Two words, one gap: singular wording, span over the whole `\\hl`.
+    let source = soul_doc("Text \\hl{aa bb} here.");
+    let parsed = parse(&source);
+    assert_eq!(
+        parsed.diagnostics.len(),
+        1,
+        "exactly one warning: {:?}",
+        parsed.diagnostics
+    );
+    let warning = &parsed.diagnostics[0];
+    assert_eq!(warning.code, Some(DiagnosticCode::FidelityNote));
+    assert!(
+        warning.message.contains("2 words")
+            && warning.message.contains("the 1 interword gap")
+            && warning.message.contains("is left unpainted")
+            && warning.message.contains("GH-828"),
+        "names the single unpainted gap: {:?}",
+        warning.message
+    );
+    let span = warning.span.expect("warning points at the highlight");
+    assert_eq!(
+        &source[span.start..span.end],
+        "\\hl{aa bb}",
+        "span covers the whole multi-word highlight"
+    );
+    // Three words, two gaps: plural wording, still exactly one warning.
+    let source = soul_doc("\\hl{aa bb cc}");
+    let diagnostics = parse(&source).diagnostics;
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "one warning for two gaps: {diagnostics:?}"
+    );
+    assert!(
+        diagnostics[0].message.contains("3 words")
+            && diagnostics[0].message.contains("2 interword gaps")
+            && diagnostics[0].message.contains("are left unpainted"),
+        "plural wording: {:?}",
+        diagnostics[0].message
+    );
+    // Complete fills stay silent: a single word, painted argument-edge
+    // spaces, and the all-space argument.
+    for body in ["\\hl{word}", "\\hl{bc }", "\\hl{ bc}", "\\hl{ }"] {
+        let source = soul_doc(body);
+        assert!(
+            parse(&source).diagnostics.is_empty(),
+            "{body} paints fully, so silent: {:?}",
+            parse(&source).diagnostics
+        );
+    }
+}
+
+/// Round-3 finding 2: the user-facing inventory records `\\hl`'s real
+/// `xcolor` geometry (1.75ex above, 0.75ex below — not the old `\\ul`
+/// "0.75ex deeper" claim) and the unpainted-gap limitation.
+#[test]
+fn hl_inventory_description_records_xcolor_geometry() {
+    let inventory = flashtex_compiler::supported::inventory();
+    let hl = inventory
+        .commands
+        .iter()
+        .find(|command| command.name == "hl")
+        .expect("hl inventory entry");
+    assert!(
+        hl.description.contains("1.75ex"),
+        "height is 1.75ex: {:?}",
+        hl.description
+    );
+    assert!(
+        hl.description.contains("0.75ex"),
+        "depth is 0.75ex: {:?}",
+        hl.description
+    );
+    assert!(
+        !hl.description.contains("same height"),
+        "no stale \\ul-geometry claim: {:?}",
+        hl.description
+    );
+    assert!(
+        hl.description.contains("not painted") && hl.description.contains("GH-828"),
+        "gap limitation recorded: {:?}",
+        hl.description
+    );
+    let soul = inventory
+        .packages
+        .iter()
+        .find(|package| package.name == "soul")
+        .expect("soul package entry");
+    assert!(
+        soul.description.contains("1.75ex") && soul.description.contains("not painted"),
+        "package entry agrees: {:?}",
+        soul.description
     );
 }

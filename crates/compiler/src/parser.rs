@@ -511,15 +511,20 @@ pub enum UnderlineGeom {
     /// `rule(2.76805+-2.36806)`; 12pt `rule(3.24167+-2.84167)`.
     Strike,
     /// soul `\hl`: the highlight rule drawn BEHIND the text
-    /// (`\setul{}{2.5ex}`), covering the glyphs and extending below the
-    /// baseline. The fragment's depth grows to the rule bottom while its
-    /// width and height stay the content's own: pdflatex 10pt `word` and
-    /// `\hl{word}` are both 21.4167pt wide with the same height, and only
-    /// the depth changes (to 3.22914pt = 0.75ex). A fragment never breaks
+    /// (`\setul{}{2.5ex}` with `xcolor` loaded), covering the glyphs and
+    /// extending below the baseline. The fragment's width stays the
+    /// content's own, but its height AND depth both grow to the rule: with
+    /// `xcolor` loaded, pdflatex 10pt `\hl{word}` is 21.4167pt wide (like
+    /// `word`), 7.5347pt tall (1.75ex above the baseline, covering the
+    /// ascenders) and 3.22914pt deep (0.75ex below). Without `color` or
+    /// `xcolor` loaded `soul-ori.sty` degrades `\hl` to plain `\ul`
+    /// geometry instead, which is why a probe taken without `xcolor`
+    /// misreports the height as the content's own. A fragment never breaks
     /// within itself; a multi-word `\hl` is one fragment per word,
     /// breakable between the fragments (real soul's rule also follows each
     /// line fragment instead — the render-pipeline painting of a
-    /// line-broken highlight stays a known follow-up, see `\hl`).
+    /// line-broken highlight stays a known follow-up, see `\hl`, see
+    /// GH-828).
     SoulHighlight,
 }
 
@@ -567,18 +572,24 @@ impl UnderlineGeom {
     }
 }
 
-/// How far below the baseline soul's `\hl` rule reaches, in ex. 10pt cmr:
-/// 0.75 * 4.30554pt = 3.22914pt, the measured `\hl{word}` depth.
+/// How far below the baseline soul's `\hl` rule reaches, in ex, with
+/// `xcolor` loaded. 10pt cmr: 0.75 * 4.30554pt = 3.22914pt, the measured
+/// `\hl{word}` depth.
 const SOUL_HIGHLIGHT_DEPTH_EX: f64 = 0.75;
 
-/// How far above the baseline soul's `\hl` rule reaches, in ex: 1.75ex.
-/// 10pt cmr: 1.75 * 4.30554pt = 7.5347pt above the baseline; 12pt cmr
-/// (x-height 5.16667pt): 9.0417pt. Together with
+/// How far above the baseline soul's `\hl` rule reaches, in ex, with
+/// `xcolor` loaded: 1.75ex. 10pt cmr: 1.75 * 4.30554pt = 7.5347pt above
+/// the baseline; 12pt cmr (x-height 5.16667pt): 9.0417pt. Together with
 /// [`SOUL_HIGHLIGHT_DEPTH_EX`] (0.75ex below) this is soul's
-/// `\setul{}{2.5ex}` rule. The depth arm extends the fragment below the
-/// baseline in both layouts; the top arm rides on the wrapping zero-sep
-/// color box as [`SoulHighlightExtents`] so the background paint path can
-/// extend the yellow fill above the glyphs (round-2 finding 3).
+/// `\setul{}{2.5ex}` rule. (Without `color`/`xcolor` `soul-ori.sty`
+/// degrades `\hl` to `\ul` geometry, so probes taken without `xcolor`
+/// report the content height instead.) The depth arm extends the fragment
+/// below the baseline in both layouts; the top arm extends the fragment
+/// above the baseline through the layout's underline path (see GH-828)
+/// and additionally rides on the wrapping zero-sep color box as
+/// [`SoulHighlightExtents`] so the render-pipeline background paint path
+/// can extend the yellow fill above the glyphs once it consumes it
+/// (round-2 finding 3; pipeline consumption still pending, see GH-828).
 const SOUL_HIGHLIGHT_TOP_EX: f64 = 1.75;
 
 /// How far past the content on each side soul's `\hl` fill reaches, in TeX
@@ -610,10 +621,13 @@ pub struct Underline {
 }
 
 /// soul `\hl` highlight extents carried on the background-paint node
-/// (round-2 finding 3): the wrapping zero-separation `ColorBox` paints its
-/// yellow fill from the content bounds, which never reach soul's highlight
-/// top above the glyphs. The fill must extend by these instead. `None` on
-/// an ordinary xcolor box.
+/// (round-2 finding 3, see GH-828): the wrapping zero-separation
+/// `ColorBox` paints its yellow fill from the content bounds, which never
+/// reach soul's highlight top above the glyphs. The render-pipeline fill
+/// must extend by these instead once it consumes them (still pending).
+/// The compiler's own layouts already realise the top through the
+/// fragment's underline geometry, so only the downstream paint hook waits.
+/// `None` on an ordinary xcolor box.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SoulHighlightExtents {
     /// How far above the baseline the yellow fill reaches, in ex (soul's
@@ -9214,6 +9228,13 @@ impl P<'_> {
     /// collapse to one, as in TeX; spaces nested inside groups keep their
     /// natural boxed glue. A fragment's span covers its word's bytes, so the
     /// layouts read the natural gaps from the source between the fragments.
+    ///
+    /// Known limitation (round-3 finding 3, see GH-828): those interword
+    /// gaps are ordinary source glue outside any highlight box, so real
+    /// soul's continuous mid-line fill renders here as one yellow patch per
+    /// word with unpainted gutters between them. A multi-word `\hl` therefore
+    /// emits one `FidelityNote` diagnostic naming the unpainted gaps; the
+    /// inventory string for `\hl` records the same limitation.
     fn soul_hl_fragments(
         &mut self,
         tokens: &[InputToken],
@@ -9248,6 +9269,26 @@ impl P<'_> {
                 return vec![soul_highlight(content, full, space_before)];
             }
             return Vec::new();
+        }
+        if words.len() > 1 {
+            // Round-3 finding 3 (see GH-828): one diagnostic per `\hl`,
+            // however many gaps it holds. Single-word highlights (including
+            // ones with painted argument-edge spaces) stay silent.
+            let gaps = words.len() - 1;
+            self.diags.push(
+                Diagnostic::warning(
+                    format!(
+                        "\\hl spans {} words: the {} interword gap{} between the fragments {} left unpainted (each word paints its own fragment; continuous mid-line fill is tracked, see GH-828)",
+                        words.len(),
+                        gaps,
+                        if gaps == 1 { "" } else { "s" },
+                        if gaps == 1 { "is" } else { "are" },
+                    ),
+                    Some(full),
+                    Some("painted each word's own fragment and continued".into()),
+                )
+                .with_code(crate::diagnostics::DiagnosticCode::FidelityNote),
+            );
         }
         let first_word = words.first().expect("at least one word").0;
         let last_word = words.last().expect("at least one word").0;
@@ -10855,7 +10896,7 @@ fn soul_glue(em_frac: f64, em_pt: f64, span: Span) -> Inline {
 /// multi-word `\hl` is one of these per word (see `soul_hl_fragments`),
 /// breakable between the fragments, while real soul's rule also follows
 /// each line fragment — the render-pipeline painting of a line-broken
-/// highlight stays a known follow-up.
+/// highlight stays a known follow-up (see GH-828).
 fn soul_highlight(content: Vec<Inline>, span: Span, space_before: bool) -> Inline {
     let yellow = DeviceColor::from_billionths(ColorSpace::Cmyk, &[0, 0, 1_000_000_000, 0])
         .unwrap_or(DeviceColor::BLACK);
