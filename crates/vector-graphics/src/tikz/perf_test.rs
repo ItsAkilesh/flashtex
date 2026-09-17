@@ -14,7 +14,7 @@
 //!
 //! Run with (prefer `--release`; the machine is shared, keep `CARGO_BUILD_JOBS`
 //! low):
-//!   CARGO_TARGET_DIR=/Users/dqi26/flashtex/target-tikzblank CARGO_BUILD_JOBS=4 \
+//!   CARGO_BUILD_JOBS=4 \
 //!     cargo test -p flashtex-vector-graphics --release \
 //!     tikz::perf_test -- --ignored --nocapture
 
