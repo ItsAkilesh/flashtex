@@ -355,3 +355,71 @@ fn math_mode_tag_reports_the_text_font_gap_downstream() {
     assert!(texts.contains(&"α"), "{texts:?}");
     assert_eq!(eqref_values(source, &output), ["(α)"]);
 }
+
+#[test]
+fn multline_middle_row_tag_resolves_every_label_to_the_tag() {
+    let source = concat!(
+        r"\documentclass{article}",
+        r"\usepackage{amsmath}",
+        r"\begin{document}",
+        r"\begin{multline} a + a \label{m:first} \\ b + b \tag{B}\label{m:mid} \\ c + c \label{m:last} \end{multline}",
+        r"\begin{equation} d = 1 \label{after} \end{equation}",
+        r"See \eqref{m:first}, \eqref{m:mid}, \eqref{m:last} and \eqref{after}.",
+        r"\end{document}",
+    );
+    // pdflatex oracle (TeX Live 2026 `/Library/TeX/texbin/pdflatex`,
+    // preamble `\documentclass{article}\usepackage{amsmath}`, two passes):
+    // the middle-row tag prints on the LAST row (`c+c   (B)` at the last
+    // row's baseline), the following equation is (1), and `.aux` records
+    // the middle-row label as `{{B}}` — every label in the environment
+    // means the environment's single tag, whichever row it was typed on.
+    // (Strict pdflatex drops all but the last of several `\label`s with a
+    // `Multiple \label's` error; this engine keeps every label, so each
+    // one must still read the tag.)
+    assert_eq!(math_row_numbers(source), [None, None, None]);
+    assert_eq!(equation_numbers(source), [Some("1".to_string())]);
+    assert_eq!(
+        label_values(source),
+        [
+            ("m:first".to_string(), "B".to_string()),
+            ("m:mid".to_string(), "B".to_string()),
+            ("m:last".to_string(), "B".to_string()),
+            ("after".to_string(), "1".to_string()),
+        ]
+    );
+    let output = compile(source);
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(eqref_values(source, &output), ["(B)", "(B)", "(B)", "(1)"]);
+}
+
+#[test]
+fn multline_label_on_early_row_reads_the_last_row_number() {
+    let source = concat!(
+        r"\documentclass{article}",
+        r"\usepackage{amsmath}",
+        r"\begin{document}",
+        r"\begin{multline} a + a \label{m:first} \\ b + b \\ c + c \end{multline}",
+        r"\begin{equation} d = 1 \label{after} \end{equation}",
+        r"See \eqref{m:first} and \eqref{after}.",
+        r"\end{document}",
+    );
+    // pdflatex oracle (same engine and preamble, two passes): with no
+    // `\tag` the last row takes (1), the following equation is (2), and
+    // `.aux` records the FIRST-row label as `{1}` — a label on any row
+    // reads the environment's single number.
+    assert_eq!(
+        math_row_numbers(source),
+        [None, None, Some("1".to_string())]
+    );
+    assert_eq!(equation_numbers(source), [Some("2".to_string())]);
+    assert_eq!(
+        label_values(source),
+        [
+            ("m:first".to_string(), "1".to_string()),
+            ("after".to_string(), "2".to_string()),
+        ]
+    );
+    let output = compile(source);
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(eqref_values(source, &output), ["(1)", "(2)"]);
+}

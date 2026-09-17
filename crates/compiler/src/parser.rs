@@ -7643,6 +7643,19 @@ impl P<'_> {
         let mut math_rows = Vec::new();
         let mut labels = Vec::new();
         let is_multline = name.starts_with("multline");
+        // A `multline` carries one number/tag for the whole environment,
+        // always on the last row, so a `\label` on ANY row means that
+        // value. The per-row value below reads "0" (the unstepped
+        // counter) for every row but the tag's own — TeX Live 2026
+        // pdflatex instead records `{1}` for a first-row `\label` in an
+        // untagged multline and `{{B}}` for a middle-row `\tag{B}`. Row
+        // labels are stashed until the environment's tag/number is known
+        // (the number only ever lands on the last row, which is parsed
+        // last) and resolved together after the loop. Every other display
+        // keeps the per-row value: each row owns its own number there.
+        let mut multline_labels: Vec<(String, Span)> = Vec::new();
+        let mut multline_tag: Option<String> = None;
+        let mut multline_number: Option<String> = None;
         for (mut cells, unnumbered, row_labels, intertext) in rows {
             let span = cells
                 .iter()
@@ -7689,7 +7702,53 @@ impl P<'_> {
                     number
                 })
             };
-            for (key, label_span) in row_labels {
+            if is_multline {
+                // The first tag in row order wins, mirroring the single
+                // tag the layout prints; the automatic number only ever
+                // lands on the last row, so the last one seen stands.
+                if multline_tag.is_none() {
+                    multline_tag = tag.clone();
+                }
+                if number.is_some() {
+                    multline_number = number.clone();
+                }
+                multline_labels.extend(row_labels);
+            } else {
+                for (key, label_span) in row_labels {
+                    self.document_global_state = true;
+                    if self.seen_labels.insert(key.clone(), label_span).is_some() {
+                        self.diags.push(Diagnostic::warning(
+                            format!("duplicate \\label{{{key}}}; the second definition wins"),
+                            Some(label_span),
+                            Some("replaced the earlier label definition".into()),
+                        ));
+                    }
+                    labels.push(Inline::Label {
+                        key,
+                        value: tag.clone().or(number.clone()).unwrap_or_else(|| {
+                            self.counters.the("equation").unwrap_or_default()
+                        }),
+                        kind: "equation".into(),
+                        span: label_span,
+                    });
+                }
+            }
+            math_rows.push(MathRow {
+                cells,
+                number,
+                span,
+                intertext,
+                shove,
+            });
+        }
+        if is_multline {
+            // One value for the whole environment: the tag wherever it
+            // was typed, else the last row's number, else the running
+            // counter exactly as an unnumbered row read it before.
+            let value = multline_tag.or(multline_number).unwrap_or_else(|| {
+                self.counters.the("equation").unwrap_or_default()
+            });
+            for (key, label_span) in multline_labels {
                 self.document_global_state = true;
                 if self.seen_labels.insert(key.clone(), label_span).is_some() {
                     self.diags.push(Diagnostic::warning(
@@ -7700,20 +7759,11 @@ impl P<'_> {
                 }
                 labels.push(Inline::Label {
                     key,
-                    value: tag.clone().or(number.clone()).unwrap_or_else(|| {
-                        self.counters.the("equation").unwrap_or_default()
-                    }),
+                    value: value.clone(),
                     kind: "equation".into(),
                     span: label_span,
                 });
             }
-            math_rows.push(MathRow {
-                cells,
-                number,
-                span,
-                intertext,
-                shove,
-            });
         }
         if name == "eqnarray" || name == "eqnarray*" {
             // ltmath.dtx `\eqnarray` opens with `\stepcounter{equation}` on
