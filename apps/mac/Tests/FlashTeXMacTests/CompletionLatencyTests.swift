@@ -103,7 +103,13 @@ final class CompletionLatencyTests: XCTestCase {
 
     func testPickupNarrowArrowAndReturnLatencyBestOfN() throws {
         let load = Self.loadAverage1
-        let iterations = 15
+        // 25, not 15: this is a real AppKit round trip (run-loop delivery,
+        // popup on screen), so unlike a pure-compute timing there is no CPU-
+        // time measurement to fall back on when one run is briefly slow.
+        // More attempts give `.best` (the minimum) a fair chance to see an
+        // unbothered run even on a machine with some background noise below
+        // the load-skip threshold, without loosening any bound.
+        let iterations = 25
         var pickup = Stage(), narrow = Stage(), arrow = Stage(), accept = Stage(), compute = Stage()
         var queued = Stage(), lag = Stage(), present = Stage(), keystroke = Stage(), afterPresent = Stage()
         for i in 0..<iterations {
