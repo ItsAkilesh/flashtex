@@ -1115,7 +1115,23 @@ pub fn parse_tokens(
     packages: MathPackages,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> MathList {
-    let (list, unclosed) = parse_tokens_reporting_unclosed(tokens, packages, diagnostics, false);
+    parse_tokens_display(tokens, packages, diagnostics, false)
+}
+
+/// Like [`parse_tokens`], but `display` says whether this list sits inside
+/// a display construct (`\[...\]`, `$$...$$`, `equation`/`align`/...) rather
+/// than inline math (`$...$`) — LaTeX's `\if@display`, which some amsmath
+/// commands (`\mod`) key their spacing on. Every caller that isn't clearly
+/// one or the other keeps calling [`parse_tokens`], which defaults to
+/// inline; that is every existing call site except the three in `parser.rs`
+/// that actually know which construct they are inside.
+pub fn parse_tokens_display(
+    tokens: &[Token],
+    packages: MathPackages,
+    diagnostics: &mut Vec<Diagnostic>,
+    display: bool,
+) -> MathList {
+    let (list, unclosed) = parse_tokens_reporting_unclosed(tokens, packages, diagnostics, false, display);
     if let Some(open) = unclosed {
         diagnostics.push(Diagnostic::error(
             "math group is missing its closing brace",
@@ -1143,6 +1159,7 @@ pub fn parse_tokens_reporting_unclosed(
     packages: MathPackages,
     diagnostics: &mut Vec<Diagnostic>,
     cut_off: bool,
+    display: bool,
 ) -> (MathList, Option<Span>) {
     let split = split_word_tokens(tokens);
     let mut parser = MathParser {
@@ -1156,6 +1173,7 @@ pub fn parse_tokens_reporting_unclosed(
         cut_off,
         open_lefts: 0,
         dropped_lefts: 0,
+        display,
     };
     let list = parser.list(false);
     (list, parser.unclosed)
@@ -1220,6 +1238,12 @@ struct MathParser<'a> {
     /// (their `\right`s are dropped too).
     open_lefts: usize,
     dropped_lefts: usize,
+    /// LaTeX's `\if@display`: this list sits inside a display construct
+    /// (`\[...\]`, `$$...$$`, `equation`/`align`/...) rather than inline
+    /// math (`$...$`). Some amsmath commands (`\mod`) key their spacing on
+    /// it; it does not change for a nested group, script or fraction --
+    /// `\if@display` is LaTeX's outer flag, not TeX's inner math style.
+    display: bool,
 }
 
 impl MathParser<'_> {
@@ -2148,12 +2172,14 @@ impl MathParser<'_> {
             // the same one token `required_group` takes.
             //
             // `\if@display` is false inside `$...$` even under
-            // `\displaystyle` — it is `\everydisplay` that sets it — and this
-            // compiler has no display flag on the atom, exactly as `\pmod`
-            // records, so 12mu is the definition that applies. `$\displaystyle
-            // x\mod{y}$` measures 40.14336, the inline number, which is what
-            // makes that the right one to hardcode; real display math
-            // (`\[x\mod{y}\]`) is the 18mu case and is the residual.
+            // `\displaystyle` — it is `\everydisplay` that sets it, i.e. it
+            // tracks the *outer* display/inline construct (`self.display`,
+            // threaded from `parser.rs`'s `finish_math`/`equation_environment`/
+            // `multirow_environment`), not `\displaystyle` or any nested
+            // math style. `$\displaystyle x\mod{y}$` measures 40.14336, the
+            // inline (12mu) number, confirming that's the right default;
+            // `\[x\mod{y}\]` takes the 18mu branch straight from the
+            // amsmath.sty source line above.
             //
             // The class override is load-bearing: `atom_class` classifies a
             // `mod` text nucleus as Bin for `\bmod`, and amsmath's `\mod`
@@ -2161,6 +2187,7 @@ impl MathParser<'_> {
             // on each side is not there.
             "mod" if !self.packages.amsmath => self.missing_package(&name, "amsmath", span),
             "mod" => {
+                let opening_mu = if self.display { AMSMATH_MOD_DISPLAY_OPENING_MU } else { AMSMATH_MOD_OPENING_MU };
                 let argument = self.required_group("mod", span);
                 self.pending.push(MathAtom {
                     class_override: Some(AtomClass::Ord),
@@ -2168,7 +2195,7 @@ impl MathParser<'_> {
                 });
                 self.pending.push(space(AMSMATH_MOD_TRAILING_MU / 18.0, span));
                 self.pending.extend(argument.atoms);
-                space(AMSMATH_MOD_OPENING_MU / 18.0, span)
+                space(opening_mu / 18.0, span)
             }
             // amsmath.sty lines 237-241: `\dfrac` = `\genfrac{}{}{}0`,
             // `\tfrac` = `\genfrac{}{}{}1`, `\binom` = `\genfrac()\z@{}`,
@@ -2911,6 +2938,7 @@ impl MathParser<'_> {
             cut_off: false,
             open_lefts: 0,
             dropped_lefts: 0,
+            display: self.display,
         };
         let list = parser.list(false);
         if let Some(open) = parser.unclosed {
@@ -3752,12 +3780,20 @@ pub(crate) const BMOD_EXTRA_MU: f64 = 1.0;
 /// kernel's 18mu (`QUAD_EM`).
 pub(crate) const AMSMATH_POD_MU: f64 = 8.0;
 
-/// The mu amsmath's `\mod` opens with in a non-display formula
-/// (`\if@display\mkern18mu\else\mkern12mu\fi`).
+/// The mu amsmath's `\mod` opens with in inline math
+/// (`\if@display\mkern18mu\else\mkern12mu\fi`; `$x\mod{y}$` measures
+/// 40.14336pt at 10pt, TeX Live 2025, confirming this branch).
 pub(crate) const AMSMATH_MOD_OPENING_MU: f64 = 12.0;
 
+/// The mu amsmath's `\mod` opens with in display math (`\[...\]`,
+/// `equation`, `align`, ...) — the other branch of the same
+/// `\if@display\mkern18mu\else\mkern12mu\fi` line.
+pub(crate) const AMSMATH_MOD_DISPLAY_OPENING_MU: f64 = 18.0;
+
 /// The mu amsmath's `\mod` puts between `mod` and its argument: `\,\,`, two
-/// `\thinmuskip`s of 3mu.
+/// `\thinmuskip`s of 3mu. Same in both display and inline math — only the
+/// opening kern (`AMSMATH_MOD_OPENING_MU`/`AMSMATH_MOD_DISPLAY_OPENING_MU`)
+/// depends on `\if@display`.
 pub(crate) const AMSMATH_MOD_TRAILING_MU: f64 = 6.0;
 
 /// The kernel `\angle`'s advance in ems, without amsfonts: `fontmath.ltx` 243
@@ -7997,6 +8033,16 @@ mod package_gating_tests {
         layout(&list, SIZE, &mut Vec::new())
     }
 
+    /// Like `laid_out`, but as if this formula were inside `\[...\]`/
+    /// `equation`/`align`/... instead of inline `$...$` (LaTeX's
+    /// `\if@display`).
+    fn laid_out_display(source: &str, packages: MathPackages) -> MathBox {
+        let mut diagnostics = Vec::new();
+        let list = parse_tokens_display(&crate::lexer::tokenize(source), packages, &mut diagnostics, true);
+        assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+        layout(&list, SIZE, &mut Vec::new())
+    }
+
     fn x(b: &MathBox, text: &str) -> f64 {
         b.items
             .iter()
@@ -8448,6 +8494,19 @@ mod package_gating_tests {
         let x_width = laid_out("x", AMSMATH).width;
         let word = laid_out(r"\mathrm{mod}", AMSMATH).width;
         close(x(&b, "mod"), x_width + AMSMATH_MOD_OPENING_MU);
+        close(x(&b, "y"), x(&b, "mod") + word + AMSMATH_MOD_TRAILING_MU);
+    }
+
+    /// Same construct as `mod_opens_with_twelve_mu_and_puts_six_before_its_argument`,
+    /// but inside `\[...\]`/`equation`/`align`/... instead of `$...$`: amsmath's
+    /// `\if@display\mkern18mu\else\mkern12mu\fi` takes the other branch. The
+    /// 6mu before the argument does not move (review finding #1 on #783).
+    #[test]
+    fn mod_opens_with_eighteen_mu_in_display_math() {
+        let b = laid_out_display(r"x\mod{y}", AMSMATH);
+        let x_width = laid_out_display("x", AMSMATH).width;
+        let word = laid_out_display(r"\mathrm{mod}", AMSMATH).width;
+        close(x(&b, "mod"), x_width + AMSMATH_MOD_DISPLAY_OPENING_MU);
         close(x(&b, "y"), x(&b, "mod") + word + AMSMATH_MOD_TRAILING_MU);
     }
 
