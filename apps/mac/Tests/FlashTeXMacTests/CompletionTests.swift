@@ -311,9 +311,9 @@ final class CompletionTests: XCTestCase {
         let text = "\\begin{document}\n  \\begin{it"
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, metadata: nil)
         XCTAssertEqual(s.map(\.label), ["itemize"])
-        XCTAssertEqual(s[0].insertText, "itemize}")
+        XCTAssertEqual(s.first?.insertText, "itemize}")
         // Templates and tab stops: SnippetTests. A list starts with its first `\item`.
-        XCTAssertEqual(s[0].snippet, .init(text: "itemize}\n  \\item \n  \\end{itemize}", caretUTF16: 17, stops: [33]))
+        XCTAssertEqual(s.first?.snippet, .init(text: "itemize}\n  \\item \n  \\end{itemize}", caretUTF16: 17, stops: [33]))
         let tabbed = "\t\\begin{eq"
         XCTAssertEqual(Completion.suggestions(in: tabbed, caretUTF16: (tabbed as NSString).length, metadata: nil).first?.snippet,
                        .init(text: "equation}\n\t\n\t\\end{equation}", caretUTF16: 11, stops: [27]))
@@ -326,8 +326,8 @@ final class CompletionTests: XCTestCase {
         let closing = "  \\begin{document}\n  \\begin{itemize}\n\\end{it"
         let c = Completion.suggestions(in: closing, caretUTF16: (closing as NSString).length, metadata: nil)
         XCTAssertEqual(c.map(\.label), ["itemize"])
-        XCTAssertEqual(c[0].insertText, "itemize}")
-        XCTAssertNil(c[0].snippet)
+        XCTAssertEqual(c.first?.insertText, "itemize}")
+        XCTAssertNil(c.first?.snippet)
         let closer = "\\begin{itemize}\n\\e"
         let e = Completion.suggestions(in: closer, caretUTF16: (closer as NSString).length, metadata: nil)
         XCTAssertEqual(e.first?.insertText, "\\end{itemize}")
