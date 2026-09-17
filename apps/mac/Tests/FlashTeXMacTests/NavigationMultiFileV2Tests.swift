@@ -66,8 +66,35 @@ final class NavigationMultiFileV2Tests: XCTestCase {
     private func waitUntil(timeout: TimeInterval = 40, state: () -> String = { "" }, _ cond: () -> Bool) async throws {
         let start = Date()
         while !cond() {
-            if Date().timeIntervalSince(start) > timeout { throw XCTSkip("timeout after \(Int(timeout)) s (load-sensitive; rerun before concluding a failure) \(state())") }
+            if Date().timeIntervalSince(start) > timeout {
+                // A real helper (already confirmed present by `requireHelperAndRender`)
+                // that never reaches the expected state is a bug, not a missing
+                // environment — GH-799: an `XCTSkip` here let a CI run go green
+                // without this test ever having run to a real assertion.
+                XCTFail("timeout after \(Int(timeout)) s waiting for \(state())")
+                return
+            }
             try await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    /// Blocks (synchronously — `defer` cannot `await`) until `client`'s
+    /// process has actually exited, or `timeout`. `detachController` sends
+    /// `close`/SIGTERM and returns immediately without waiting for the
+    /// process to reap (`PreviewControllerClient.terminate()`), so back-to-back
+    /// tests could start a new helper while the previous one was still
+    /// shutting down — GH-799's suspected teardown/startup race. Called from
+    /// each test's teardown after `detachController()`, with the client
+    /// captured before that call (which nils `model.controller`).
+    private func waitForControllerExit(_ client: PreviewControllerClient?, timeout: TimeInterval = 5) {
+        guard let client else { return }
+        let start = Date()
+        while client.isRunning {
+            if Date().timeIntervalSince(start) > timeout {
+                XCTFail("helper pid \(client.processIdentifier) still running \(timeout)s after detach")
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.02)
         }
     }
 
@@ -190,7 +217,11 @@ final class NavigationMultiFileV2Tests: XCTestCase {
         let p = try project(named: "clusters")
         defer { cleanup(p) }
         let model = try await attachedModel(p, helper: helper, render: render)
-        defer { model.detachController() }
+        defer {
+            let ctrl = model.controller
+            model.detachController()
+            waitForControllerExit(ctrl)
+        }
         let frame = try await currentFrame(model)
 
         let ligatures = try navigateEveryClusterExactly(model, frame)
@@ -257,7 +288,11 @@ final class NavigationMultiFileV2Tests: XCTestCase {
         let p = try project(named: "edits")
         defer { cleanup(p) }
         let model = try await attachedModel(p, helper: helper, render: render)
-        defer { model.detachController() }
+        defer {
+            let ctrl = model.controller
+            model.detachController()
+            waitForControllerExit(ctrl)
+        }
         let frame1 = try await currentFrame(model)
         let all1 = try clusters(of: frame1)
         func cluster(_ all: [ClusterHit], _ text: String, in path: String, after: Int) -> ClusterHit? {
