@@ -112,6 +112,9 @@ pub struct Stylesheet {
     /// follows the sizes amsmath/amsfonts declare instead of the kernel's
     /// `sfixed*cmex10`; see [`cmex_designs`].
     pub cmex_designs: bool,
+    /// Whether math family 0 (`operators`) is Latin Modern's `rm-lmr*`
+    /// instead of the kernel's `cmr*`; see [`math_roman_lm`].
+    pub math_roman_lm: bool,
     pub script_size_pt: f64,
     pub scriptscript_size_pt: f64,
     pub tolerance: f64,
@@ -252,6 +255,7 @@ impl Stylesheet {
             leqno: false,
             fleqn: false,
             cmex_designs: false,
+            math_roman_lm: false,
             script_size_pt: script,
             scriptscript_size_pt: scriptscript,
             tolerance: 200.0,
@@ -451,6 +455,35 @@ impl SmallSize {
 /// and `amsmath.sty` 109-114, which amsmath, amssymb and every package
 /// loading them inherit.
 const CMEX_DESIGN_PACKAGES: [&str; 5] = ["amsmath", "amsfonts", "amssymb", "mathtools", "physics"];
+
+/// Whether math family 0 (`operators`, the roman family: digits,
+/// parentheses, `\mathrm`, operator names) is Latin Modern's `rm-lmr*`
+/// rather than the LaTeX kernel's `cmr*`.
+///
+/// `fontmath.ltx` declares `\DeclareSymbolFont{operators}{OT1}{cmr}{m}{n}`.
+/// `\usepackage[T1]{fontenc}` re-encodes *text*, never math, so a document
+/// that loads only `fontenc` still lays family 0 out with `cmr`.
+/// `lmodern.sty` is what rebinds it, through `\SetSymbolFont{operators}`,
+/// and it does so in either encoding.
+///
+/// `rm-lmr` is **not** a scaled `cmr`: its digits are 0.0147 em shorter at
+/// the 10pt design and its `i` 0.0381 em shorter, so the choice moves the
+/// height of every box a family-0 glyph is the tallest thing in — the
+/// numerator of `\frac{1}{n}`, a radicand, an operator's limits — and with
+/// it every baseline below the display.
+///
+/// Measured with `\fontname\textfont0` and `\ht` of `\hbox{$1$}` /
+/// `\hbox{$\sin$}` under pdfTeX 1.40.29 (TeX Live 2026), `article`:
+///
+/// | packages | `\textfont0` (10/11/12pt) | `\ht$1$` | `\ht$\sin$` |
+/// |---|---|---|---|
+/// | (none) | `cmr10` / `cmr10 at 10.95pt` / `cmr12` | 6.44444 / 7.05666 / 7.73332 pt | 6.67859 / 7.31305 / 7.96431 pt |
+/// | `[T1]{fontenc}` | same as (none) | same | same |
+/// | `lmodern` | `rm-lmr10` / `rm-lmr10 at 10.95pt` / `rm-lmr12` | 6.29724 / 6.89548 / 7.55675 pt | 6.29724 / 6.89548 / 7.55675 pt |
+/// | `[T1]{fontenc}` + `lmodern` | same as `lmodern` | same | same |
+pub fn math_roman_lm(packages: &[String]) -> bool {
+    packages.iter().any(|p| p == "lmodern")
+}
 
 /// Whether family 3 (`largesymbols`) follows the sizes amsmath/amsfonts
 /// declare instead of the LaTeX kernel's `omxcmex.fd` `<->sfixed*cmex10`.

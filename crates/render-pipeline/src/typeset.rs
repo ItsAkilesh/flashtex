@@ -810,7 +810,7 @@ impl<'a> Context<'a> {
                     .copied()
                     .filter(|a| self.texts.iter().any(|t| t.contains(a.command())))
                     .collect();
-                let tex = TexMathMetrics::new(base, self.style.cmex_designs, m.clone(), self.fonts)
+                let tex = TexMathMetrics::new(base, self.style.cmex_designs, self.style.math_roman_lm, m.clone(), self.fonts)
                     .with_alphabets(self.fonts, &used);
                 let provider = if tex.roman_available() {
                     MathProvider::Tex(Rc::new(tex))
@@ -878,7 +878,7 @@ impl<'a> Context<'a> {
         let r = self.fonts.resolve(self.style.family, Role::Math, size);
         let sized = MathFonts::new(r.face, MathSizes { text: size, script, script_script })
             .map(|m| Rc::new(m.with_double_struck(self.fonts.otf(crate::mathfont::BB_FONT_FILE))))
-            .and_then(|m| TexMathMetrics::at_text_size(size, self.style.cmex_designs, m, self.fonts))
+            .and_then(|m| TexMathMetrics::at_text_size(size, self.style.cmex_designs, self.style.math_roman_lm, m, self.fonts))
             .filter(TexMathMetrics::roman_available)
             .map(|t| MathProvider::Tex(Rc::new(t)));
         if sized.is_none() {
