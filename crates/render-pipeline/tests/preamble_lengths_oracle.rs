@@ -119,6 +119,48 @@ fn setlength_textheight_and_topmargin() {
     assert_within_0_1bp(y, LETTER_HEIGHT_SP - 46_650_818, "first baseline");
 }
 
+/// GH-TABLE2-UNTESTED-7 (also #721): six `PREAMBLE_LENGTHS` registers have a
+/// real compiler dispatch arm and are accepted without a diagnostic
+/// (`crates/compiler/tests/preamble_lengths.rs`), but nothing checked the
+/// value actually reaches rendered page geometry rather than being parsed
+/// and dropped. `adapter::adapt`'s resolved `PageParams` (the same struct
+/// `param_length`/`assign_param` above read and write) is the render
+/// pipeline's own effective value for each register, so this asserts against
+/// it directly rather than against a new pdflatex measurement.
+#[test]
+fn untested_preamble_lengths_reach_the_resolved_page_params() {
+    if !lm_available() {
+        return;
+    }
+    for (name, dimen, get) in [
+        (
+            "paperheight",
+            "11in",
+            (|p: &flashtex_class_geometry::PageParams| p.paperheight) as fn(&flashtex_class_geometry::PageParams) -> Sp,
+        ),
+        ("evensidemargin", "0.5in", |p| p.evensidemargin),
+        ("headheight", "12pt", |p| p.headheight),
+        ("footskip", "30pt", |p| p.footskip),
+        ("marginparwidth", "65pt", |p| p.marginparwidth),
+        ("columnsep", "10pt", |p| p.columnsep),
+    ] {
+        let src = wrap(&format!("\\setlength{{\\{name}}}{{{dimen}}}\n"));
+        let parsed = parse(&src);
+        let doc = adapter::adapt(&[&src], 0, &parsed, &RenderOptions::default(), &Labels::default());
+        let params = &doc
+            .style
+            .class_geometry
+            .as_ref()
+            .unwrap_or_else(|| panic!("{name}: class geometry did not resolve"))
+            .params;
+        assert_eq!(
+            get(params),
+            Sp::parse(dimen).unwrap(),
+            "{name}: \\setlength did not reach the resolved page params"
+        );
+    }
+}
+
 /// geometry `[margin=1in]` on letter is 8.5in − 2in = 6.5in (`Sp::parse`);
 /// a later `\setlength{\textwidth}{6in}` overwrites that (source order).
 #[test]

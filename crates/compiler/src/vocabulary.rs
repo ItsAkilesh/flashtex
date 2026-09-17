@@ -139,6 +139,16 @@ pub fn is_known_command(name: &str) -> bool {
         .contains(name)
 }
 
+/// Whether `name` is still carried in `KNOWN_UNIMPLEMENTED_COMMANDS`
+/// specifically — distinct from [`is_known_command`], which is also `true`
+/// for anything actually implemented. A name that is real LaTeX and
+/// implemented must not be in both: `unsupported` (`parser.rs`) asserts the
+/// two lists are disjoint at debug time, and this lets a test enforce it for
+/// a specific name without depending on that debug-only check.
+pub fn is_listed_as_unimplemented(name: &str) -> bool {
+    KNOWN_UNIMPLEMENTED_COMMANDS.contains(&name)
+}
+
 pub fn is_known_environment(name: &str) -> bool {
     IMPLEMENTED_ENVIRONMENTS
         .iter()
