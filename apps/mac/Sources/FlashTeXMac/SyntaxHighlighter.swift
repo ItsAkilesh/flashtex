@@ -709,7 +709,16 @@ final class SyntaxPainter {
 
     /// The view scrolled: paint the part of the new window not yet painted.
     func scrolled() {
-        guard enabled, let tv = textView else { return }
+        // Not while a reset is pending (the lexer is stale; `reset()` paints
+        // the window itself), and not mid-edit: a bounds change posted inside
+        // `processEditing` must not query layout (GH#681) — retry after it.
+        guard enabled, !resetScheduled, let tv = textView else { return }
+        if let storage = tv.textStorage, !storage.editedMask.isEmpty || storage.length != highlighter.length {
+            if !storage.editedMask.isEmpty {
+                DispatchQueue.main.async { [weak self] in self?.scrolled() }
+            }
+            return
+        }
         let window = Self.window(for: tv)
         guard window.length > 0, !gaps(in: window).isEmpty else { return }
         extend(to: window)
