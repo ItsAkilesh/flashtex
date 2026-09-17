@@ -188,16 +188,17 @@ pub(crate) fn optional_bracket(source: &str, end: usize) -> Option<usize> {
 
 /// Byte just past the macro definition a `\` at `at` opens, when the control
 /// word there is one of `\newcommand`, `\renewcommand`, `\providecommand`,
-/// `\def`, `\newenvironment` or `\renewenvironment`; `None` otherwise.
+/// `\DeclareRobustCommand`, `\def`, `\gdef`, `\edef`, `\xdef`, `\let`,
+/// `\newenvironment` or `\renewenvironment`; `None` otherwise.
 ///
 /// A body that never runs cannot switch the columns — real pdflatex keeps
 /// the class's own column count when the macro is never invoked — so the
 /// byte scan skips the definition whole: the defined name, any `[...]`
 /// argument specs, and the brace-delimited bodies (two for the
-/// environments). Comment- and escape-aware like [`switches`]' own scan,
-/// and each body is one correctly brace-matched skip; a malformed
-/// definition ends the skip where the parse gives up, and scanning resumes
-/// there.
+/// environments) or the single target token (`\let`). Comment- and
+/// escape-aware like [`switches`]' own scan, and each body is one correctly
+/// brace-matched skip; a malformed definition ends the skip where the parse
+/// gives up, and scanning resumes there.
 fn definition_end(source: &str, at: usize) -> Option<usize> {
     let bytes = source.as_bytes();
     let mut i = at + 1;
@@ -205,7 +206,7 @@ fn definition_end(source: &str, at: usize) -> Option<usize> {
         i += 1;
     }
     match &source[at + 1..i] {
-        "newcommand" | "renewcommand" | "providecommand" => {
+        "newcommand" | "renewcommand" | "providecommand" | "DeclareRobustCommand" => {
             i = skip_ws_comments(source, i);
             if bytes.get(i) == Some(&b'*') {
                 i = skip_ws_comments(source, i + 1);
@@ -213,16 +214,36 @@ fn definition_end(source: &str, at: usize) -> Option<usize> {
             // The defined name, `{...}` or a control sequence.
             i = skip_control_or_group(source, i)?;
             i = skip_arg_specs(source, i);
-            Some(skip_group(source, i)?)
+            i = skip_ws_comments(source, i);
+            // The body is usually a `{...}` group, but a brace-less
+            // `\newcommand\n\twocolumn` (body is a single control
+            // sequence) is valid TeX too.
+            if bytes.get(i) == Some(&b'{') {
+                Some(skip_group(source, i)?)
+            } else {
+                Some(skip_one_token(source, i))
+            }
         }
-        "def" => {
-            // `\def\name<parameter text>{body}`.
+        "def" | "gdef" | "edef" | "xdef" => {
+            // `\def\name<parameter text>{body}` (`\gdef`/`\edef`/`\xdef`
+            // share the shape; only expansion timing differs).
             i = skip_control_or_group(source, skip_ws_comments(source, i))?;
             // The parameter text holds no braces to match.
             while i < bytes.len() && bytes[i] != b'{' {
                 i += 1;
             }
             Some(skip_group(source, i)?)
+        }
+        "let" => {
+            // `\let\name=\target` or `\let\name\target` (`\global\let` is
+            // handled for free: `\global` itself is not a recognised name
+            // here, so the scan simply reaches this `\let` next).
+            i = skip_control_or_group(source, skip_ws_comments(source, i))?;
+            i = skip_ws_comments(source, i);
+            if bytes.get(i) == Some(&b'=') {
+                i = skip_ws_comments(source, i + 1);
+            }
+            Some(skip_one_token(source, i))
         }
         "newenvironment" | "renewenvironment" => {
             i = skip_ws_comments(source, i);
@@ -312,6 +333,23 @@ fn skip_control_or_group(source: &str, i: usize) -> Option<usize> {
         Some(j + 1)
     } else {
         None
+    }
+}
+
+/// Byte just past one token at `i` for `\let`'s target: a control sequence
+/// (reusing [`skip_control_or_group`]'s control-word/control-symbol rule),
+/// or one Unicode scalar value otherwise — real TeX's `\let` can target a
+/// bare character token, not only another control sequence.
+fn skip_one_token(source: &str, i: usize) -> usize {
+    let bytes = source.as_bytes();
+    if bytes.get(i) == Some(&b'\\') {
+        if let Some(end) = skip_control_or_group(source, i) {
+            return end;
+        }
+    }
+    match source[i..].chars().next() {
+        Some(c) => i + c.len_utf8(),
+        None => i,
     }
 }
 
@@ -578,6 +616,33 @@ mod tests {
             (true, "\\documentclass[twocolumn]{article}\n\\newenvironment{wide}{\\onecolumn}{}\n\\begin{document}x\\end{document}"),
             (true, "\\documentclass[twocolumn]{article}\n\\renewenvironment{narrow}{\\twocolumn}{}\n\\begin{document}x\\end{document}"),
             (false, "\\documentclass{article}\n\\newenvironment{narrow}{\\twocolumn}{\\onecolumn}\n\\begin{document}x\\end{document}"),
+        ] {
+            let m = scan_test(src, class_option);
+            assert_eq!(m.start(), class_option, "{src}");
+            assert!(m.unmodelled().is_empty(), "{src}");
+        }
+    }
+
+    #[test]
+    fn let_and_gdef_family_bodies_do_not_move_the_mode() {
+        for (class_option, src) in [
+            // `\let\name=\target` and `\let\name\target`, both directions.
+            (false, "\\documentclass{article}\n\\let\\oldtwocolumn=\\twocolumn\n\\begin{document}x\\end{document}"),
+            (false, "\\documentclass{article}\n\\let\\oldtwocolumn\\twocolumn\n\\begin{document}x\\end{document}"),
+            (true, "\\documentclass[twocolumn]{article}\n\\let\\oldonecolumn\\onecolumn\n\\begin{document}x\\end{document}"),
+            // `\global\let`: `\global` itself is not a recognised name, so
+            // the scan reaches the following `\let` on its own.
+            (false, "\\documentclass{article}\n\\global\\let\\x\\twocolumn\n\\begin{document}x\\end{document}"),
+            // `\gdef`/`\edef`/`\xdef` share `\def`'s shape.
+            (false, "\\documentclass{article}\n\\gdef\\wide{\\onecolumn}\n\\begin{document}x\\end{document}"),
+            (false, "\\documentclass{article}\n\\edef\\narrow{\\twocolumn}\n\\begin{document}x\\end{document}"),
+            (true, "\\documentclass[twocolumn]{article}\n\\xdef\\one{\\onecolumn}\n\\begin{document}x\\end{document}"),
+            // `\DeclareRobustCommand` takes `\newcommand`'s own shape.
+            (false, "\\documentclass{article}\n\\DeclareRobustCommand{\\wide}{\\onecolumn}\n\\begin{document}x\\end{document}"),
+            (false, "\\documentclass{article}\n\\DeclareRobustCommand\\narrow{\\twocolumn}\n\\begin{document}x\\end{document}"),
+            // A brace-less `\newcommand` body: a single control sequence,
+            // not a `{...}` group.
+            (false, "\\documentclass{article}\n\\newcommand\\n\\twocolumn\n\\begin{document}x\\end{document}"),
         ] {
             let m = scan_test(src, class_option);
             assert_eq!(m.start(), class_option, "{src}");

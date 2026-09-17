@@ -77,10 +77,45 @@
 //! is `SFBX1440` at the column's left edge and the body `SFRM1000`.
 //!
 //! The `titlepage` branch (report's and book's default, or article's
-//! `titlepage` option) — a page of its own between `\null\vfil`s — is not
-//! set; the compiler's own limitation stands. `book.cls` defines no
-//! `abstract` environment at all, so its `\begin{abstract}` keeps the
-//! compiler's "not implemented" warning.
+//! `titlepage` option) is a page of its own (report.cls 441-450):
+//!
+//! ```tex
+//! \newenvironment{abstract}{%
+//!     \titlepage
+//!     \null\vfil
+//!     \@beginparpenalty\@lowpenalty
+//!     \begin{center}%
+//!       \bfseries \abstractname
+//!       \@endparpenalty\@M
+//!     \end{center}}%
+//!    {\par\vfil\null\endtitlepage}
+//! ```
+//!
+//! It is a *different environment*, not a variant of the one above: no
+//! `\small`, no `\vspace{-.5em}` under the head, no `quotation` — the body
+//! is ordinary `\normalsize` paragraphs at the full measure, and the first
+//! of them is unindented (`\@doendpe` after `\end{center}`). What places it
+//! is the `titlepage` environment around it (report.cls 485-513):
+//! `\newpage`, `\thispagestyle{empty}`, `\setcounter{page}\@ne` on the way
+//! in and `\newpage` (plus, one-sided, `\setcounter{page}\@ne` again) on
+//! the way out. So the abstract is alone on its page and the material after
+//! `\end{abstract}` starts the next one — the page break is half of what
+//! this branch is.
+//!
+//! Between them the two `\vfil`s centre it vertically, and `\newpage`'s own
+//! `\vfil` is a third claimant on the same room, exactly as in the
+//! `titlepage` `\maketitle` ([`crate::typeset::TitleForm::Page`]). The page
+//! builder has no stretchable vertical glue, so — as that `\maketitle` form
+//! already does — the fil is resolved into a rigid skip from the page's
+//! natural height: `typeset::build` lays the abstract's own blocks out, and
+//! `(\textheight - natural) / 3` goes above the head and below the body.
+//! The `\null`s matter and are set: the first fixes the head's distance
+//! from the text top at `\topskip` plus the skips rather than at
+//! `max(\topskip, height)`, and the last carries the interline glue that
+//! ends the page.
+//!
+//! `book.cls` defines no `abstract` environment at all, so its
+//! `\begin{abstract}` keeps the compiler's "not implemented" warning.
 //!
 //! One thing this environment made visible that is not specific to it: the
 //! opening `\addvspace{\@topsep}` of every `\list`/`\trivlist` obeys
@@ -169,10 +204,11 @@ enum Branch {
     /// and the body as ordinary paragraphs. A different shape, not a
     /// narrower one: no `\small`, no `quotation`, no centring.
     TwoColumn,
-    /// article.cls 367-375 (report's and book's default, or article's
-    /// `titlepage` option): a page of its own between `\null\vfil`s,
-    /// inside `\titlepage`. Not set here; the compiler's own limitation
-    /// stands.
+    /// article.cls 367-375 / report.cls 441-450 (report's and book's
+    /// default, or article's `titlepage` option): a page of its own
+    /// between `\null\vfil`s, inside `titlepage`. A `\normalsize` centred
+    /// `\bfseries` head, ordinary full-measure paragraphs under it, and a
+    /// page break on each side.
     TitlePage,
 }
 
@@ -213,8 +249,10 @@ fn branch(style: &Stylesheet, document: usize, at: usize) -> Branch {
 /// description}` 1.992 bp long at 10 pt, 2.989 at 11 pt and 2.988 at 12 pt
 /// — one `\partopsep` that pdflatex does not put there. (`\begin{thm}`,
 /// which takes no `\partopsep` at all, was right either way.) The
-/// `titlepage` branch and `book`, which has no `abstract`, are not
-/// `\endtrivlist` either; the compiler's own warning stands for them.
+/// `titlepage` branch is not `\endtrivlist` either — its `\end` is
+/// `\par\vfil\null\endtitlepage`, so what follows starts a page rather
+/// than taking a boundary skip — and `book`, which has no `abstract` at
+/// all, keeps the compiler's warning.
 pub(crate) fn end_is_endtrivlist(style: &Stylesheet, document: usize, at: usize) -> bool {
     !style.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Book)
         && branch(style, document, at) == Branch::OneColumn
@@ -241,7 +279,7 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
         let span = Span::in_document(flashtex_compiler::DocumentId(document), range.begin.0, range.begin.1);
         // Per environment: `\twocolumn` may stand between two of them.
         let form = branch(style, document, range.begin.0);
-        if form == Branch::TitlePage {
+        if form == Branch::TitlePage && !page_form_is_set(style) {
             continue;
         }
         let inside = |b: &Block| -> bool {
@@ -252,6 +290,37 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
             continue;
         };
         let last = blocks.iter().rposition(inside).unwrap_or(first);
+        if form == Branch::TitlePage {
+            // The body is ordinary `\normalsize` paragraphs at the full
+            // measure: whatever the compiler (and the environment/list
+            // detection that already ran over the source before this) set
+            // for each of them is right as it stands, including a nested
+            // `\noindent` and a nested list's own `env_open`/`env_close`/
+            // `list`. Only the outer `abstract` wrapper's own trapping
+            // comes off, and only on the paragraph right after
+            // `\begin{abstract}`: `\end{center}` leaves `\@endpetrue`, so
+            // `\@doendpe` takes the `\parindent` box off it, and whatever
+            // the compiler thought `\begin{abstract}` itself opened is
+            // superseded by the head block's own `env_open`, inserted
+            // below.
+            if let Some(Block::Paragraph { indent, env_open, .. }) = blocks.get_mut(first) {
+                *indent = false;
+                *env_open = None;
+            }
+            // `\titlepage`'s `\newpage` discards whatever skip stood
+            // between the previous block and `\begin{abstract}`: the glue
+            // stays on the page that ends, and the page this opens starts
+            // at `\topskip`. (`typeset::build` supplies the `\null`s, the
+            // page break on each side and the `\vfil` centring; they are
+            // page-level, not block-level.) A `\vspace` written *inside*
+            // the environment, after `\begin{abstract}` and before the
+            // body's own first character, is not discarded: it is real
+            // glue between the head and the body, and stays on the body.
+            drop_lead(&mut blocks[first], texts, range, style);
+            blocks.insert(first, page_head_block(texts, document, range));
+            superseded.push(span);
+            continue;
+        }
         if form == Branch::TwoColumn {
             // `\section*`'s before-skip is negative, so `\@startsection`
             // leaves `\@afterindentfalse`: the first paragraph of the body
@@ -262,7 +331,7 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
                 *indent = false;
             }
             let mut head = section_head_block(texts, document, range);
-            take_lead(&mut blocks[first], &mut head);
+            take_lead(&mut blocks[first], &mut head, texts, range, style);
             blocks.insert(first, head);
             superseded.push(span);
             continue;
@@ -292,7 +361,7 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
             });
         }
         let mut head = head_block(texts, document, range, &small);
-        take_lead(&mut blocks[first], &mut head);
+        take_lead(&mut blocks[first], &mut head, texts, range, style);
         blocks.insert(first, head);
         superseded.push(span);
     }
@@ -331,7 +400,19 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
 /// rather than moved, and the control that says the drop is right rather
 /// than merely smaller is a real `\section*{Abstract}` in the same
 /// position, which pdflatex and the pipeline already agree on exactly.
-fn take_lead(body: &mut Block, head: &mut Block) {
+///
+/// `\vspace` written *inside* the environment (`\begin{abstract}
+/// \vspace{20pt}Body\end{abstract}`) is not "whatever stood between the
+/// previous block and `\begin{abstract}`" — it comes after the command, and
+/// the compiler's own gap re-read ([`crate::adapter::vspace_in_gap`], used
+/// to build `vspace_before` in the first place) cannot tell the two apart:
+/// it sums every `\vspace` between the previous block and this one, whether
+/// they fall before `\begin{abstract}` or after it. [`inside_vspace`]
+/// re-derives the after-the-command part from the source bytes directly, so
+/// only the before part travels with the head; the rest is left on the body,
+/// between the head and the first line, which is where it belongs.
+fn take_lead(body: &mut Block, head: &mut Block, texts: &[&str], range: Range, style: &Stylesheet) {
+    let inside = inside_vspace(texts, range, body, style);
     let Block::Paragraph {
         eject_before: b_eject,
         vspace_before: b_vspace,
@@ -344,12 +425,24 @@ fn take_lead(body: &mut Block, head: &mut Block) {
     else {
         return;
     };
+    let total_vspace = *b_vspace;
+    let inside = inside.clamp(0.0, total_vspace.max(0.0));
+    let lead_vspace = total_vspace - inside;
+    // The stretch/shrink of a `\vspace` travels with its own natural part;
+    // split it in the same proportion (1.0, i.e. all of it, when nothing of
+    // the skip is from inside the environment — the common case, and the
+    // one every other branch's flex already assumed).
+    let ratio = if total_vspace.abs() > f64::EPSILON { lead_vspace / total_vspace } else { 1.0 };
+    *b_vspace = inside;
+    let lead_vflex = (b_vflex.0 * ratio, b_vflex.1 * ratio);
+    b_vflex.0 -= lead_vflex.0;
+    b_vflex.1 -= lead_vflex.1;
     let (eject, vspace, addvspace, addflex, vflex, endlist) = (
         std::mem::replace(b_eject, false),
-        std::mem::replace(b_vspace, 0.0),
+        lead_vspace,
         std::mem::replace(b_addvspace, 0.0),
         std::mem::replace(b_addflex, (0.0, 0.0)),
-        std::mem::replace(b_vflex, (0.0, 0.0)),
+        lead_vflex,
         std::mem::replace(b_endlist, 0.0),
     );
     match head {
@@ -380,6 +473,158 @@ fn take_lead(body: &mut Block, head: &mut Block) {
             *h_vspace = vspace;
         }
         _ => {}
+    }
+}
+
+/// Whether the [`Branch::TitlePage`] form is set at all for this document.
+///
+/// `\titlepage` opens with `\if@twocolumn \@restonecoltrue\onecolumn`: in a
+/// two-column document the abstract's page is a *one-column* page and the
+/// document goes back to two columns after it. This pipeline sets the
+/// abstract in the column it finds, which would be a worse answer than
+/// none, so a two-column `titlepage` document keeps the compiler's own
+/// "not implemented" warning instead.
+fn page_form_is_set(style: &Stylesheet) -> bool {
+    !style.class_geometry.as_ref().is_some_and(|g| g.options.twocolumn)
+}
+
+/// Every [`Branch::TitlePage`] abstract of `blocks`, as the inclusive block
+/// index range its page holds (the head this module inserted and the body
+/// paragraphs under it).
+///
+/// Recomputed from the source rather than remembered from [`apply`]:
+/// `listings::apply` runs between the two and may insert blocks of its own,
+/// so an index recorded there would not survive. Block spans do.
+pub fn page_ranges(texts: &[&str], blocks: &[Block], style: &Stylesheet) -> Vec<(usize, usize)> {
+    // `titlepage` is a class option (`branch`'s first check, ahead of any
+    // per-location `\twocolumn` state), so the document/position passed
+    // here are inert whenever this guard actually matters.
+    if branch(style, 0, 0) != Branch::TitlePage || !page_form_is_set(style) {
+        return Vec::new();
+    }
+    if style.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Book) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (d, text) in texts.iter().enumerate() {
+        for range in ranges(text) {
+            let inside = |b: &Block| -> bool {
+                block_span(b).is_some_and(|s| s.document.0 == d && s.start >= range.begin.0 && s.start < range.end.1)
+            };
+            if let (Some(first), Some(last)) = (blocks.iter().position(inside), blocks.iter().rposition(inside)) {
+                out.push((first, last));
+            }
+        }
+    }
+    out.sort_unstable();
+    out
+}
+
+/// Drops the vertical skip and page break the compiler hung on the first
+/// block of a [`Branch::TitlePage`] body: the page break the environment
+/// opens with supersedes both. A `\vspace` written *inside* the environment
+/// (between `\begin{abstract}` and the body's own first character) is not
+/// part of what the page break supersedes — it is real glue between the
+/// head and the body — so [`inside_vspace`] re-derives it from the source
+/// and it is left on `body` rather than dropped with the rest.
+fn drop_lead(body: &mut Block, texts: &[&str], range: Range, style: &Stylesheet) {
+    let inside = inside_vspace(texts, range, body, style);
+    let Block::Paragraph {
+        eject_before,
+        vspace_before,
+        addvspace_before,
+        addvspace_flex,
+        vspace_flex,
+        endlist_adjust,
+        ..
+    } = body
+    else {
+        return;
+    };
+    let inside = inside.clamp(0.0, vspace_before.max(0.0));
+    *eject_before = false;
+    *vspace_before = inside;
+    *addvspace_before = 0.0;
+    *addvspace_flex = (0.0, 0.0);
+    // The stretch/shrink is dropped along with the rest whenever none of
+    // the natural skip survived (the common case); when some did, it is a
+    // single `\vspace` inside the environment and its own flex stays whole.
+    if inside <= 0.0 {
+        *vspace_flex = (0.0, 0.0);
+    }
+    *endlist_adjust = 0.0;
+}
+
+/// The part of `body`'s own `vspace_before` that the source places *after*
+/// `\begin{abstract}` (`range.begin.1`) rather than before it — e.g. the
+/// `20pt` of `\begin{abstract}\vspace{20pt}Body\end{abstract}`.
+///
+/// The compiler has no concept of `abstract`'s boundary: `vspace_before` is
+/// the sum of every `\vspace` between the previous block and this one,
+/// wherever in that gap they fall ([`crate::adapter::vspace_in_gap`]), so
+/// [`take_lead`] and [`drop_lead`] cannot tell a `\vspace` that belongs to
+/// whatever came before the environment from one the document put inside
+/// it. Re-scanning just the part of the gap after `\begin{abstract}` itself
+/// answers that directly from source position, which is all `vspace_before`
+/// was ever built from.
+fn inside_vspace(texts: &[&str], range: Range, body: &Block, style: &Stylesheet) -> f64 {
+    let Some(span) = block_span(body) else { return 0.0 };
+    if span.start < range.begin.1 {
+        return 0.0;
+    }
+    let Some(text) = texts.get(span.document.0) else { return 0.0 };
+    let Some(gap) = text.get(range.begin.1..span.start) else { return 0.0 };
+    // The compiler evaluates `em`/`ex` in `\vspace` at a fixed 12pt; LaTeX
+    // uses the class's `\normalsize` (see the re-read this mirrors, in
+    // `crate::adapter`'s own unit-building loop).
+    let size = if style.body_size_pt >= 11.5 {
+        12
+    } else if style.body_size_pt >= 10.5 {
+        11
+    } else {
+        10
+    };
+    crate::adapter::vspace_in_gap(gap, size).unwrap_or(0.0)
+}
+
+/// `\begin{center}\bfseries \abstractname\end{center}` (report.cls 446-449),
+/// the `titlepage` head: one centred bold word at `\normalsize` and the
+/// full measure. No `\small` and no `\vspace{-.5em}` — those belong to the
+/// other branch, and neither is in this one.
+fn page_head_block(texts: &[&str], document: usize, range: Range) -> Block {
+    let name = abstract_name(texts).unwrap_or_else(|| ABSTRACTNAME.to_string());
+    let src = CharSrc {
+        document: flashtex_compiler::DocumentId(document),
+        start: range.begin.0,
+        end: range.begin.1,
+    };
+    let word = Word {
+        segments: vec![Segment {
+            chars: name.chars().map(|_| src).collect(),
+            text: name,
+            style: TextStyle { bold: true, ..TextStyle::default() },
+        }],
+    };
+    Block::Paragraph {
+        parts: vec![ParaPart::Lines(vec![Item::Word(word)])],
+        indent: false,
+        style: ParaStyle::Center,
+        // `\null\vfil` leaves vertical mode, so `center`'s `\@trivlist`
+        // takes `\partopsep` as well as `\topsep`; `\end{center}` is an
+        // `\@endparenv`, whose `\addvspace{\@topsepadd}` is the whole of
+        // the gap between the head and the body (10/12/13 pt at 10/11/12
+        // pt, plus the body's own `\baselineskip`).
+        env_open: Some(EnvOpen { vmode: true, skips: None }),
+        env_close: true,
+        eject_before: false,
+        vspace_before: 0.0,
+        addvspace_before: 0.0,
+        addvspace_flex: (0.0, 0.0),
+        vspace_flex: (0.0, 0.0),
+        endlist_adjust: 0.0,
+        list: None,
+        sized: None,
+        leading_pt: None,
     }
 }
 

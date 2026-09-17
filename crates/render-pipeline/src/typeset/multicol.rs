@@ -747,7 +747,15 @@ pub(super) fn outer_doc(ctx: &mut Context, doc: &Doc, floats: &[floatpage::Float
     ctx.multicol.active = true;
     ctx.multicol.bodies = bodies;
     let page_starts = doc.page_starts.iter().filter_map(|i| new_index.get(i).copied()).collect();
+    // A `titlepage` `abstract` is outside every `multicols`, so its blocks
+    // survive into the outer document; only their indices move.
+    let abstract_pages = doc
+        .abstract_pages
+        .iter()
+        .filter_map(|(a, b)| Some((new_index.get(a).copied()?, new_index.get(b).copied()?)))
+        .collect();
     Some(Doc {
+        abstract_pages,
         style: doc.style.clone(),
         blocks: out,
         diagnostics: Vec::new(),
@@ -1825,6 +1833,7 @@ fn rec_span(ctx: &Context, r: usize) -> Option<Span> {
         BoxRec::ColorBox(b) => Some(b.span),
         BoxRec::Leader { .. } => None,
         BoxRec::Underline(u) => Some(u.span),
+        BoxRec::TextScript(t) => Some(t.span),
     }
 }
 
@@ -1971,6 +1980,8 @@ pub(super) fn paginate(ctx: &mut Context, doc: &Doc, blocks: &mut Vec<BuiltBlock
         let sub_doc = Doc {
             style: col_style.clone(),
             blocks: body,
+            // One `multicols` body: no `titlepage` `abstract` is in it.
+            abstract_pages: Vec::new(),
             diagnostics: Vec::new(),
             limitations: Vec::new(),
             superseded: Vec::new(),

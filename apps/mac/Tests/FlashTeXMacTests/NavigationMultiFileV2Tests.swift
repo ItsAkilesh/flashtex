@@ -10,7 +10,7 @@ import FlashTeXProtocol
 ///
 /// Verified per cluster: a click on any cluster — the producer's ligature
 /// clusters ff/fi/fl/ffi/ffl in BOTH files, multi-byte scalars (é ï —),
-/// a combining sequence (e + U+0301) and text after dropped surrogate-pair
+/// a combining sequence (e + U+0301, typeset as `e`) and text after dropped surrogate-pair
 /// emoji — selects exactly the cluster's source bytes in the right document,
 /// switching documents. After an edit before/after a target the stale frame
 /// rebases across the recorded edit or refuses (never other bytes); the next
@@ -166,9 +166,13 @@ final class NavigationMultiFileV2Tests: XCTestCase {
             XCTAssertEqual(model.caretUTF16, sel.nsRange.location, file: file, line: line)
             XCTAssertEqual(model.caretLengthUTF16, sel.nsRange.length, file: file, line: line)
             let selected = (model.activeText as NSString).substring(with: sel.nsRange)
-            XCTAssertTrue(selected.sameBytes(as: c.text), "cluster “\(c.text)” at \(c.source.path) \(c.source.startByte)..<\(c.source.endByte) selected “\(selected)”", file: file, line: line)
+            // pdfLaTeX rejects the undeclared combining mark of e + U+0301 and typesets
+            // only the `e`; that cluster's source still covers the whole character.
+            let droppedMarks = !selected.sameBytes(as: c.text) && selected.unicodeScalars.starts(with: c.text.unicodeScalars)
+                && selected.unicodeScalars.dropFirst(c.text.unicodeScalars.count).allSatisfy { $0.properties.generalCategory == .nonspacingMark }
+            XCTAssertTrue(selected.sameBytes(as: c.text) || droppedMarks, "cluster “\(c.text)” at \(c.source.path) \(c.source.startByte)..<\(c.source.endByte) selected “\(selected)”", file: file, line: line)
             XCTAssertFalse(model.navigationNote?.contains("widened") == true, model.navigationNote ?? "", file: file, line: line)
-            XCTAssertFalse(model.navigationNote?.contains("generated from") == true, model.navigationNote ?? "", file: file, line: line)
+            XCTAssertEqual(model.navigationNote?.contains("generated from") == true, droppedMarks, model.navigationNote ?? "", file: file, line: line)
             if wasActive != c.source.path {
                 switches += 1
                 XCTAssertTrue(model.navigationNote?.contains("switched to \(c.source.path)") == true, model.navigationNote ?? "", file: file, line: line)
@@ -206,11 +210,13 @@ final class NavigationMultiFileV2Tests: XCTestCase {
         XCTAssertEqual(ffi.clusterIndex, 1)
         guard case .glyphRun(let officeRun) = ffi.page.items[ffi.itemIndex] else { return XCTFail() }
         XCTAssertEqual(officeRun.glyphs.filter { $0.cluster == 1 }.count, 1, "one ligature glyph")
-        // The combining sequence e + U+0301 is one 3-byte cluster in chapter.tex; the
-        // selection covers the whole composed character (never split), and the
-        // caret mapping back from either of its bytes lights that cluster.
+        // The combining sequence e + U+0301 is one 3-byte source character in chapter.tex.
+        // pdfLaTeX rejects the undeclared U+0301 and typesets only `e` (render-pipeline
+        // `combining_marks_are_not_composed`), so the cluster spells "e", but its source
+        // covers all three bytes: the selection is the whole character (never split), and
+        // the caret mapping back from any of its bytes lights that cluster.
         let combining = byte(chapter, "e\u{301}")
-        let eAcute = try XCTUnwrap(cluster("e\u{301}", in: "chapter.tex"))
+        let eAcute = try XCTUnwrap(all.first { $0.text.sameBytes(as: "e") && $0.source.path == "chapter.tex" && $0.source.startByte == combining })
         XCTAssertEqual(eAcute.source, .init(path: "chapter.tex", startByte: combining, endByte: combining + 3))
         for b in combining..<(combining + 3) {
             let matches = V2Geometry.clusters(containing: b, path: "chapter.tex", in: eAcute.page)
@@ -227,7 +233,8 @@ final class NavigationMultiFileV2Tests: XCTestCase {
         let ffl = try XCTUnwrap(cluster("ffl", in: "chapter.tex", after: byte(chapter, "shuffle")))
         let inside = V2Geometry.clusters(containing: ffl.source.startByte + 1, path: "chapter.tex", in: ffl.page)
         XCTAssertEqual(inside.map(\.clusterIndex), [ffl.clusterIndex])
-        XCTAssertNil(inside[0].caret)
+        let insideFirst = try XCTUnwrap(inside.first)
+        XCTAssertNil(insideFirst.caret)
         let atStart = V2Geometry.clusters(containing: ffl.source.startByte, path: "chapter.tex", in: ffl.page)
         XCTAssertEqual(atStart[0].caret?.textByte, 3, "the run's caret at the ligature's first logical byte")
         // ⌘⇧J selects what the pane highlights: the cluster, i.e. the whole

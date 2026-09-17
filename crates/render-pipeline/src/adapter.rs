@@ -190,6 +190,24 @@ pub enum Item {
     Logo { logo: TextLogo, style: TextStyle, span: Span },
     /// `\rule[<raise>]{<width>}{<height>}` (compiler `Inline::Rule`).
     Rule { rule: TextRule, style: TextStyle, span: Span },
+    /// amsthm's `\qedsymbol`, i.e. `\openbox`: the proof-end marker
+    /// `\end{proof}` appends after an `\hfill`.
+    ///
+    /// It is not a character. amsthm.sty defines it as four rules in an
+    /// `\hbox`,
+    ///
+    /// ```text
+    /// \hbox to.77778em{\hfil\vrule\vbox to.675em{\hrule width.6em\vfil\hrule}\vrule\hfil}
+    /// ```
+    ///
+    /// — an *open* square 0.6 em wide and 0.675 em tall drawn with 0.4 pt
+    /// rules. The compiler has no inline for it yet and emits the code point
+    /// U+220E (END OF PROOF) instead, which is a *filled* square and which
+    /// Latin Modern has no glyph for at all, so the marker came out blank
+    /// (`missing_glyph`, GH#443). `typeset::Context::qed_items` sets the real
+    /// box; `style` is the font in force at the marker (its quad is the `em`)
+    /// and `span` is `\end{proof}`.
+    QedBox { style: TextStyle, span: Span },
     /// A text-mode kern (`\,`, `\thinspace`, `\enspace`, ...; compiler
     /// `Inline::Kern`), in ems of the current face.
     Kern { amount: TextDimen, style: TextStyle },
@@ -214,6 +232,8 @@ pub enum Item {
     /// ulem `\uline`/`\sout` or kernel text `\underline` (compiler
     /// `Inline::Underline`).
     Underline(Box<UnderlineItem>),
+    /// `\textsuperscript`/`\textsubscript` (compiler `Inline::TextScript`).
+    TextScript(Box<TextScriptItem>),
     /// LaTeX's `\leavevmode`: an empty zero-width `\hbox`.
     ///
     /// Emitted only in front of a verbatim blank that would otherwise open
@@ -250,6 +270,19 @@ pub struct ColorBoxItem {
 pub struct UnderlineItem {
     pub thickness_pt: f64,
     pub geom: UnderlineGeom,
+    pub items: Vec<Item>,
+    pub span: Span,
+}
+
+/// latex.ltx `\@textsuperscript`/`\@textsubscript`:
+/// `{\m@th\ensuremath{^{\mbox{\fontsize\sf@size\z@\selectfont #1}}}}` (or
+/// `_{...}`). `items` are set at the `\sf@size` of the text size in effect
+/// at the command (`size_cpt`, 0 for the paragraph's), then shifted as a
+/// text-style script of an empty nucleus (`typeset::text_script_box`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextScriptItem {
+    pub superscript: bool,
+    pub size_cpt: u16,
     pub items: Vec<Item>,
     pub span: Span,
 }
@@ -738,6 +771,10 @@ pub struct Doc {
     /// Indices of the blocks after a `\clearpage`/`\cleardoublepage` (see
     /// `clear_page_blocks`).
     pub page_starts: Vec<usize>,
+    /// Inclusive block index ranges of every `titlepage` `abstract`
+    /// (`abstractenv::page_ranges`): a page of its own, `\vfil`-centred,
+    /// with a page break on each side. Empty for every other document.
+    pub abstract_pages: Vec<(usize, usize)>,
     /// `\begin` commands the compiler reported as unimplemented that the
     /// pipeline sets itself (`abstract`): its diagnostic is dropped, the
     /// way `toc::superseded_commands` drops the contents-list ones.
@@ -786,6 +823,13 @@ fn inlines_of(block: &CBlock) -> &[Inline] {
         // `lower_blocks` turns it into ordinary paragraphs before the block
         // walk reaches here.
         CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak | CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::VFill | CBlock::LetterBlock { .. } => &[],
+        // Nodes a re-pinned compiler can produce that this crate has no
+        // layout for yet. `Penalty` carries no content at all; `Tabbing`'s
+        // rows are reached through `lower_blocks`, not this slice, exactly
+        // as `LetterBlock`'s lines are. PR #569 (penalties) and the pipeline
+        // half of GH-TABBING (compiler #551) replace these with real arms.
+        #[cfg(feature = "compiler-node-surface")]
+        CBlock::Penalty { .. } | CBlock::Tabbing { .. } => &[],
     }
 }
 
@@ -851,6 +895,42 @@ fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: b
             }
         }
         match block {
+            // `tabbing` (GH-TABBING, compiler #551), lowered here the way
+            // `LetterBlock` is: every row becomes one flush-left paragraph
+            // broken exactly where the source's `\\` put it, so no line of a
+            // `tabbing` body is dropped by the re-pin. What is *not* applied
+            // is the horizontal part -- `\=` stops, `\>` jumps and `\kill`
+            // rows -- which the pipeline half of GH-TABBING adds; the
+            // limitation says so at the block's own span.
+            #[cfg(feature = "compiler-node-surface")]
+            CBlock::Tabbing { lines, span } => {
+                if lines.iter().any(|l| !l.content.is_empty()) {
+                    limitations.push((
+                        "unsupported_block",
+                        *span,
+                        "tabbing rows set as plain flush-left lines: \\= tab stops and \\> jumps are not applied".to_string(),
+                    ));
+                }
+                let mut content: Vec<Inline> = Vec::new();
+                for line in lines.iter().filter(|l| !l.killed) {
+                    let Some(at) = line.content.iter().map(inline_span).next() else { continue };
+                    if !content.is_empty() {
+                        content.push(line_break_inline(Span { document: at.document, start: at.start, end: at.start }));
+                    }
+                    content.extend(line.content.iter().cloned());
+                }
+                if !content.is_empty() {
+                    out.push((
+                        CBlock::Styled {
+                            style: ParagraphStyle::FlushLeft,
+                            content,
+                            lists: Vec::new(),
+                            line_break_before: None,
+                        },
+                        par_leading,
+                    ));
+                }
+            }
             CBlock::Verbatim { lines, span: _ } => {
                 let mut content: Vec<Inline> = Vec::with_capacity(lines.len() * 2);
                 for (i, line) in lines.iter().enumerate() {
@@ -982,7 +1062,7 @@ fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: b
                     LetterPart::Recipient | LetterPart::Closing => None,
                 };
                 if *gap_before_pt != 0.0 {
-                    out.push((CBlock::VSpace { pt: *gap_before_pt }, None));
+                    out.push((vspace_block(*gap_before_pt), None));
                 }
                 let mut group: Vec<Inline> = Vec::new();
                 let mut prev_end: Option<Span> = None;
@@ -993,13 +1073,11 @@ fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: b
                         // no interword space is read across it (as the
                         // `verbatim` lowering above does).
                         if let (Some(prev), Some(at)) = (prev_end, first) {
-                            group.push(Inline::LineBreak {
-                                span: Span {
-                                    document: at.document,
-                                    start: prev.end.min(at.start),
-                                    end: at.start,
-                                },
-                            });
+                            group.push(line_break_inline(Span {
+                                document: at.document,
+                                start: prev.end.min(at.start),
+                                end: at.start,
+                            }));
                         }
                     }
                     group.extend(line.iter().cloned());
@@ -1025,11 +1103,11 @@ fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: b
                         ));
                     }
                     if extra != 0.0 {
-                        out.push((CBlock::VSpace { pt: extra - parskip_pt }, None));
+                        out.push((vspace_block(extra - parskip_pt), None));
                     }
                 }
                 if *gap_after_pt != 0.0 {
-                    out.push((CBlock::VSpace { pt: *gap_after_pt }, None));
+                    out.push((vspace_block(*gap_after_pt), None));
                 }
                 // What is still approximate is horizontal, and only
                 // horizontal: the pipeline has no per-paragraph left offset
@@ -1283,6 +1361,7 @@ pub fn adapt_cached(
         }
     });
     style.nfss = crate::nfss::Scheme::for_document(&parsed.packages, t1_encoding(source));
+    style.input = crate::inputenc::InputSetup::for_project(texts, entry);
     let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(t, style_intervals(t), style.nfss)).collect();
     let labels_fp = {
         use std::hash::{Hash, Hasher};
@@ -2253,6 +2332,9 @@ pub fn adapt_cached(
         }
     }
     let page_starts = clear_page_blocks(texts, &blocks);
+    // After `listings::apply`, which can insert blocks: the ranges are
+    // block indices, so they are taken once the block list is final.
+    let abstract_pages = crate::abstractenv::page_ranges(texts, &blocks, &style);
     Doc {
         style,
         blocks,
@@ -2263,6 +2345,7 @@ pub fn adapt_cached(
         default_color: parsed.default_color,
         math_colors: math_colors(&parsed.blocks),
         page_starts,
+        abstract_pages,
         superseded,
         top_material,
     }
@@ -2568,6 +2651,7 @@ fn math_colors(blocks: &[flashtex_compiler::parser::Block]) -> std::collections:
                 }
                 Inline::ColorBox(b) => walk(&b.content, out),
                 Inline::Underline(u) => walk(&u.content, out),
+                Inline::TextScript(t) => walk(&t.content, out),
                 _ => {}
             }
         }
@@ -2653,8 +2737,21 @@ fn inline_span(i: &Inline) -> Span {
         Inline::Tabular(t) => t.span,
         Inline::ColorBox(b) => b.span,
         Inline::Underline(u) => u.span,
+        Inline::TextScript(t) => t.span,
         Inline::Graphic(g) => g.span,
         Inline::Transform(t) => t.span,
+        // Nodes only a re-pinned compiler emits; all of them carry the
+        // command's own span, so the generic answer is already right and
+        // the stacked PRs need not revisit this function.
+        #[cfg(feature = "compiler-node-surface")]
+        Inline::ThePage { span, .. }
+        | Inline::PageNumbering { span, .. }
+        | Inline::TabStop { span, .. }
+        | Inline::TabJump { span, .. }
+        | Inline::Marginpar { span, .. }
+        | Inline::Penalty { span, .. }
+        | Inline::PagePenalty { span, .. }
+        | Inline::Discretionary { span, .. } => *span,
     }
 }
 
@@ -3094,7 +3191,7 @@ fn split_at_page_breaks<'p>(
                 pending_eject = true;
                 continue;
             }
-            CBlock::VSpace { pt } => {
+            CBlock::VSpace { pt, .. } => {
                 pending_vspace += pt;
                 continue;
             }
@@ -3567,6 +3664,15 @@ fn split_at_page_breaks<'p>(
             }
             CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => unreachable!("handled above"),
             CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::TitleBlock { .. } | CBlock::VFill | CBlock::LetterBlock { .. } => unreachable!("lowered by lower_blocks"),
+            // Blocks only a re-pinned compiler emits. Skipping a `Penalty`
+            // is exactly what the old pin did (it had no such node), so page
+            // breaking is unchanged until PR #569's pipeline half reads it;
+            // `Tabbing` is lowered to flush-left paragraphs by `lower_blocks`
+            // above, as `LetterBlock` is, so it never reaches this walk.
+            #[cfg(feature = "compiler-node-surface")]
+            CBlock::Penalty { .. } => continue,
+            #[cfg(feature = "compiler-node-surface")]
+            CBlock::Tabbing { .. } => unreachable!("lowered by lower_blocks"),
         }
         if let Some(last) = inlines_of(block).iter().map(inline_span).last() {
             prev_end = Some(last);
@@ -7264,11 +7370,10 @@ fn kern_amount_matches(spelling: &str, amount: &TextDimen) -> bool {
     })
 }
 
-/// Against a `vendor/compiler` pinned before the package context reached
-/// `text_kern`, there is only the kernel definition to match.
+/// Without package gating, match only the kernel definition.
 #[cfg(not(feature = "compiler-package-gating"))]
 fn kern_amount_matches(spelling: &str, amount: &TextDimen) -> bool {
-    flashtex_compiler::text_builtins::text_kern(spelling).as_ref() == Some(amount)
+    flashtex_compiler::text_builtins::text_kern(spelling, false).as_ref() == Some(amount)
 }
 
 /// [`gap_has_space`] for the bytes after a control word: the whitespace
@@ -7282,7 +7387,11 @@ fn gap_has_space_after_control_word(rest: &str) -> bool {
 
 /// The sum of every `\vspace{<dimen>}`/`\vspace*{<dimen>}` in `gap`, in
 /// points; `None` when there is none or one does not parse.
-fn vspace_in_gap(gap: &str, size: u32) -> Option<f64> {
+///
+/// `pub(crate)` so [`crate::abstractenv`] can re-derive how much of a
+/// paragraph's leading skip came from inside a `\begin{abstract}` rather
+/// than before it.
+pub(crate) fn vspace_in_gap(gap: &str, size: u32) -> Option<f64> {
     let mut from = 0;
     let mut total = 0.0;
     let mut any = false;
@@ -7321,6 +7430,22 @@ fn line_break_inline(span: Span) -> Inline {
     #[cfg(not(feature = "linebreak-skip"))]
     {
         Inline::LineBreak { span }
+    }
+}
+
+/// A rigid `\vspace` block, written through one constructor so the crate
+/// builds against a pinned compiler with or without `VSpace`'s glue
+/// components (`stretch_pt`/`shrink_pt`, compiler PR #606). Every caller
+/// here lowers a gap the pipeline computed itself (`\opening`'s skips), so
+/// the glue is zero either way and the two arms are the same block.
+fn vspace_block(pt: f64) -> CBlock {
+    #[cfg(feature = "compiler-node-surface")]
+    {
+        CBlock::VSpace { pt, stretch_pt: 0.0, shrink_pt: 0.0 }
+    }
+    #[cfg(not(feature = "compiler-node-surface"))]
+    {
+        CBlock::VSpace { pt }
     }
 }
 
@@ -8322,6 +8447,9 @@ fn items_cached(
             Inline::Underline(u) => {
                 format!("{u:?}").hash(&mut h);
             }
+            Inline::TextScript(t) => {
+                format!("{t:?}").hash(&mut h);
+            }
             Inline::Logo { logo, style, .. } => {
                 logo.hash(&mut h);
                 style.hash(&mut h);
@@ -8374,6 +8502,24 @@ fn items_cached(
             Inline::CleverReference { keys, page, range, label_only, capitalise, linked, .. } => {
                 keys.hash(&mut h);
                 (page, range, label_only, capitalise, linked).hash(&mut h);
+            }
+            // Nodes only a re-pinned compiler emits. The cache key must
+            // still change when any of their fields does, so -- exactly as
+            // the `Graphic`/`Transform` arms above do -- the whole node is
+            // hashed through its `Debug` form rather than field by field.
+            // That is conservative (it can only over-invalidate) and cannot
+            // return a stale adaptation once the stacked PRs give these
+            // nodes real layout.
+            #[cfg(feature = "compiler-node-surface")]
+            other @ (Inline::ThePage { .. }
+            | Inline::PageNumbering { .. }
+            | Inline::TabStop { .. }
+            | Inline::TabJump { .. }
+            | Inline::Marginpar { .. }
+            | Inline::Penalty { .. }
+            | Inline::PagePenalty { .. }
+            | Inline::Discretionary { .. }) => {
+                format!("{other:?}").hash(&mut h);
             }
         }
     }
@@ -8561,6 +8707,39 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_span = Some(span);
                 factor = 1000;
             }
+            Inline::TextScript(t) => {
+                // A formula (`\ensuremath`): the space before it is read
+                // like one, and the space factor after it is 1000.
+                let span = t.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                let size_cpt = declared_size(t.style.size, size);
+                let mut content = items_from_inlines_styled(texts, &t.content, styles, labels, size, heading, compiler_weight);
+                // `\fontsize\sf@size` replaces the declared size the
+                // argument inherited from the command's context.
+                if size_cpt != 0 {
+                    for item in &mut content {
+                        match item {
+                            Item::Word(w) => {
+                                for seg in &mut w.segments {
+                                    if seg.style.size_cpt == size_cpt {
+                                        seg.style.size_cpt = 0;
+                                    }
+                                }
+                            }
+                            Item::Space { style, .. } if style.size_cpt == size_cpt => style.size_cpt = 0,
+                            _ => {}
+                        }
+                    }
+                }
+                items.push(Item::TextScript(Box::new(TextScriptItem { superscript: t.superscript, size_cpt, items: content, span })));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
+            }
             Inline::LineBreak { span, .. } => {
                 let skip_pt = reported_line_break_skip(inline)
                     .or_else(|| line_break_skip(text_of(span.document), span.end, size))
@@ -8637,7 +8816,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     // the compiler's `pt` cannot know: it converts at a fixed
                     // size. An `\hspace{<n>em}` read from the source is set
                     // as `<n>` quads of the font in force, like `\quad`.
-                    Inline::HSpace { pt, span } => match hspace_ems(text_of(span.document), *span) {
+                    Inline::HSpace { pt, span, .. } => match hspace_ems(text_of(span.document), *span) {
                         Some(em) => (Item::Quad { em, style: quad_style() }, "\\hspace"),
                         None => (Item::HSpace { pt: *pt, stretch_pt: 0.0, shrink_pt: 0.0 }, "\\hspace"),
                     },
@@ -8810,6 +8989,31 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
                 after_control_word = word.as_deref().is_some_and(|w| w.len() > 2);
+            }
+            // amsthm's automatic `\qedsymbol` (GH#443). `\end{proof}` appends
+            // exactly two inlines, an `Inline::HFill` with no leader and an
+            // `Inline::Text` holding U+220E, and gives both the *same* span —
+            // the `\end{proof}` bytes. That pair is the compiler's marker (it
+            // emits U+220E nowhere else); a U+220E typed in the source is a
+            // lone text inline with its own span and still sets whatever the
+            // font has. Latin Modern has no U+220E glyph, so the text arm
+            // below would warn `missing_glyph` and draw nothing; amsthm never
+            // wanted a character here in the first place.
+            Inline::Text { text, span, .. }
+                if text == "\u{220E}"
+                    && prev_span == Some(*span)
+                    && matches!(items.last(), Some(Item::HFill { leader: FillLeader::None, .. })) =>
+            {
+                let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
+                let mut style = style_at(styles_of(span.document), span.start);
+                style.size_cpt = declared_size(compiler_style.size, size);
+                prev_size_cpt = style.size_cpt;
+                items.push(Item::QedBox { style, span: *span });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = false;
             }
             Inline::Text { text, span, .. } if text == " " && text_of(span.document).get(span.start..span.end) == Some("\\ ") => {
                 // `\ ` (control space, lexed as the word " "): interword glue at
@@ -9109,6 +9313,24 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
             }
+            // Inlines only a re-pinned compiler emits. Every one of them is
+            // a zero-width marker in the horizontal list -- a penalty, a
+            // discretionary, a tab stop or jump, a page-number marker -- so
+            // producing no item is what the old pin already did for the same
+            // source, and the line breaker sees exactly the same sequence.
+            // `Marginpar` is the one that carries text; the pipeline has no
+            // margin column yet (GH-505), so its note is not set here either
+            // way. PRs #569 (penalties/discretionaries), GH-TABBING and
+            // GH-505 (marginpar) replace this arm.
+            #[cfg(feature = "compiler-node-surface")]
+            Inline::ThePage { .. }
+            | Inline::PageNumbering { .. }
+            | Inline::TabStop { .. }
+            | Inline::TabJump { .. }
+            | Inline::Marginpar { .. }
+            | Inline::Penalty { .. }
+            | Inline::PagePenalty { .. }
+            | Inline::Discretionary { .. } => {}
         }
     }
     items
@@ -9868,6 +10090,23 @@ mod tests {
     /// Every table reads its lengths in one adapt call without rescanning the
     /// source before it: doubling the number of tables about doubles the
     /// time (a prefix scan per table grew it fourfold, #525/#623).
+    ///
+    /// This is a complexity guard, not a benchmark, so it uses an absolute
+    /// ceiling rather than a `t800 < t200 * N` ratio. A ratio over a
+    /// sub-millisecond baseline is fragile: on PR #765 CI this failed as
+    /// "800 tables took 5.044542ms, 200 took 587.834us: not linear", and the
+    /// identical commit passed on a bare re-run with no change -- a few
+    /// hundred microseconds of scheduler noise is a large fraction of a
+    /// ~600us baseline, and the error amplifies because the ratio's margin
+    /// scales with the *smaller* operand. Measured on dev hardware, normal
+    /// 800-table runs (best of 5) take ~1-1.3ms in `--release` and
+    /// ~10-11ms unoptimized. Forcing `length_at_checked` to always fall
+    /// through to `length_at_scan` (i.e. reverting #623 so every table
+    /// rescans the source instead of using the per-document index) makes
+    /// 800 tables take ~1.4s in `--release` -- about a thousandfold jump.
+    /// 300ms sits roughly 250-300x above the normal case and ~5x below the
+    /// reintroduced-quadratic case, so it stays quiet on a loaded machine
+    /// and still fires if the per-table rescan comes back.
     #[test]
     fn table_lengths_scale_linearly_with_the_number_of_tables() {
         let resolve = |tables: usize| {
@@ -9888,7 +10127,10 @@ mod tests {
         eprintln!("table lengths: 200 tables {t200:?}, 400 tables {t400:?}, 800 tables {t800:?}");
         assert_eq!(&l800[..200], &l200[..]);
         assert_eq!(&l200[..5], &[0.0, 1.0, 3.0, 2.0, 3.0]);
-        assert!(t800 < t200 * 8, "800 tables took {t800:?}, 200 took {t200:?}: not linear");
+        assert!(
+            t800 < std::time::Duration::from_millis(300),
+            "800 tables took {t800:?} (200 took {t200:?}, 400 took {t400:?}): quadratic regression suspected, see #623"
+        );
     }
 
     #[test]
