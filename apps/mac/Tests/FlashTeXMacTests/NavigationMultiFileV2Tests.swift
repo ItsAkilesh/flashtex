@@ -227,7 +227,8 @@ final class NavigationMultiFileV2Tests: XCTestCase {
         let ffl = try XCTUnwrap(cluster("ffl", in: "chapter.tex", after: byte(chapter, "shuffle")))
         let inside = V2Geometry.clusters(containing: ffl.source.startByte + 1, path: "chapter.tex", in: ffl.page)
         XCTAssertEqual(inside.map(\.clusterIndex), [ffl.clusterIndex])
-        XCTAssertNil(inside[0].caret)
+        let insideFirst = try XCTUnwrap(inside.first)
+        XCTAssertNil(insideFirst.caret)
         let atStart = V2Geometry.clusters(containing: ffl.source.startByte, path: "chapter.tex", in: ffl.page)
         XCTAssertEqual(atStart[0].caret?.textByte, 3, "the run's caret at the ligature's first logical byte")
         // ⌘⇧J selects what the pane highlights: the cluster, i.e. the whole
