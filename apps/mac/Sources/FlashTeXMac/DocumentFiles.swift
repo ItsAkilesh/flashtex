@@ -598,6 +598,14 @@ extension ShellModel {
         return write(to: url, expected: expectedOnDisk(for: url), force: false)
     }
 
+    /// `saveTex()` for the entry document whichever document is active
+    /// (autosave after a tab switch). Never opens a Save panel.
+    @discardableResult
+    func saveEntryTex() -> Bool {
+        guard let url = documentURL, let entry = documents.first(where: { $0.path == project.entryPath }) else { return false }
+        return write(to: url, text: entry.text, expected: expectedOnDisk(for: url), force: false)
+    }
+
     /// Menu-driven save: on a conflict, asks the user how to resolve it.
     func saveTexInteractive() {
         // A non-entry document saves to its own rooted file (never to the
@@ -1005,8 +1013,8 @@ extension ShellModel {
         }
     }
 
-    private func write(to url: URL, expected: ProjectFilesV1.Expected, force: Bool) -> Bool {
-        let text = activeText
+    private func write(to url: URL, text: String? = nil, expected: ProjectFilesV1.Expected, force: Bool) -> Bool {
+        let text = text ?? activeText
         let lateReceipt: @MainActor (String) -> Void = { [weak self] sha in
             // The helper confirmed, after our wait expired, that exactly `text`
             // is on disk at `url`: that text is the new baseline. Edits made
