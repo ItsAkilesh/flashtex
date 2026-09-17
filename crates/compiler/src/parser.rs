@@ -7222,6 +7222,98 @@ impl P<'_> {
         })
     }
 
+    /// Lift `\label{...}` commands out of a display-math token stream
+    /// (`\[...\]` and `$$...$$`, via `finish_math`): amsmath lets an
+    /// unnumbered display carry `\tag`/`\label` even though it never steps
+    /// the counter (TeX Live 2026 pdflatex prints `(B)` for
+    /// `\[x=1 \tag{B}\label{e:d}\]` and `\eqref` reads `(B)`).
+    /// Returns the math tokens with the labels removed plus the extracted
+    /// `(key, span)` pairs. Mirrors the `equation`/multi-row environments,
+    /// which likewise lift every `\label` (at any depth) before math
+    /// parsing, with the same diagnostics for malformed arguments; inline
+    /// math is untouched and keeps its "not supported in math mode" error.
+    fn take_display_labels(&mut self, raw: Vec<Token>) -> (Vec<Token>, Vec<(String, Span)>) {
+        let mut clean = Vec::with_capacity(raw.len());
+        let mut labels = Vec::new();
+        let mut index = 0;
+        while index < raw.len() {
+            if !matches!(&raw[index].kind, TokenKind::Command(name) if name == "label") {
+                clean.push(raw[index].clone());
+                index += 1;
+                continue;
+            }
+            let command_span = raw[index].span;
+            index += 1;
+            while index < raw.len() && raw[index].kind == TokenKind::Space {
+                index += 1;
+            }
+            let open_token = raw.get(index).cloned();
+            let Some(open_token) = open_token else {
+                self.diags.push(Diagnostic::error(
+                    "\\label requires a braced argument",
+                    Some(command_span),
+                    Some("used an empty argument and continued".into()),
+                ));
+                break;
+            };
+            if open_token.kind != TokenKind::LBrace {
+                self.diags.push(Diagnostic::error(
+                    "\\label requires a braced argument",
+                    Some(command_span),
+                    Some("used an empty argument and continued".into()),
+                ));
+                continue;
+            }
+            index += 1;
+            let mut key = String::new();
+            let mut depth = 1usize;
+            let mut end = open_token.span.end;
+            let mut closed = false;
+            while index < raw.len() {
+                let token = &raw[index];
+                match &token.kind {
+                    TokenKind::LBrace => depth += 1,
+                    TokenKind::RBrace => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = token.span.end;
+                            index += 1;
+                            closed = true;
+                            break;
+                        }
+                    }
+                    TokenKind::Word(text) | TokenKind::Command(text) => key.push_str(text),
+                    TokenKind::Space | TokenKind::ParBreak => key.push(' '),
+                    _ => {}
+                }
+                end = token.span.end;
+                index += 1;
+            }
+            if !closed {
+                self.diags.push(Diagnostic::error(
+                    "argument to \\label is missing its closing brace",
+                    Some(open_token.span),
+                    Some("closed the argument at end of input".into()),
+                )
+                .with_help("add a closing '}'"));
+            }
+            let key = key.trim().to_string();
+            if key.is_empty() {
+                continue;
+            }
+            let span = self.span_through(command_span, end);
+            if self.seen_labels.insert(key.clone(), span).is_some() {
+                self.diags.push(Diagnostic::warning(
+                    format!("duplicate \\label{{{key}}}; the second definition wins"),
+                    Some(span),
+                    Some("replaced the earlier label definition".into()),
+                ));
+            }
+            labels.push((key, span));
+        }
+        (clean, labels)
+    }
+
     fn equation_environment(
         &mut self,
         open: Span,
@@ -7231,13 +7323,6 @@ impl P<'_> {
     ) {
         self.flush_paragraph(blocks, para);
         let numbered = name == "equation";
-        let number = if numbered {
-            let number = self.counters.step("equation").unwrap_or_default();
-            self.set_current_counter("equation", Some(number.clone()));
-            number
-        } else {
-            self.counters.the("equation").unwrap_or_default()
-        };
         let mut raw = Vec::new();
         let mut labels: Vec<(String, Span)> = Vec::new();
         let mut end = open.end;
@@ -7292,13 +7377,25 @@ impl P<'_> {
         // `equation`/`equation*` are always display math.
         let list = math::parse_tokens_display(&raw, self.math_packages, &mut self.diags, true);
         let tag = Self::custom_tag_text(&list, self.documents[open.document.0].text, open.document);
+        // A `\tag{...}` display keeps the tag as its number and never
+        // steps the counter — the single-environment half of the
+        // multi-row rule above (TeX Live 2026 pdflatex: a tagged
+        // `equation` is followed by (1), not (2)). Only displays that get
+        // an automatic number step the counter.
+        let number = if numbered && tag.is_none() {
+            let number = self.counters.step("equation").unwrap_or_default();
+            self.set_current_counter("equation", Some(number.clone()));
+            number
+        } else {
+            self.counters.the("equation").unwrap_or_default()
+        };
         let color_ranges = self.math_color_ranges(&raw);
         para.push(Inline::Math {
             color: self.style.color,
             color_ranges,
             list,
             display: true,
-            number: numbered.then_some(number.clone()),
+            number: (numbered && tag.is_none()).then_some(number.clone()),
             number_span: numbered.then_some(open),
             span: self.span_through(open, end),
             // Always its own line (see `layout::LayoutCursor::display_math`),
@@ -7536,11 +7633,42 @@ impl P<'_> {
                 .filter(|span| span.document == open.document)
                 .reduce(Span::merge)
                 .unwrap_or(open);
-            let number = (numbered && !unnumbered).then(|| {
-                let number = self.counters.step("equation").unwrap_or_default();
-                self.set_current_counter("equation", Some(number.clone()));
-                number
-            });
+            // A `\shoveleft`/`\shoveright` at the top level of a `multline`
+            // row's first cell directs the whole row, so it is lifted before
+            // the cells are parsed and recorded for layout; in any other
+            // display the tokens stay, and `math` diagnoses them as before.
+            let shove = is_multline
+                .then(|| Self::take_row_shove(&mut cells))
+                .flatten();
+            let packages = self.math_packages;
+            // gather/align/multline/eqnarray and their variants are always
+            // display math.
+            let cells: Vec<MathList> = cells
+                .iter()
+                .map(|cell| math::parse_tokens_display(cell, packages, &mut self.diags, true))
+                .collect();
+            // A row carrying its own `\tag{...}` keeps the tag as its
+            // number (exactly like the single-`equation` path via
+            // `custom_tag_text`) and never steps the counter: `\tag` is
+            // amsmath's own opt-out of automatic numbering, `\notag`-like
+            // (verified against TeX Live 2026 pdflatex: a tagged row prints
+            // its tag while the next untagged row keeps the unstepped
+            // number). Only rows that get an automatic number step it.
+            let tag: Option<String> = {
+                let source: &str = &self.documents[open.document.0].text;
+                cells
+                    .iter()
+                    .find_map(|cell| Self::custom_tag_text(cell, source, open.document))
+            };
+            let number = if tag.is_some() {
+                None
+            } else {
+                (numbered && !unnumbered).then(|| {
+                    let number = self.counters.step("equation").unwrap_or_default();
+                    self.set_current_counter("equation", Some(number.clone()));
+                    number
+                })
+            };
             for (key, label_span) in row_labels {
                 self.document_global_state = true;
                 if self.seen_labels.insert(key.clone(), label_span).is_some() {
@@ -7552,27 +7680,13 @@ impl P<'_> {
                 }
                 labels.push(Inline::Label {
                     key,
-                    value: number
-                        .clone()
-                        .unwrap_or_else(|| self.counters.the("equation").unwrap_or_default()),
+                    value: tag.clone().or(number.clone()).unwrap_or_else(|| {
+                        self.counters.the("equation").unwrap_or_default()
+                    }),
                     kind: "equation".into(),
                     span: label_span,
                 });
             }
-            // A `\shoveleft`/`\shoveright` at the top level of a `multline`
-            // row's first cell directs the whole row, so it is lifted before
-            // the cells are parsed and recorded for layout; in any other
-            // display the tokens stay, and `math` diagnoses them as before.
-            let shove = is_multline
-                .then(|| Self::take_row_shove(&mut cells))
-                .flatten();
-            let packages = self.math_packages;
-            // gather/align/multline/eqnarray and their variants are always
-            // display math.
-            let cells = cells
-                .iter()
-                .map(|cell| math::parse_tokens_display(cell, packages, &mut self.diags, true))
-                .collect();
             math_rows.push(MathRow {
                 cells,
                 number,
@@ -7811,6 +7925,14 @@ impl P<'_> {
             }
             raw.push(input.token.clone());
         }
+        // An unnumbered display can still carry `\label` (with `\tag`
+        // read off the parsed list below); lift the labels first so math
+        // parsing never sees — and literally typesets — them.
+        let (raw, display_labels) = if display {
+            self.take_display_labels(raw)
+        } else {
+            (raw, Vec::new())
+        };
         let (list, unclosed) = math::parse_tokens_reporting_unclosed(
             &raw,
             self.math_packages,
@@ -7871,6 +7993,12 @@ impl P<'_> {
         }
         // `\[...\]` and `$$...$$` are unnumbered displays in LaTeX: they never
         // print a number or advance the equation counter.
+        let tag = if display {
+            let source: &str = &self.documents[open.document.0].text;
+            Self::custom_tag_text(&list, source, open.document)
+        } else {
+            None
+        };
         let color_ranges = self.math_color_ranges(&raw);
         para.push(Inline::Math {
             color: self.style.color,
@@ -7882,6 +8010,22 @@ impl P<'_> {
             span: self.span_through(open, end),
             space_before,
         });
+        for (key, span) in display_labels {
+            self.document_global_state = true;
+            let (value, kind) = match &tag {
+                Some(tag) => (tag.clone(), "equation".to_string()),
+                None => (
+                    self.current_counter.clone().unwrap_or_default(),
+                    self.current_counter_kind.clone().unwrap_or_default(),
+                ),
+            };
+            para.push(Inline::Label {
+                key,
+                value,
+                kind,
+                span,
+            });
+        }
     }
 
     /// `open` through byte `end`. Expanded tokens (a macro body,
