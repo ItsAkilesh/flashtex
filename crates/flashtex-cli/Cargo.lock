@@ -137,6 +137,7 @@ dependencies = [
  "flashtex-paragraph-layout",
  "flashtex-pdf",
  "flashtex-project-files",
+ "flashtex-tex-text-encoding",
  "flashtex-vector-graphics",
 ]
 

@@ -1073,18 +1073,55 @@ impl<'a> Context<'a> {
 
     /// Shapes one styled segment into a box record and a paragraph-layout box.
     fn text_box(&mut self, seg: &adapter::Segment, size: f64) -> Option<(pl::GlyphRun, usize)> {
+        let filtered = self.input_filtered(seg);
+        let (seg, reject_cuts): (&adapter::Segment, &[usize]) = match &filtered {
+            Some((seg, cuts)) => (seg, cuts),
+            None => (seg, &[]),
+        };
         let span = seg_span(seg)?;
         let face = self.face(seg.style, size, span);
-        self.text_box_in(seg, size, face)
+        // Where the input encoding puts a character outside the font's
+        // ligature/kern program (an OT1 `\accent`, a TS1 symbol), the text
+        // is shaped in pieces split around it. Computed here, not in
+        // `text_box_shaped`, because it depends on `self.style.input` -- the
+        // *document's* input encoding -- which only applies to text that
+        // actually came from `\inputenc`-decoded source. `reject_cuts` are
+        // folded in too: a rejected character breaks the ligature/kern
+        // program in real pdfLaTeX regardless of whether `input_filtered`
+        // dropped it or kept a plain letter for it.
+        let mut cuts: Vec<usize> = match &self.style.input {
+            Some(input) if !seg.text.is_ascii() => seg
+                .text
+                .char_indices()
+                .filter(|(_, c)| input.cuts_ligkern(*c))
+                .flat_map(|(i, c)| [i, i + c.len_utf8()])
+                .collect(),
+            _ => Vec::new(),
+        };
+        cuts.extend_from_slice(reject_cuts);
+        self.text_box_shaped(seg, size, face, &cuts)
     }
 
-    /// [`Self::text_box`] shaped in `face` instead of the style's face.
+    /// [`Self::text_box`] shaped in `face` instead of the style's face, with
+    /// no input-encoding cuts: `tcrm_symbol_box`'s synthetic bullet/centre-dot
+    /// segments never went through `\inputenc` decoding, so running the input
+    /// table on them would have the wrong meaning even where it is a no-op
+    /// today.
     fn text_box_in(&mut self, seg: &adapter::Segment, size: f64, face: Rc<LoadedFace>) -> Option<(pl::GlyphRun, usize)> {
+        self.text_box_shaped(seg, size, face, &[])
+    }
+
+    /// Shared tail of [`Self::text_box`]/[`Self::text_box_in`]: `cuts` are
+    /// the input-encoding ligature/kern break points (empty for callers that
+    /// have none, e.g. `text_box_in`'s synthetic segments).
+    fn text_box_shaped(&mut self, seg: &adapter::Segment, size: f64, face: Rc<LoadedFace>, cuts: &[usize]) -> Option<(pl::GlyphRun, usize)> {
         let span = seg_span(seg)?;
         // Verbatim runs the font's ligature/kern program not at all
         // (`\@noligs`); every other run runs it as TeX does.
         let shaped = if seg.style.literal {
             self.shaper.shape_literal(&face, &seg.text)
+        } else if !cuts.is_empty() {
+            self.shaper.shape_cut(&face, &seg.text, cuts)
         } else {
             self.shaper.shape(&face, &seg.text)
         };
@@ -1189,6 +1226,85 @@ impl<'a> Context<'a> {
             raise: 0.0,
         });
         Some((run, self.recs.len() - 1))
+    }
+
+    /// pdfLaTeX's input errors for the literal UTF-8 characters of `seg`
+    /// (`crate::inputenc`): each rejected character is reported at its
+    /// source as the LaTeX error pdfLaTeX logs, and removed from the text —
+    /// or replaced by the letter pdfLaTeX still sets (`\k a` in OT1 sets
+    /// `a`). Also returns the byte offset of each rejection in the filtered
+    /// text, for `text_box` to fold into its own ligature/kern cuts (the
+    /// error itself breaks the program there in real pdfLaTeX). `None`
+    /// when the segment keeps every character.
+    fn input_filtered(&mut self, seg: &adapter::Segment) -> Option<(adapter::Segment, Vec<usize>)> {
+        let input = self.style.input.as_ref()?;
+        if seg.text.is_ascii() {
+            return None;
+        }
+        // Only a character typed in the source is input: one a macro
+        // generates (`\fnsymbol`'s U+2217 for `\thanks`) has its invocation's
+        // span, not its own bytes. A `\verb` body is input too (its
+        // characters stay active), though its characters all carry the
+        // span of the whole `\verb|...|`.
+        let texts = self.texts;
+        let typed = |i: usize, c: char| {
+            seg.chars.get(i).is_some_and(|s| {
+                texts.get(s.document.0).is_some_and(|t| {
+                    t.get(s.start..s.end).is_some_and(|t| t.len() == c.len_utf8() && t.starts_with(c))
+                        || verb_body(t, s.start, s.end).is_some_and(|b| b.contains(c))
+                })
+            })
+        };
+        let rejected: Vec<(usize, char, crate::inputenc::Rejected)> = seg
+            .text
+            .chars()
+            .enumerate()
+            .filter_map(|(i, c)| input.rejected(c).filter(|_| typed(i, c)).map(|r| (i, c, r)))
+            .collect();
+        if rejected.is_empty() {
+            return None;
+        }
+        let mut text = String::with_capacity(seg.text.len());
+        let mut chars = Vec::with_capacity(seg.chars.len());
+        // Real pdfLaTeX's error at a rejected character (`\GenericError`'s
+        // group) is a non-character command, so it ends the ligature/kern
+        // program there: a kept letter does not kern with what preceded the
+        // rejection, and a fully-dropped character still severs its
+        // neighbours from each other. One byte offset per rejection, at the
+        // boundary right before whatever gets appended for it (nothing, if
+        // dropped): `shape_cut` already drops a cut at offset 0, which is
+        // exactly right here too, since there is nothing before it in this
+        // segment to sever.
+        let mut cuts = Vec::new();
+        let mut next = rejected.iter().peekable();
+        for (i, c) in seg.text.chars().enumerate() {
+            let src = seg.chars.get(i).copied();
+            let keep = match next.peek() {
+                Some((at, _, r)) if *at == i => {
+                    let keep = r.keep;
+                    next.next();
+                    cuts.push(text.len());
+                    keep
+                }
+                _ => Some(c),
+            };
+            if let (Some(k), Some(src)) = (keep, src) {
+                text.push(k);
+                chars.push(src);
+            }
+        }
+        for (i, c, r) in rejected {
+            let Some(csrc) = seg.chars.get(i).copied() else { continue };
+            let src = self.source(csrc.span());
+            let code = if r.message.contains("not set up for use with LaTeX") { "unicode_not_set_up" } else { "command_unavailable_in_encoding" };
+            let mut d = Diagnostic::error(code, r.message, vec![src]);
+            d.recovery = Some(match r.keep {
+                Some(k) => format!("typeset `{k}` without the accent, as pdfLaTeX does after this error"),
+                None => format!("typeset nothing for U+{:04X}, as pdfLaTeX does after this error", c as u32),
+            });
+            self.report_once(format!("input:{}:{}:{}", csrc.document.0, csrc.start, c), d);
+        }
+        Some((adapter::Segment { text, chars, style: seg.style }, cuts))
     }
 
     /// Marks a text box as the continuation of the word box before it.
@@ -10434,6 +10550,20 @@ pub fn documents_referenced(list: &DisplayList) -> BTreeSet<DocumentId> {
         }
     }
     out
+}
+
+/// The body of the `\verb<d>...<d>` (or `\verb*`) whose command name is
+/// `text[start..end]`, as the compiler spans a `\verb`'s characters.
+fn verb_body(text: &str, start: usize, end: usize) -> Option<&str> {
+    let name = text.get(start..end)?;
+    if name != "\\verb" && name != "\\verb*" {
+        return None;
+    }
+    let rest = text.get(end..)?;
+    let rest = if name == "\\verb" { rest.strip_prefix('*').unwrap_or(rest) } else { rest };
+    let delimiter = rest.chars().next().filter(|d| !d.is_ascii_alphabetic() && !d.is_whitespace())?;
+    let body = &rest[delimiter.len_utf8()..];
+    Some(&body[..body.find(delimiter)?])
 }
 
 #[cfg(all(test, feature = "math-glyph-spans"))]
