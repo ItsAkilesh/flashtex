@@ -164,6 +164,20 @@ pub fn sup2_pt(size: f64) -> f64 {
     ratio * size
 }
 
+/// `sub1` (fontdimen 16) of the symbol font at text size `size`, in points,
+/// chosen like [`sup2_pt`] (cmsy5-cmsy10 TFM values).
+pub fn sub1_pt(size: f64) -> f64 {
+    let ratio = match size {
+        s if s < 5.5 => 0.2,
+        s if s < 6.5 => 0.166667,
+        s if s < 7.5 => 0.142858,
+        s if s < 8.5 => 0.125,
+        s if s < 9.5 => 0.111111,
+        _ => 0.15,
+    };
+    ratio * size
+}
+
 /// Hook for `minipage` footnotes (`\@mpfootnotetext`): a minipage collects
 /// its notes (marks `\thempfootnote`, `{\itshape\@alph\c@mpfootnote}`) and
 /// sets them at its own foot, `\vskip\skip\@mpfootins \footnoterule

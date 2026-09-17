@@ -1832,6 +1832,7 @@ fn rec_span(ctx: &Context, r: usize) -> Option<Span> {
         BoxRec::ColorBox(b) => Some(b.span),
         BoxRec::Leader { .. } => None,
         BoxRec::Underline(u) => Some(u.span),
+        BoxRec::TextScript(t) => Some(t.span),
     }
 }
 

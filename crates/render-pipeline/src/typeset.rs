@@ -125,6 +125,21 @@ pub enum BoxRec {
     ColorBox(Rc<ColorBoxRec>),
     /// ulem `\uline` (`Context::underline_box`).
     Underline(Rc<UnderlineRec>),
+    /// `\textsuperscript`/`\textsubscript` (`Context::text_script_box`).
+    TextScript(Rc<TextScriptRec>),
+}
+
+/// A laid-out `\textsuperscript`/`\textsubscript`: the script-size content
+/// as one line, its baseline `raise` points above the line's (negative for
+/// a subscript); `width` includes `\scriptspace`.
+#[derive(Clone)]
+pub struct TextScriptRec {
+    pub block: BuiltBlock,
+    pub width: f64,
+    pub height: f64,
+    pub depth: f64,
+    pub raise: f64,
+    pub span: Span,
 }
 
 /// A laid-out `\colorbox`/`\fcolorbox`: the content as one line whose
@@ -2236,6 +2251,10 @@ impl<'a> Context<'a> {
                 }
                 AItem::Underline(ul) => {
                     let (run, rec) = self.underline_box(ul, size);
+                    push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                }
+                AItem::TextScript(ts) => {
+                    let (run, rec) = self.text_script_box(ts, size);
                     push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                 }
                 AItem::Kern { amount, style } => {
@@ -4615,10 +4634,10 @@ impl<'a> Context<'a> {
         (run, self.recs.len() - 1)
     }
 
-    /// ulem `\uline`/`\sout` or kernel `\underline`: content as an `\hbox`,
-    /// rule placed by `ul.geom`. `\uline` keeps the 0.25em-top / 0.4pt path.
-    fn underline_box(&mut self, ul: &adapter::UnderlineItem, size: f64) -> (pl::GlyphRun, usize) {
-        let (placed, width) = self.hbox_runs(&ul.items, size);
+    /// `items` as one unbreakable `\hbox` line at natural width, runs placed
+    /// from its left edge: the block and its width, height and depth.
+    fn hbox_block(&mut self, items: &[AItem], size: f64) -> (BuiltBlock, f64, f64, f64) {
+        let (placed, width) = self.hbox_runs(items, size);
         let (mut ht, mut dp) = (0.0f64, 0.0f64);
         let mut runs = Vec::with_capacity(placed.len());
         let mut items = Vec::with_capacity(placed.len());
@@ -4673,7 +4692,7 @@ impl<'a> Context<'a> {
                 contributed: None,
                 line_penalty: Vec::new(),
                 // TeX §890 `\brokenpenalty` follows a discretionary-broken
-                // line; the underlined fragment is one unbreakable line
+                // line; the boxed fragment is one unbreakable line
                 // (`hyphenated: false`), so there is never one to follow.
                 broken_penalty: Vec::new(),
                 depth_after: pagebuild::DepthAfter::default(),
@@ -4681,6 +4700,40 @@ impl<'a> Context<'a> {
             labels: Vec::new(),
             cache_key: None,
         };
+        (block, width, ht, dp)
+    }
+
+    /// latex.ltx `\@textsuperscript`/`\@textsubscript`:
+    /// `\m@th\ensuremath{^{\mbox{\fontsize\sf@size\z@\selectfont #1}}}` (`_`
+    /// for the subscript). The `\mbox` is set at the `\sf@size` of the text
+    /// size in effect, then shifted as the script of an empty nucleus in
+    /// text style (TeX §756-§758, Appendix G rules 18a-c): up by
+    /// `max(sup2, d + x-height/4)`, or down by `max(sub1, h - 4/5 x-height)`,
+    /// with the symbol font's parameters at the text size. `\scriptspace`
+    /// is part of the box's width. (pdflatex 10pt: `^{th}` shifted -3.62892,
+    /// `_{2}` shifted 1.49998; 12pt: -4.3547, 1.79999.)
+    fn text_script_box(&mut self, ts: &adapter::TextScriptItem, size: f64) -> (pl::GlyphRun, usize) {
+        let local = if ts.size_cpt == 0 { size } else { f64::from(ts.size_cpt) / 100.0 };
+        let sf = footnotes::script_size(local);
+        let (block, content_width, ht, dp) = self.hbox_block(&ts.items, sf);
+        let x_height = 0.430555 * local;
+        let (raise, height, depth) = if ts.superscript {
+            let shift = footnotes::sup2_pt(local).max(dp + 0.25 * x_height);
+            (shift, ht + shift, (dp - shift).max(0.0))
+        } else {
+            let shift = footnotes::sub1_pt(local).max(ht - 0.8 * x_height);
+            (-shift, (ht - shift).max(0.0), dp + shift)
+        };
+        let width = content_width + footnotes::SCRIPT_SPACE;
+        self.recs.push(BoxRec::TextScript(Rc::new(TextScriptRec { block, width, height, depth, raise, span: ts.span })));
+        let run = pl::GlyphRun { font: MATH_SENTINEL, size, glyphs: Vec::new(), width, height, depth, source: ts.span.start..ts.span.end };
+        (run, self.recs.len() - 1)
+    }
+
+    /// ulem `\uline`/`\sout` or kernel `\underline`: content as an `\hbox`,
+    /// rule placed by `ul.geom`. `\uline` keeps the 0.25em-top / 0.4pt path.
+    fn underline_box(&mut self, ul: &adapter::UnderlineItem, size: f64) -> (pl::GlyphRun, usize) {
+        let (block, width, ht, dp) = self.hbox_block(&ul.items, size);
         let descender = self.uline_depth(size);
         let ex = self.text_params(TextStyle::default(), size).x_height;
         let (top, extra_depth) =
@@ -5853,6 +5906,7 @@ impl<'a> Context<'a> {
                     BoxRec::ColorBox(c) => Some(c.span),
                     BoxRec::Leader { .. } => None,
                     BoxRec::Underline(u) => Some(u.span),
+                    BoxRec::TextScript(t) => Some(t.span),
                 })
                 .next();
             let _ = list;
@@ -8669,6 +8723,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                     BoxRec::ColorBox(c) => Some(c.span),
                     BoxRec::Leader { .. } => None,
                     BoxRec::Underline(u) => Some(u.span),
+                    BoxRec::TextScript(t) => Some(t.span),
             });
         let src = span.map(|sp| vec![ctx.source(sp)]).unwrap_or_default();
         ctx.diagnostics.push(Diagnostic::warning(
@@ -9204,6 +9259,7 @@ pub fn assemble_windowed(
                     BoxRec::ColorBox(c) => Some(c.span),
                     BoxRec::Leader { .. } => None,
                     BoxRec::Underline(u) => Some(u.span),
+                    BoxRec::TextScript(t) => Some(t.span),
                     BoxRec::Text { .. } => None,
                 });
                 unmapped_diags.push(Diagnostic::warning(
@@ -9551,6 +9607,23 @@ fn assemble_block(
                             provenance: Provenance::Source(source_of(ul.span)),
                         }));
                     }
+                }
+                BoxRec::TextScript(ts) => {
+                    let a = assemble_block(&ts.block, recs, maths, 0.0, source_of, paths, empty);
+                    let dx = Tick::from_tex_pt(local.x);
+                    let dy = Tick::from_tex_pt(-ts.raise);
+                    for line_items in &a.lines {
+                        for it in line_items {
+                            let mut item = incremental::place_item(it, dy, "", 0);
+                            display::shift_x(&mut item, dx);
+                            items.push(item);
+                        }
+                    }
+                    for f in a.faces {
+                        used.entry(f.font_id.clone()).or_insert(f);
+                    }
+                    resources.extend(a.resources);
+                    unmapped.extend(a.unmapped);
                 }
                 BoxRec::Leader { .. } => {}
                 BoxRec::Rule { width, height, bottom, span } => {
