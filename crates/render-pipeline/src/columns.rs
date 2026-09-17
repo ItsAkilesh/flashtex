@@ -76,6 +76,25 @@ pub struct ColumnMode {
     top: Option<(usize, usize)>,
 }
 
+/// Whether `b` continues a control-word name under the current
+/// `\makeatletter` state: plain ASCII letters always, `@` only between
+/// `\makeatletter` and `\makeatother` (GH#801). This is a byte-level
+/// heuristic, not a catcode engine.
+fn is_name_char(b: u8, in_makeat: bool) -> bool {
+    b.is_ascii_alphabetic() || (in_makeat && b == b'@')
+}
+
+/// Byte just past the control word opening at `start` (the byte after the
+/// `\`), scanned with [`is_name_char`]; `start` itself when the next byte
+/// opens a control symbol rather than a word.
+fn control_word_end(bytes: &[u8], start: usize, in_makeat: bool) -> usize {
+    let mut j = start.min(bytes.len());
+    while j < bytes.len() && is_name_char(bytes[j], in_makeat) {
+        j += 1;
+    }
+    j
+}
+
 /// Every `\twocolumn`/`\onecolumn` in `source`, outside comments and outside
 /// macro-definition bodies, in order, as `(start byte, end byte,
 /// `\if@twocolumn` after it)`.
@@ -83,6 +102,9 @@ fn switches(source: &str) -> Vec<(usize, usize, bool)> {
     let bytes = source.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
+    // Simple boolean toggle: pdflatex raises an error on unmatched
+    // `\makeatletter`/`\makeatother`, so nesting is not a real concept.
+    let mut in_makeat = false;
     while i < bytes.len() {
         match bytes[i] {
             b'%' => {
@@ -100,24 +122,29 @@ fn switches(source: &str) -> Vec<(usize, usize, bool)> {
                 // that helper is `adapter`-private, misses `[n]`-argument
                 // bodies, and does not cover `\newenvironment`'s two
                 // bodies, so it is not reused here.
-                if let Some(end) = definition_end(source, i) {
+                if let Some(end) = definition_end(source, i, in_makeat) {
                     i = end;
                     continue;
                 }
-                let mut step = 2;
-                for (name, on) in [("twocolumn", true), ("onecolumn", false)] {
-                    let Some(rest) = source[i + 1..].strip_prefix(name) else {
-                        continue;
-                    };
-                    // A control word ends at the first non-letter, so
-                    // `\twocolumnfoo` is a different (unknown) command.
-                    if !rest.starts_with(|c: char| c.is_ascii_alphabetic()) {
-                        out.push((i, i + 1 + name.len(), on));
-                    }
-                    step = 1 + name.len();
-                    break;
+                let word_end = control_word_end(bytes, i + 1, in_makeat);
+                match &source[i + 1..word_end] {
+                    "makeatletter" => in_makeat = true,
+                    "makeatother" => in_makeat = false,
+                    // A control word ends at the first non-name byte, so
+                    // `\twocolumnfoo` — and, inside `\makeatletter`,
+                    // `\twocolumn@foo` — is a different (unknown) command.
+                    "twocolumn" => out.push((i, word_end, true)),
+                    "onecolumn" => out.push((i, word_end, false)),
+                    _ => {}
                 }
-                i += step;
+                i = if word_end > i + 1 {
+                    word_end
+                } else {
+                    // A control symbol (`\,`, `\%`, or `\@` outside
+                    // `\makeatletter`) is the backslash plus one byte; a
+                    // trailing lone `\` advances by one.
+                    (i + 2).min(bytes.len())
+                };
             }
             _ => i += 1,
         }
@@ -199,9 +226,12 @@ pub(crate) fn optional_bracket(source: &str, end: usize) -> Option<usize> {
 /// escape-aware like [`switches`]' own scan, and each body is one correctly
 /// brace-matched skip; a malformed definition ends the skip where the parse
 /// gives up, and scanning resumes there.
-fn definition_end(source: &str, at: usize) -> Option<usize> {
+fn definition_end(source: &str, at: usize, in_makeat: bool) -> Option<usize> {
     let bytes = source.as_bytes();
     let mut i = at + 1;
+    // The definers themselves (`newcommand`, `let`, ...) are pure ASCII
+    // letters, so this leading scan stays letters-only; `@` handling lives
+    // in `skip_control_or_group`, which scans the *defined* name.
     while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
         i += 1;
     }
@@ -212,7 +242,7 @@ fn definition_end(source: &str, at: usize) -> Option<usize> {
                 i = skip_ws_comments(source, i + 1);
             }
             // The defined name, `{...}` or a control sequence.
-            i = skip_control_or_group(source, i)?;
+            i = skip_control_or_group(source, i, in_makeat)?;
             i = skip_arg_specs(source, i);
             i = skip_ws_comments(source, i);
             // The body is usually a `{...}` group, but a brace-less
@@ -221,13 +251,13 @@ fn definition_end(source: &str, at: usize) -> Option<usize> {
             if bytes.get(i) == Some(&b'{') {
                 Some(skip_group(source, i)?)
             } else {
-                Some(skip_one_token(source, i))
+                Some(skip_one_token(source, i, in_makeat))
             }
         }
         "def" | "gdef" | "edef" | "xdef" => {
             // `\def\name<parameter text>{body}` (`\gdef`/`\edef`/`\xdef`
             // share the shape; only expansion timing differs).
-            i = skip_control_or_group(source, skip_ws_comments(source, i))?;
+            i = skip_control_or_group(source, skip_ws_comments(source, i), in_makeat)?;
             // The parameter text holds no braces to match.
             while i < bytes.len() && bytes[i] != b'{' {
                 i += 1;
@@ -238,19 +268,19 @@ fn definition_end(source: &str, at: usize) -> Option<usize> {
             // `\let\name=\target` or `\let\name\target` (`\global\let` is
             // handled for free: `\global` itself is not a recognised name
             // here, so the scan simply reaches this `\let` next).
-            i = skip_control_or_group(source, skip_ws_comments(source, i))?;
+            i = skip_control_or_group(source, skip_ws_comments(source, i), in_makeat)?;
             i = skip_ws_comments(source, i);
             if bytes.get(i) == Some(&b'=') {
                 i = skip_ws_comments(source, i + 1);
             }
-            Some(skip_one_token(source, i))
+            Some(skip_one_token(source, i, in_makeat))
         }
         "newenvironment" | "renewenvironment" => {
             i = skip_ws_comments(source, i);
             if bytes.get(i) == Some(&b'*') {
                 i = skip_ws_comments(source, i + 1);
             }
-            i = skip_control_or_group(source, i)?;
+            i = skip_control_or_group(source, i, in_makeat)?;
             i = skip_arg_specs(source, i);
             // The begin code and the end code.
             i = skip_group(source, i)?;
@@ -313,7 +343,12 @@ fn skip_group(source: &str, i: usize) -> Option<usize> {
 
 /// Byte just past the defined name at `i`: a `{...}` group or a control
 /// sequence; `None` when neither follows.
-fn skip_control_or_group(source: &str, i: usize) -> Option<usize> {
+///
+/// Inside `\makeatletter`...`\makeatother` (`in_makeat`), `@` counts as a
+/// name character (GH#801), so `\let\@oldtc\twocolumn` skips the whole
+/// `\@oldtc` defined name instead of stopping after the `\@` control
+/// symbol and leaking `\twocolumn` as invoked text.
+fn skip_control_or_group(source: &str, i: usize, in_makeat: bool) -> Option<usize> {
     let i = skip_ws_comments(source, i);
     let bytes = source.as_bytes();
     if bytes.get(i) == Some(&b'{') {
@@ -323,13 +358,14 @@ fn skip_control_or_group(source: &str, i: usize) -> Option<usize> {
         return None;
     }
     let mut j = (i + 1).min(bytes.len());
-    if bytes.get(j).is_some_and(|c| c.is_ascii_alphabetic()) {
-        while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+    if bytes.get(j).is_some_and(|c| is_name_char(*c, in_makeat)) {
+        while j < bytes.len() && is_name_char(bytes[j], in_makeat) {
             j += 1;
         }
         Some(j)
     } else if j < bytes.len() {
-        // A control symbol, e.g. the `\,` in `\def\,{...}`.
+        // A control symbol, e.g. the `\,` in `\def\,{...}` — or `\@`
+        // outside `\makeatletter`, where `@` is not a letter.
         Some(j + 1)
     } else {
         None
@@ -340,10 +376,10 @@ fn skip_control_or_group(source: &str, i: usize) -> Option<usize> {
 /// (reusing [`skip_control_or_group`]'s control-word/control-symbol rule),
 /// or one Unicode scalar value otherwise — real TeX's `\let` can target a
 /// bare character token, not only another control sequence.
-fn skip_one_token(source: &str, i: usize) -> usize {
+fn skip_one_token(source: &str, i: usize, in_makeat: bool) -> usize {
     let bytes = source.as_bytes();
     if bytes.get(i) == Some(&b'\\') {
-        if let Some(end) = skip_control_or_group(source, i) {
+        if let Some(end) = skip_control_or_group(source, i, in_makeat) {
             return end;
         }
     }
@@ -648,6 +684,63 @@ mod tests {
             assert_eq!(m.start(), class_option, "{src}");
             assert!(m.unmodelled().is_empty(), "{src}");
         }
+    }
+
+    #[test]
+    fn at_names_in_makeatletter_definitions_do_not_switch() {
+        // GH#801: under `\makeatletter`, `@` is a letter, so the defined
+        // name is `\@oldtc` / `\@x` whole — the `\twocolumn` they alias is
+        // never invoked and must not move the mode.
+        for (class_option, src) in [
+            (
+                false,
+                "\\documentclass{article}\n\\makeatletter\\let\\@oldtc\\twocolumn\\makeatother\n\\begin{document}x\\end{document}",
+            ),
+            (
+                false,
+                "\\documentclass{article}\n\\makeatletter\\newcommand\\@x\\twocolumn\\makeatother\n\\begin{document}x\\end{document}",
+            ),
+            (
+                true,
+                "\\documentclass[twocolumn]{article}\n\\makeatletter\\let\\@oldtc\\onecolumn\\makeatother\n\\begin{document}x\\end{document}",
+            ),
+            (
+                false,
+                "\\documentclass{article}\n\\makeatletter\\def\\@narrow{\\twocolumn}\\makeatother\n\\begin{document}x\\end{document}",
+            ),
+        ] {
+            let m = scan_test(src, class_option);
+            assert_eq!(m.start(), class_option, "{src}");
+            assert!(m.unmodelled().is_empty(), "{src}");
+            assert!(m.spans().is_empty(), "{src}");
+        }
+    }
+
+    #[test]
+    fn at_outside_makeatletter_does_not_swallow_a_switch() {
+        // Negative control: outside `\makeatletter`, `@` is not a letter,
+        // so `\let\@oldtc\twocolumn` is invalid TeX (pdflatex itself
+        // errors) and the scanner must not treat `\@oldtc` as one defined
+        // name that hides the `\twocolumn`. Existing behavior counts the
+        // leaked switch; this test pins that it keeps doing so rather than
+        // silently skipping a real invocation.
+        let src = "\\documentclass{article}\n\\let\\@oldtc\\twocolumn\n\\begin{document}x\\end{document}";
+        let m = scan_test(src, false);
+        assert!(m.start(), "{src}");
+        assert!(!m.spans().is_empty(), "{src}");
+    }
+
+    #[test]
+    fn makeatother_closes_the_at_region() {
+        // After `\makeatother`, `@` stops being a letter: a later invoked
+        // `\twocolumn` still switches, and a later `\let\@x...` no longer
+        // hides one.
+        let src = "\\documentclass{article}\n\\makeatletter\\let\\@a\\onecolumn\\makeatother\n\\twocolumn\n\\begin{document}x\\end{document}";
+        let m = scan_test(src, false);
+        assert!(m.start(), "{src}");
+        let src = "\\documentclass{article}\n\\makeatletter\\makeatother\\let\\@oldtc\\twocolumn\n\\begin{document}x\\end{document}";
+        let m = scan_test(src, false);
+        assert!(m.start(), "{src}");
     }
 
     #[test]

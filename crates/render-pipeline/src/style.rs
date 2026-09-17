@@ -112,6 +112,9 @@ pub struct Stylesheet {
     /// follows the sizes amsmath/amsfonts declare instead of the kernel's
     /// `sfixed*cmex10`; see [`cmex_designs`].
     pub cmex_designs: bool,
+    /// Whether math family 0 (`operators`) is Latin Modern's `rm-lmr*`
+    /// instead of the kernel's `cmr*`; see [`math_roman_lm`].
+    pub math_roman_lm: bool,
     pub script_size_pt: f64,
     pub scriptscript_size_pt: f64,
     pub tolerance: f64,
@@ -126,6 +129,13 @@ pub struct Stylesheet {
     pub emergency_stretch_pt: f64,
     /// `\columnseprule` (the class default, or a preamble `\setlength`).
     pub columnseprule_pt: f64,
+    /// `\marginparwidth` / `\marginparsep` (the class frame): the width
+    /// of a `\marginpar` note and its gap from the text block.
+    pub marginparwidth_pt: f64,
+    pub marginparsep_pt: f64,
+    /// `\marginparpush` (the class frame): the minimum vertical gap
+    /// `\@addmarginpar` leaves between two margin notes on the same side.
+    pub marginparpush_pt: f64,
     /// `\topsep`, `\partopsep` and `\leftmargini` of a level-1 list
     /// (`\` of size1x.clo): the glue around and the margins of
     /// `center`/`quote`-style environments.
@@ -178,6 +188,7 @@ impl Stylesheet {
             ds = ds.with_geometry(g);
         }
         let page = ds.page_layout();
+        let margin = flashtex_document_style::article_page_params(ClassOptions { paper: Paper::Letter, size: base });
         let body = ds.resolve(&[Block::Document, Block::Paragraph]);
         let body_size = body.font_size.0;
         // `ex` of the body font of the *selected family* (pdflatex evaluates
@@ -244,6 +255,7 @@ impl Stylesheet {
             leqno: false,
             fleqn: false,
             cmex_designs: false,
+            math_roman_lm: false,
             script_size_pt: script,
             scriptscript_size_pt: scriptscript,
             tolerance: 200.0,
@@ -253,6 +265,13 @@ impl Stylesheet {
             raggedbottom: true,
             emergency_stretch_pt: 0.0,
             columnseprule_pt: 0.0,
+            marginparwidth_pt: margin.marginparwidth.0,
+            marginparsep_pt: margin.marginparsep.0,
+            // `\marginparpush`: size10.clo/size11.clo 5pt, size12.clo 7pt
+            // (vendor/document-style's `LatexPageParams` doesn't carry this
+            // one yet, so it's inlined the same way here as `class-geometry`'s
+            // own `class.rs` already computes it).
+            marginparpush_pt: if matches!(base, BaseSize::Pt12) { 7.0 } else { 5.0 },
             topsep: Skip::new(list.topsep.pt, list.topsep.plus, list.topsep.minus),
             partopsep: Skip::new(list.partopsep.pt, list.partopsep.plus, list.partopsep.minus),
             leftmargini_pt: list.leftmargin.0,
@@ -335,6 +354,9 @@ impl Stylesheet {
         s.raggedbottom = doc.options.kind == flashtex_class_geometry::ClassKind::Letter
             || !(doc.flags.twoside || doc.options.twocolumn);
         s.columnseprule_pt = frame_pt(frame.columnseprule);
+        s.marginparwidth_pt = frame_pt(p.marginparwidth);
+        s.marginparsep_pt = frame_pt(p.marginparsep);
+        s.marginparpush_pt = frame_pt(p.marginparpush);
         if doc.options.twocolumn {
             s.tolerance = 9999.0;
             s.emergency_stretch_pt = 3.0 * s.body_size_pt;
@@ -433,6 +455,35 @@ impl SmallSize {
 /// and `amsmath.sty` 109-114, which amsmath, amssymb and every package
 /// loading them inherit.
 const CMEX_DESIGN_PACKAGES: [&str; 5] = ["amsmath", "amsfonts", "amssymb", "mathtools", "physics"];
+
+/// Whether math family 0 (`operators`, the roman family: digits,
+/// parentheses, `\mathrm`, operator names) is Latin Modern's `rm-lmr*`
+/// rather than the LaTeX kernel's `cmr*`.
+///
+/// `fontmath.ltx` declares `\DeclareSymbolFont{operators}{OT1}{cmr}{m}{n}`.
+/// `\usepackage[T1]{fontenc}` re-encodes *text*, never math, so a document
+/// that loads only `fontenc` still lays family 0 out with `cmr`.
+/// `lmodern.sty` is what rebinds it, through `\SetSymbolFont{operators}`,
+/// and it does so in either encoding.
+///
+/// `rm-lmr` is **not** a scaled `cmr`: its digits are 0.0147 em shorter at
+/// the 10pt design and its `i` 0.0381 em shorter, so the choice moves the
+/// height of every box a family-0 glyph is the tallest thing in — the
+/// numerator of `\frac{1}{n}`, a radicand, an operator's limits — and with
+/// it every baseline below the display.
+///
+/// Measured with `\fontname\textfont0` and `\ht` of `\hbox{$1$}` /
+/// `\hbox{$\sin$}` under pdfTeX 1.40.29 (TeX Live 2026), `article`:
+///
+/// | packages | `\textfont0` (10/11/12pt) | `\ht$1$` | `\ht$\sin$` |
+/// |---|---|---|---|
+/// | (none) | `cmr10` / `cmr10 at 10.95pt` / `cmr12` | 6.44444 / 7.05666 / 7.73332 pt | 6.67859 / 7.31305 / 7.96431 pt |
+/// | `[T1]{fontenc}` | same as (none) | same | same |
+/// | `lmodern` | `rm-lmr10` / `rm-lmr10 at 10.95pt` / `rm-lmr12` | 6.29724 / 6.89548 / 7.55675 pt | 6.29724 / 6.89548 / 7.55675 pt |
+/// | `[T1]{fontenc}` + `lmodern` | same as `lmodern` | same | same |
+pub fn math_roman_lm(packages: &[String]) -> bool {
+    packages.iter().any(|p| p == "lmodern")
+}
 
 /// Whether family 3 (`largesymbols`) follows the sizes amsmath/amsfonts
 /// declare instead of the LaTeX kernel's `omxcmex.fd` `<->sfixed*cmex10`.

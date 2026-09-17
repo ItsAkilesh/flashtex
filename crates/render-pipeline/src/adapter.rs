@@ -218,6 +218,11 @@ pub enum Item {
     /// `typeset::footnotes` (`None` for `\footnotemark`). `span` is the
     /// command token.
     Footnote { number: String, mark: bool, span: Span, text: Option<Vec<Item>> },
+    /// `\marginpar` (compiler `Inline::Marginpar`). `text` is the note's
+    /// items, set in `\normalsize` in the outer margin by
+    /// `typeset::marginpar`; the running text carries no mark. `span` is
+    /// the command token.
+    Marginpar { text: Vec<Item>, span: Span },
     /// `\colorbox`/`\fcolorbox` (compiler `Inline::ColorBox`).
     ColorBox(Box<ColorBoxItem>),
     /// LaTeX's `\llap{...}`: `items` set at their natural width and then
@@ -289,7 +294,9 @@ pub struct TextScriptItem {
 
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
 /// environment name at the display's first byte; the compiler keeps only
-/// whether cells alternate right/left).
+/// whether cells share tab stops). amsmath's `align`/`gather`/`multline`
+/// family plus LaTeX's own `eqnarray`, which the compiler lowers through
+/// the same multi-row path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RowsEnv {
     /// `align`/`align*`: column pairs spread evenly (`\xatlevel@` 1).
@@ -302,6 +309,10 @@ pub enum RowsEnv {
     Gather,
     /// `multline`/`multline*`: first row left, last row right, others centred.
     Multline,
+    /// `eqnarray`/`eqnarray*` (latex.ltx, not amsmath): three columns —
+    /// right, centred, left — separated by a fixed `\tw@\arraycolsep`, the
+    /// block centred by the `\@centering` tabskips at its two ends.
+    EqnArray,
 }
 
 impl RowsEnv {
@@ -313,6 +324,7 @@ impl RowsEnv {
             "flalign" => RowsEnv::FlAlign,
             "gather" => RowsEnv::Gather,
             "multline" => RowsEnv::Multline,
+            "eqnarray" => RowsEnv::EqnArray,
             _ => RowsEnv::Align,
         }
     }
@@ -1362,6 +1374,7 @@ pub fn adapt_cached(
         amsmath_cmex10 = package.split(',').any(|o| o.trim() == "cmex10");
     }
     style.cmex_designs = crate::style::cmex_designs(&parsed.packages, amsmath_cmex10);
+    style.math_roman_lm = crate::style::math_roman_lm(&parsed.packages);
     #[cfg(feature = "amsmath-inline")]
     let mathtools = parsed.packages.iter().any(|p| p == "mathtools");
     // `\parskip` from apply_preamble_lengths: `\addtolength` keeps class
@@ -2674,6 +2687,7 @@ fn math_colors(blocks: &[flashtex_compiler::parser::Block]) -> std::collections:
                     out.insert((span.document.0, span.start, span.end), *c);
                 }
                 Inline::Footnote { text: Some(text), .. } => walk(text, out),
+                Inline::Marginpar { text, .. } => walk(text, out),
                 Inline::Tabular(t) => {
                     for list in t.inline_lists() {
                         walk(list, out);
@@ -2759,6 +2773,7 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::HFill { span, .. }
         | Inline::HSpace { span, .. }
         | Inline::Footnote { span, .. }
+        | Inline::Marginpar { span, .. }
         | Inline::Verbatim { span, .. }
         | Inline::TextGlue { span, .. }
         | Inline::Logo { span, .. }
@@ -2795,6 +2810,13 @@ fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, Strin
             // Set by `typeset::footnotes`; contexts it does not reach
             // (headings, captions, floats) are diagnosed there.
             for i in text.iter().flatten() {
+                unsupported_inlines(i, out);
+            }
+        }
+        Inline::Marginpar { text, .. } => {
+            // Set by `typeset::marginpar`; contexts it does not reach
+            // are diagnosed there.
+            for i in text {
                 unsupported_inlines(i, out);
             }
         }
@@ -8506,6 +8528,9 @@ fn items_cached(
                 mark.hash(&mut h);
                 text.as_ref().map_or(0, Vec::len).hash(&mut h);
             }
+            Inline::Marginpar { text, .. } => {
+                text.len().hash(&mut h);
+            }
             Inline::Tabular(t) => {
                 t.entries.len().hash(&mut h);
                 t.inline_lists().iter().map(|l| l.len()).sum::<usize>().hash(&mut h);
@@ -8717,6 +8742,31 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     note
                 });
                 items.push(Item::Footnote { number: number.clone(), mark: *mark, span: *span, text: note });
+                after_control_word = end == span.end;
+                prev_end = Some(end);
+                prev_span = Some(Span::in_document(span.document, span.start, end));
+                pending_accent = None;
+            }
+            Inline::Marginpar { text, span, .. } => {
+                // `\marginpar` sets no mark: the note is placed in the
+                // margin by `typeset::marginpar`. Gap handling matches
+                // `Footnote` (`footnote_command_end` reads the same
+                // `[<left>]{<right>}` bracket-plus-group shape).
+                let src = text_of(span.document);
+                let end = footnote_command_end(src, span.end);
+                let word = src.get(span.start..span.end).unwrap_or("\\marginpar");
+                let gap = space_between(prev_end, prev_span, *span, Some(word), after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                let mut note = Vec::new();
+                for (k, part) in text.split(|i| matches!(i, Inline::LineBreak { span: at, .. } if at == span)).enumerate() {
+                    if k > 0 {
+                        note.push(Item::NoteParBreak);
+                    }
+                    note.extend(items_from_inlines_styled(texts, part, styles, labels, size, false, compiler_weight));
+                }
+                items.push(Item::Marginpar { text: note, span: *span });
                 after_control_word = end == span.end;
                 prev_end = Some(end);
                 prev_span = Some(Span::in_document(span.document, span.start, end));
@@ -9651,6 +9701,18 @@ fn tex_ligatures(chars: Vec<(char, CharSrc)>) -> Vec<(char, CharSrc)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue #520: the environment name at the display's first byte picks
+    /// the alignment, so `eqnarray` reaches the kernel `\halign` arm rather
+    /// than falling through to `align`, starred or not.
+    #[test]
+    fn rows_env_reads_eqnarray_from_source() {
+        assert_eq!(RowsEnv::at("\\begin{eqnarray} a &=& b \\end{eqnarray}"), RowsEnv::EqnArray);
+        assert_eq!(RowsEnv::at("\\begin{eqnarray*} a &=& b \\end{eqnarray*}"), RowsEnv::EqnArray);
+        assert_eq!(RowsEnv::at("\\begin{align} a &= b \\end{align}"), RowsEnv::Align);
+        assert_eq!(RowsEnv::at("\\begin{gather} a \\\\ b \\end{gather}"), RowsEnv::Gather);
+        assert_eq!(RowsEnv::at("\\begin{multline} a \\\\ b \\end{multline}"), RowsEnv::Multline);
+    }
 
     fn items(src: &str) -> Vec<Item> {
         let parsed = flashtex_compiler::parser::parse(src);
