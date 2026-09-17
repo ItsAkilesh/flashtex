@@ -632,6 +632,16 @@ impl Scopes {
         !matches!(self.meaning_ref(name), None | Some(Meaning::Undefined))
     }
 
+    /// LaTeX's `\@ifundefined` test: `\ifcsname` (`is_defined`) *and* not
+    /// `\let` or `\csname...\endcsname`-defaulted to `\relax` -- the classic
+    /// `\expandafter\ifx\csname name\endcsname\relax ... \fi` existence
+    /// guard treats a `\relax`-valued name as undefined, unlike `is_defined`
+    /// itself (which must keep e-TeX `\ifcsname`'s stricter sense for its
+    /// own callers).
+    pub fn is_undefined_or_relax(&self, name: &str) -> bool {
+        !self.is_defined(name) || matches!(self.meaning_ref(name), Some(Meaning::Primitive(Primitive::Relax)))
+    }
+
     pub fn active_meaning(&self, c: char) -> Meaning {
         self.active.get(&c).cloned().unwrap_or(Meaning::Undefined)
     }
@@ -670,15 +680,26 @@ impl Scopes {
         self.frames.retain_saves(|s| !matches!(s, SaveItem::CsMeaning(n, _) if n == name));
     }
 
+    fn retain_theorem_env_marker(&mut self, name: &str) {
+        self.frames.retain_saves(|s| !matches!(s, SaveItem::RejectedTheoremEnv(n, _) if n == name));
+    }
+
     /// Marks `name` rejected (or un-rejected) for `\newtheorem` (see
-    /// `SaveItem::RejectedTheoremEnv`), local to the current group like an
-    /// ordinary assignment: a name only collided because something else
-    /// defined it locally goes back to undefined -- and un-rejected -- when
-    /// that group closes.
-    pub fn set_theorem_env_rejected(&mut self, name: &str, rejected: bool) {
-        if self.saving() {
+    /// `SaveItem::RejectedTheoremEnv`). Local by default, like an ordinary
+    /// assignment: a name only collided because something else defined it
+    /// locally goes back to undefined -- and un-rejected -- when that group
+    /// closes. `global` mirrors `assign_cs`'s own global path: no save
+    /// entry is pushed, and any local saves already pending for `name` are
+    /// dropped, so a later group close cannot restore a stale rejection
+    /// over a global un-reject (`do_newtheorem`'s successful-claim branch
+    /// claims `\name`/`\end<name>` globally, so its un-reject must match).
+    pub fn set_theorem_env_rejected(&mut self, name: &str, rejected: bool, global: bool) {
+        if !global && self.saving() {
             let was_present = self.rejected_theorem_envs.contains(name);
             self.frames.push_save(SaveItem::RejectedTheoremEnv(name.to_string(), was_present));
+        }
+        if global {
+            self.retain_theorem_env_marker(name);
         }
         if rejected {
             self.rejected_theorem_envs.insert(name.to_string());

@@ -425,6 +425,35 @@ fn newtheorem_colliding_with_an_existing_environment_keeps_it_working() {
     assert!(texts.contains(&"FOO".to_string()), "{texts:?}");
 }
 
+/// The classic "define once" guard (`\@ifdefinable`-style): a `\relax`d
+/// name is not a real collision, matching pdflatex's `\@ifundefined`
+/// (review round 3, finding #1).
+#[test]
+fn newtheorem_ifx_csname_relax_guard_is_not_a_collision() {
+    let source = r"\usepackage{amsthm}
+\expandafter\ifx\csname thm\endcsname\relax\newtheorem{thm}{Theorem}\fi
+\begin{document}\begin{thm}X\end{thm}\end{document}";
+    let msgs = messages(source);
+    assert!(msgs.is_empty(), "{msgs:?}");
+    let texts = plain_texts(source);
+    assert!(texts.contains(&"Theorem 1".to_string()), "{texts:?}");
+}
+
+/// A successful re-declaration inside a group claims globally, so it must
+/// still be usable after that group closes -- not undone along with the
+/// group-local `\let` that freed the name up for it (review round 3,
+/// finding #2).
+#[test]
+fn newtheorem_successful_reclaim_inside_a_group_survives_the_group_closing() {
+    let source = r"\usepackage{amsthm}
+\def\foo{}\newtheorem{foo}{Foo}{\let\foo\undefined\newtheorem{foo}{Foo}}
+\begin{document}\begin{foo}X\end{foo}\end{document}";
+    let msgs = messages(source);
+    assert_eq!(msgs, [r"LaTeX Error: Command \foo already defined."], "{msgs:?}");
+    let texts = plain_texts(source);
+    assert!(texts.contains(&"Foo 1".to_string()), "{texts:?}");
+}
+
 /// Ordinary theorem names are unaffected: no diagnostics at all.
 #[test]
 fn ordinary_theorem_name_is_silent() {

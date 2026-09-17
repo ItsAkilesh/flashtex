@@ -837,6 +837,50 @@ fn newtheorem_stale_rejection_is_cleared_by_a_later_successful_claim() {
 }
 
 #[test]
+fn newtheorem_ifx_csname_relax_guard_still_declares() {
+    // The classic "define once" guard: `\csname thm\endcsname` on an
+    // undefined name defines it as `\relax` (real TeX), and pdflatex's
+    // `\@ifdefinable`-style check (`\ifx...\relax`) treats a `\relax`-valued
+    // name as undefined, so the guard falls through to
+    // `\newtheorem{thm}{Theorem}` with no real collision (review round 3,
+    // finding #1).
+    let r = expand_str(
+        r"\expandafter\ifx\csname thm\endcsname\relax\newtheorem{thm}{Theorem}\fi\begin{thm}\end{thm}",
+    );
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let out = text(&r.tokens);
+    assert!(out.contains(r"\thm "), "{out:?}");
+    assert!(out.contains(r"\endthm "), "{out:?}");
+}
+
+#[test]
+fn newtheorem_let_to_relax_guard_still_declares() {
+    // Same idea, the other common spelling of the guard.
+    let r = expand_str(r"\let\thm\relax\newtheorem{thm}{Theorem}\begin{thm}\end{thm}");
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let out = text(&r.tokens);
+    assert!(out.contains(r"\thm "), "{out:?}");
+    assert!(out.contains(r"\endthm "), "{out:?}");
+}
+
+#[test]
+fn newtheorem_successful_reclaim_inside_a_group_is_global() {
+    // The successful branch claims `\name`/`\end<name>` globally
+    // (`assign_cs(..., true)`), so its un-reject of a stale rejection must
+    // be global too -- otherwise the group closing at the end of this
+    // source resurrects the rejection over what is supposed to be a
+    // permanent redeclaration (review round 3, finding #2).
+    let r = expand_str(
+        r"\def\foo{}\newtheorem{foo}{Foo}{\let\foo\undefined\newtheorem{foo}{Foo}}\begin{foo}\end{foo}",
+    );
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\foo already defined."], "{messages:?}");
+    let out = text(&r.tokens);
+    assert!(out.contains(r"\foo "), "{out:?}");
+    assert!(out.contains(r"\endfoo "), "{out:?}");
+}
+
+#[test]
 fn newtheorem_second_declaration_of_the_same_name_errors() {
     // Like `\newenvironment`, a repeated declaration keeps the first
     // definition and reports the collision once per redeclaration.

@@ -3190,7 +3190,11 @@ impl Engine {
         if let Some(within) = self.scan_through_bracket() {
             back.extend(within);
         }
-        if !name.is_empty() && self.st.scopes.is_defined(&name) {
+        // LaTeX's own guard idiom (`\@ifdefinable`, via `\@ifundefined`)
+        // treats a `\relax`-valued name as undefined -- `\let\thm\relax`
+        // and the classic `\expandafter\ifx\csname thm\endcsname\relax`
+        // existence check both leave `\newtheorem{thm}` free to declare.
+        if !name.is_empty() && !self.st.scopes.is_undefined_or_relax(&name) {
             self.err(format!("LaTeX Error: Command \\{name} already defined."), span);
             // A *duplicate* declaration of a name that already has a
             // working `\name`/`\end<name>` pair from an earlier
@@ -3203,7 +3207,7 @@ impl Engine {
             // would otherwise execute the shadowed command, so they skip it
             // silently instead.
             if !self.st.scopes.is_defined(&format!("end{name}")) {
-                self.st.scopes.set_theorem_env_rejected(&name, true);
+                self.st.scopes.set_theorem_env_rejected(&name, true, false);
             }
             // A pending `\global` (or `\long`/`\outer`/`\protected`, though
             // none of those apply to `\newtheorem`) must not survive a
@@ -3223,8 +3227,11 @@ impl Engine {
             self.st.scopes.assign_cs(&format!("end{name}"), Meaning::Primitive(Primitive::Host), true);
             // A stale rejection from an earlier, now-undone collision (e.g.
             // the name was `\let` back to undefined since) must not persist
-            // once this declaration succeeds.
-            self.st.scopes.set_theorem_env_rejected(&name, false);
+            // once this declaration succeeds. Global, matching the global
+            // claim just above: a local un-reject would be undone by this
+            // group's own close, resurrecting the stale rejection over a
+            // declaration that is supposed to be permanent.
+            self.st.scopes.set_theorem_env_rejected(&name, false, true);
         }
         // Hand the declaration back exactly as read: the leader bypasses
         // re-dispatch through the output queue (like a prefix carried
