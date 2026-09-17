@@ -70,10 +70,12 @@ fn mib(b: u64) -> f64 {
 }
 
 /// Ask the allocator to return free pages to the kernel, reporting the
-/// `malloc_trim` return code. `malloc_trim` is a glibc-only extension, so
-/// only the Linux build links it; every other platform gets a no-op `None`
-/// (macOS has no such symbol and would otherwise fail to link).
-#[cfg(target_os = "linux")]
+/// `malloc_trim` return code. `malloc_trim` is a glibc extension, not part of
+/// the musl libc Linux builds also target, so only a glibc/Linux build links
+/// it; every other platform (including musl Linux) gets a no-op `None`
+/// (macOS has no such symbol and would otherwise fail to link, and neither
+/// does musl).
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn release_free_pages() -> Option<i32> {
     extern "C" {
         fn malloc_trim(pad: usize) -> i32;
@@ -81,7 +83,7 @@ fn release_free_pages() -> Option<i32> {
     Some(unsafe { malloc_trim(0) })
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
 fn release_free_pages() -> Option<i32> {
     None
 }
@@ -322,12 +324,13 @@ mod trim_tests {
 
     #[test]
     fn trim_step_matches_platform() {
-        // `malloc_trim` only exists on glibc/Linux: everywhere else the trim
-        // step must be a no-op so the binary links (macOS has no such
-        // symbol). On Linux the call itself is safe and returns 0 or 1.
-        #[cfg(target_os = "linux")]
+        // `malloc_trim` only exists on glibc/Linux: everywhere else, including
+        // musl Linux, the trim step must be a no-op so the binary links
+        // (macOS has no such symbol, and neither does musl). On glibc/Linux
+        // the call itself is safe and returns 0 or 1.
+        #[cfg(all(target_os = "linux", target_env = "gnu"))]
         assert!(release_free_pages().is_some());
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
         assert!(release_free_pages().is_none());
     }
 }
