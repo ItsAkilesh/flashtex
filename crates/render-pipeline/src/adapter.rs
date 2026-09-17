@@ -1203,9 +1203,17 @@ pub fn adapt_cached(
     let mut resolved = flashtex_class_geometry::resolve(&setup);
     // `\twocolumn`/`\onecolumn` are commands, not class options: two-column
     // mode is state the document sets, and the class option is only its
-    // starting value ([`crate::columns`]). `set_twocolumn` runs before
-    // `apply_preamble_lengths`, which rebuilds the frame from `doc.flags`.
-    let columns = crate::columns::ColumnMode::scan(source, entry, resolved.options.twocolumn);
+    // starting value ([`crate::columns`]). The starting value itself is
+    // `resolved.flags.twocolumn`, not `resolved.options.twocolumn`: the
+    // latter is `\documentclass`'s own option only, while `flags` is what
+    // `resolve` already folded the `geometry` package's own `twocolumn` key
+    // into (`apply_geometry`, [`flashtex_class_geometry::resolve`]). Seeding
+    // from `options` instead left `\documentclass{article}
+    // \usepackage[twocolumn]{geometry}` starting one-column, since
+    // `options.twocolumn` never saw geometry's override.
+    // `set_twocolumn` runs before `apply_preamble_lengths`, which rebuilds
+    // the frame from `doc.flags`.
+    let columns = crate::columns::ColumnMode::scan(source, entry, resolved.flags.twocolumn);
     resolved.set_twocolumn(columns.start());
     let assigned = apply_preamble_lengths(source, &mut resolved, size, family, setup.geometry.is_some());
     let mut style = Stylesheet::from_resolved(&resolved, family);

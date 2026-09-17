@@ -3422,31 +3422,38 @@ impl P<'_> {
     /// The column count itself is not in this IR: the parser has no page
     /// model, and the renderer already reads `\pagestyle` and friends back
     /// out of the source by position. What it must not do is let
-    /// `\twocolumn` reach `unsupported`, which would both report an unknown
-    /// command and typeset the optional argument's `[`/`]` as literal text.
+    /// `\twocolumn` reach `unsupported`, which would report an unknown
+    /// command in addition to whatever this does with the argument.
     ///
     /// `\twocolumn[<material>]` sets `<material>` at the full `\textwidth`
-    /// above both columns (`\@topnewpage`). That is not implemented, and the
-    /// argument is consumed rather than typeset in a column where it does
-    /// not belong — said in a diagnostic, not silently.
+    /// above both columns (`\@topnewpage`); that positioning has no model
+    /// here either. What matters is *not* discarding the argument the way
+    /// `optional_bracket_argument` (an options-string reader) would: its
+    /// tokens are left exactly where they stand, unconsumed, so they typeset
+    /// as ordinary paragraph content right after the page break, brackets
+    /// included — real `Inline` items at the bracket's own byte positions,
+    /// the shape a renderer with a `\@topnewpage` box needs to find and cut
+    /// the material back out of this IR. Swallowing it here (#746) read
+    /// clean but made that impossible: nothing of `[<material>]` survived to
+    /// find. A diagnostic still says the positioning itself is not done.
     #[inline(never)]
     fn column_command(
         &mut self,
         name: &str,
-        span: Span,
+        _span: Span,
         blocks: &mut Vec<Block>,
         para: &mut Vec<Inline>,
     ) {
-        let mut span = span;
         if name == "twocolumn" {
-            if let Some((_, argument)) = self.optional_bracket_argument() {
-                span = span.merge(argument);
+            if let Some(bracket) = self.peek_bracket_span() {
                 self.diags.push(Diagnostic::warning(
                     "the optional argument of \\twocolumn sets material at the full \
-                     \\textwidth above both columns (\\@topnewpage); that is not implemented"
+                     \\textwidth above both columns (\\@topnewpage); that positioning is not \
+                     implemented here, so the material is typeset as ordinary text instead, \
+                     brackets included"
                         .to_string(),
-                    Some(span),
-                    Some("dropped the argument and started the two-column page".into()),
+                    Some(bracket),
+                    None,
                 ));
             }
         }
@@ -3459,6 +3466,20 @@ impl P<'_> {
         self.flush_paragraph(blocks, para);
         blocks.push(Block::PageBreak);
         self.finish_block_dependencies();
+    }
+
+    /// The span of a `[` that stands next in the token stream (after
+    /// skipping spaces, the way `\@ifnextchar [` does), without consuming
+    /// anything: a look-ahead for [`column_command`]'s diagnostic, which
+    /// must not take the bracket's tokens away from the paragraph that is
+    /// about to read them normally.
+    fn peek_bracket_span(&mut self) -> Option<Span> {
+        self.skip_spaces();
+        let first = self.peek()?;
+        match &first.kind {
+            TokenKind::Word(word) if word.starts_with('[') => Some(first.span),
+            _ => None,
+        }
     }
 
     /// Run-in `\paragraph`/`\subparagraph` (see the comment in [`P::command`]).
