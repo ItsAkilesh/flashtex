@@ -419,6 +419,7 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("closing", "{text}", "letter.cls: closing and signature at \\longindentation, 6\\parskip apart"),
     ("cc", "{text}", "letter.cls carbon-copy line, labelled 'cc:'"),
     ("encl", "{text}", "letter.cls enclosure line, labelled 'encl:'"),
+    ("hangfrom", "{label}", "kernel (ltsect.dtx): label set inline, continuing the paragraph; the hanging indent itself is not applied"),
     ("ps", "", "letter.cls postscript: a paragraph break and nothing else — it takes no argument"),
     ("startbreaks", "", "letter.cls: re-allows page breaks after \\closing; no effect on this layout"),
     ("stopbreaks", "", "letter.cls: forbids page breaks inside the closing; no effect on this layout"),
