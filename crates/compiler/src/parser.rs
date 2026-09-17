@@ -7024,6 +7024,10 @@ impl P<'_> {
                         row.0.last_mut().expect("at least one cell").push(Token {
                             kind: TokenKind::Word(piece.to_string()),
                             span,
+                            // Word pieces split out for `&`-alignment keep the
+                            // source token's escaped mark (a piece of an
+                            // ordinary word stays unmarked).
+                            control_symbol: token.control_symbol,
                         });
                     }
                 }
@@ -7305,6 +7309,12 @@ impl P<'_> {
                         raw.push(Token {
                             kind: TokenKind::Word(ch.to_string()),
                             span: input.token.span,
+                            // A macro-expanded control symbol (`\,` inside
+                            // `\newcommand{\dd}{…}`) is one character, so its
+                            // split piece keeps the escaped mark; without it
+                            // math would read the invocation span and
+                            // typeset a literal glyph (issue #756).
+                            control_symbol: input.token.control_symbol,
                         });
                     }
                     continue;
@@ -8165,6 +8175,7 @@ impl P<'_> {
             Some(Token {
                 kind: TokenKind::Word(word),
                 span: word_span,
+                ..
             }) => (word, word_span),
             _ => {
                 self.diags.push(Diagnostic::error(
@@ -8212,6 +8223,7 @@ impl P<'_> {
                 Some(Token {
                     kind: TokenKind::Word(word),
                     span: word_span,
+                    ..
                 }) => {
                     self.i += 1;
                     (word, word_span)
@@ -10829,6 +10841,7 @@ fn document_begin_end(tokens: &[InputToken]) -> Option<usize> {
             }, Token {
                 kind: TokenKind::RBrace,
                 span,
+                ..
             }] if name == "document" => Some(span.end),
             _ => None,
         }
@@ -12844,7 +12857,7 @@ mod tests {
             kinds
                 .into_iter()
                 .map(|kind| InputToken {
-                    token: Token { kind, span: Span::new(0, 0) },
+                    token: Token { kind, span: Span::new(0, 0), control_symbol: false },
                     definition: None,
                     maps_to_invocation: false,
                 })

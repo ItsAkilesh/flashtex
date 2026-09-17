@@ -580,6 +580,7 @@ impl P<'_> {
                                 token: Token {
                                     kind: TokenKind::Word(piece.to_string()),
                                     span: piece_span,
+                                    control_symbol: input.token.control_symbol,
                                 },
                                 definition: input.definition,
                                 maps_to_invocation: input.maps_to_invocation,
@@ -1002,6 +1003,7 @@ impl P<'_> {
             Some(Token {
                 kind: TokenKind::Word(word),
                 span,
+                ..
             }) if word.starts_with('[') && word.contains(']') => {
                 let close = word.find(']').expect("checked");
                 (word[1..close].to_string(), word[close + 1..].to_string(), *span, word.len())
@@ -1241,6 +1243,7 @@ impl P<'_> {
             Some(Token {
                 kind: TokenKind::Word(word),
                 span,
+                ..
             }) if word.starts_with('[') && word.contains(']') => {
                 let close = word.find(']').expect("checked");
                 Some((
@@ -2351,6 +2354,7 @@ fn siunitx_entry(tokens: Vec<InputToken>, column: &SiunitxColumn) -> Vec<InputTo
         token: Token {
             kind,
             span: at.token.span,
+            control_symbol: false,
         },
         definition: at.definition,
         maps_to_invocation: at.maps_to_invocation,
@@ -2384,6 +2388,7 @@ fn substitute_parameters(body: &[InputToken], arguments: &[Vec<InputToken>]) -> 
                     token: Token {
                         kind: TokenKind::Word(std::mem::take(literal)),
                         span: input.token.span,
+                        control_symbol: input.token.control_symbol,
                     },
                     definition: input.definition,
                     maps_to_invocation: input.maps_to_invocation,
