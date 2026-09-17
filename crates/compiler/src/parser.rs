@@ -550,12 +550,15 @@ impl UnderlineGeom {
             Self::SoulHighlight => {
                 // The rule covers the glyphs (top above the baseline) and
                 // reaches `SOUL_HIGHLIGHT_DEPTH_EX` below it; both arms are
-                // font-relative, so 10pt cmr gives 0.75 * 4.30554pt =
-                // 3.22914pt of depth exactly as measured. `thickness` is
-                // ignored on purpose: `\hl` is always emitted with
-                // thickness 0 (see `soul_command`) — the yellow comes from
-                // the wrapping zero-sep color box, and a nonzero thickness
-                // would draw the pipeline's black over-bar instead.
+                // font-relative, so 10pt cmr gives 1.75 * 4.30554pt =
+                // 7.5347pt of top above the baseline and 0.75 * 4.30554pt =
+                // 3.22914pt of depth, exactly as measured (soul's
+                // `\setul{}{2.5ex}` rule is 2.5ex tall: 1.75ex above plus
+                // 0.75ex below). `thickness` is ignored on purpose: `\hl`
+                // is always emitted with thickness 0 (see `soul_command`) —
+                // the yellow comes from the wrapping zero-sep color box,
+                // and a nonzero thickness would draw the pipeline's black
+                // over-bar instead.
                 (-SOUL_HIGHLIGHT_TOP_EX * ex, SOUL_HIGHLIGHT_DEPTH_EX * ex)
             }
         }
@@ -566,12 +569,16 @@ impl UnderlineGeom {
 /// 0.75 * 4.30554pt = 3.22914pt, the measured `\hl{word}` depth.
 const SOUL_HIGHLIGHT_DEPTH_EX: f64 = 0.75;
 
-/// Nominal top of soul's `\hl` rule above the baseline, 0.75em rendered in
-/// ex units through the cmr ratio (the method only receives pt values, and
-/// `thickness` is vestigial here). Only used for the never-drawn rule-top
-/// arm; kept so the geometry still describes the real behind-text
-/// highlight covering the ascenders.
-const SOUL_HIGHLIGHT_TOP_EX: f64 = 0.75 / CMR_EX_PER_EM;
+/// How far above the baseline soul's `\hl` rule reaches, in ex: 1.75ex.
+/// 10pt cmr: 1.75 * 4.30554pt = 7.5347pt above the baseline; 12pt cmr
+/// (x-height 5.16667pt): 9.0417pt. Together with
+/// [`SOUL_HIGHLIGHT_DEPTH_EX`] (0.75ex below) this is soul's
+/// `\setul{}{2.5ex}` rule. Only the depth arm is load-bearing in either
+/// layout today (the yellow is painted by the wrapping zero-sep color box,
+/// which has no top-overlap field); the top arm is kept exact so the
+/// geometry still describes the real behind-text highlight covering the
+/// ascenders, including its `.25pt` side overlap follow-up.
+const SOUL_HIGHLIGHT_TOP_EX: f64 = 1.75;
 
 /// An underline / strike wrapper (`Inline::Underline`).
 ///
@@ -8481,6 +8488,78 @@ impl P<'_> {
                         )),
                     }
                 }
+                // soul `\so`/`\hl` reach here whenever they sit in a heading,
+                // a caption or a style argument, flattened into a token list
+                // instead of being re-parsed (review finding 4). Without this
+                // arm the command was dropped and its braced argument survived
+                // as ordinary text, so `\section{\hl{word}}` typeset a plain
+                // "word". Emit the same inlines the main token loop builds
+                // (`soul_highlight` / letterspaced runs), so both places
+                // behave identically — including the missing-package
+                // diagnostic with plain-text fallback. Edge (`.55em`) spaces
+                // around the command stay natural here: flattened contexts
+                // are single-line moving arguments, and only the command
+                // site's own `space_before` is carried.
+                TokenKind::Command(name) if name == "so" || name == "hl" => {
+                    match flat_group_at(&expanded, index + 1) {
+                        Some((group, argument_span, after)) => {
+                            skip_until = after;
+                            let full = if argument_span.document == input.token.span.document {
+                                input.token.span.merge(argument_span)
+                            } else {
+                                input.token.span
+                            };
+                            if !self.packages.iter().any(|package| package == "soul") {
+                                self.diags.push(Diagnostic::command_error(
+                                    name,
+                                    format!("\\{name} needs \\usepackage{{soul}}"),
+                                    Some(full),
+                                    Some("typeset the argument as plain text".into()),
+                                ));
+                                let outer = std::mem::replace(&mut self.style, style);
+                                let mut plain = self.box_inlines(group);
+                                self.style = outer;
+                                match plain.first_mut() {
+                                    Some(Inline::Text { space_before: first, .. }) => {
+                                        *first = space_before
+                                    }
+                                    Some(Inline::ColorBox(b)) => b.space_before = space_before,
+                                    Some(Inline::Underline(u)) => u.space_before = space_before,
+                                    _ => {}
+                                }
+                                content.extend(plain);
+                            } else if name == "hl" {
+                                let em_pt =
+                                    self.font_setup().em_ex_sp(style).0 as f64 / 65536.0;
+                                let outer = std::mem::replace(&mut self.style, style);
+                                let inner = self.soul_inner_content(&group, em_pt, false);
+                                self.style = outer;
+                                content.push(soul_highlight(inner, full, space_before));
+                            } else {
+                                let em_pt =
+                                    self.font_setup().em_ex_sp(style).0 as f64 / 65536.0;
+                                let outer = std::mem::replace(&mut self.style, style);
+                                let mut spaced =
+                                    self.soul_inner_content(&group, em_pt, true);
+                                self.style = outer;
+                                match spaced.first_mut() {
+                                    Some(Inline::Text { space_before: first, .. }) => {
+                                        *first = space_before
+                                    }
+                                    Some(Inline::ColorBox(b)) => b.space_before = space_before,
+                                    Some(Inline::Underline(u)) => u.space_before = space_before,
+                                    _ => {}
+                                }
+                                content.extend(spaced);
+                            }
+                        }
+                        None => self.diags.push(Diagnostic::error(
+                            format!("\\{name} requires a braced argument"),
+                            Some(input.token.span),
+                            Some("used an empty argument and continued".into()),
+                        )),
+                    }
+                }
                 TokenKind::Command(name) if style_command(name) => {
                     pending = Some(apply_style(style, name));
                 }
@@ -8950,42 +9029,16 @@ impl P<'_> {
             para.extend(self.box_inlines(tokens));
             return;
         }
+        // The em all soul spaces are measured in: the ambient font's quad
+        // (`font_setup` resolves the encoding/family/size to scaled points,
+        // exactly like `\hspace{<n>em}` parsing does).
+        let em_pt = self.font_setup().em_ex_sp(self.style).0 as f64 / 65536.0;
         if name == "hl" {
-            // soul's highlight is a yellow rule BEHIND the text
-            // (`\setul{}{2.5ex}`), not a padded box: `\hl{word}` is exactly
-            // as wide as `word`, same height, only deeper (0.75ex for the
-            // rule below the baseline). A bare `Inline::Underline` would be
-            // the natural node — except the pipeline paints every underline
-            // rule black and *over* the text (the rule item is pushed after
-            // the content), which would bury the glyphs under a black bar.
-            // So the yellow still comes from the xcolor `ColorBox` paint
-            // path (fill first, content over it — the correct layer), but
-            // with ZERO separation: no padding is added on any side, so the
-            // width stays the content's own. The depth comes from a
-            // zero-thickness `SoulHighlight` underline inside: thickness 0
-            // draws no rule in either layout, while the geom's extra depth
-            // still extends the fragment to the highlight depth.
-            // Single-line only (an unbreakable box): real soul's rule
-            // follows each line fragment instead, a documented limitation.
-            let content = self.box_inlines(tokens);
-            let yellow = DeviceColor::from_billionths(ColorSpace::Cmyk, &[0, 0, 1_000_000_000, 0])
-                .unwrap_or(DeviceColor::BLACK);
-            let underline = Inline::Underline(Box::new(Underline {
-                content,
-                thickness_pt: 0.0,
-                geom: UnderlineGeom::SoulHighlight,
-                span: full,
-                space_before: false,
-            }));
-            para.push(Inline::ColorBox(Box::new(ColorBox {
-                fill: yellow,
-                frame: None,
-                content: vec![underline],
-                fboxsep_pt: 0.0,
-                fboxrule_pt: 0.0,
-                span: full,
-                space_before,
-            })));
+            // soul's highlight is a yellow rule BEHIND the text (see
+            // `soul_highlight`); argument spaces are highlighted too, via
+            // `soul_inner_content` (review finding 8).
+            let content = self.soul_inner_content(&tokens, em_pt, false);
+            para.push(soul_highlight(content, full, space_before));
             return;
         }
         // `\so`: soul's letterspaced argument (soul.sty's `\sodef\textso`
@@ -9005,9 +9058,9 @@ impl P<'_> {
         // into the paragraph (a wrapper would carry it instead).
         let emit_leading = leading_space.is_some() && !para.is_empty();
         if let Some(space_span) = leading_space.filter(|_| emit_leading) {
-            para.push(Inline::TextGlue { em: SOUL_EDGE_SPACE_EM, span: space_span });
+            para.push(soul_glue(SOUL_EDGE_SPACE_EM, em_pt, space_span));
         }
-        let mut spaced = space_out_letters(&self.box_inlines(tokens));
+        let mut spaced = self.soul_inner_content(&tokens, em_pt, true);
         let carry_space = space_before && !emit_leading;
         match spaced.first_mut() {
             Some(Inline::Text { space_before: first, .. }) => *first = carry_space,
@@ -9035,7 +9088,7 @@ impl P<'_> {
             if let Some(t) = self.token_mut(self.i) {
                 t.token.kind = TokenKind::Comment;
             }
-            para.push(Inline::TextGlue { em: SOUL_EDGE_SPACE_EM, span: glue_span });
+            para.push(soul_glue(SOUL_EDGE_SPACE_EM, em_pt, glue_span));
         }
     }
 
@@ -9053,6 +9106,115 @@ impl P<'_> {
             }
         }
         false
+    }
+
+    /// `\so`/`\hl` argument content with soul's inner word spaces: the raw
+    /// argument tokens split at top-level spaces, each segment boxed in turn
+    /// and letterspaced, and joined with soul's `.65em` replacement glue
+    /// carrying each split space's own span (review findings 1 and 8).
+    /// Splitting the raw tokens (rather than relying on the boxed runs'
+    /// `space_before`) keeps argument-edge spaces that `box_inlines` would
+    /// otherwise fold away: a leading or trailing space becomes leading or
+    /// trailing inner glue, and consecutive spaces collapse to one, as in
+    /// TeX. Nested spaces (inside groups) keep the run-span glue that
+    /// `space_out_letters` bridges where adjacent. `letterspace` splits each
+    /// segment's runs into kerned letters (`\\so`); `\\hl` keeps its words
+    /// whole.
+    fn soul_inner_content(
+        &mut self,
+        tokens: &[InputToken],
+        em_pt: f64,
+        letterspace: bool,
+    ) -> Vec<Inline> {
+        let mut segments: Vec<Vec<InputToken>> = vec![Vec::new()];
+        let mut spaces: Vec<Span> = Vec::new();
+        let mut depth = 0usize;
+        for token in tokens {
+            match &token.token.kind {
+                TokenKind::LBrace => {
+                    depth += 1;
+                    segments.last_mut().expect("at least one segment").push(token.clone());
+                }
+                TokenKind::RBrace => {
+                    depth = depth.saturating_sub(1);
+                    segments.last_mut().expect("at least one segment").push(token.clone());
+                }
+                TokenKind::Space if depth == 0 => {
+                    spaces.push(token.token.span);
+                    segments.push(Vec::new());
+                }
+                _ => segments.last_mut().expect("at least one segment").push(token.clone()),
+            }
+        }
+        let last = segments.len() - 1;
+        let boxed = self.soul_box_segments(&segments);
+        let mut out = Vec::new();
+        for (index, pieces) in boxed.into_iter().enumerate() {
+            let mut pieces = if letterspace {
+                space_out_letters(&pieces, em_pt)
+            } else {
+                pieces
+            };
+            // An empty middle segment is a collapsed consecutive space: its
+            // glue is skipped, while leading/trailing ones stay (finding 8).
+            if index > 0 && (!segments[index].is_empty() || index == last) {
+                out.push(soul_glue(SOUL_INNER_SPACE_EM, em_pt, spaces[index - 1]));
+            }
+            // Past the first segment the pieces always follow soul glue (or
+            // a collapsed space), so no natural space of their own survives
+            // — exactly what `space_out_letters` establishes within one box.
+            if index > 0 {
+                match pieces.first_mut() {
+                    Some(Inline::Text { space_before: first, .. }) => *first = false,
+                    Some(Inline::ColorBox(b)) => b.space_before = false,
+                    Some(Inline::Underline(u)) => u.space_before = false,
+                    _ => {}
+                }
+            }
+            out.extend(pieces);
+        }
+        out
+    }
+
+    /// Box each of `\so`/`\hl`'s space-separated argument segments in turn,
+    /// threading the text style across the segments exactly as boxing the
+    /// whole argument at once would (a declaration in an early segment still
+    /// applies to later ones). Otherwise identical to `box_inlines`:
+    /// restricted horizontal mode with the paragraphs flattened.
+    fn soul_box_segments(&mut self, segments: &[Vec<InputToken>]) -> Vec<Vec<Inline>> {
+        let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(Vec::new()));
+        let outer_index = std::mem::replace(&mut self.i, 0);
+        let outer_style = self.style;
+        let outer_label = self.pending_item_label.take();
+        let outer_dependency_blocks = self.block_dependencies.len();
+        let outer_par_leading_blocks = self.block_par_leading.len();
+        let mut out = Vec::with_capacity(segments.len());
+        for segment in segments {
+            self.t = std::rc::Rc::new(segment.clone());
+            self.i = 0;
+            let mut blocks = Vec::new();
+            let mut para = Vec::new();
+            self.parse_stream(&mut blocks, &mut para);
+            self.flush_paragraph(&mut blocks, &mut para);
+            self.block_dependencies.truncate(outer_dependency_blocks);
+            self.block_par_leading.truncate(outer_par_leading_blocks);
+            out.push(
+                blocks
+                    .into_iter()
+                    .flat_map(|block| match block {
+                        Block::Paragraph(inlines)
+                        | Block::Styled { content: inlines, .. }
+                        | Block::ListItem { content: inlines, .. } => inlines,
+                        _ => Vec::new(),
+                    })
+                    .collect(),
+            );
+        }
+        self.t = outer_tokens;
+        self.i = outer_index;
+        self.style = outer_style;
+        self.pending_item_label = outer_label;
+        out
     }
 
     fn text_logo(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
@@ -10508,14 +10670,84 @@ fn soul_letterskip() -> TextDimen {
 /// soul.sty's interword space inside `\so{...}` (`.65em`), replacing the
 /// natural interword glue. Measured: `ab cd` = 23.88893pt, `\so{ab cd}` =
 /// 32.05554pt: two .25em letterskip gaps (5pt) plus the wider space
-/// (6.5pt vs 3.33333pt natural = +3.16667pt).
+/// (6.5pt vs 3.33333pt natural = +3.16667pt). Lowered as [`soul_glue`]
+/// (replacement `HSpace`, never beside a natural space).
 const SOUL_INNER_SPACE_EM: f64 = 0.65;
 
 /// soul.sty's space just outside `\so{...}` (`.55em`), replacing the natural
 /// interword glue on each side. Measured: `x ab y` = 27.77785pt,
 /// `x \so{ab} y` = 34.61125pt: one .25em gap (2.5pt) plus two widened
-/// spaces (2 * (5.5pt - 3.33333pt) = +4.33334pt).
+/// spaces (2 * (5.5pt - 3.33333pt) = +4.33334pt). Lowered as [`soul_glue`].
 const SOUL_EDGE_SPACE_EM: f64 = 0.55;
+
+/// Stretch/shrink of soul's replacement spaces, as fractions of the natural
+/// width: cmr's interword glue is `em/3` plus `em/6` minus `em/9`
+/// (fontdimen2/3/4), so the stretch is half the natural width and the shrink
+/// a third. This keeps soul's spaces justifiable in proportion, like the
+/// natural glue they replace; the exact soul ratios are not in the
+/// measurements this implementation cites, so they still want a pdflatex
+/// `\showbox` confirmation (review finding 1).
+const SOUL_GLUE_STRETCH_FRAC: f64 = 0.5;
+/// See [`SOUL_GLUE_STRETCH_FRAC`].
+const SOUL_GLUE_SHRINK_FRAC: f64 = 1.0 / 3.0;
+
+/// One soul replacement space (an inner `.65em` or edge `.55em`): an
+/// [`Inline::HSpace`] whose span covers exactly the source space it
+/// replaces, so consumers that read interword gaps from source bytes find no
+/// natural space beside it, and whose finite stretch/shrink scales with the
+/// natural width like cmr's own interword glue. `HSpace` (not `TextGlue`)
+/// because its layout arm advances `content_end`: Core14's `text_glue` only
+/// moves `x`, so the next `space_before: false` piece rewinds past the glue
+/// and drops it, while the pipeline keeps the source space beside the glue
+/// and sets the line too wide (review finding 1).
+fn soul_glue(em_frac: f64, em_pt: f64, span: Span) -> Inline {
+    let pt = em_frac * em_pt;
+    Inline::HSpace {
+        pt,
+        space_before_pt: 0.0,
+        space_after_pt: 0.0,
+        span,
+        stretch_pt: pt * SOUL_GLUE_STRETCH_FRAC,
+        stretch_fil: 0,
+        shrink_pt: pt * SOUL_GLUE_SHRINK_FRAC,
+        shrink_fil: 0,
+    }
+}
+
+/// soul's yellow behind-text rule (`\setul{}{2.5ex}`) as rendering
+/// representation: the yellow comes from the xcolor `ColorBox` paint path
+/// (fill first, content over it — the correct layer), with ZERO separation
+/// so the width stays the content's own, while a zero-thickness
+/// [`UnderlineGeom::SoulHighlight`] underline inside still extends the
+/// fragment to the highlight depth. A bare `Inline::Underline` would be the
+/// natural node — except the pipeline paints every underline rule black and
+/// *over* the text, which would bury the glyphs under a black bar.
+/// Single-line only (an unbreakable box): real soul's rule follows each line
+/// fragment instead, a documented limitation (review finding 3).
+fn soul_highlight(content: Vec<Inline>, span: Span, space_before: bool) -> Inline {
+    let yellow = DeviceColor::from_billionths(ColorSpace::Cmyk, &[0, 0, 1_000_000_000, 0])
+        .unwrap_or(DeviceColor::BLACK);
+    let underline = Inline::Underline(Box::new(Underline {
+        content,
+        thickness_pt: 0.0,
+        geom: UnderlineGeom::SoulHighlight,
+        span,
+        // The command site's own gap: Core14's underline arm rewinds past
+        // the reserved word space when this is false, which would glue the
+        // highlight to the preceding word; the pipeline reads the gap from
+        // source bytes either way.
+        space_before,
+    }));
+    Inline::ColorBox(Box::new(ColorBox {
+        fill: yellow,
+        frame: None,
+        content: vec![underline],
+        fboxsep_pt: 0.0,
+        fboxrule_pt: 0.0,
+        span,
+        space_before,
+    }))
+}
 
 /// Whether an inline is one letterspaceable letter for `\so`: a single
 /// non-whitespace character of a text run. Word spaces, boxes, rules and
@@ -10534,14 +10766,19 @@ fn is_spaced_letter(inline: &Inline) -> bool {
 /// letters WITHIN a word, and widen the word spaces. A piece starting a new
 /// word (first character of a run whose original `space_before` was true)
 /// gets soul's `.65em` inner space INSTEAD of the natural interword glue
-/// (an explicit [`Inline::TextGlue`], so no natural space is ever added),
-/// and no letterskip kern crosses the gap. The very first piece keeps its
-/// incoming `space_before`; the caller replaces it with the command site's
-/// edge handling (`.55em` when a real space precedes).
+/// (an explicit [`soul_glue`], so no natural space is ever added), and no
+/// letterskip kern crosses the gap. The very first piece keeps its incoming
+/// `space_before`; the caller replaces it with the command site's edge
+/// handling (`.55em` when a real space precedes).
 /// Pieces keep their style and span.
-fn space_out_letters(content: &[Inline]) -> Vec<Inline> {
+fn space_out_letters(content: &[Inline], em_pt: f64) -> Vec<Inline> {
     let kern = soul_letterskip();
     let mut out = Vec::with_capacity(content.len() * 2);
+    // End of the last letterspaced letter: the inner glue bridges exactly
+    // the source bytes between two adjacent words (the space the lexer
+    // folded into the next run's `space_before`), so its span covers the
+    // replaced space. `None` until the first letter lands.
+    let mut word_end: Option<Span> = None;
     for inline in content {
         if let Inline::Text { text, span, style, space_before } = inline {
             let mut first = true;
@@ -10554,7 +10791,25 @@ fn space_out_letters(content: &[Inline]) -> Vec<Inline> {
                 let word_start = first && *space_before;
                 first = false;
                 if word_start && !out.is_empty() {
-                    out.push(Inline::TextGlue { em: SOUL_INNER_SPACE_EM, span: *span });
+                    // Only bridge across a directly adjacent letter: after a
+                    // box, rule or group the bytes in between are not a
+                    // plain word space, so the glue keeps the run's own span
+                    // there (the pre-replacement behaviour). Macro-expanded
+                    // words carry invocation spans whose bytes may not be
+                    // adjacent either; the ordering guard falls back the
+                    // same way.
+                    let adjacent = matches!(out.last(), Some(Inline::Text { .. }));
+                    let glue_span = match word_end {
+                        Some(prev)
+                            if adjacent
+                                && prev.document == span.document
+                                && prev.end <= span.start =>
+                        {
+                            Span::in_document(span.document, prev.end, span.start)
+                        }
+                        _ => *span,
+                    };
+                    out.push(soul_glue(SOUL_INNER_SPACE_EM, em_pt, glue_span));
                 }
                 let piece = Inline::Text {
                     text: c.to_string(),
@@ -10575,6 +10830,7 @@ fn space_out_letters(content: &[Inline]) -> Vec<Inline> {
                     }
                 }
                 out.push(piece);
+                word_end = Some(*span);
             }
         } else {
             out.push(inline.clone());
@@ -10701,6 +10957,54 @@ fn siunitx_bracket_at(tokens: &[InputToken], index: usize) -> Option<(String, Sp
                 raw.push_str(&piece);
             }
         }
+    }
+    None
+}
+
+/// A braced group at `index` (after spaces) in a flat token run: the inner
+/// tokens, the span across both braces, and the index after `}`. (Like
+/// `siunitx_group_at`, but keeping tokens instead of raw source, so soul
+/// `\\so`/`\\hl` in headings and captions can box their argument.)
+fn flat_group_at(
+    tokens: &[InputToken],
+    index: usize,
+) -> Option<(Vec<InputToken>, Span, usize)> {
+    let mut cursor = index;
+    while matches!(
+        tokens.get(cursor).map(|input| &input.token.kind),
+        Some(TokenKind::Space)
+    ) {
+        cursor += 1;
+    }
+    if !matches!(
+        tokens.get(cursor).map(|input| &input.token.kind),
+        Some(TokenKind::LBrace)
+    ) {
+        return None;
+    }
+    let open = tokens[cursor].token.span;
+    let inner_start = cursor + 1;
+    let mut depth = 1usize;
+    cursor = inner_start;
+    while let Some(input) = tokens.get(cursor) {
+        match &input.token.kind {
+            TokenKind::LBrace => depth += 1,
+            TokenKind::RBrace => {
+                depth -= 1;
+                if depth == 0 {
+                    let close = input.token.span;
+                    let full = if close.document == open.document {
+                        open.merge(close)
+                    } else {
+                        open
+                    };
+                    return Some((tokens[inner_start..cursor].to_vec(), full, cursor + 1));
+                }
+            }
+            TokenKind::ParBreak => return None,
+            _ => {}
+        }
+        cursor += 1;
     }
     None
 }
