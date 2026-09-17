@@ -820,6 +820,23 @@ fn newtheorem_rejection_is_undone_when_its_group_closes() {
 }
 
 #[test]
+fn newtheorem_stale_rejection_is_cleared_by_a_later_successful_claim() {
+    // "foo" collides with a local `\def`, gets rejected, then that `\def` is
+    // undone with `\let` (not a group close, so the rejection's own
+    // group-scoped undo does not fire) before a fresh `\newtheorem{foo}`
+    // succeeds. The stale rejection must not survive a later successful
+    // claim of the same name (review finding #1's "related smaller gap").
+    let r = expand_str(
+        r"\def\foo{}\newtheorem{foo}{Foo}\let\foo\undefined\newtheorem{foo}{Foo}\begin{foo}\end{foo}",
+    );
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\foo already defined."], "{messages:?}");
+    let out = text(&r.tokens);
+    assert!(out.contains(r"\foo "), "{out:?}");
+    assert!(out.contains(r"\endfoo "), "{out:?}");
+}
+
+#[test]
 fn newtheorem_second_declaration_of_the_same_name_errors() {
     // Like `\newenvironment`, a repeated declaration keeps the first
     // definition and reports the collision once per redeclaration.

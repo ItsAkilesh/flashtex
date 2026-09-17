@@ -670,16 +670,21 @@ impl Scopes {
         self.frames.retain_saves(|s| !matches!(s, SaveItem::CsMeaning(n, _) if n == name));
     }
 
-    /// Marks `name` rejected for `\newtheorem` (see `SaveItem::RejectedTheoremEnv`),
-    /// local to the current group like an ordinary assignment: a name only
-    /// collided because something else defined it locally goes back to
-    /// undefined -- and un-rejected -- when that group closes.
-    pub fn reject_theorem_env(&mut self, name: &str) {
+    /// Marks `name` rejected (or un-rejected) for `\newtheorem` (see
+    /// `SaveItem::RejectedTheoremEnv`), local to the current group like an
+    /// ordinary assignment: a name only collided because something else
+    /// defined it locally goes back to undefined -- and un-rejected -- when
+    /// that group closes.
+    pub fn set_theorem_env_rejected(&mut self, name: &str, rejected: bool) {
         if self.saving() {
             let was_present = self.rejected_theorem_envs.contains(name);
             self.frames.push_save(SaveItem::RejectedTheoremEnv(name.to_string(), was_present));
         }
-        self.rejected_theorem_envs.insert(name.to_string());
+        if rejected {
+            self.rejected_theorem_envs.insert(name.to_string());
+        } else {
+            self.rejected_theorem_envs.remove(name);
+        }
     }
 
     pub fn is_rejected_theorem_env(&self, name: &str) -> bool {

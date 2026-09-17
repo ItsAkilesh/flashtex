@@ -392,6 +392,39 @@ A test.
     assert_eq!(msgs, [r"LaTeX Error: Command \def already defined."], "{msgs:?}");
 }
 
+/// A *duplicate* `\newtheorem{thm}{Theorem}` reports the collision pdflatex
+/// reports too, but pdflatex keeps the first definition -- every
+/// `\begin{thm}` still typesets "Theorem 1". A prior fix's rejection marker
+/// did not distinguish "collided with a real environment" from "collided
+/// with something else that must be shadowed", so it swallowed the still-
+/// working environment along with the duplicate declaration.
+#[test]
+fn duplicate_theorem_declaration_keeps_the_first_definition_working() {
+    let source = r"\usepackage{amsthm}
+\newtheorem{thm}{Theorem}\newtheorem{thm}{Theorem}
+\begin{document}\begin{thm}X\end{thm}\end{document}";
+    let msgs = messages(source);
+    assert_eq!(msgs, [r"LaTeX Error: Command \thm already defined."], "{msgs:?}");
+    let texts = plain_texts(source);
+    assert!(texts.contains(&"Theorem 1".to_string()), "{texts:?}");
+    assert!(texts.iter().any(|t| t.contains('X')), "{texts:?}");
+}
+
+/// Same shape, a different kind of prior claim: `\newtheorem` colliding with
+/// an existing `\newenvironment` must report the collision but leave that
+/// environment working too.
+#[test]
+fn newtheorem_colliding_with_an_existing_environment_keeps_it_working() {
+    let source = r"\usepackage{amsthm}
+\newenvironment{foo}{\textbf{FOO}}{}
+\newtheorem{foo}{Foo}
+\begin{document}\begin{foo}\end{foo}\end{document}";
+    let msgs = messages(source);
+    assert_eq!(msgs, [r"LaTeX Error: Command \foo already defined."], "{msgs:?}");
+    let texts = plain_texts(source);
+    assert!(texts.contains(&"FOO".to_string()), "{texts:?}");
+}
+
 /// Ordinary theorem names are unaffected: no diagnostics at all.
 #[test]
 fn ordinary_theorem_name_is_silent() {
