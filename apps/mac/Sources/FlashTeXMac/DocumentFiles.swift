@@ -518,7 +518,7 @@ extension ShellModel {
         guard hasUnsavedDocuments else { openTex(at: url); return }
         let alert = NSAlert()
         alert.messageText = "Save changes to \(unsavedDocumentsDescription) before opening \(url.lastPathComponent)?"
-        alert.informativeText = "Discarded text stays recoverable this session via Edit > Restore Discarded Buffer."
+        alert.informativeText = "Discarded text stays recoverable: \(discardRecoveryRoutes)"
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Cancel")
@@ -549,6 +549,18 @@ extension ShellModel {
         let dirty = project.listing.filter(\.isDirty).map(\.path)
         if documentURL == nil || dirty.isEmpty { return documentURL?.lastPathComponent ?? "the unsaved buffer" }
         return dirty.joined(separator: ", ")
+    }
+
+    /// Where each dirty document's text goes on a discard (#806): the entry's
+    /// buffer to Edit > Restore Discarded Buffer (this session), each member's
+    /// snapshot to File > Restore Unsaved Snapshot….
+    var discardRecoveryRoutes: String {
+        let dirty = project.listing.filter(\.isDirty).map(\.path)
+        var routes: [String] = []
+        if dirty.contains(project.entryPath) { routes.append("\(project.entryPath) via Edit > Restore Discarded Buffer (this session)") }
+        let members = dirty.filter { $0 != project.entryPath }
+        if !members.isEmpty { routes.append("\(members.joined(separator: ", ")) via File > Restore Unsaved Snapshot…") }
+        return routes.joined(separator: "; ")
     }
 
     /// Whether a project replacement (open, fixture load, reload, New Project)
@@ -588,7 +600,18 @@ extension ShellModel {
     /// entry's buffer goes to `recoverableBuffer` (and a durable snapshot), and
     /// every dirty member gets its own durable snapshot under its rooted file
     /// (File > Restore Unsaved Snapshot…) — never another document's text.
-    func keepDiscarded(_ discarding: RecoverableBuffer, reason: String) {
+    /// A member's snapshot is its only copy once the project is replaced: if
+    /// one cannot be written, nothing is kept or replaced and this returns
+    /// false with a `captureNote` (#806).
+    func keepDiscarded(_ discarding: RecoverableBuffer, reason: String, before action: String) -> Bool {
+        if let root = project.projectRoot {
+            for doc in documents where doc.path != project.entryPath && project.isDirty(doc.path) {
+                guard preserveDiscardedText(doc.text, at: root.appendingPathComponent(doc.path), reason: reason) else {
+                    captureNote = "Could not keep the unsaved edits of \(doc.path) (\(dirtySnapshots.lastError ?? "snapshot store not writable")); nothing replaced before \(action). The text is still open in the editor."
+                    return false
+                }
+            }
+        }
         // Session memory is one slot; the store keeps one per file across
         // sessions (the ledger route keeps it in undo history instead). A
         // clean entry (only members dirty) replaces neither.
@@ -596,10 +619,7 @@ extension ShellModel {
             recoverableBuffer = discarding
             if let from = discarding.url { preserveDirtyText(discarding.text, at: from, reason: reason) }
         }
-        guard let root = project.projectRoot else { return }
-        for doc in documents where doc.path != project.entryPath && project.isDirty(doc.path) {
-            preserveDirtyText(doc.text, at: root.appendingPathComponent(doc.path), reason: reason)
-        }
+        return true
     }
 
     /// Opens a `.tex` file as the entry document. When any document is dirty,
@@ -615,9 +635,10 @@ extension ShellModel {
         }
         switch files.read(url) {
         case .text(let text):
-            adoptOpenedText(text, url: url, discarding: discarding)
+            let routes = discarding == nil ? nil : discardRecoveryRoutes
+            guard adoptOpenedText(text, url: url, discarding: discarding) else { return .saveFailed }
             captureNote = "Opened \(url.lastPathComponent) (\(text.utf8.count) bytes)"
-                + (recoverableBuffer == nil ? "" : "; previous unsaved buffer kept (Edit > Restore Discarded Buffer)")
+                + (routes.map { "; discarded text kept: \($0)" } ?? (recoverableBuffer == nil ? "" : "; previous unsaved buffer kept (Edit > Restore Discarded Buffer)"))
             // A snapshot kept by an earlier session (or an earlier discard) of
             // this file is offered, never applied: the disk text is what opened.
             files.offeredSnapshots = []
@@ -636,10 +657,13 @@ extension ShellModel {
 
     /// Replaces the project with `text` read from `url` (open or direct reload).
     /// Only a successful read consumes a discard decision: a failed open leaves
-    /// the dirty buffer in place, not "discarded".
-    private func adoptOpenedText(_ text: String, url: URL, discarding: RecoverableBuffer?) {
+    /// the dirty buffer in place, not "discarded"; so does a discard whose
+    /// text cannot be kept (false).
+    private func adoptOpenedText(_ text: String, url: URL, discarding: RecoverableBuffer?) -> Bool {
         if let discarding {
-            keepDiscarded(discarding, reason: discarding.url == url ? "discarded by a reload from disk" : "discarded when \(url.lastPathComponent) was opened")
+            let reload = discarding.url == url
+            guard keepDiscarded(discarding, reason: reload ? "discarded by a reload from disk" : "discarded when \(url.lastPathComponent) was opened",
+                                before: (reload ? "reloading " : "opening ") + url.lastPathComponent) else { return false }
         }
         replaceProject(entryText: text, named: url.lastPathComponent)
         documentURL = url
@@ -648,6 +672,7 @@ extension ShellModel {
         files.noteDiskState(.unchanged)
         watchOpenDocument() // DocumentWatcher.swift: live external-change detection
         if workerAttached { compile() }
+        return true
     }
 
     /// Restores the buffer discarded by the last authorized open (undo of the
@@ -835,7 +860,12 @@ extension ShellModel {
         var currentText: String
         var diskText: String
         var diskSha256: String
-        var bufferDirty: Bool
+        /// The entry's buffer has unsaved edits the reload replaces.
+        var entryDirty: Bool
+        /// Dirty members a direct reload discards too (it replaces the whole
+        /// project); named in the prompt (#806).
+        var discardedMembers: [String] = []
+        var bufferDirty: Bool { entryDirty || !discardedMembers.isEmpty }
         /// The durable (ledger) identity the helper's `reload` must still see;
         /// nil for the direct path (no preview controller attached).
         var durable: DurableIdentity?
@@ -855,7 +885,10 @@ extension ShellModel {
             let route = viaController
                 ? "through the preview controller (the current text stays in durable undo history)"
                 : "directly"
-            let edits = bufferDirty ? "Your unsaved edits are replaced (kept recoverable this session). " : ""
+            var edits = entryDirty ? "Your unsaved edits are replaced (recoverable this session via Edit > Restore Discarded Buffer). " : ""
+            if !discardedMembers.isEmpty {
+                edits += "Unsaved edits to \(discardedMembers.joined(separator: ", ")) are discarded too (recoverable via File > Restore Unsaved Snapshot…). "
+            }
             return "Reload \(name) \(route): \(bytesBefore) → \(bytesAfter) bytes, +\(change.added) / −\(change.removed) lines. \(edits)"
                 + "The reload is pinned to the reviewed snapshot (sha256 \(diskSha256.prefix(12))) and refused if the file changes again."
         }
@@ -891,8 +924,12 @@ extension ShellModel {
             if controllerRoutesFiles(for: url), let d = controllerState.durable[activePath] {
                 durable = .init(revision: d.revision, sha256: d.sha256)
             }
-            return ReloadReview(url: url, currentText: activeText, diskText: diskText,
-                                diskSha256: SourceDigest.sha256Hex(diskText), bufferDirty: durable == nil ? hasUnsavedDocuments : isDirty, durable: durable)
+            // A direct reload replaces the whole project (every dirty member);
+            // the controller's reload changes only the entry's buffer.
+            let members = durable == nil ? project.listing.filter { $0.isDirty && $0.path != project.entryPath }.map(\.path) : []
+            return ReloadReview(url: url, currentText: activeText, diskText: diskText, diskSha256: SourceDigest.sha256Hex(diskText),
+                                entryDirty: durable == nil ? project.isDirty(project.entryPath) : isDirty,
+                                discardedMembers: members, durable: durable)
         }
     }
 
@@ -972,8 +1009,10 @@ extension ShellModel {
                 files.noteDiskState(.modified)
                 return .readFailed
             }
-            adoptOpenedText(text, url: url, discarding: discarding)
-            captureNote = "Reloaded \(url.lastPathComponent) from disk" + (recoverableBuffer == nil ? "." : "; previous buffer kept (Edit > Restore Discarded Buffer).")
+            let routes = discarding == nil ? nil : discardRecoveryRoutes
+            guard adoptOpenedText(text, url: url, discarding: discarding) else { return .saveFailed }
+            captureNote = "Reloaded \(url.lastPathComponent) from disk"
+                + (routes.map { "; discarded text kept: \($0)." } ?? (recoverableBuffer == nil ? "." : "; previous buffer kept (Edit > Restore Discarded Buffer)."))
             return .opened
         case .missing:
             captureNote = "\(url.lastPathComponent) disappeared after the reload was reviewed; nothing replaced."
