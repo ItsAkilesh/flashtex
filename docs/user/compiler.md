@@ -300,7 +300,7 @@ The section below is generated from the compiler itself
 <!-- BEGIN GENERATED supported-latex: `flashtex-compiler --supported markdown`; do not edit by hand -->
 ## Supported LaTeX
 
-This compiler implements a finite LaTeX subset: 356 text-mode and 568 math-mode command entries, 67 environments and 24 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
+This compiler implements a finite LaTeX subset: 358 text-mode and 568 math-mode command entries, 67 environments and 25 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
 
 Regenerate with `crates/compiler/scripts/render_supported_latex.sh`; `cargo test --test supported_latex` fails when this section is stale.
 
@@ -535,6 +535,8 @@ Canonical sources:
 | `\LARGE` |  | size declaration from the class size table |
 | `\huge` |  | size declaration from the class size table |
 | `\Huge` |  | size declaration from the class size table |
+| `\larger` | `{...}` | relsize: one step up the class size table from the size in effect; without an argument, a declaration for the rest of the scope |
+| `\smaller` | `{...}` | relsize: one step down the class size table from the size in effect; without an argument, a declaration for the rest of the scope |
 | `\cite` | `[note]{keys}` | numbered citation from thebibliography entries, or biblatex's numeric citation when biblatex is loaded; natbib redefines it as \citet, or as \citep when an optional argument follows |
 | `\parencite` | `[pre][post]{keys}` | biblatex parenthetical citation: [n] in numeric style |
 | `\textcite` | `[pre][post]{keys}` | biblatex textual citation: Author [n] in numeric style |
@@ -982,6 +984,7 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `natbib` | `numbers, authoryear, round, square, angle, curly, comma, semicolon, colon, nobibstyle, bibstyle, sectionbib, longnamesfirst, nonamebreak` | \citet/\citep/\citealt/\citealp/\citeauthor/\citeyear/\citeyearpar/\citenum/\citetext and the \cite it redefines, with [Author(Year)] \bibitem labels; sort, compress, super and openbib are diagnosed |
 | `biblatex` | `style=numeric, sorting=none, backend=biber` | basic project-relative .bib resources with numeric citations, textcite/parencite/autocite, citeauthor/citeyear, nocite and printbibliography; authoryear labels are minimal, alphabetic warns |
 | `ulem` | `normalem` | \uline: 0.4pt rule under the argument (single-line); \sout: 0.4pt strike at 0.55ex; \emph is not redefined |
+| `relsize` | `` | \larger/\smaller step the size in effect by an optional [n] (default 1), relative to the closest defined size |
 | `xspace` | `` | \xspace inserts a word space unless the next token is }, , . ' / ? ; : ! ~ - ), or a short suppressing-command list (\footnote, \footnotemark, \bgroup, \egroup, control space) |
 | `ifthen` | `` | \ifthenelse with \equal, \NOT, \AND, \OR, \isodd, \isundefined, \lengthtest and \boolean tests, and \newif conditionals with \newboolean/\setboolean; \whiledo loops are diagnosed where they are used |
 

@@ -259,6 +259,8 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("LARGE", "", "size declaration from the class size table"),
     ("huge", "", "size declaration from the class size table"),
     ("Huge", "", "size declaration from the class size table"),
+    ("larger", "{...}", "relsize: one step up the class size table from the size in effect; without an argument, a declaration for the rest of the scope"),
+    ("smaller", "{...}", "relsize: one step down the class size table from the size in effect; without an argument, a declaration for the rest of the scope"),
     ("par", "", "ends the paragraph"),
     ("hfill", "", "infinite-stretch horizontal glue"),
     ("hrulefill", "", "\\hfill filled with a 0.4pt baseline rule (latex.ltx \\leaders\\hrule\\hfill)"),
@@ -1060,6 +1062,11 @@ const PACKAGES: &[(&str, &str, &str)] = &[
         "ulem",
         "normalem",
         "\\uline: 0.4pt rule under the argument (single-line); \\sout: 0.4pt strike at 0.55ex; \\emph is not redefined",
+    ),
+    (
+        "relsize",
+        "",
+        "\\larger/\\smaller step the size in effect by an optional [n] (default 1), relative to the closest defined size",
     ),
     (
         "xspace",
