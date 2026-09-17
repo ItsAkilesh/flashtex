@@ -199,6 +199,50 @@ final class DisplayCandidateTests: XCTestCase {
         XCTAssertNil(model.displayCandidates.deferred)
     }
 
+    /// GH-809: `testHeldWorkRunsOnCandidateTimeoutOrSupersessionNeverDropped` only
+    /// releases carried work (an older hold's work, taken by a newer hold via
+    /// `supersedeDeferred`) through the timeout bound. The newer hold's own
+    /// sibling arriving must run the carried work too, ahead of its own.
+    func testCarriedHoldWorkReleasedByCandidateArrivalNeverDropped() {
+        let model = ShellModel()
+        model.displayCandidates.beginNegotiation(sessionID: "s", projectID: "p", requestID: "n", enabling: true)
+        _ = model.displayCandidates.acknowledge(requestID: "n", payload: ["capability": "display-candidates-v1", "enabled": true])
+        var held: [String] = []
+        model.displayCandidatesAfterSibling(of: "pc-1", acceptedLayout: ["display-list-v2"]) { held.append("1a") }
+        model.displayCandidatesAfterSibling(of: "pc-1", acceptedLayout: ["display-list-v2"], holdsRelease: true) { held.append("1b") }
+        XCTAssertEqual(held, []); XCTAssertEqual(model.displayCandidates.deferred?.works.count, 2)
+        model.displayCandidatesAfterSibling(of: "pc-2", acceptedLayout: ["display-list-v2"]) { held.append("2") }
+        XCTAssertEqual(held, [], "carried work does not run inside pc-2's own sibling window")
+        XCTAssertEqual(model.displayCandidates.deferred?.requestID, "pc-2")
+        XCTAssertEqual(model.displayCandidates.deferred?.works.count, 3, "pc-1's work is carried into pc-2's hold")
+        XCTAssertEqual(model.displayCandidates.deferredReleasedBySupersession, 1)
+        // pc-2's own sibling arrives (admitted or refused): the carried work runs first, never dropped.
+        model.displayCandidates.releaseDeferred(.candidate)
+        XCTAssertEqual(held, ["1a", "1b", "2"], "the carried work runs, in order, ahead of the newer request's own work")
+        XCTAssertEqual(model.displayCandidates.deferredReleasedByCandidate, 1)
+        XCTAssertNil(model.displayCandidates.deferred)
+    }
+
+    /// GH-809: carried work must also survive invalidation (helper exit / restart /
+    /// close) while it is still held under the newer request, never dropped.
+    func testCarriedHoldWorkReleasedByInvalidationNeverDropped() {
+        let model = ShellModel()
+        model.displayCandidates.beginNegotiation(sessionID: "s", projectID: "p", requestID: "n", enabling: true)
+        _ = model.displayCandidates.acknowledge(requestID: "n", payload: ["capability": "display-candidates-v1", "enabled": true])
+        var held: [String] = []
+        model.displayCandidatesAfterSibling(of: "pc-1", acceptedLayout: ["display-list-v2"]) { held.append("1a") }
+        model.displayCandidatesAfterSibling(of: "pc-1", acceptedLayout: ["display-list-v2"], holdsRelease: true) { held.append("1b") }
+        model.displayCandidatesAfterSibling(of: "pc-2", acceptedLayout: ["display-list-v2"]) { held.append("2") }
+        XCTAssertEqual(held, [])
+        XCTAssertEqual(model.displayCandidates.deferred?.requestID, "pc-2")
+        XCTAssertEqual(model.displayCandidates.deferred?.works.count, 3, "pc-1's work is carried into pc-2's hold")
+        // The helper exits/restarts/closes before pc-2's own sibling arrives.
+        model.displayCandidates.invalidate()
+        XCTAssertEqual(held, ["1a", "1b", "2"], "invalidation runs the carried work instead of dropping it")
+        XCTAssertEqual(model.displayCandidates.deferredReleasedByInvalidation, 1)
+        XCTAssertNil(model.displayCandidates.deferred)
+    }
+
     func testModelRefusesCandidatesWhileOffAndKeepsTheV1Result() throws {
         let model = ShellModel()
         XCTAssertFalse(model.displayCandidates.requested, "default OFF")
