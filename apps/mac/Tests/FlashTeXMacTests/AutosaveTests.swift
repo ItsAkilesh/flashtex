@@ -209,7 +209,7 @@ final class AutosaveTests: XCTestCase {
         model.project.switchDocument(to: "other.tex")
         model.updateActiveText("Other, ours.\n")
         guard case .saved = model.project.saveDocumentNow("other.tex") else { return XCTFail("expected a save") }
-        XCTAssertEqual(model.project.saveConflict?.url.standardizedFileURL, chapter.standardizedFileURL)
+        XCTAssertEqual(model.project.saveConflict(for: "chapter.tex")?.url.standardizedFileURL, chapter.standardizedFileURL)
         model.flushPendingAutosave()
         XCTAssertEqual(try disk(chapter), "Chapter, external.\n")
     }
@@ -476,5 +476,100 @@ final class AutosaveTests: XCTestCase {
         XCTAssertEqual(model.savedText, "Other\n", "the new document's saved baseline is untouched")
         XCTAssertFalse(model.isDirty)
         XCTAssertNil(model.files.conflict)
+    }
+
+    // MARK: #786 — a project replacement considers every dirty document
+
+    /// Keeps the durable snapshot store inside the test's temp directory.
+    private func privateSnapshots(_ dir: URL) {
+        setenv("FLASHTEX_DIRTY_SNAPSHOTS", dir.appendingPathComponent("snapshots").path, 1)
+        addTeardownBlock { unsetenv("FLASHTEX_DIRTY_SNAPSHOTS") }
+    }
+
+    /// Edits chapter.tex, then switches to the clean main.tex before
+    /// autosave fires (the #786 repro): only an inactive member is dirty.
+    private func projectWithInactiveDirtyMember(_ tag: String) async throws -> (ShellModel, main: URL, chapter: URL, next: URL) {
+        EditorPreferences.shared.autosave = false
+        let (model, main, chapter) = try await openProject(tag)
+        privateSnapshots(main.deletingLastPathComponent())
+        model.project.switchDocument(to: "chapter.tex")
+        model.updateActiveText("Chapter, edited.\n")
+        model.project.switchDocument(to: "main.tex")
+        XCTAssertFalse(model.isDirty, "the active document is clean")
+        XCTAssertTrue(model.project.isDirty("chapter.tex"))
+        let next = main.deletingLastPathComponent().appendingPathComponent("next.tex")
+        try "Next.\n".write(to: next, atomically: true, encoding: .utf8)
+        return (model, main, chapter, next)
+    }
+
+    func testOpenWithOnlyAnInactiveMemberDirtyIsRefused() async throws {
+        let (model, _, chapter, next) = try await projectWithInactiveDirtyMember("786-open")
+        XCTAssertEqual(model.openTex(at: next), .blockedByUnsavedEdits, "chapter.tex's edits would be dropped silently")
+        XCTAssertEqual(model.project.entryPath, "main.tex")
+        XCTAssertTrue(model.project.isDirty("chapter.tex"))
+        XCTAssertEqual(try disk(chapter), "Chapter.\n")
+    }
+
+    func testDiscardSnapshotsAnInactiveDirtyMember() async throws {
+        let (model, _, chapter, next) = try await projectWithInactiveDirtyMember("786-discard")
+        XCTAssertEqual(model.openTex(at: next, dirty: .discard), .opened)
+        XCTAssertEqual(model.dirtySnapshots.read(for: chapter)?.text, "Chapter, edited.\n", "the member's own text is kept under its own file")
+        XCTAssertNil(model.recoverableBuffer, "a clean entry does not take the recoverable slot")
+    }
+
+    func testReloadWithOnlyAnInactiveMemberDirtyIsRefused() async throws {
+        let (model, _, _, _) = try await projectWithInactiveDirtyMember("786-reload")
+        XCTAssertEqual(model.reloadFromDisk(), .blockedByUnsavedEdits, "a direct reload replaces the whole project")
+        XCTAssertTrue(model.project.isOpen("chapter.tex"))
+    }
+
+    func testFixtureLoadSavesEveryDirtyDocumentFirst() async throws {
+        let (model, main, chapter, _) = try await projectWithInactiveDirtyMember("786-fixture-save")
+        model.updateActiveText("\\input{chapter}\n% entry edit\n")
+        XCTAssertEqual(model.loadFixturesReplacingProject(request: nil, result: CaretSyncTests.resultURL, dirty: .saveFirst), .opened)
+        XCTAssertEqual(try disk(main), "\\input{chapter}\n% entry edit\n")
+        XCTAssertEqual(try disk(chapter), "Chapter, edited.\n", "fixture load saved only the entry")
+        XCTAssertEqual(model.previewSource, .fixture)
+    }
+
+    func testFixtureLoadIsAbortedWhenAMemberSaveConflicts() async throws {
+        let (model, _, chapter, _) = try await projectWithInactiveDirtyMember("786-fixture-conflict")
+        try "Chapter, external.\n".write(to: chapter, atomically: true, encoding: .utf8)
+        XCTAssertEqual(model.loadFixturesReplacingProject(request: nil, result: CaretSyncTests.resultURL, dirty: .saveFirst), .saveFailed)
+        XCTAssertTrue(model.project.isOpen("chapter.tex"), "nothing replaced")
+        XCTAssertEqual(model.documents.first(where: { $0.path == "chapter.tex" })?.text, "Chapter, edited.\n")
+        XCTAssertEqual(try disk(chapter), "Chapter, external.\n")
+        XCTAssertNotEqual(model.previewSource, .fixture)
+    }
+
+    // MARK: #789 — member save conflicts are recorded per path
+
+    func testConflictsOnTwoMembersAreBothKeptAndNeitherIsRetried() async throws {
+        EditorPreferences.shared.autosave = true
+        let (model, main, chapter) = try await openProject("789-two")
+        privateSnapshots(main.deletingLastPathComponent())
+        let other = main.deletingLastPathComponent().appendingPathComponent("other.tex")
+        try "Other.\n".write(to: other, atomically: true, encoding: .utf8)
+        let opened = await model.project.openDocument("other.tex")
+        XCTAssertEqual(opened, .opened(path: "other.tex"))
+        try "Chapter, external.\n".write(to: chapter, atomically: true, encoding: .utf8)
+        try "Other, external.\n".write(to: other, atomically: true, encoding: .utf8)
+        model.project.switchDocument(to: "chapter.tex")
+        model.updateActiveText("Chapter, ours.\n")
+        guard case .conflict = model.project.saveDocumentNow("chapter.tex") else { return XCTFail("expected a conflict") }
+        model.project.switchDocument(to: "other.tex")
+        model.updateActiveText("Other, ours.\n")
+        guard case .conflict = model.project.saveDocumentNow("other.tex") else { return XCTFail("expected a conflict") }
+        XCTAssertEqual(model.project.saveConflict(for: "chapter.tex")?.url.standardizedFileURL, chapter.standardizedFileURL)
+        XCTAssertEqual(model.project.saveConflict(for: "other.tex")?.url.standardizedFileURL, other.standardizedFileURL)
+        // A refused save re-keeps the buffer as a durable snapshot: with the
+        // snapshots removed, a retry by autosave would write them again.
+        model.dirtySnapshots.remove(for: chapter)
+        model.dirtySnapshots.remove(for: other)
+        model.updateActiveText("Other, ours again.\n") // arms autosave
+        model.flushPendingAutosave()
+        XCTAssertNil(model.dirtySnapshots.read(for: chapter), "autosave retried conflicted chapter.tex")
+        XCTAssertNil(model.dirtySnapshots.read(for: other), "autosave retried conflicted other.tex")
+        XCTAssertNotNil(model.project.saveConflict(for: "chapter.tex"))
     }
 }

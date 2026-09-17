@@ -796,7 +796,7 @@ final class ShellModel {
     func reloadFixture() {
         guard let url = fixtureURL else { return }
         let request = url.deletingLastPathComponent().appendingPathComponent("compile-request.json")
-        confirmLoadFixtures { self.loadFixtures(request: request, result: url) }
+        confirmLoadFixtures { self.loadFixturesReplacingProject(request: request, result: url, dirty: $0) }
     }
 
     func openFixturePanel() {
@@ -805,38 +805,47 @@ final class ShellModel {
         panel.message = "Choose a runtime v1 compile_result JSON file"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let request = url.deletingLastPathComponent().appendingPathComponent("compile-request.json")
-        confirmLoadFixtures { self.loadFixtures(request: request, result: url) }
+        confirmLoadFixtures { self.loadFixturesReplacingProject(request: request, result: url, dirty: $0) }
     }
 
     /// Loading a fixture replaces the whole project, so when a real document is
-    /// open or has unsaved edits, confirm first — same Save/Discard/Cancel flow
-    /// `openTexPanel` uses before opening another file (#72).
-    private func confirmLoadFixtures(_ load: () -> Void) {
-        guard documentURL != nil || isDirty else { load(); return }
+    /// open or any document has unsaved edits, confirm first — same
+    /// Save/Discard/Cancel flow `openTexPanel` uses before opening another file
+    /// (#72, #786).
+    private func confirmLoadFixtures(_ load: (DirtyDisposition) -> Void) {
+        guard documentURL != nil || hasUnsavedDocuments else { load(.none); return }
         let alert = NSAlert()
-        alert.messageText = "Save changes to \(documentURL?.lastPathComponent ?? "the unsaved buffer") before loading the fixture?"
+        alert.messageText = "Save changes to \(unsavedDocumentsDescription) before loading the fixture?"
         alert.informativeText = "Loading a fixture replaces the whole project. Discarded text stays recoverable this session via Edit > Restore Discarded Buffer."
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Cancel")
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            if documentURL == nil {
+            if documentURL == nil, hasUnsavedDocuments {
                 guard saveTexAs() else { return }
-            } else if !saveTex() {
-                captureNote = "Could not save the current buffer (\(files.status)); fixture was not loaded."
-                if files.conflict != nil { resolveConflictPanel() }
-                return
             }
-            load()
+            load(.saveFirst)
+            if files.conflict != nil { resolveConflictPanel() }
         case .alertSecondButtonReturn:
-            let discarding = RecoverableBuffer(url: documentURL, text: entryText) // never another tab's text under the entry's URL
-            recoverableBuffer = discarding
-            if let from = discarding.url {
-                preserveDirtyText(discarding.text, at: from, reason: "discarded when a fixture was loaded")
-            }
-            load()
+            load(.discard)
         default: break
+        }
+    }
+
+    /// Loads a fixture in place of the project once every dirty document is
+    /// saved or explicitly discarded (`authorizeProjectReplacement`): a failed
+    /// or conflicted save of any document — entry or member, active or not —
+    /// loads nothing.
+    @discardableResult
+    func loadFixturesReplacingProject(request: URL?, result: URL, dirty: DirtyDisposition) -> OpenOutcome {
+        switch authorizeProjectReplacement(dirty, before: "loading the fixture") {
+        case .refused(let outcome):
+            return outcome
+        case .proceed(let discarding):
+            if let discarding { keepDiscarded(discarding, reason: "discarded when a fixture was loaded") }
+            loadFixtures(request: request, result: result)
+            return loadError == nil ? .opened : .readFailed
         }
     }
 
@@ -864,6 +873,7 @@ final class ShellModel {
         selection = nil
         anchor = nil
         editorRevision += 1
+        project.clearSaveConflicts() // a new project inherits no member conflicts
         bridgeDocumentReplaced()
     }
 
@@ -926,8 +936,7 @@ final class ShellModel {
             }
         }
         for path in documents.map(\.path) where path != entry && project.isDirty(path) && savesInFlight[path] == nil {
-            if let conflict = project.saveConflict, let root = project.projectRoot,
-               conflict.url.standardizedFileURL == root.appendingPathComponent(path).standardizedFileURL { continue }
+            if project.saveConflict(for: path) != nil { continue } // not retried until that member's conflict is resolved (#789)
             if controllerAttached {
                 enqueueSave(path) { [weak self] in _ = await self?.project.saveDocument(path) }
             } else {
