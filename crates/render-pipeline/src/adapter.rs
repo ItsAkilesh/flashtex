@@ -2069,6 +2069,43 @@ pub fn adapt_cached(
                 if !current.is_empty() {
                     parts.push(ParaPart::Lines(current));
                 }
+                // amsmath's `multline` carries a single tag/number on its
+                // LAST row wherever `\tag` was typed (TeX Live 2026
+                // pdflatex sets `b+b \tag{B}` over `c+c   (B)`, the tag
+                // sharing the last row's baseline). Each row above
+                // extracts its own number from its own cells, so a tag on
+                // any row but the last lands on that row's line instead —
+                // and a compiler predating the per-environment tag
+                // suppression additionally numbers the last row, printing
+                // both. The tag's row is the one whose source carries
+                // `\tag`; its number moves to the last row and every other
+                // row's number is dropped. With no `\tag` anywhere (the
+                // untagged and tagged-last-row shapes) nothing moves.
+                for part in &mut parts {
+                    if let ParaPart::Rows { env: RowsEnv::Multline, rows, .. } = part {
+                        if rows.len() < 2 {
+                            continue;
+                        }
+                        let tagged = rows.iter().position(|row| {
+                            texts
+                                .get(row.span.document.0)
+                                .and_then(|text| text.get(row.span.start..row.span.end))
+                                .is_some_and(|source| find_command(source, "tag").is_some())
+                        });
+                        if let Some(found) = tagged {
+                            if rows[found].number.is_none() {
+                                continue;
+                            }
+                            let number = rows[found].number.take();
+                            for row in rows.iter_mut() {
+                                row.number = None;
+                            }
+                            if let Some(last) = rows.last_mut() {
+                                last.number = number;
+                            }
+                        }
+                    }
+                }
                 let only_labels = parts
                     .iter()
                     .all(|p| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. }))));
