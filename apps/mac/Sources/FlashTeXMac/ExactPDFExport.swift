@@ -122,13 +122,13 @@ extension ShellModel {
         if frame.list.pages.isEmpty {
             return "Nothing to export: this compile produced no pages."
         }
-        if frame.list.window != nil, wholeDocumentProducer == nil {
+        if frame.list.window != nil || displayListV2?.retained?.source.isDeltaLine == true, wholeDocumentProducer == nil {
             // display-list-v2-window §4.1: a windowed reply is an incomplete
-            // view and never the source of a PDF export or a print job. With
+            // view and never the source of a PDF export or a print job; a
+            // frame rebuilt from a display_list_delta has no full line. With
             // the render pipeline available the whole document is re-rendered
             // instead (WholeDocumentList.swift); without it, say so.
-            let window = frame.list.window!
-            return "Cannot export: this document is too large to send in one reply, so the preview is showing a page window (pages \(window.firstPage)–\(window.firstPage + window.pageCount - 1) of \(window.documentPageCount)). Exporting it needs the render pipeline: attach it with ⌘⇧R, build crates/render-pipeline, or run `flashtex build` on the command line."
+            return Self.noProducerReason(window: frame.list.window)
         }
         if ExactPDFExport.locateTool() == nil {
             return "No flashtex-pdf-exact found (build crates/pdf, or set FLASHTEX_PDF_EXACT); PDF export is unavailable."
@@ -140,11 +140,14 @@ extension ShellModel {
     /// route. The list's source JSON (already verified by the pane) is handed
     /// to the tool as is.
     func exportPDF() {
-        if let why = exportPDFRefusal() { captureNote = why; return }
+        if let why = exportPDFRefusal() { reportExportFailure(why); return }
         // `retained`, not `.loaded`: while a newer list is being verified the
         // pane keeps showing the last verified frame, and Export writes exactly
         // what the pane is showing.
-        guard let (frame, _) = displayListV2?.retained, let tool = ExactPDFExport.locateTool() else { return }
+        guard let (frame, _) = displayListV2?.retained, let tool = ExactPDFExport.locateTool() else {
+            reportExportFailure("Nothing to export: the preview has no display list right now.")
+            return
+        }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = "\(frame.list.projectId)-r\(frame.list.revision).pdf"
@@ -160,13 +163,27 @@ extension ShellModel {
             // (WholeDocumentList.swift); an unwindowed one is used as is.
             switch await exportListURL() {
             case .failure(let why):
-                captureNote = why.reason
+                reportExportFailure(why.reason)
             case .success(let list):
-                exportPDFExact(listURL: list.url, tool: tool, destination: destination) { _ in
+                exportPDFExact(listURL: list.url, tool: tool, destination: destination) { [weak self] report in
                     if list.temporary { try? FileManager.default.removeItem(at: list.url) }
+                    if case .failed = report.state, let note = self?.captureNote { self?.reportExportFailure(note) }
                 }
             }
         }
+    }
+
+    /// An interactive export that did not write a file says so where the
+    /// user is looking: the status line, and an alert (never under XCTest).
+    /// The status line alone read as "export fails silently".
+    func reportExportFailure(_ why: String) {
+        captureNote = why
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "PDF export failed"
+        alert.informativeText = why
+        alert.runModal()
     }
 
     /// Non-interactive core (tests, automation) in the pre-session shape:
