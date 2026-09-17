@@ -1373,6 +1373,9 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "closing",
     "cc",
     "encl",
+    // The kernel's `\hangfrom` (ltsect.dtx), also behind letter.cls's
+    // `\@hangfrom`: one label argument, typeset inline.
+    "hangfrom",
     "ps",
     "startbreaks",
     "stopbreaks",
@@ -2957,6 +2960,21 @@ impl P<'_> {
             "opening" => self.letter_opening(span, blocks, para),
             "closing" => self.letter_closing(span, blocks, para),
             "cc" | "encl" => self.letter_annotation(name, span, blocks, para),
+            // `\hangfrom{label}` (ltsect.dtx): `\hangindent` after the
+            // label, then `\noindent` with the label text, continuing the
+            // current paragraph. Unlike `\cc`/`\encl` it takes exactly one
+            // argument and starts no block of its own; and like them this
+            // compiler has no hanging indent outside `\item` (see
+            // `letter_annotation`), so the label is emitted as ordinary
+            // inline content at this point — a plain brace group in
+            // effect — with no flush. The trailing `\noindent` starts
+            // the paragraph, as `\noindent` itself does.
+            "hangfrom" => {
+                self.paragraph_started = true;
+                let (tokens, _) = self.required_group(name, span);
+                let style = self.style;
+                para.extend(self.inlines_from_tokens(tokens, style));
+            }
             // `\ps` takes NO argument: letter.cls line 245 is
             // `\newcommand*\ps{\par\startbreaks}`. A document writing
             // `\ps{P.S. ...}` — as the corpus fixture does — gets the
@@ -14311,5 +14329,44 @@ mod tests {
         let parsed = parse(r"Text\marginpar[left]{right}");
         assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
         assert!(parsed.diagnostics[0].message.contains("[left]"));
+    }
+
+    #[test]
+    fn hangfrom_typesets_its_label_inline_without_a_diagnostic() {
+        let parsed = parse(r"\hangfrom{1.}text");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let prose: String = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(p) => Some(plain_inline_text(p)),
+                _ => None,
+            })
+            .collect();
+        let label = prose.find("1.").expect("hangfrom label missing");
+        let body = prose.find("text").expect("hangfrom body missing");
+        assert!(label < body, "{prose:?}");
+    }
+
+    /// `\hangfrom` is `\hangindent` after the label (ltsect.dtx), and this
+    /// compiler has no hanging indent outside `\item` — the same documented
+    /// simplification as `\cc`/`\encl`'s `letter_annotation`: the label is
+    /// emitted inline, so a wrapped continuation line starts at the left
+    /// margin instead of hanging under the label. That is a placement
+    /// difference within the one paragraph block, not dropped content.
+    #[test]
+    fn hangfrom_continuation_lines_do_not_hang() {
+        let parsed = parse(r"\hangfrom{1.}text");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let paragraphs: Vec<_> = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(p) => Some(plain_inline_text(p)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(paragraphs.len(), 1, "{:?}", parsed.blocks);
+        assert!(paragraphs[0].contains("1."), "{:?}", parsed.blocks);
     }
 }
