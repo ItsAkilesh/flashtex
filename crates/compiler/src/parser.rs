@@ -3941,17 +3941,23 @@ impl P<'_> {
             None => 1,
             Some((content, _)) => content.trim().parse().unwrap_or(1),
         };
-        // AMS document classes (`math::AMSMATH_CLASSES`) define their own
-        // `\larger`/`\smaller` independent of the relsize package, so the
-        // gate below does not apply to them (real pdflatex diagnoses
-        // nothing under `\documentclass{amsart}`). This does not give them
-        // the AMS classes' own `\@typesizes`-based step ladder — only their
-        // size table's existing `size_declaration_pt` values — which is a
+        // amsart/amsbook/amsproc/acmart define their own `\larger`/
+        // `\smaller` independent of the relsize package, so the gate below
+        // does not apply to them (real pdflatex diagnoses nothing under
+        // `\documentclass{amsart}`). This does not give them the AMS
+        // classes' own `\@typesizes`-based step ladder — only their size
+        // table's existing `size_declaration_pt` values — which is a
         // narrower fix than full AMS ladder support.
+        //
+        // This is deliberately NOT `math::AMSMATH_CLASSES` (which also
+        // includes `beamer`): beamer does not define its own `\larger`/
+        // `\smaller` (pdflatex: "Undefined control sequence" without
+        // relsize), so it still needs the package like any other class.
+        const RELSIZE_OWN_CLASSES: &[&str] = &["amsart", "amsbook", "amsproc", "acmart"];
         let is_ams_class = self
             .document_class
             .as_deref()
-            .is_some_and(|class| crate::math::AMSMATH_CLASSES.contains(&class));
+            .is_some_and(|class| RELSIZE_OWN_CLASSES.contains(&class));
         // Without the package (and outside an AMS class) this is
         // "Undefined control sequence" in real LaTeX: diagnose (naming the
         // missing package, like the ulem gate in `text_underline_cmd`) and
@@ -13747,14 +13753,32 @@ mod tests {
 
     #[test]
     fn larger_needs_no_package_under_an_ams_document_class() {
-        // amsart/amsbook/amsproc/acmart/beamer (`math::AMSMATH_CLASSES`)
-        // define their own `\larger`/`\smaller`, independent of the
-        // relsize package: pdflatex diagnoses nothing under
-        // `\documentclass{amsart}`, even with no `\usepackage{relsize}`.
+        // amsart/amsbook/amsproc/acmart define their own `\larger`/
+        // `\smaller`, independent of the relsize package: pdflatex
+        // diagnoses nothing under `\documentclass{amsart}`, even with no
+        // `\usepackage{relsize}`.
         let source =
             r"\documentclass{amsart}\begin{document}\larger x \smaller y\end{document}";
         let parsed = parse(source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    }
+
+    #[test]
+    fn larger_under_beamer_still_needs_relsize() {
+        // Measured with pdflatex: unlike amsart/amsbook/amsproc/acmart,
+        // beamer does NOT define its own `\larger`/`\smaller` ("Undefined
+        // control sequence" without relsize) — it must not be swept into
+        // the AMS-class gate skip alongside them.
+        let source = r"\documentclass{beamer}\begin{document}\larger x\end{document}";
+        let parsed = parse(source);
+        assert!(
+            parsed
+                .diagnostics
+                .iter()
+                .any(|d| d.message.contains("\\larger needs \\usepackage{relsize}")),
+            "{:?}",
+            parsed.diagnostics
+        );
     }
 
     #[test]
