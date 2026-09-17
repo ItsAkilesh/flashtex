@@ -220,6 +220,82 @@ fn bracket_display_tag_and_label_resolve() {
 }
 
 #[test]
+fn multline_tag_on_first_row_suppresses_the_environment_number() {
+    let source = concat!(
+        r"\documentclass{article}",
+        r"\usepackage{amsmath}",
+        r"\begin{document}",
+        r"\begin{multline} a + a \tag{M}\label{m1} \\ b = c \end{multline}",
+        r"\begin{equation} d = 1 \label{after} \end{equation}",
+        r"See \eqref{m1} and \eqref{after}.",
+        r"\end{document}",
+    );
+    // pdflatex oracle (review probe): `a+a` / `b = c  (M)` / `d=1  (1)`,
+    // with `.aux` recording `\newlabel{m1}{{{M}}…}` and
+    // `\newlabel{after}{{1}…}` — the multline consumed NO number, so the
+    // following equation is still (1).
+    assert_eq!(math_row_numbers(source), [None, None]);
+    assert_eq!(equation_numbers(source), [Some("1".to_string())]);
+    assert_eq!(
+        label_values(source),
+        [
+            ("m1".to_string(), "M".to_string()),
+            ("after".to_string(), "1".to_string()),
+        ]
+    );
+    let output = compile(source);
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(eqref_values(source, &output), ["(M)", "(1)"]);
+}
+
+#[test]
+fn multline_tag_on_last_row_suppresses_the_environment_number() {
+    let source = concat!(
+        r"\documentclass{article}",
+        r"\usepackage{amsmath}",
+        r"\begin{document}",
+        r"\begin{multline} a + a \\ b = c \tag{M}\label{m1} \end{multline}",
+        r"\begin{equation} d = 1 \label{after} \end{equation}",
+        r"See \eqref{m1} and \eqref{after}.",
+        r"\end{document}",
+    );
+    // pdflatex: the tag owns the environment's single (last-line) number
+    // slot wherever it sits, so this prints `a+a` / `b = c  (M)` /
+    // `d=1  (1)` exactly like the first-row-tag case.
+    assert_eq!(math_row_numbers(source), [None, None]);
+    assert_eq!(equation_numbers(source), [Some("1".to_string())]);
+    assert_eq!(
+        label_values(source),
+        [
+            ("m1".to_string(), "M".to_string()),
+            ("after".to_string(), "1".to_string()),
+        ]
+    );
+    let output = compile(source);
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(eqref_values(source, &output), ["(M)", "(1)"]);
+}
+
+#[test]
+fn multline_without_tag_numbers_the_last_row() {
+    let source = concat!(
+        r"\documentclass{article}",
+        r"\usepackage{amsmath}",
+        r"\begin{document}",
+        r"\begin{multline} a + a \\ b = c \end{multline}",
+        r"\begin{equation} d = 1 \label{after} \end{equation}",
+        r"\end{document}",
+    );
+    // pdflatex control: with no `\tag`, the multline takes (1) on its
+    // last line and the following equation is (2).
+    assert_eq!(
+        math_row_numbers(source),
+        [None, Some("1".to_string())]
+    );
+    assert_eq!(equation_numbers(source), [Some("2".to_string())]);
+}
+
+#[test]
 fn math_mode_tag_reports_the_text_font_gap_downstream() {
     let source = concat!(
         r"\documentclass{article}",

@@ -7618,6 +7618,26 @@ impl P<'_> {
             for (index, row) in rows.iter_mut().enumerate() {
                 row.1 |= index != last;
             }
+            // pdflatex's rule is per environment for `multline`: a `\tag`
+            // ANYWHERE in the environment replaces the single number and
+            // steps nothing. The tag lookup in the per-row loop below only
+            // sees each row's own cells, so a tag on any row other than the
+            // last would suppress nothing and the last row (the number's
+            // owner) would still print and step a spurious number. Hoist
+            // the search: if any row carries `\tag`, the last row is
+            // unnumbered too. `align`/`gather` keep the per-row behaviour —
+            // each row owns its own number there — so this stays
+            // `multline`-only.
+            let tagged = rows.iter().any(|(cells, _, _, _)| {
+                cells.iter().flatten().any(|token| {
+                    matches!(&token.kind, TokenKind::Command(command) if command == "tag")
+                })
+            });
+            if tagged {
+                if let Some(last_row) = rows.last_mut() {
+                    last_row.1 = true;
+                }
+            }
         }
 
         let mut math_rows = Vec::new();
