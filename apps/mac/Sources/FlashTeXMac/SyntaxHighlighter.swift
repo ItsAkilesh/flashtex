@@ -717,17 +717,21 @@ final class SyntaxPainter {
 
     private func storageEdited(range: NSRange, replacementLength: Int) {
         guard let tv = textView else { return }
+        // A reset is pending: the lexer is stale until it runs, and a later
+        // edit can bring the lengths back into agreement by coincidence, so
+        // the length check alone is not a barrier. The reset re-lexes the
+        // whole text, which covers every edit skipped here.
+        if resetScheduled { return }
         let t0 = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
         let text = tv.textStorage?.string as NSString? ?? ""
         if text.length != highlighter.length - range.length + replacementLength {
             // Out of sync (should not happen): start over — after the edit,
             // because `reset()` paints the visible window, which needs layout
-            // (see the note on `flush()` below). Until then every edit keeps
-            // failing this length check, so the lexer never sees a stale edit.
-            if !resetScheduled {
-                resetScheduled = true
-                DispatchQueue.main.async { [weak self] in self?.resetScheduled = false; self?.reset() }
-            }
+            // (see the note on `flush()` below). Until it runs, edits and
+            // flushes are skipped (`resetScheduled`), so nothing stale is lexed
+            // or painted.
+            resetScheduled = true
+            DispatchQueue.main.async { [weak self] in self?.resetScheduled = false; self?.reset() }
             return
         }
         let dirty = highlighter.edit(range: range, replacementLength: replacementLength, text: text)
@@ -757,7 +761,7 @@ final class SyntaxPainter {
     /// Repaints the pending dirty range (unless marked text exists; then a
     /// later flush after the commit does it).
     func flush() {
-        guard enabled, let tv = textView, let dirty = pendingDirty else { return }
+        guard enabled, !resetScheduled, let tv = textView, let dirty = pendingDirty else { return }
         if tv.hasMarkedText() {
             if !flushScheduled {
                 flushScheduled = true
