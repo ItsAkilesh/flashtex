@@ -1434,10 +1434,10 @@ impl<'a> Context<'a> {
                 grid: g.clone(),
             })
             .collect();
-        let frames = sink.frames.clone();
+        let built = sink.built.clone();
         let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts, &sink.keys, &sink.italics)
             .with_grids(&nested)
-            .with_frames(&frames);
+            .with_built(&built);
         let mut laid = if has_grid {
             self.grid_formula(&grid_pieces, style, &text_metrics, span)
         } else {
@@ -1445,11 +1445,11 @@ impl<'a> Context<'a> {
             layout_kerned(&ml_lists, &glue, style, &text_metrics)
         };
         let (grid_boxes, grid_limitations) = text_metrics.take_grids();
-        let (frame_boxes, frame_limitations) = text_metrics.take_frames();
+        let (built_boxes, built_limitations) = text_metrics.take_built();
         laid.limitations.extend(grid_limitations);
-        laid.limitations.extend(frame_limitations);
+        laid.limitations.extend(built_limitations);
         let (text_runs, notices) = text_metrics.finish();
-        crate::mathtext::substitute_math_boxes(&mut laid.root, &grid_boxes, &frame_boxes);
+        crate::mathtext::substitute_math_boxes(&mut laid.root, &grid_boxes, &built_boxes);
         crate::mathtext::substitute(&mut laid.root, &text_runs);
         // Text-style formulas in a paragraph break after top-level Bin/Rel
         // atoms; a formula holding a grid stays one box.
@@ -6674,22 +6674,37 @@ pub fn operator_thin_space_split(text: &str, at: usize) -> Option<(&'static str,
 /// assumes; amsmath makes `\dots` guess from what follows it, and neither
 /// side models that.
 ///
-/// `\vdots` and `\ddots` are deliberately **not** here. They are not runs of
-/// dots at all but vertical box constructions over *text*-font periods --
-/// `\vdots` is a `\vbox` of three `\hbox{.}` at `\baselineskip` 2.83334 over
-/// a `\kern 6.0`, and `\ddots` an Inner hbox of three `\hbox{.}` shifted
-/// -7.0/-4.0/-1.0 between kerns of 0.66666 and 1.33331 -- and math-layout has
-/// no atom that builds a vbox, so they need their own change.
-pub fn math_ellipsis_of(text: &str, at: usize) -> Option<char> {
+/// `\vdots` and `\ddots` are here too, as [`MathDots::Vertical`] and
+/// [`MathDots::Diagonal`], but they are a different construction: not a run of
+/// math characters at all but *text*-font periods in a `\vbox`, at absolute
+/// point offsets ([`crate::mathtext::BuiltBody::Dots`]). The compiler maps both to one Latin
+/// Modern Math codepoint (U+22EE, U+22F1) whose advance is 2.18pt and 6.13pt
+/// and whose ink box is 5.06pt too short, so the atom is rebuilt here for the
+/// same reason the `\ldots` family is.
+pub fn math_ellipsis_of(text: &str, at: usize) -> Option<MathDots> {
     let rest = text.get(at..)?.strip_prefix('\\')?;
     let word_len = rest.chars().take_while(|c| c.is_ascii_alphabetic()).map(char::len_utf8).sum::<usize>();
     Some(match &rest[..word_len] {
         // `\ldotp`, `\mathcode`"013A: the math italic period.
-        "ldots" | "dots" | "dotsc" | "dotso" => '.',
+        "ldots" | "dots" | "dotsc" | "dotso" => MathDots::Inline('.'),
         // `\cdotp`, cmsy `"01`: the centred dot.
-        "cdots" | "dotsb" | "dotsm" | "dotsi" => '\u{22C5}',
+        "cdots" | "dotsb" | "dotsm" | "dotsi" => MathDots::Inline('\u{22C5}'),
+        "vdots" => MathDots::Vertical,
+        "ddots" => MathDots::Diagonal,
         _ => return None,
     })
+}
+
+/// Which dots a control word at a span sets ([`math_ellipsis_of`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MathDots {
+    /// `\ldots`/`\cdots` and the amsmath spellings: `\mathinner` of three
+    /// Punct atoms of this math character.
+    Inline(char),
+    /// `\vdots`: the `\vbox` stack of three text-font periods.
+    Vertical,
+    /// `\ddots`: the `\mathinner` of three raised text-font periods.
+    Diagonal,
 }
 
 /// [`convert_math_fenced`] with `class` giving the forced class of a
@@ -6704,7 +6719,7 @@ pub fn convert_math_classed(
     op_limits: &dyn Fn(&Span) -> Option<ml::Limits>,
     text_italic: &dyn Fn(&Span) -> bool,
     text_split: &dyn Fn(&Span) -> Option<(&'static str, &'static str)>,
-    ellipsis: &dyn Fn(&Span) -> Option<char>,
+    ellipsis: &dyn Fn(&Span) -> Option<MathDots>,
 ) -> ml::MathList {
     use flashtex_compiler::math::{DelimiterRole, Nucleus as N};
     // Open fences: (left delimiter, atoms converted since it, its span).
@@ -6720,11 +6735,30 @@ pub fn convert_math_classed(
             // `Nucleus::Symbol("⋅⋅⋅")` for the centred ones -- so the atoms
             // are rebuilt here: three Punct dots (3mu apart) inside one Inner
             // atom (a thin space against each neighbour).
-            N::Text(_) | N::Symbol(_) if ellipsis(&a.span).is_some() => {
-                let dot = ellipsis(&a.span).expect("checked by the guard");
-                let dots = (0..3).map(|_| ml::Atom::new(ml::AtomClass::Punct, ml::Nucleus::Symbol(dot))).collect();
-                vec![ml::Atom::new(ml::AtomClass::Inner, ml::Nucleus::List(ml::MathList::new(dots)))]
-            }
+            N::Text(_) | N::Symbol(_) if ellipsis(&a.span).is_some() => match ellipsis(&a.span).expect("checked by the guard") {
+                MathDots::Inline(dot) => {
+                    let dots = (0..3).map(|_| ml::Atom::new(ml::AtomClass::Punct, ml::Nucleus::Symbol(dot))).collect();
+                    vec![ml::Atom::new(ml::AtomClass::Inner, ml::Nucleus::List(ml::MathList::new(dots)))]
+                }
+                // `\vdots`/`\ddots`: text-font periods stacked at absolute
+                // point offsets, not a character. math-layout has no nucleus
+                // for a box the caller builds, so they go through the same
+                // placeholder seam as a grid or a `\boxed` frame
+                // (`crate::mathtext::BuiltBody::Dots`).
+                dots @ (MathDots::Vertical | MathDots::Diagonal) => {
+                    let tag = {
+                        #[cfg(feature = "math-glyph-spans")]
+                        {
+                            math_tag(a.span)
+                        }
+                        #[cfg(not(feature = "math-glyph-spans"))]
+                        {
+                            ml::SourceTag::NONE
+                        }
+                    };
+                    vec![sink.dots_atom(dots == MathDots::Diagonal, tag)]
+                }
+            },
             // `\lim`, `\sin`, `\max`, ...: TeX's `\mathop` of upright roman
             // text (`latex.ltx` 15523-15556), so an `Op` atom -- which is both
             // the thin space the Op class contributes on each side and, for
