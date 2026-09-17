@@ -36,7 +36,6 @@ impl<'a> Context<'a> {
     pub(super) fn marginpar_block(&mut self, m: usize, width: f64) -> Option<BuiltBlock> {
         let size = self.style.body_size_pt;
         let baselineskip = self.style.baselineskip_pt;
-        let strut_depth = 0.3 * baselineskip;
         let note = self.marginpars.get(m)?.clone();
         let (mut list, mut recs, labels, mut skips) = self.hlist(&note.items, size, TextStyle::default(), ParaStyle::Plain);
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
@@ -47,10 +46,12 @@ impl<'a> Context<'a> {
         params.line_width = width;
         let lines = self.break_paragraph(&list, &params, &note.items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
-        let mut extents = line_extents(&lines);
-        if let Some(last) = extents.last_mut() {
-            last.1 = last.1.max(strut_depth);
-        }
+        // `\@savemarbox`/`\@marginparreset` add no strut: `\@addmarginpar`
+        // stacks on the box's real `\dp` (round-2 review finding 1 -- a
+        // phantom `0.3\baselineskip` strut here, copied from the footnote
+        // builder where `\@makefntext` really does add one, drifted every
+        // pushed note low, cumulatively).
+        let extents = line_extents(&lines);
         let vertical = VBlock {
             lines: extents,
             penalty_before: None,

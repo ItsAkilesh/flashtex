@@ -146,13 +146,20 @@ fn marginpars_on_nearby_lines_are_kept_marginparpush_apart() {
     let second_note: Vec<&Run> = all.iter().filter(|r| r.text == "gamma" || r.text == "delta").collect();
     assert_eq!(first_note.len(), 2, "first note words missing: {:?}", all.iter().map(|r| r.text.clone()).collect::<Vec<_>>());
     assert_eq!(second_note.len(), 2, "second note words missing: {:?}", all.iter().map(|r| r.text.clone()).collect::<Vec<_>>());
-    let first_bottom = first_note.iter().map(|n| n.baseline).fold(f64::MIN, f64::max);
-    let second_top = second_note.iter().map(|n| n.baseline).fold(f64::MAX, f64::min);
-    assert!(second_top > first_bottom, "second note does not sit below the first: {second_top:.3} vs {first_bottom:.3}");
-    // `\marginparpush` at 10pt is 5pt; allow the depth of the first note's
-    // last line on top of that (a strict baseline-to-baseline bound would
-    // need the line's depth, which these runs don't carry).
-    assert!(second_top - first_bottom >= 5.0 * BP - 0.5, "notes closer than marginparpush: gap {:.3}", second_top - first_bottom);
+    // Exact pdflatex oracle for this fixture (`pdftotext -bbox`, baseline =
+    // yMin + 6.914bp): alpha/beta's baseline is 170.630bp, gamma/delta's is
+    // 184.467bp (= alpha's baseline + the first note's real last-line depth
+    // (no strut) + `\marginparpush` (5pt) + the second note's first-line
+    // height). Round-2 review finding: a phantom `0.3\baselineskip` strut
+    // depth on every note (copied from the footnote builder, which really
+    // has one) made this drift low, cumulatively over more pushed notes;
+    // the loose inequality this test used to have could not detect it.
+    for n in &first_note {
+        assert!((n.baseline - 170.630).abs() < 0.1, "first note baseline {:.3}, want 170.630", n.baseline);
+    }
+    for n in &second_note {
+        assert!((n.baseline - 184.467).abs() < 0.1, "second note baseline {:.3}, want 184.467", n.baseline);
+    }
 }
 
 #[test]
@@ -189,6 +196,10 @@ fn marginpar_in_the_left_column_of_a_twocolumn_document_goes_in_the_left_margin(
     assert_eq!(notes.len(), 2, "note words missing: {:?}", all.iter().map(|r| r.text.clone()).collect::<Vec<_>>());
     // The call is early enough to fall in the first (left) column.
     let body_left = all.iter().find(|r| r.text == "First").expect("body text").x;
+    let note_left = notes.iter().map(|n| n.x).fold(f64::MAX, f64::min);
     let note_right = notes.iter().map(|n| n.x + n.width).fold(0.0, f64::max);
     assert!(note_right < body_left, "left-column note not in the left margin: note right {note_right:.3} vs body left {body_left:.3}");
+    // Exact pdflatex oracle (round-2 review): the left margin's own left
+    // edge, `column left - marginparsep - marginparwidth` = 58.05bp.
+    assert!((note_left - 58.05).abs() < 0.5, "left-column note x {note_left:.3}, want 58.05");
 }

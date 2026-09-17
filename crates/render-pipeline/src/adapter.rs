@@ -219,7 +219,7 @@ pub enum Item {
     /// command token.
     Footnote { number: String, mark: bool, span: Span, text: Option<Vec<Item>> },
     /// `\marginpar` (compiler `Inline::Marginpar`). `text` is the note's
-    /// items, set in `\footnotesize` in the right margin by
+    /// items, set in `\normalsize` in the outer margin by
     /// `typeset::marginpar`; the running text carries no mark. `span` is
     /// the command token.
     Marginpar { text: Vec<Item>, span: Span },
