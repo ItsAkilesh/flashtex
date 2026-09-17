@@ -354,6 +354,15 @@ pub fn scan(text: &str) -> Scan {
                     out.regions.push(r);
                 }
             }
+            // `\marginpar` shares the float-in-multicols warning ("Floats
+            // and marginpars not allowed inside `multicols' environment!",
+            // real LaTeX's own wording) -- the module doc already claimed
+            // this, but nothing implemented it.
+            "marginpar" if at > body_start => {
+                if let Some((r, _, _)) = &mut open {
+                    r.floats.push(at);
+                }
+            }
             "columnbreak" | "newcolumn" => {
                 let mut e = name_end;
                 let mut pen = if name == "newcolumn" { None } else { Some(COLUMNBREAK) };
@@ -450,6 +459,28 @@ pub struct State {
     bodies: BTreeMap<(usize, usize), Vec<Block>>,
     /// Extra x offset of every placed line, per built page.
     dx: Vec<Vec<f64>>,
+    /// Set on the sub-[`Context`] [`paginate`] builds to lay out one
+    /// region's own body: every `\marginpar` that sub-build's own
+    /// `marginpar::place` sees is, by construction, inside that region, so
+    /// [`State::contains`] (which needs `scans`, deliberately left empty on
+    /// the sub-context to keep [`outer_doc`] and [`paginate`] from
+    /// re-entering on it) is not how that build finds out.
+    pub(super) in_region_body: bool,
+}
+
+impl State {
+    /// Whether byte offset `at` in `document` falls inside a
+    /// `multicols`/`multicols*` region's `\begin`...`\end` span -- the
+    /// same span `scan` itself uses to flag floats and `\marginpar`s.
+    pub(super) fn contains(&self, document: usize, at: usize) -> bool {
+        self.scans.get(document).is_some_and(|s| s.contains(at))
+    }
+}
+
+impl Scan {
+    fn contains(&self, at: usize) -> bool {
+        self.regions.iter().any(|r| at >= r.begin.0 && at < r.end.1)
+    }
 }
 
 /// Hands the scans of the project's documents (indexed like the paths) to
@@ -1994,6 +2025,11 @@ pub(super) fn paginate(ctx: &mut Context, doc: &Doc, blocks: &mut Vec<BuiltBlock
         };
         let laid = {
             let mut sub = Context::with_texts(ctx.fonts, &col_style, ctx.paths, ctx.texts);
+            // Every `\marginpar` in this sub-build's own `marginpar::place`
+            // pass is inside the region being laid out; `scans` stays empty
+            // (giving it the real scans would make `outer_doc`/`paginate`
+            // try to re-run multicol pagination on this very sub-build).
+            sub.multicol.in_region_body = true;
             let laid = super::build_with_floats(&mut sub, &sub_doc, None, &[]);
             let diags = sub.take_diagnostics();
             for d in diags {
