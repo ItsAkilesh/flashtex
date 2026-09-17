@@ -21,7 +21,19 @@ This audit was originally written at commit `06007472` (2026-09-14T08:39:56Z) an
 
 **This document is a point-in-time snapshot, not a living one, and it cannot be hand-maintained at this repo's commit rate.** A grep-based check like this is entirely mechanical (see Method) and belongs in `crates/compiler/scripts/` as a script that runs the same greps against `canonical-latex.tsv` and prints current Table 1A/1B/2 membership on demand — not as a markdown file someone re-derives by hand after the fact. Recommendation: either (a) land a `kernel_inventory_audit.py`-style generator alongside `render_supported_latex.sh` and regenerate this doc from it, or (b) close this PR once its useful findings (the resolved rows already fixed, and the 7 new Table 2 gaps) are turned into tracked follow-up issues, since the document itself will be wrong again within days.
 
-## Table 1A — kernel names with ZERO matches in `crates/compiler/src/` (125)
+## Revision 2 (independent review, 2026-09-17)
+
+The prior revision's own Method (engine primitive/prelude macro in `flashtex-tex-expansion` counts as implementation) was stated but not fully applied, and four canonical rows were checked but never actually entered into any table. Fixed:
+
+- **9 Table 1A rows removed** (`closein`, `closeout`, `openin`, `openout`, `lineskip`, `lineskiplimit`, `topskip`, `pdfpageheight`, `pdfpagewidth`): the prior revision's own triage notes already found these have real `crates/tex-expansion/src/expand.rs` primitive/register entries — the same standard that correctly excludes `\day`/`\month`/`\year`/`\space` from both tables — but left them in Table 1A with a hedging "may be partially handled" note instead of actually removing them. Removed, applying the stated rule consistently.
+- **`tabbing` removed from Table 1B**: it is genuinely implemented (`IMPLEMENTED_ENVIRONMENTS`, `vocabulary.rs:109`, and a real row/column-stop dispatch arm at `parser.rs:6056`/`6239`), not merely name-listed. The cited "explicit not-implemented" tests (`tests/recovery.rs:68-69`, `tests/diagnostic_codes.rs:65-66`) test `picture`, not `tabbing` — misattributed evidence, not a real finding.
+- **`marginpar` removed from Table 2**: `parser.rs` already has a dedicated inline test, `marginpar_parses_to_a_margin_note_without_diagnostics` (`parser.rs:14277`), covering exactly this at the audited commit; the claim that both test greps came back empty was wrong.
+- **`part`, `vbox`, `linespread` added to Table 1B**: all three are canonical `kernel` rows (`part`/`vbox` commands, confirmed in `canonical-latex.tsv`) that were checked during this revision but never entered into any table. All three have real `crates/compiler/src/` matches (so Table 1A's "zero matches" doesn't apply) that are not genuine implementation — see the rows below for the discriminating evidence.
+- **`minipage` needs no row**: it has a real dispatch check (`environment == "minipage"`, `parser.rs:10796`) with genuine footnote-numbering behavior, and a real test exercising it (`tests/footnote_counters.rs:134`) — implemented and tested, like `\day`/`\month`/`\year`/`\space`. (It is also stale-listed in `vocabulary.rs`'s `KNOWN_UNIMPLEMENTED_ENVIRONMENTS`, which is a pre-existing inconsistency in that list, not an audit gap — the same shape as the `hss`/hard-coded-list staleness the original revision already noted for other names.)
+
+Net effect on the counts below: Table 1A 125 → 116 (-9), Table 1B 44 → 46 (-1 `tabbing`, +3 `part`/`vbox`/`linespread`), Table 2 7 → 6 (-1 `marginpar`). Unimplemented total (1A+1B): 169 → 162.
+
+## Table 1A — kernel names with ZERO matches in `crates/compiler/src/` (116)
 
 | kind | name | reproducing grep (run from repo root) | result |
 | ---- | ---- | ------------------------------------- | ------ |
@@ -77,8 +89,6 @@ This audit was originally written at commit `06007472` (2026-09-14T08:39:56Z) an
 | command | capitaltie | `grep -rnwF -e 'capitaltie' crates/compiler/src/` | (no output) |
 | command | capitaltilde | `grep -rnwF -e 'capitaltilde' crates/compiler/src/` | (no output) |
 | command | circle | `grep -rnwF -e 'circle' crates/compiler/src/` | (no output) |
-| command | closein | `grep -rnwF -e 'closein' crates/compiler/src/` | (no output) |
-| command | closeout | `grep -rnwF -e 'closeout' crates/compiler/src/` | (no output) |
 | command | columnseprule | `grep -rnwF -e 'columnseprule' crates/compiler/src/` | (no output) |
 | command | contentsline | `grep -rnwF -e 'contentsline' crates/compiler/src/` | (no output) |
 | command | dashbox | `grep -rnwF -e 'dashbox' crates/compiler/src/` | (no output) |
@@ -97,8 +107,6 @@ This audit was originally written at commit `06007472` (2026-09-14T08:39:56Z) an
 | command | leftmarginiii | `grep -rnwF -e 'leftmarginiii' crates/compiler/src/` | (no output) |
 | command | leftmarginv | `grep -rnwF -e 'leftmarginv' crates/compiler/src/` | (no output) |
 | command | leftmarginvi | `grep -rnwF -e 'leftmarginvi' crates/compiler/src/` | (no output) |
-| command | lineskip | `grep -rnwF -e 'lineskip' crates/compiler/src/` | (no output) |
-| command | lineskiplimit | `grep -rnwF -e 'lineskiplimit' crates/compiler/src/` | (no output) |
 | command | linethickness | `grep -rnwF -e 'linethickness' crates/compiler/src/` | (no output) |
 | command | makeglossary | `grep -rnwF -e 'makeglossary' crates/compiler/src/` | (no output) |
 | command | makeindex | `grep -rnwF -e 'makeindex' crates/compiler/src/` | (no output) |
@@ -118,11 +126,7 @@ This audit was originally written at commit `06007472` (2026-09-14T08:39:56Z) an
 | command | obeycr | `grep -rnwF -e 'obeycr' crates/compiler/src/` | (no output) |
 | command | oldstylenums | `grep -rnwF -e 'oldstylenums' crates/compiler/src/` | (no output) |
 | command | onecolumn | `grep -rnwF -e 'onecolumn' crates/compiler/src/` | (no output) |
-| command | openin | `grep -rnwF -e 'openin' crates/compiler/src/` | (no output) |
-| command | openout | `grep -rnwF -e 'openout' crates/compiler/src/` | (no output) |
 | command | oval | `grep -rnwF -e 'oval' crates/compiler/src/` | (no output) |
-| command | pdfpageheight | `grep -rnwF -e 'pdfpageheight' crates/compiler/src/` | (no output) |
-| command | pdfpagewidth | `grep -rnwF -e 'pdfpagewidth' crates/compiler/src/` | (no output) |
 | command | poptabs | `grep -rnwF -e 'poptabs' crates/compiler/src/` | (no output) |
 | command | prevdepth | `grep -rnwF -e 'prevdepth' crates/compiler/src/` | (no output) |
 | command | qbezier | `grep -rnwF -e 'qbezier' crates/compiler/src/` | (no output) |
@@ -140,7 +144,6 @@ This audit was originally written at commit `06007472` (2026-09-14T08:39:56Z) an
 | command | thicklines | `grep -rnwF -e 'thicklines' crates/compiler/src/` | (no output) |
 | command | thinlines | `grep -rnwF -e 'thinlines' crates/compiler/src/` | (no output) |
 | command | topfraction | `grep -rnwF -e 'topfraction' crates/compiler/src/` | (no output) |
-| command | topskip | `grep -rnwF -e 'topskip' crates/compiler/src/` | (no output) |
 | command | typein | `grep -rnwF -e 'typein' crates/compiler/src/` | (no output) |
 | command | typeout | `grep -rnwF -e 'typeout' crates/compiler/src/` | (no output) |
 | command | unboldmath | `grep -rnwF -e 'unboldmath' crates/compiler/src/` | (no output) |
@@ -151,7 +154,7 @@ This audit was originally written at commit `06007472` (2026-09-14T08:39:56Z) an
 | environment | filecontents* | `grep -rnwF -e 'filecontents*' crates/compiler/src/` | (no output) |
 | environment | theindex | `grep -rnwF -e 'theindex' crates/compiler/src/` | (no output) |
 
-## Table 1B — names with matches but NO genuine implementation (44)
+## Table 1B — names with matches but NO genuine implementation (46)
 
 The word grep below returns hits, but every hit was read in context and is spurious: `//` comments, `vocabulary.rs` `KNOWN_UNIMPLEMENTED_*` entries (the compiler's own not-implemented list — itself stale in places, see the revision note above: several names it lists are dispatched *before* the fallback that would ever consult it), SI-unit symbol tables (`siunitx.rs`), the `roman()` numeral table (`parser.rs:5775`), tabular column-alignment words, or unrelated Rust identifiers. The "genuine-impl check" column gives the discriminating grep (empty output) proving no dispatch arm, builtin-table entry, or inventory claim exists.
 
@@ -200,11 +203,13 @@ The word grep below returns hits, but every hit was read in context and is spuri
 | environment | abstract | `grep -rnwF -e 'abstract' crates/compiler/src/` | only hit is `KNOWN_UNIMPLEMENTED_ENVIRONMENTS` (`vocabulary.rs:110`); no dispatch, no engine entry |
 | environment | filecontents | `grep -rnwF -e 'filecontents' crates/compiler/src/` | only hit is the unimplemented-environment list (`vocabulary.rs:113`); no dispatch, no engine entry |
 | environment | picture | `grep -rnwF -e 'picture' crates/compiler/src/` | only hit is `KNOWN_UNIMPLEMENTED_ENVIRONMENTS` (`vocabulary.rs:111`); no dispatch, no engine entry |
-| environment | tabbing | `grep -rnwF -e 'tabbing' crates/compiler/src/` | only hit is the unimplemented-environment list (`vocabulary.rs:114`); `tests/recovery.rs:68-69` and `tests/diagnostic_codes.rs:65-66` explicitly assert it is *not* implemented |
+| command | part | `grep -rnwF -e 'part' crates/compiler/src/` | hits are `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:40`), `xref.rs:61,153`'s counter-name-formatting table (applies to any counter named "part", not a `\part` dispatch arm), and unrelated uses of the English word "part" (`tabular.rs`, `parser/lists.rs`); no sectioning dispatch arm exists |
+| command | vbox | `grep -rnwF -e 'vbox' crates/compiler/src/` | hits are `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:45`) and `//`/`///` comments describing other constructs (`tabular.rs`, `text_builtins.rs`, `math.rs`) in terms of what real `\vbox` would do; no dispatch arm |
+| command | linespread | `grep -rnwF -e 'linespread' crates/compiler/src/` | only hit is the `KNOWN_ARITY_UNIMPLEMENTED` table (`parser.rs:9863-9865`): the argument is deliberately skipped and a diagnostic is emitted (tested, `parser.rs:13121-13132`), but line spacing itself never changes — recognised-and-diagnosed, not implemented |
 
-## Table 2 — implemented but with ZERO name matches in tests/ or inline test modules (7)
+## Table 2 — implemented but with ZERO name matches in tests/ or inline test modules (6)
 
-"Implemented" means a genuine dispatch arm, builtin-table entry, or `flashtex-tex-expansion` engine primitive/prelude macro (site noted per row). Both test greps below return no output for every row: `grep -rnwF -e 'NAME' crates/compiler/tests/` and the inline check (matches of the same word grep inside `#[cfg(test)] mod …` regions of `src/`). Caveat: `tests/supported_latex.rs::every_inventory_entry_compiles_without_an_unsupported_diagnostic` compiles every *inventory-listed* name generically (verified passing), so inventory-listed rows below do have one-context smoke coverage — the same coverage `\pagestyle` had when its preamble bug shipped. Name-specific tests (especially second-context tests: preamble vs body, math vs text) are what is missing. All 41 rows from the original slice-1 Table 2 now have dedicated name-specific tests (`crates/compiler/tests/kernel_untested_a.rs` + `kernel_untested_b.rs`, #428/#430) and are removed from this table; the 7 rows below are newly-discovered gaps of the same shape, found while re-deriving this audit against current main.
+"Implemented" means a genuine dispatch arm, builtin-table entry, or `flashtex-tex-expansion` engine primitive/prelude macro (site noted per row). Both test greps below return no output for every row: `grep -rnwF -e 'NAME' crates/compiler/tests/` and the inline check (matches of the same word grep inside `#[cfg(test)] mod …` regions of `src/`). Caveat: `tests/supported_latex.rs::every_inventory_entry_compiles_without_an_unsupported_diagnostic` compiles every *inventory-listed* name generically (verified passing), so inventory-listed rows below do have one-context smoke coverage — the same coverage `\pagestyle` had when its preamble bug shipped. Name-specific tests (especially second-context tests: preamble vs body, math vs text) are what is missing. All 41 rows from the original slice-1 Table 2 now have dedicated name-specific tests (`crates/compiler/tests/kernel_untested_a.rs` + `kernel_untested_b.rs`, #428/#430) and are removed from this table; the 6 rows below are newly-discovered gaps of the same shape, found while re-deriving this audit against current main (`marginpar` was also flagged here in error — Revision 2 above — and is removed).
 
 | kind | name | implementation evidence | test greps (both empty) |
 | ---- | ---- | ----------------------- | ----------------------- |
@@ -214,11 +219,8 @@ The word grep below returns hits, but every hit was read in context and is spuri
 | command | footskip | `PREAMBLE_LENGTHS` dimen list (`src/parser.rs:1493`) + same `is_preamble_length` dispatch as `paperheight` | `grep -rnwF -e 'footskip' crates/compiler/tests/` ; inline empty |
 | command | marginparwidth | `PREAMBLE_LENGTHS` dimen list (`src/parser.rs:1494`) + same `is_preamble_length` dispatch as `paperheight` | `grep -rnwF -e 'marginparwidth' crates/compiler/tests/` ; inline empty |
 | command | columnsep | `PREAMBLE_LENGTHS` dimen list (`src/parser.rs:1496`) + same `is_preamble_length` dispatch as `paperheight` | `grep -rnwF -e 'columnsep' crates/compiler/tests/` ; inline empty |
-| command | marginpar | parser arm `src/parser.rs:3213` (`self.marginpar(span, para)`, a real `fn marginpar` at `src/parser.rs:9070` that emits `Inline::Marginpar`, not a stub) + inventory `src/supported.rs:296` — note `vocabulary.rs`'s `KNOWN_UNIMPLEMENTED_COMMANDS` still lists `marginpar` (line ~42); that entry is dead, since the real dispatch arm above fires first | `grep -rnwF -e 'marginpar' crates/compiler/tests/` ; inline empty |
 
 ## Triage notes for the supervisor
 
-- Table 1A rows `closein`, `closeout`, `openin`, `openout`, `lineskip`, `lineskiplimit`, `topskip`, `pdfpageheight`, `pdfpagewidth` have entries in the engine (`crates/tex-expansion/src/expand.rs` primitive/register tables) despite zero `crates/compiler/src/` matches — reproduce with `grep -rn -e '"openin"' crates/tex-expansion/src/expand.rs`. They may be partially handled engine-side; the rest of Table 1A has no implementation anywhere I could find.
-- `\day`, `\month`, `\year`, `\space` (kernel rows with `src/` matches) are engine-implemented (`\day` etc. are `Count` registers at `expand.rs:4998`, `\space` is prelude-defined), so they appear in neither table.
-- `\linespread` is recognised-but-diagnosed (`KNOWN_ARITY_UNIMPLEMENTED`, `parser.rs:5557-5559`) and name-tested (`parser.rs:7310`); it sits between the two tables and is listed in neither.
-- Highest-value follow-ups as of this revision: 8 of the original 9 Table 1B text accents (`\b \c \d \H \k \r \u \v`) are now implemented and tested (`TEXT_ACCENTS`, `crates/compiler/tests/text_accents.rs`); `\t` (the two-letter tie accent) is still unimplemented and is the last of the nine. `\RequirePackage` and `\PassOptionsToPackage` are still unimplemented (real documents use `\RequirePackage`; both still fall to `unsupported()`). The 7 Table 2 rows above (6 preamble-length registers plus `\marginpar`) are the new highest-value test gap.
+- `\day`, `\month`, `\year`, `\space` (kernel rows with `src/` matches) are engine-implemented (`\day` etc. are `Count` registers at `expand.rs:4998`, `\space` is prelude-defined), so they appear in neither table — same treatment as `closein`/`closeout`/`openin`/`openout`/`lineskip`/`lineskiplimit`/`topskip`/`pdfpageheight`/`pdfpagewidth` now get (Revision 2 above): confirmed engine-side, so excluded from Table 1A rather than left in it with a caveat.
+- Highest-value follow-ups as of this revision: 8 of the original 9 Table 1B text accents (`\b \c \d \H \k \r \u \v`) are now implemented and tested (`TEXT_ACCENTS`, `crates/compiler/tests/text_accents.rs`); `\t` (the two-letter tie accent) is still unimplemented and is the last of the nine. `\RequirePackage` and `\PassOptionsToPackage` are still unimplemented (real documents use `\RequirePackage`; both still fall to `unsupported()`). The 6 Table 2 preamble-length registers above are the new highest-value test gap.
