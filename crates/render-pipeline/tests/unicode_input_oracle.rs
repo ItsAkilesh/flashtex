@@ -140,6 +140,44 @@ fn combining_marks_are_not_composed() {
     assert_positions("combining", &glyph_xs(&r, 5), &[133.768, 140.961, 145.942, 148.991, 156.732]);
 }
 
+/// The dropped U+0301 still belongs to the source character `e` + U+0301:
+/// the `e` cluster's source range covers all three bytes, so navigating
+/// from it never selects half a character (the editor would have to widen
+/// the selection). pdfLaTeX's output is unchanged: only `e` is typeset.
+#[test]
+fn a_dropped_combining_mark_stays_in_its_base_clusters_source() {
+    if !lm_available() {
+        eprintln!("skipped: Latin Modern not available");
+        return;
+    }
+    for preamble in ["", "\\usepackage[T1]{fontenc}"] {
+        let text = doc(preamble, "Cafe\u{301} x");
+        let r = render_one(&text);
+        let e = text.find("e\u{301}").unwrap();
+        let mut found = false;
+        for item in r.v2.pages[0].items().into_iter().flatten() {
+            let Item::GlyphRun(run) = item else { continue };
+            for c in &run.clusters {
+                for s in c.provenance.sources() {
+                    assert!(
+                        text.is_char_boundary(s.start_byte) && text.is_char_boundary(s.end_byte) && !text[s.end_byte..].starts_with('\u{301}'),
+                        "{preamble}: cluster {:?} ends inside `e` + U+0301 at {}..{}",
+                        &run.text[c.text_start_byte..c.text_end_byte],
+                        s.start_byte,
+                        s.end_byte
+                    );
+                    if s.start_byte == e {
+                        assert_eq!(&run.text[c.text_start_byte..c.text_end_byte], "e", "{preamble}: only `e` is typeset");
+                        assert_eq!(s.end_byte, e + 3, "{preamble}: the `e` cluster covers the dropped mark");
+                        found = true;
+                    }
+                }
+            }
+        }
+        assert!(found, "{preamble}: no cluster starts at the `e`");
+    }
+}
+
 /// OT1 has no guillemets, thorn or ogonek: `«`/`þ` typeset nothing, `ą`
 /// typesets its `a`.
 #[test]
