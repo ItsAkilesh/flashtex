@@ -1020,7 +1020,7 @@ const AMSMATH_PACKAGES: &[&str] = &[
 /// same way with an empty preamble. `article`, `report`, `book`, `memoir`,
 /// `scrartcl`, `scrbook`, `scrreprt`, `revtex4-2`, `elsarticle`, `IEEEtran`,
 /// `letter`, `proc`, `slides` and `amsdtx` measured as kernel.
-const AMSMATH_CLASSES: &[&str] = &["amsart", "amsbook", "amsproc", "acmart", "beamer"];
+pub(crate) const AMSMATH_CLASSES: &[&str] = &["amsart", "amsbook", "amsproc", "acmart", "beamer"];
 
 /// Packages that make the full `amssymb` inventory exist. Measured the same
 /// way: `\documentclass[10pt]{article}\usepackage{X}` compiled with TeX Live

@@ -914,20 +914,22 @@ impl FontSizeLevel {
         Some(FontSizeLevel::Huge2),
     ];
 
-    /// Real `relsize.sty` semantics for `\larger` (`delta > 0`) and
-    /// `\smaller` (`delta < 0`): scale the ACTUAL current point size
-    /// (`None` is `\normalsize`, i.e. the class's real `\f@size`, which at
-    /// 11pt is 10.95pt rather than this compiler's literal 11pt body-size
-    /// approximation — see `closest_step`) by ×1.2 (or ÷1.2), then switch
-    /// to whichever defined level's real point value
+    /// Real `relsize.sty` (2013/03/29 v4.1) semantics for `\larger`
+    /// (`delta > 0`) and `\smaller` (`delta < 0`): `\relsize{n}` scales the
+    /// ACTUAL current point size (`None` is `\normalsize`, i.e. the class's
+    /// real `\f@size`, which at 11pt is 10.95pt rather than this compiler's
+    /// literal 11pt body-size approximation) by `2|n|` TeX-truncated
+    /// demi-magstep multiplications — NOT `|n|` independent ×1.2 lookups,
+    /// which drifts from pdflatex's fixed-point arithmetic (e.g. 10pt
+    /// `\tiny\larger`: real TeX truncates to 5.99995pt, closer to `\tiny`
+    /// itself than to `\scriptsize`; a chain of `|n|` separate closest-match
+    /// steps cannot reproduce that). The single resulting target is then
+    /// matched ONCE against whichever defined level's real point value
     /// (`layout::size_declaration_pt` for this document's 10/11/12pt class
-    /// table) is CLOSEST to that target — not "one slot along the table",
-    /// which only agrees when the ladder is a uniform ×1.2 progression
-    /// (false below `\normalsize` and at the top of every standard class).
-    /// A `|delta| > 1` repeats the single step, matching `\larger[2]` and
-    /// nested `\larger` declarations. Clamps at the ends: past `\tiny` /
-    /// `\Huge` the closest defined size is the end itself, so the size
-    /// holds.
+    /// table) is CLOSEST — including keeping the current size if it is
+    /// itself the closest (real relsize does not force a change). Clamps at
+    /// the ends: past `\tiny`/`\Huge` the closest defined size is the end
+    /// itself, so the size holds.
     pub fn stepped(
         current: Option<FontSizeLevel>,
         delta: i32,
@@ -936,17 +938,69 @@ impl FontSizeLevel {
         if delta == 0 {
             return current;
         }
-        let mut result = current;
-        for _ in 0..delta.unsigned_abs() {
-            result = Self::closest_step(result, delta.signum(), body_size_pt);
+        let point_size = |level: Option<FontSizeLevel>| match level {
+            None => Self::real_normalsize_pt(body_size_pt),
+            Some(level) => crate::layout::size_declaration_pt(level, body_size_pt),
+        };
+        // TeX dimen arithmetic: each demi-magstep multiplies the current
+        // scaled-point value by a truncated fraction and truncates the
+        // product, rather than one floating-point `powf`. `71791/65536` ≈
+        // 1.09545 (up), `59826/65536` ≈ 0.912872 (down); two of them
+        // compound to relsize's documented ×1.2/÷1.2 single step.
+        const DEN: i64 = 65536;
+        const UP_NUM: i64 = 71_791;
+        const DOWN_NUM: i64 = 59_826;
+        let (num, demisteps) = if delta > 0 {
+            (UP_NUM, delta)
+        } else {
+            (DOWN_NUM, -delta)
+        };
+        let mut sp = (point_size(current) * DEN as f64).round() as i64;
+        for _ in 0..(2 * demisteps) {
+            sp = (sp * num) / DEN;
         }
-        result
+        let target = sp as f64 / DEN as f64;
+        let distance = |level: Option<FontSizeLevel>| (point_size(level) - target).abs();
+        let best = Self::ORDER
+            .iter()
+            .map(|&level| distance(level))
+            .fold(f64::INFINITY, f64::min);
+        // Every level tied for closest (float noise tolerated). The 12pt
+        // class has `\huge` and `\Huge` numerically identical, so ties are
+        // real, not just theoretical; the first in relsize's own scan
+        // order wins, which may be the current size itself.
+        const EPS: f64 = 1e-9;
+        Self::ORDER
+            .iter()
+            .filter(|&&level| distance(level) <= best + EPS)
+            .min_by_key(|&&level| Self::scan_rank(level))
+            .copied()
+            .unwrap_or(current)
+    }
+
+    /// Real LaTeX's `\normalsize` `\f@size` for the active class — 10pt,
+    /// 10.95pt, 12pt — NOT this compiler's literal `body_size_pt`
+    /// approximation (11.0pt at 11pt; see `Parsed::class_size_pt`'s own
+    /// documented approximation). Used only to pick the closest defined
+    /// level for a relative size step: the winning level still renders at
+    /// its own `size_declaration_pt` table value (and a `None` winner
+    /// still renders at exactly `body_size_pt`), exactly as elsewhere in
+    /// this compiler — `size_declaration_pt`'s doc comment explains why
+    /// that approximation is deliberate and not disturbed here.
+    fn real_normalsize_pt(body_size_pt: f64) -> f64 {
+        if body_size_pt <= 10.5 {
+            10.0
+        } else if body_size_pt <= 11.5 {
+            10.95
+        } else {
+            12.0
+        }
     }
 
     /// Position of a level in real `relsize.sty`'s scan order
     /// (`normalsize, small, footnotesize, large, Large, LARGE, scriptsize,
     /// tiny, huge, Huge`): the first level in this order wins any tie for
-    /// closest to the ×1.2 target.
+    /// closest to the step's target.
     fn scan_rank(level: Option<FontSizeLevel>) -> usize {
         match level {
             None => 0,
@@ -960,74 +1014,6 @@ impl FontSizeLevel {
             Some(FontSizeLevel::Huge1) => 8,
             Some(FontSizeLevel::Huge2) => 9,
         }
-    }
-
-    /// One ×1.2 (`direction > 0`) or ÷1.2 step with closest-match pickup.
-    fn closest_step(
-        current: Option<FontSizeLevel>,
-        direction: i32,
-        body_size_pt: f64,
-    ) -> Option<FontSizeLevel> {
-        // `None` (no declaration active) searches from real LaTeX's
-        // `\normalsize` `\f@size` for the active class — 10pt, 10.95pt,
-        // 12pt — NOT this compiler's literal `body_size_pt` approximation
-        // (11.0pt at 11pt). At 11pt the approximation's target, 13.2pt,
-        // sits almost exactly between `\large` (12pt) and `\Large`
-        // (14.4pt) and the tie-break picks the wrong, larger size; the
-        // real target, 13.14pt, is unambiguously closest to `\large`,
-        // which is what pdflatex picks. This changes only the search: the
-        // winning level still renders at its own `size_declaration_pt`
-        // table value (and a `None` winner still renders at exactly
-        // `body_size_pt`), exactly as today — see that function's doc
-        // comment, which this deliberately does not disturb.
-        let real_normalsize_pt = if body_size_pt <= 10.5 {
-            10.0
-        } else if body_size_pt <= 11.5 {
-            10.95
-        } else {
-            12.0
-        };
-        let point_size = |level: Option<FontSizeLevel>| match level {
-            None => real_normalsize_pt,
-            Some(level) => crate::layout::size_declaration_pt(level, body_size_pt),
-        };
-        let current_pt = point_size(current);
-        let target = if direction > 0 {
-            current_pt * 1.2
-        } else {
-            current_pt / 1.2
-        };
-        let distance = |level: Option<FontSizeLevel>| (point_size(level) - target).abs();
-        let best = Self::ORDER
-            .iter()
-            .map(|&level| distance(level))
-            .fold(f64::INFINITY, f64::min);
-        // Every level tied for closest (float noise tolerated). The 12pt
-        // class has `\huge` and `\Huge` numerically identical, so ties are
-        // real, not just theoretical.
-        const EPS: f64 = 1e-9;
-        let tied: Vec<(usize, Option<FontSizeLevel>, f64)> = Self::ORDER
-            .iter()
-            .enumerate()
-            .map(|(index, &level)| (index, level, point_size(level)))
-            .filter(|&(_, level, _)| distance(level) <= best + EPS)
-            .collect();
-        // Never answer a step with a same-size no-op while a different,
-        // equally close size exists: drop the candidates that change
-        // nothing unless every tied candidate is the size already in
-        // effect (the clamp at either end of the table).
-        let changed: Vec<(usize, Option<FontSizeLevel>, f64)> = tied
-            .iter()
-            .copied()
-            .filter(|&(_, _, pt)| (pt - current_pt).abs() > EPS)
-            .collect();
-        let pool = if changed.is_empty() { tied } else { changed };
-        // Any remaining tie (e.g. `\huge`/`\Huge`) goes to the level
-        // relsize's own scan reaches first.
-        let pick = pool
-            .iter()
-            .min_by_key(|(_, level, _)| Self::scan_rank(*level));
-        pick.map(|&(_, level, _)| level).unwrap_or(current)
     }
 }
 
@@ -3955,12 +3941,23 @@ impl P<'_> {
             None => 1,
             Some((content, _)) => content.trim().parse().unwrap_or(1),
         };
-        // Without the package this is "Undefined control sequence" in real
-        // LaTeX: diagnose (naming the missing package, like the ulem gate
-        // in `text_underline_cmd`) and leave the size alone, so the content
-        // that follows still typesets as plain text instead of being
-        // dropped.
-        if !self.packages.iter().any(|package| package == "relsize") {
+        // AMS document classes (`math::AMSMATH_CLASSES`) define their own
+        // `\larger`/`\smaller` independent of the relsize package, so the
+        // gate below does not apply to them (real pdflatex diagnoses
+        // nothing under `\documentclass{amsart}`). This does not give them
+        // the AMS classes' own `\@typesizes`-based step ladder — only their
+        // size table's existing `size_declaration_pt` values — which is a
+        // narrower fix than full AMS ladder support.
+        let is_ams_class = self
+            .document_class
+            .as_deref()
+            .is_some_and(|class| crate::math::AMSMATH_CLASSES.contains(&class));
+        // Without the package (and outside an AMS class) this is
+        // "Undefined control sequence" in real LaTeX: diagnose (naming the
+        // missing package, like the ulem gate in `text_underline_cmd`) and
+        // leave the size alone, so the content that follows still typesets
+        // as plain text instead of being dropped.
+        if !is_ams_class && !self.packages.iter().any(|package| package == "relsize") {
             self.diags.push(Diagnostic::command_error(
                 name,
                 format!("\\{name} needs \\usepackage{{relsize}}"),
@@ -13746,6 +13743,82 @@ mod tests {
             parsed.diagnostics
         );
         assert_eq!(size_of(&items, "X"), crate::layout::BODY_SIZE_PT);
+    }
+
+    #[test]
+    fn larger_needs_no_package_under_an_ams_document_class() {
+        // amsart/amsbook/amsproc/acmart/beamer (`math::AMSMATH_CLASSES`)
+        // define their own `\larger`/`\smaller`, independent of the
+        // relsize package: pdflatex diagnoses nothing under
+        // `\documentclass{amsart}`, even with no `\usepackage{relsize}`.
+        let source =
+            r"\documentclass{amsart}\begin{document}\larger x \smaller y\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    }
+
+    #[test]
+    fn larger_bracket_step_count_matches_relsizes_compounded_demisteps() {
+        // Directly measured with a local TeX Live pdflatex run
+        // (`\makeatletter...\typeout{\f@size}`), not taken from a written
+        // description: relsize's `\larger[n]` computes ONE target from `2n`
+        // TeX-truncated demi-magstep multiplications, not `n` independent
+        // ×1.2 closest-match lookups — the two disagree at these values.
+        for (class_option, start, n, expected) in [
+            ("10pt", "tiny", 2, 7.0),
+            ("10pt", "tiny", 3, 9.0),
+            ("10pt", "tiny", 5, 12.0),
+            ("11pt", "tiny", 2, 9.0),
+            ("11pt", "tiny", 3, 10.0),
+            ("11pt", "tiny", 5, 14.4),
+            ("12pt", "tiny", 2, 8.0),
+            ("12pt", "tiny", 3, 10.0),
+            ("12pt", "tiny", 5, 14.4),
+        ] {
+            let source = format!(
+                "\\documentclass[{class_option}]{{article}}\\usepackage{{relsize}}\\begin{{document}}{{\\{start}\\larger[{n}] x}}\\end{{document}}"
+            );
+            let parsed = parse(&source);
+            assert!(parsed.diagnostics.is_empty(), "{source}: {:?}", parsed.diagnostics);
+            let output =
+                crate::incremental::compile_full(&source, layout::LayoutConstraints::default());
+            let size = output
+                .pages
+                .iter()
+                .flat_map(|page| &page.items)
+                .find(|item| item.text == "x")
+                .unwrap_or_else(|| panic!("{source}: no item \"x\""))
+                .font_size_pt;
+            assert_eq!(size, expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn larger_from_tiny_at_10pt_stays_at_tiny_even_when_chained() {
+        // Directly measured with a local TeX Live pdflatex run: 10pt
+        // `\tiny\larger` (bare, one demi-magstep pair) computes a target of
+        // 5.99995pt via TeX's truncated fixed-point arithmetic — closer to
+        // `\tiny` (5pt) itself than to `\scriptsize` (7pt) — so real
+        // pdflatex stays at `\tiny`, not "one step up." A second, chained
+        // `\larger` recomputes from that same still-5pt size and lands on
+        // the identical target again, so it also stays at `\tiny`. (relsize
+        // itself documents that a step is not guaranteed reversible or
+        // monotonic; this is that behavior, not a bug to route around.)
+        let source = r"\documentclass[10pt]{article}\usepackage{relsize}\begin{document}{\tiny\larger x \larger y}\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let output = crate::incremental::compile_full(source, layout::LayoutConstraints::default());
+        let size_of_item = |text: &str| {
+            output
+                .pages
+                .iter()
+                .flat_map(|page| &page.items)
+                .find(|item| item.text == text)
+                .unwrap_or_else(|| panic!("no item {text:?}"))
+                .font_size_pt
+        };
+        assert_eq!(size_of_item("x"), 5.0);
+        assert_eq!(size_of_item("y"), 5.0);
     }
 
     #[test]

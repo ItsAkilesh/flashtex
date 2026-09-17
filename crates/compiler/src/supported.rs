@@ -1055,6 +1055,11 @@ const PACKAGES: &[(&str, &str, &str)] = &[
         "\\uline: 0.4pt rule under the argument (single-line); \\sout: 0.4pt strike at 0.55ex; \\emph is not redefined",
     ),
     (
+        "relsize",
+        "",
+        "\\larger/\\smaller step the size in effect by an optional [n] (default 1), relative to the closest defined size",
+    ),
+    (
         "xspace",
         "",
         "\\xspace inserts a word space unless the next token is }, , . ' / ? ; : ! ~ - ), or a short suppressing-command list (\\footnote, \\footnotemark, \\bgroup, \\egroup, control space)",
