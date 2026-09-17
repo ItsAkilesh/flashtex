@@ -2513,6 +2513,46 @@ enum LeftMarginSetting {
     Widest,
 }
 
+/// A math-mode command that switches back to text mode inside its braced
+/// argument, so a math delimiter inside that argument belongs to a nested
+/// formula rather than closing the outer one. This mirrors the text-mode
+/// arms of the math command dispatch in `math.rs` (the commands whose
+/// argument is parsed via `required_text_group` /
+/// `required_text_group_styled`): keep it in sync with those arms.
+///
+/// Deliberately narrow: `required_text_group_string` callers (e.g.
+/// `\mathbb`) diagnose nested math as unsupported instead of switching
+/// mode, and the `\mathbf`/`\textbf` and `\tag` arms share the group
+/// helper for other reasons, so a `{` opened by one of those keeps the
+/// pre-existing scan behavior and must NOT suppress a delimiter either.
+fn math_text_mode_command(name: &str) -> bool {
+    matches!(
+        name,
+        "text" | "textit" | "textrm" | "textnormal" | "mbox" | "hbox"
+    )
+}
+
+/// Whether the `{` at `index` opens a text-mode group: the previous
+/// non-space token is one of [`math_text_mode_command`]. Only such a group
+/// starts delimiter suppression in the `*_math` scans; an ordinary math
+/// group (`x^{a}`, `\frac{...}{...}`) never does, matching the pre-existing
+/// behavior. Spaces are skipped because TeX discards them after a control
+/// word (and `math.rs` skips them before the argument brace the same way).
+fn brace_opens_text_group(tokens: &[InputToken], index: usize) -> bool {
+    let mut cursor = index;
+    loop {
+        if cursor == 0 {
+            return false;
+        }
+        cursor -= 1;
+        match &tokens[cursor].token.kind {
+            TokenKind::Space => {}
+            TokenKind::Command(name) => return math_text_mode_command(name),
+            _ => return false,
+        }
+    }
+}
+
 impl P<'_> {
     fn peek(&self) -> Option<&Token> {
         self.t.get(self.i).map(|t| &t.token)
@@ -7272,6 +7312,15 @@ impl P<'_> {
         let mut content_end = self.t.len();
         let mut close_end = open.end;
         let mut found = false;
+        // A `$` inside a text-mode group (`$\text{... $...$ ...}$`, and
+        // the same for `\textit`, `\textrm`, `\textnormal`, `\mbox`,
+        // `\hbox`) cannot close the formula: those commands switch back to
+        // text mode inside their braces, so the inner dollars belong to a
+        // nested formula. TeX keys this on the mode switch rather than the
+        // braces, so only a group opened by one of those commands (see
+        // `brace_opens_text_group`) starts suppression — an ordinary math
+        // group like `x^{a` never does.
+        let mut depth = 0usize;
         while self.i < self.t.len() {
             // Unterminated math ends with its paragraph (TeX: "Missing $
             // inserted"), never at a `$` pages later.
@@ -7279,20 +7328,34 @@ impl P<'_> {
                 content_end = self.i;
                 break;
             }
-            if self.t[self.i].token.kind == TokenKind::MathShift {
-                let closes = !display
-                    || self.t.get(self.i + 1).map(|t| &t.token.kind) == Some(&TokenKind::MathShift);
-                if closes {
-                    content_end = self.i;
-                    close_end = if display {
-                        self.t[self.i + 1].token.span.end
-                    } else {
-                        self.t[self.i].token.span.end
-                    };
-                    self.i += if display { 2 } else { 1 };
-                    found = true;
-                    break;
+            match &self.t[self.i].token.kind {
+                TokenKind::LBrace => {
+                    // Only a group opened by a text-mode-switching command
+                    // suppresses a delimiter; an ordinary math group never
+                    // does. Once inside such a group every brace still
+                    // nests, so only the depth-zero case is gated.
+                    if depth > 0 || brace_opens_text_group(&self.t, self.i) {
+                        depth += 1;
+                    }
                 }
+                TokenKind::RBrace => depth = depth.saturating_sub(1),
+                TokenKind::MathShift if depth == 0 => {
+                    let closes = !display
+                        || self.t.get(self.i + 1).map(|t| &t.token.kind)
+                            == Some(&TokenKind::MathShift);
+                    if closes {
+                        content_end = self.i;
+                        close_end = if display {
+                            self.t[self.i + 1].token.span.end
+                        } else {
+                            self.t[self.i].token.span.end
+                        };
+                        self.i += if display { 2 } else { 1 };
+                        found = true;
+                        break;
+                    }
+                }
+                _ => {}
             }
             self.i += 1;
         }
@@ -7314,11 +7377,26 @@ impl P<'_> {
         let space_before = self.space_precedes(self.i);
         self.i += 1;
         let content_start = self.i;
+        // Like `dollar_math`: a `\)` inside a text-mode group (notably
+        // `\text{... \(...\) ...}`) closes the inner formula, not this
+        // one — but only a group opened by a text-mode-switching command
+        // suppresses it (see `brace_opens_text_group`).
+        let mut depth = 0usize;
         while self.i < self.t.len() {
-            if self.t[self.i].token.kind == TokenKind::InlineMathClose
-                || paragraph_boundary_at(&self.t, self.i)
-            {
+            if paragraph_boundary_at(&self.t, self.i) {
                 break;
+            }
+            match &self.t[self.i].token.kind {
+                TokenKind::LBrace => {
+                    // As in `dollar_math`: only a text-mode group
+                    // suppresses the delimiter.
+                    if depth > 0 || brace_opens_text_group(&self.t, self.i) {
+                        depth += 1;
+                    }
+                }
+                TokenKind::RBrace => depth = depth.saturating_sub(1),
+                TokenKind::InlineMathClose if depth == 0 => break,
+                _ => {}
             }
             self.i += 1;
         }
@@ -7350,11 +7428,26 @@ impl P<'_> {
         let space_before = self.space_precedes(self.i);
         self.i += 1;
         let content_start = self.i;
+        // Like `dollar_math`: a `\]` inside a text-mode group (notably
+        // `\text{... \[...\] ...}`) closes the inner formula, not this
+        // one — but only a group opened by a text-mode-switching command
+        // suppresses it (see `brace_opens_text_group`).
+        let mut depth = 0usize;
         while self.i < self.t.len() {
-            if self.t[self.i].token.kind == TokenKind::DisplayMathClose
-                || paragraph_boundary_at(&self.t, self.i)
-            {
+            if paragraph_boundary_at(&self.t, self.i) {
                 break;
+            }
+            match &self.t[self.i].token.kind {
+                TokenKind::LBrace => {
+                    // As in `dollar_math`: only a text-mode group
+                    // suppresses the delimiter.
+                    if depth > 0 || brace_opens_text_group(&self.t, self.i) {
+                        depth += 1;
+                    }
+                }
+                TokenKind::RBrace => depth = depth.saturating_sub(1),
+                TokenKind::DisplayMathClose if depth == 0 => break,
+                _ => {}
             }
             self.i += 1;
         }
@@ -8719,6 +8812,15 @@ impl P<'_> {
                         leader: if name == "hrulefill" { FillLeader::Rule } else { FillLeader::Dots },
                     })
                 }
+                // Inline math (`$...$`, with `$$...$$` display like the
+                // main token loop, and `\(...\)`) and display math
+                // (`\[...\]`) inside a heading, caption, style argument or
+                // `\intertext`: without this the delimiters fell through to
+                // the catch-all below and the formula typeset as plain text.
+                TokenKind::MathShift | TokenKind::InlineMathOpen | TokenKind::DisplayMathOpen => {
+                    skip_until =
+                        self.flat_math(&expanded, index, style, space_before, &mut content);
+                }
                 TokenKind::Verb { text, starred, .. } => content.push(Inline::Verbatim {
                     text: verbatim_display(text, *starred),
                     span: input.token.span,
@@ -8755,6 +8857,126 @@ impl P<'_> {
             }
         }
         content
+    }
+
+    /// Inline or display math inside `inlines_from_tokens` (a heading, a
+    /// caption, a style argument or `\intertext`): `$...$` (with `$$...$$`
+    /// display, as in the main token loop), `\(...\)` and `\[...\]`.
+    /// Returns the first index after the formula; an unclosed formula is
+    /// diagnosed and parsed through the end of the token list.
+    fn flat_math(
+        &mut self,
+        expanded: &[InputToken],
+        open: usize,
+        style: TextStyle,
+        space_before: bool,
+        content: &mut Vec<Inline>,
+    ) -> usize {
+        let open_span = expanded[open].token.span;
+        // `$$...$$` is display math, exactly like the main token loop: it
+        // closes on the next `$` pair, and a lone `$` inside never closes.
+        let doubled = matches!(&expanded[open].token.kind, TokenKind::MathShift)
+            && matches!(
+                expanded.get(open + 1).map(|input| &input.token.kind),
+                Some(TokenKind::MathShift)
+            );
+        let (close, display) = match &expanded[open].token.kind {
+            TokenKind::DisplayMathOpen => (TokenKind::DisplayMathClose, true),
+            TokenKind::InlineMathOpen => (TokenKind::InlineMathClose, false),
+            _ if doubled => (TokenKind::MathShift, true),
+            _ => (TokenKind::MathShift, false),
+        };
+        let body_start = if doubled { open + 2 } else { open + 1 };
+        // A delimiter inside a text-mode group (notably `$...$` inside
+        // `\text{...}`) belongs to the inner formula, not this one — the
+        // same boundary `dollar_math` uses (see `brace_opens_text_group`):
+        // an ordinary math group never suppresses the delimiter.
+        let mut depth = 0usize;
+        let mut cursor = body_start;
+        let mut found = None;
+        while cursor < expanded.len() {
+            let is_close =
+                expanded[cursor].token.kind == close && depth == 0;
+            match &expanded[cursor].token.kind {
+                TokenKind::LBrace => {
+                    // As in `dollar_math`: only a text-mode group
+                    // suppresses the delimiter.
+                    if depth > 0 || brace_opens_text_group(expanded, cursor) {
+                        depth += 1;
+                    }
+                }
+                TokenKind::RBrace => depth = depth.saturating_sub(1),
+                _ if is_close => {
+                    if doubled
+                        && expanded.get(cursor + 1).map(|input| &input.token.kind)
+                            != Some(&TokenKind::MathShift)
+                    {
+                        cursor += 1;
+                        continue;
+                    }
+                    found = Some(cursor);
+                    cursor += if doubled { 2 } else { 1 };
+                    break;
+                }
+                _ => {}
+            }
+            cursor += 1;
+        }
+        let body_end = found.unwrap_or(expanded.len());
+        // Expanded content is re-split into characters, exactly like
+        // `finish_math`, so an issue-#756-style macro body parses the same.
+        let mut raw = Vec::new();
+        for input in &expanded[body_start..body_end] {
+            if input.maps_to_invocation {
+                if let TokenKind::Word(word) = &input.token.kind {
+                    for ch in word.chars() {
+                        raw.push(Token {
+                            kind: TokenKind::Word(ch.to_string()),
+                            span: input.token.span,
+                            control_symbol: input.token.control_symbol,
+                        });
+                    }
+                    continue;
+                }
+            }
+            raw.push(input.token.clone());
+        }
+        let list = math::parse_tokens_display(&raw, self.math_packages, &mut self.diags, display);
+        let end_span = match found {
+            Some(close_at) => {
+                let last = if doubled { close_at + 1 } else { close_at };
+                expanded[last].token.span
+            }
+            None => raw.last().map_or(open_span, |t| t.span),
+        };
+        let span = if end_span.document == open_span.document {
+            open_span.merge(end_span)
+        } else {
+            open_span
+        };
+        if found.is_none() {
+            self.diags.push(Diagnostic::error(
+                if display {
+                    "display math is missing its closing delimiter"
+                } else {
+                    "inline math is missing its closing '$'"
+                },
+                Some(open_span),
+                Some("closed math mode at the end of the text and typeset its contents".into()),
+            ));
+        }
+        let color_ranges = self.math_color_ranges(&raw);
+        content.push(Inline::Math {
+            color: style.color,
+            color_ranges,
+            list,
+            display,
+            number: None,
+            number_span: None,
+            span,
+            space_before,
+        });
+        cursor
     }
 
     /// A kernel text symbol (`\AA`, `\ss`, `\S`, ...) under the current font
@@ -12496,6 +12718,146 @@ mod tests {
             texts,
             [(false, "so that".to_string()), (true, "and".to_string())]
         );
+    }
+
+    /// Math inside `\intertext` stays math: `$x$` (and `\(y\)`) become
+    /// `Inline::Math` instead of being flattened to plain text.
+    #[test]
+    fn intertext_keeps_inline_math_as_math() {
+        let source = "\\begin{align} a &= b \\\\ \\intertext{some $x$ and \\(y\\) text} c &= d \\end{align}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let rows = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(inlines) => Some(inlines),
+                _ => None,
+            })
+            .flatten()
+            .find_map(|i| match i {
+                Inline::MathRows { rows, .. } => Some(rows),
+                _ => None,
+            })
+            .expect("align rows");
+        assert_eq!(rows.len(), 2);
+        let intertext = &rows[1].intertext;
+        assert_eq!(intertext.len(), 1);
+        let content = &intertext[0].content;
+        let maths: Vec<usize> = content
+            .iter()
+            .filter_map(|i| match i {
+                Inline::Math { list, display: false, .. } => Some(list.atoms.len()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(maths, vec![1, 1]);
+        let words: Vec<&str> = content
+            .iter()
+            .filter_map(|i| match i {
+                Inline::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(words, ["some", "and", "text"]);
+    }
+
+    /// A `$` inside `\text{...}` does not close the surrounding inline
+    /// math (amsmath's documented `$\\text{... $...$ ...}$`), and neither
+    /// does a `\\)` inside `\\text{...}` close `\\(...\\)`: the math
+    /// scans only close on a delimiter at brace depth zero.
+    #[test]
+    fn delimiter_in_text_group_does_not_close_inline_math() {
+        for source in ["$a\\text{b $c$ d}$", "\\(a\\text{b \\(c\\) d}\\)"] {
+            let parsed = parse(source);
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "{source}: {:?}",
+                parsed.diagnostics
+            );
+        }
+        // The nested formula survives as a Math piece of the text run.
+        let parsed = parse("$a\\text{b $c$ d}$");
+        let list = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(inlines) => Some(inlines),
+                _ => None,
+            })
+            .flatten()
+            .find_map(|i| match i {
+                Inline::Math { list, .. } => Some(list),
+                _ => None,
+            })
+            .expect("inline math");
+        assert_eq!(list.atoms.len(), 2);
+        match &list.atoms[1].nucleus {
+            crate::math::Nucleus::TextRun(pieces) => {
+                assert_eq!(pieces.len(), 3);
+                let nested = pieces.iter().find_map(|piece| match piece {
+                    crate::math::TextPiece::Math(nested) => Some(nested),
+                    _ => None,
+                });
+                assert_eq!(
+                    nested.expect("nested math").atoms.len(),
+                    1,
+                    "{pieces:?}"
+                );
+            }
+            other => panic!("\\text is a text run, got {other:?}"),
+        }
+        // A `$` that really does close still does: the already-working
+        // plain-`\\text` case is unchanged.
+        let plain = parse("$a\\text{b}c$");
+        assert!(plain.diagnostics.is_empty(), "{:?}", plain.diagnostics);
+    }
+
+    /// An ordinary math group never suppresses a closing delimiter: only a
+    /// group opened by a text-mode-switching command does. `Visible $x^{a$
+    /// Tail.` (an unclosed `{` with no text-mode switch at all) still closes
+    /// at the `$` with exactly the "math group is missing its closing
+    /// brace" diagnostic — the recovery-suite case this guards, across the
+    /// `$...$`, `\(...\)` and `\[...\]` scanners.
+    #[test]
+    fn ordinary_math_group_does_not_suppress_closing_delimiter() {
+        for source in [
+            "Visible $x^{a$ Tail.",
+            "Visible \\(x^{a\\) Tail.",
+            "Visible \\[x^{a\\] Tail.",
+        ] {
+            let parsed = parse(source);
+            assert_eq!(
+                parsed.diagnostics.len(),
+                1,
+                "{source}: {:?}",
+                parsed.diagnostics
+            );
+            assert!(
+                parsed.diagnostics[0]
+                    .message
+                    .contains("math group is missing its closing brace"),
+                "{source}: {:?}",
+                parsed.diagnostics
+            );
+        }
+    }
+
+    /// Every text-mode-switching command's group suppresses a closing
+    /// delimiter, not just `\text`: this keeps the selective list in
+    /// `math_text_mode_command` in sync with the text-mode arms of the math
+    /// command dispatch in `math.rs`.
+    #[test]
+    fn all_text_mode_commands_suppress_closing_delimiter() {
+        for command in ["text", "textit", "textrm", "textnormal", "mbox", "hbox"] {
+            let source = format!("$a\\{command}{{b $c$ d}}$");
+            let parsed = parse(&source);
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "{source}: {:?}",
+                parsed.diagnostics
+            );
+        }
     }
 
     #[test]
