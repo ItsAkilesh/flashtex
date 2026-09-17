@@ -650,6 +650,12 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["Diamond"],
+        "",
+        "amsfonts alias of \\lozenge (msam, 0.6667em); requires amsfonts/amssymb",
+        true,
+    ),
+    (
         &["iff", "implies", "impliedby"],
         "",
         "long double arrow between thick (5mu) spaces",

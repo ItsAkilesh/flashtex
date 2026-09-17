@@ -2608,6 +2608,20 @@ impl MathParser<'_> {
                 class_override: Some(AtomClass::Rel),
                 ..symbol("\u{21CC}".into(), span)
             },
+            // `\Diamond` (issue #591) has no LaTeX2e kernel definition.
+            // `amsfonts.sty:153` `\let`s it to `\lozenge` (msam "06,
+            // 0.666669em, Ord) once amsfonts or amssymb is loaded; with
+            // neither, pdflatex answers "Undefined control sequence". This
+            // compiler tracks no `latexsym` flag (`MathPackages` has none),
+            // so — unlike the #516 standing choice that made `\Box` always
+            // available — there is no separate fallback design to fall back
+            // to: requiring amsfonts is the whole gate, and routing through
+            // `ams_atom` reuses the same metric path `\lozenge` itself uses.
+            "Diamond" if self.packages.amsfonts => ams_atom(
+                crate::amssymb::by_name("lozenge").expect("lozenge is a table row"),
+                span,
+            ),
+            "Diamond" => self.missing_package(&name, "amsfonts", span),
             // amsfonts `\dashrightarrow` = `\mathrel{\dabar@\dabar@\mathchar"0\hexnumber@
             // \symAMSa 4B}` (`\dasharrow` its alias) and `\dashleftarrow` with the
             // "4C head first (`amsfonts.sty` 87-95).
@@ -4274,6 +4288,17 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("Box", "□"),
     ("blacksquare", "■"),
     ("lozenge", "◊"),
+    // `\diamond` and `\Diamond` are two genuinely distinct commands (issue
+    // #591): `\diamond` is the kernel cmsy `\mathbin` (U+22C4 ⋄, a small
+    // operator diamond, `crate::lm_math` advance), always available.
+    // `\Diamond` has no kernel definition at all — `amsfonts.sty:153`
+    // `\let`s it to `\lozenge` (U+25CA ◊, AMSa "06, 0.666669em, Ord) once
+    // amsfonts/amssymb is loaded (`command_atom`'s dedicated, package-gated
+    // arm), and is otherwise undefined. This row exists so vocabulary/
+    // export tooling still recognizes the name; the render path never
+    // consults it (see the `"Diamond"` arms in `command_atom`).
+    ("diamond", "⋄"),
+    ("Diamond", "◊"),
     ("checkmark", "✓"),
     // HW2 follow-up (issue #62): the remaining long arrows, drawn from the
     // pinned Latin Modern Math resource like `\Longrightarrow` above.
@@ -4465,6 +4490,11 @@ fn symbol_class(glyph: &str) -> AtomClass {
         | "⊗" | "⊖" | "⊘" | "⊙" | "◯" | "∖" | "∓" | "∘"
         // fontmath.ltx 278-279: `\sqcap`/`\sqcup`, `\mathbin` at cmsy "75/"74.
         | "⊓" | "⊔"
+        // Issue #591: `\diamond` is the kernel cmsy `\mathbin` (U+22C4),
+        // so it takes medium space like `\bigcirc` above — not `Ord` like
+        // the look-alike `\Diamond` (aliased to `\lozenge`, `ams_atom`'s
+        // own class, once amsfonts/amssymb is loaded).
+        | "⋄"
         // `\bigtriangledown`; `\bigtriangleup` shares `\triangle`'s glyph
         // (Ord by default here) and overrides its class to Bin instead.
         | "▽" => Bin,
@@ -7413,6 +7443,50 @@ mod spacing_tests {
         }
     }
 
+    /// Issue #591 (`\diamond`/`\Diamond`, follow-up to #516's `\Box`):
+    /// `\diamond` is the kernel cmsy `\mathbin` (U+22C4 ⋄), always
+    /// available. `\Diamond` has no kernel definition — `amsfonts.sty:153`
+    /// `\let`s it to `\lozenge` (U+25CA ◊, AMSa "06, 0.666669em, Ord) once
+    /// amsfonts/amssymb is loaded — genuinely distinct from `\diamond`, not
+    /// a synonym, and metrically distinct from `\square` too. `\diamond`
+    /// stays a known command either way, so it is never misreported as an
+    /// unknown command with `\Diamond` as the typo fix.
+    #[test]
+    fn diamond_and_capital_diamond_are_distinct_diamonds() {
+        assert_eq!(command_glyph("diamond"), Some("⋄"));
+        assert_eq!(command_glyph("square"), Some("□"));
+        assert!(crate::vocabulary::math_mode_help("diamond").is_none());
+        assert!(crate::vocabulary::closest_commands("diamond").is_empty());
+
+        let small = laid_out(r"\diamond", SIZE);
+        let big = laid_out_with(r"\Diamond", SIZE, AMSSYMB);
+        assert_eq!(small.items.len(), 1, "{:?}", small.items);
+        assert_eq!(big.items.len(), 1, "{:?}", big.items);
+        assert_eq!(small.items[0].text, "⋄");
+        assert_eq!(big.items[0].text, "◊");
+        close(small.width, 0.5 * SIZE);
+        close(big.width, 0.666669 * SIZE);
+        // Metrically distinct from each other and from `\square` (msam
+        // 0.777781em under `amssymb`): three different real advances.
+        let square = laid_out_with(r"\square", SIZE, AMSSYMB);
+        assert_eq!(square.items[0].text, "□");
+        for (a, b) in [
+            (small.width, big.width),
+            (small.width, square.width),
+            (big.width, square.width),
+        ] {
+            assert!((a - b).abs() > 0.1, "{a} vs {b}");
+        }
+        // Class: `\diamond` takes Bin spacing like `\bigcirc`, `\Diamond`
+        // is Ord like `\square` — medium space versus none.
+        let b = laid_out(r"a\diamond b", SIZE);
+        close(x(&b, "⋄"), width("a", SIZE) + 4.0);
+        close(x(&b, "b"), x(&b, "⋄") + small.width + 4.0);
+        let b = laid_out_with(r"a\Diamond b", SIZE, AMSSYMB);
+        close(x(&b, "◊"), width("a", SIZE));
+        close(x(&b, "b"), x(&b, "◊") + big.width);
+    }
+
     #[test]
     fn a_leading_or_post_relation_minus_is_ordinary_and_a_real_minus_sign() {
         let b = laid_out("-x", SIZE);
@@ -8283,6 +8357,27 @@ mod package_gating_tests {
         );
         let (_, loaded) = parsed(r"\square", AMSSYMB);
         assert!(loaded.is_empty(), "\\square under amssymb: {loaded:?}");
+    }
+
+    /// Issue #591: `\Diamond` has no kernel definition at all (unlike
+    /// `\square`, which the kernel just doesn't shape like `amssymb` does),
+    /// so pdflatex reports it undefined with no package loaded, and only
+    /// clean once `amsfonts`/`amssymb` is loaded.
+    #[test]
+    fn diamond_requires_a_package_or_is_undefined() {
+        let (_, kernel) = parsed(r"\Diamond", MathPackages::KERNEL);
+        assert_eq!(
+            kernel.first().map(|d| d.message.as_str()),
+            Some(r"\Diamond requires \usepackage{amsfonts}"),
+            "\\Diamond without its package: {kernel:?}"
+        );
+        let (_, loaded) = parsed(r"\Diamond", AMSSYMB);
+        assert!(loaded.is_empty(), "\\Diamond under amssymb: {loaded:?}");
+        let (_, amsfonts_only) = parsed(r"\Diamond", AMSFONTS);
+        assert!(
+            amsfonts_only.is_empty(),
+            "\\Diamond under amsfonts alone: {amsfonts_only:?}"
+        );
     }
 
     /// Issue #516: the two spellings lay out the same glyph at the same
