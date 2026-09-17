@@ -792,6 +792,7 @@ pub(super) fn outer_doc(ctx: &mut Context, doc: &Doc, floats: &[floatpage::Float
         diagnostics: Vec::new(),
         limitations: Vec::new(),
         superseded: Vec::new(),
+        top_material: None,
         secnumdepth: doc.secnumdepth,
         page_starts,
         default_color: doc.default_color,
@@ -1863,6 +1864,7 @@ fn rec_span(ctx: &Context, r: usize) -> Option<Span> {
         BoxRec::ColorBox(b) => Some(b.span),
         BoxRec::Leader { .. } => None,
         BoxRec::Underline(u) => Some(u.span),
+        BoxRec::TextScript(t) => Some(t.span),
     }
 }
 
@@ -2014,6 +2016,7 @@ pub(super) fn paginate(ctx: &mut Context, doc: &Doc, blocks: &mut Vec<BuiltBlock
             diagnostics: Vec::new(),
             limitations: Vec::new(),
             superseded: Vec::new(),
+            top_material: None,
             secnumdepth: doc.secnumdepth,
             page_starts: Vec::new(),
             default_color: doc.default_color,

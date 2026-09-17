@@ -49,7 +49,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "vskip", "kern", "enspace", "thinspace", "negthinspace", "hline", "cline",
     "multicolumn", "tabularnewline", "arraystretch",
     // Fonts and text symbols.
-    "textsuperscript", "textsubscript", "LaTeX",
+    "underbar", "LaTeX",
     "LaTeXe", "TeX", "dag", "ddag", "S", "P", "copyright", "pounds", "textbackslash",
     "textasciitilde", "textasciicircum", "textbar", "textless", "textgreater", "textendash",
     "textemdash", "textquoteleft", "textquoteright",
@@ -80,7 +80,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "rVert", "varepsilon", "vartheta", "varphi", "varrho", "varsigma", "varpi", "digamma",
     "varkappa", "hbar", "hslash", "ell", "wp", "Re", "Im", "aleph", "beth", "gimel", "emptyset",
     "varnothing", "nabla", "partial", "infty", "forall", "exists", "nexists", "neg", "lnot", "top",
-    "bot", "angle", "measuredangle", "triangle", "square", "blacksquare", "Diamond",
+    "bot", "angle", "measuredangle", "triangle", "square", "blacksquare",
     "clubsuit", "diamondsuit", "heartsuit", "spadesuit", "flat", "natural", "sharp", "prime",
     "backprime", "surd", "mathstrut", "not", "neq", "ne", "leq", "le", "geq", "ge", "ll", "gg",
     "leqslant", "geqslant", "approx", "cong", "equiv", "sim", "simeq", "propto", "subset", "supset",

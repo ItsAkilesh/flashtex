@@ -149,10 +149,22 @@ pub struct Stylesheet {
     /// The resolved class + geometry frame this stylesheet was built from
     /// ([`Stylesheet::from_resolved`]); `None` for [`Stylesheet::article`].
     pub class_geometry: Option<Box<ResolvedDocument>>,
+    /// `\if@twocolumn` as the document sets it: the class option plus every
+    /// `\twocolumn`/`\onecolumn` in the source, by position
+    /// ([`crate::columns`]). `class_geometry`'s frame and flags follow
+    /// [`crate::columns::ColumnMode::start`]; anything that has to know the
+    /// mode *at a place in the document* asks this.
+    pub columns: crate::columns::ColumnMode,
     /// Character protrusion and font expansion when the preamble loads
     /// `microtype` (`None` otherwise; lines are then broken exactly as
     /// before).
     pub microtype: Option<MicrotypeSetup>,
+    /// Literal UTF-8 input checks (`crate::inputenc`): the text encoding
+    /// and the preamble's own declarations, or `None` to typeset every
+    /// character the fonts can draw without pdfLaTeX's input errors (a
+    /// stylesheet built without a document, or a document outside the
+    /// pdfLaTeX `utf8` world). The adapter sets it.
+    pub input: Option<crate::inputenc::InputSetup>,
 }
 
 impl Stylesheet {
@@ -263,7 +275,9 @@ impl Stylesheet {
             labelsep_pt: list.labelsep.0,
             headings: [heading(1), heading(2), heading(3), heading(4), heading(5)],
             class_geometry: None,
+            columns: crate::columns::ColumnMode::default(),
             microtype: None,
+            input: None,
         }
     }
 
@@ -320,13 +334,26 @@ impl Stylesheet {
         // article/report/book guard it (`\if@twoside\else\raggedbottom\fi`);
         // letter.cls line 404 is a plain `\raggedbottom` with no guard at
         // all, so a `[twoside]` letter is ragged-bottom too.
+        //
+        // `\raggedbottom`/`\flushbottom` and `\sloppy` read the **class
+        // option**, not `\if@twocolumn`: article.cls 631-640 runs
+        // `\if@twoside\else\raggedbottom\fi` and `\if@twocolumn \twocolumn
+        // \sloppy \flushbottom \fi` once, as the last thing `\documentclass`
+        // does. A `\twocolumn` command in the document -- or `\usepackage
+        // [twocolumn]{geometry}`, which is a package and so later still --
+        // runs long afterwards and changes neither, exactly as it changes
+        // neither `\parindent` nor `\textwidth` (`size1<n>.clo`). Measured:
+        // a `\twocolumn` article whose page 1 has slack sets its columns at
+        // natural `\baselineskip`; reading the command here stretched the
+        // `\parskip` at each paragraph and put the foot of page 1 5.04 bp
+        // (10 pt) low.
         s.raggedbottom = doc.options.kind == flashtex_class_geometry::ClassKind::Letter
-            || !(doc.flags.twoside || doc.flags.twocolumn);
+            || !(doc.flags.twoside || doc.options.twocolumn);
         s.columnseprule_pt = frame_pt(frame.columnseprule);
         s.marginparwidth_pt = frame_pt(p.marginparwidth);
         s.marginparsep_pt = frame_pt(p.marginparsep);
         s.marginparpush_pt = frame_pt(p.marginparpush);
-        if doc.flags.twocolumn {
+        if doc.options.twocolumn {
             s.tolerance = 9999.0;
             s.emergency_stretch_pt = 3.0 * s.body_size_pt;
         }
