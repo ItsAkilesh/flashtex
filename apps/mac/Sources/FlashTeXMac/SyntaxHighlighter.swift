@@ -666,6 +666,7 @@ final class SyntaxPainter {
     private weak var textView: NSTextView?
     private var observer: NSObjectProtocol?
     private var flushScheduled = false
+    private var resetScheduled = false
 
     deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
 
@@ -719,24 +720,29 @@ final class SyntaxPainter {
         let t0 = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
         let text = tv.textStorage?.string as NSString? ?? ""
         if text.length != highlighter.length - range.length + replacementLength {
-            reset(); return // out of sync (should not happen): start over
+            // Out of sync (should not happen): start over — after the edit,
+            // because `reset()` paints the visible window, which needs layout
+            // (see the note on `flush()` below). Until then every edit keeps
+            // failing this length check, so the lexer never sees a stale edit.
+            if !resetScheduled {
+                resetScheduled = true
+                DispatchQueue.main.async { [weak self] in self?.resetScheduled = false; self?.reset() }
+            }
+            return
         }
         let dirty = highlighter.edit(range: range, replacementLength: replacementLength, text: text)
         lastEditLinesLexed = highlighter.lastEditLinesLexed
         shiftPainted(edit: range, replacementLength: replacementLength)
-        // `flush()` only repaints the overlap of `painted` and the dirty
-        // range, on the assumption that an edit's dirty range already sits
-        // inside the painted window (true for ordinary typing). A
-        // whole-buffer replace (select all, delete) shifts every painted
-        // range to length 0, which `merged` drops — `painted` becomes `[]`
-        // and, since nothing but `reset()` (switching documents away and
-        // back) ever repopulates it, stays empty forever after, so no edit
-        // is ever coloured again. Re-registering the dirty range (clipped to
-        // the visible window, so a large off-screen paste still cannot force
-        // painting outside it) as painted is a no-op union in the ordinary
-        // case and self-heals this one.
-        let visibleDirty = NSIntersectionRange(dirty, Self.window(for: tv))
-        if visibleDirty.length > 0 { painted = Self.merged(painted + [visibleDirty]) }
+        // Nothing here may touch layout (`Self.window(for:)`, glyph queries):
+        // this runs inside `NSTextStorage.processEditing`, where the layout
+        // manager raises "attempted layout while textStorage is editing"
+        // (GH#681). That Objective-C exception unwound through Swift frames
+        // — which Swift does not support — and, when the edit came from a
+        // Swift task (an IME `setMarkedText` replacing marked text), left the
+        // task's allocator state corrupt: SIGABRT "freed pointer was not the
+        // last allocation". The lexer update above stays synchronous (it
+        // needs `editedRange` and every edit in order); the visible-window
+        // work moves to `flush()`, which runs after the edit.
         pendingDirty = pendingDirty.map { NSUnionRange(Self.shifted($0, edit: range, replacementLength: replacementLength), dirty) } ?? dirty
         lastEditCpuNs = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - t0
         // Painting waits until the layout manager has processed this edit
@@ -761,6 +767,19 @@ final class SyntaxPainter {
         }
         pendingDirty = nil
         guard let lm = tv.layoutManager else { return }
+        // Painting only repaints the overlap of `painted` and the dirty range,
+        // on the assumption that the dirty range already sits inside the
+        // painted window (true for ordinary typing). A whole-buffer replace
+        // (select all, delete) shifts every painted range to length 0, which
+        // `merged` drops — `painted` becomes `[]` and, since nothing but
+        // `reset()` ever repopulates it, stays empty forever after (#673).
+        // Re-registering the dirty range (clipped to the visible window, so a
+        // large off-screen paste still cannot force painting outside it) as
+        // painted is a no-op union in the ordinary case and self-heals this
+        // one. It is done here, not in `storageEdited`, because computing the
+        // window needs layout, which is invalid mid-edit (GH#681).
+        let visibleDirty = NSIntersectionRange(dirty, Self.window(for: tv))
+        if visibleDirty.length > 0 { painted = Self.merged(painted + [visibleDirty]) }
         let t0 = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
         defer { lastFlushCpuNs = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - t0 }
         let text = tv.textStorage?.string as NSString? ?? ""
