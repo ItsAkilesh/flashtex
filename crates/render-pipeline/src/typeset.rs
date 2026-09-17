@@ -1303,9 +1303,20 @@ impl<'a> Context<'a> {
                 }
                 _ => Some(c),
             };
-            if let (Some(k), Some(src)) = (keep, src) {
-                text.push(k);
-                chars.push(src);
+            match (keep, src) {
+                (Some(k), Some(src)) => {
+                    text.push(k);
+                    chars.push(src);
+                }
+                // A dropped mark that extends the source character before it
+                // (`e` + U+0301) stays in that character's source range, so
+                // the base letter's cluster never covers half of a character.
+                (None, Some(src)) if extends_grapheme(c) => {
+                    if let Some(prev) = chars.last_mut().filter(|p| p.document == src.document && p.end == src.start) {
+                        prev.end = src.end;
+                    }
+                }
+                _ => {}
             }
         }
         for (i, c, r) in rejected {
@@ -10657,6 +10668,15 @@ pub fn documents_referenced(list: &DisplayList) -> BTreeSet<DocumentId> {
         }
     }
     out
+}
+
+/// Whether `c` never starts a user-perceived character of its own (Unicode
+/// grapheme `Extend`/`ZWJ` in the common Latin/symbol/emoji blocks):
+/// combining marks, joiners, variation selectors, emoji modifiers and tags.
+fn extends_grapheme(c: char) -> bool {
+    matches!(c as u32,
+        0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x200C..=0x200D | 0x20D0..=0x20FF
+        | 0xFE00..=0xFE0F | 0xFE20..=0xFE2F | 0x1F3FB..=0x1F3FF | 0xE0020..=0xE007F | 0xE0100..=0xE01EF)
 }
 
 /// The body of the `\verb<d>...<d>` (or `\verb*`) whose command name is
