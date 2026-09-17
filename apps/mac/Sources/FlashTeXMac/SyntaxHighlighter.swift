@@ -707,6 +707,12 @@ final class SyntaxPainter {
         painted = []
     }
 
+    /// The lexer describes `text` (no reset pending, lengths agree): only then
+    /// may editor intelligence (completion, hover, command-click) consult it.
+    func inSync(with text: NSString) -> Bool {
+        !resetScheduled && highlighter.length == text.length
+    }
+
     /// The view scrolled: paint the part of the new window not yet painted.
     func scrolled() {
         // Not while a reset is pending (the lexer is stale; `reset()` paints
