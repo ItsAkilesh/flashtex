@@ -864,6 +864,25 @@ fn newtheorem_let_to_relax_guard_still_declares() {
 }
 
 #[test]
+fn newtheorem_relax_itself_is_never_definable() {
+    // `\relax`'s own meaning is trivially `Relax`, the same value the
+    // guard idiom above uses as a placeholder for "undefined" -- but
+    // `\relax` is the primitive itself, not a placeholder, and pdflatex
+    // never lets `\newtheorem` (or anything else) redefine it. Regression
+    // for the review round-3 fix's own bug: `is_undefined_or_relax`
+    // treated `\relax` as available for declaration too.
+    let r = expand_str(r"\newtheorem{relax}{Relax}\begin{relax}\end{relax}");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\relax already defined."], "{messages:?}");
+    // Rejected and swallowed: \begin{relax}/\end{relax} must not reach the
+    // typesetter as \relax/\endrelax tokens (the bug this regresses would
+    // have let the declaration through, so both would appear).
+    let out = text(&r.tokens);
+    assert!(!out.contains(r"\relax "), "{out:?}");
+    assert!(!out.contains(r"\endrelax "), "{out:?}");
+}
+
+#[test]
 fn newtheorem_successful_reclaim_inside_a_group_is_global() {
     // The successful branch claims `\name`/`\end<name>` globally
     // (`assign_cs(..., true)`), so its un-reject of a stale rejection must

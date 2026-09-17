@@ -3194,7 +3194,11 @@ impl Engine {
         // treats a `\relax`-valued name as undefined -- `\let\thm\relax`
         // and the classic `\expandafter\ifx\csname thm\endcsname\relax`
         // existence check both leave `\newtheorem{thm}` free to declare.
-        if !name.is_empty() && !self.st.scopes.is_undefined_or_relax(&name) {
+        // `\relax` itself is not such a placeholder, though: its own meaning
+        // is trivially `Meaning::Primitive(Relax)`, so `is_undefined_or_relax`
+        // would call the primitive itself "undefined" too. `\newtheorem{relax}`
+        // must still collide, exactly as pdflatex refuses to redefine \relax.
+        if !name.is_empty() && (name == "relax" || !self.st.scopes.is_undefined_or_relax(&name)) {
             self.err(format!("LaTeX Error: Command \\{name} already defined."), span);
             // A *duplicate* declaration of a name that already has a
             // working `\name`/`\end<name>` pair from an earlier
