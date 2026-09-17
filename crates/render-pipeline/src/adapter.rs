@@ -779,6 +779,12 @@ pub struct Doc {
     /// pipeline sets itself (`abstract`): its diagnostic is dropped, the
     /// way `toc::superseded_commands` drops the contents-list ones.
     pub superseded: Vec<Span>,
+    /// `\twocolumn[<material>]`'s optional argument and the span of the
+    /// whole `[..]`: the blocks `\@topnewpage` sets in a `\textwidth` box
+    /// above both columns of the page the command starts. They are not in
+    /// `blocks`; `typeset::build_with_floats` sets them itself. `Some` with
+    /// an empty vector is `\twocolumn[]`, which is a box of no height.
+    pub top_material: Option<(Vec<Block>, Span)>,
 }
 
 /// Label values (`\ref`) and the pages they fell on in a previous layout
@@ -1273,8 +1279,23 @@ pub fn adapt_cached(
         &class_options,
     );
     let mut resolved = flashtex_class_geometry::resolve(&setup);
+    // `\twocolumn`/`\onecolumn` are commands, not class options: two-column
+    // mode is state the document sets, and the class option is only its
+    // starting value ([`crate::columns`]). The starting value itself is
+    // `resolved.flags.twocolumn`, not `resolved.options.twocolumn`: the
+    // latter is `\documentclass`'s own option only, while `flags` is what
+    // `resolve` already folded the `geometry` package's own `twocolumn` key
+    // into (`apply_geometry`, [`flashtex_class_geometry::resolve`]). Seeding
+    // from `options` instead left `\documentclass{article}
+    // \usepackage[twocolumn]{geometry}` starting one-column, since
+    // `options.twocolumn` never saw geometry's override.
+    // `set_twocolumn` runs before `apply_preamble_lengths`, which rebuilds
+    // the frame from `doc.flags`.
+    let columns = crate::columns::ColumnMode::scan(source, entry, resolved.flags.twocolumn);
+    resolved.set_twocolumn(columns.start());
     let assigned = apply_preamble_lengths(source, &mut resolved, size, family, setup.geometry.is_some());
     let mut style = Stylesheet::from_resolved(&resolved, family);
+    style.columns = columns;
     // apply_preamble_lengths is the source of truth for `\parindent` /
     // `\parskip` (source order, including `\addtolength` and body
     // assignments). The older `setlength_in` scan only saw `\setlength`
@@ -2173,6 +2194,37 @@ pub fn adapt_cached(
     // `quotation`) is read from the source bytes here, before the
     // `env_close` pass below derives the closing skips from the styles.
     let mut superseded = crate::abstractenv::apply(texts, &mut blocks, &style);
+    // `\twocolumn`/`\onecolumn` are set here, from the source, the same way:
+    // the pinned `vendor/compiler` reports them as unknown commands.
+    superseded.extend(
+        style
+            .columns
+            .spans()
+            .iter()
+            .map(|&(s, e)| Span::in_document(flashtex_compiler::DocumentId(entry), s, e)),
+    );
+    // The page frame is still one frame for the whole document, so a switch
+    // after the first material sets every `\if@twocolumn` test (and its own
+    // page break) but not the column count of the pages it opens.
+    for &(at, on) in &style.columns.unmodelled() {
+        limitations.push((
+            "twocolumn_mid_document",
+            Span::in_document(flashtex_compiler::DocumentId(entry), at, at + if on { "\\twocolumn".len() } else { "\\onecolumn".len() }),
+            format!(
+                "\\{} after the first material starts a new page, but changing the number of \
+                 page columns during a document is not implemented: the rest of the document \
+                 keeps {} column(s)",
+                if on { "twocolumn" } else { "onecolumn" },
+                if style.columns.start() { 2 } else { 1 },
+            ),
+        ));
+    }
+    // `\twocolumn[<material>]` sets its argument at the full `\textwidth`
+    // above both columns (`\@topnewpage`, latex.ltx 20466-20505). The
+    // material is cut out of the block stream here, brackets and all, and
+    // carried on `Doc::top_material` for `typeset::build_with_floats` to
+    // set in the box; what it cannot cut exactly stays where it is and is
+    // reported, as before.
     // Size environments are set here (`apply_size_environments`); the
     // compiler's "environment is not implemented" for them is superseded.
     for (d, st) in styles.iter().enumerate() {
@@ -2237,6 +2289,48 @@ pub fn adapt_cached(
     superseded.extend(listing_superseded);
     superseded.extend(crate::listings::lstset_spans(texts));
     limitations.extend(listing_limitations);
+    let mut top_material = None;
+    // `\twocolumn[<material>]` sets its argument in a `\textwidth` box
+    // above both columns (`\@topnewpage`, latex.ltx 20466-20505). The
+    // material is cut out of the block stream here, brackets and all, and
+    // carried on `Doc::top_material` for `typeset::build_with_floats`;
+    // `\@topnewpage`'s own geometry is that page builder's business.
+    //
+    // Only when the frame really has two columns: the box belongs to the
+    // two-column output routine, and a one-column page has nowhere for it.
+    let two_column = style.class_geometry.as_deref().is_some_and(|g| g.frame.columns.len() > 1);
+    let mut boxed = None;
+    if let Some((open, close)) = style.columns.top_material().filter(|_| two_column) {
+        let document = flashtex_compiler::DocumentId(entry);
+        if let Some(m) = split_top_material(&mut blocks, document, open, close) {
+            boxed = Some(open);
+            top_material = Some((m, Span::in_document(document, open, close + 1)));
+        }
+    }
+    // Every optional argument that did *not* become a box: one on a
+    // `\twocolumn` that is not the document's first material (a preamble
+    // one is `\@nodocument`'s error, a later one would have to change the
+    // column count of the pages), and one whose material cannot be cut out
+    // of the column text exactly. The compiler leaves those where they
+    // stand, brackets and all, which is what #746 reported.
+    for &(_, end) in style.columns.spans() {
+        // The same rule `columns::optional_bracket` uses: `\@ifnextchar [`
+        // skips space tokens, and a blank line is a `\par`, not a space —
+        // so a `[` after a blank line is ordinary text, not the argument.
+        let Some(open) = crate::columns::optional_bracket(source, end) else {
+            continue;
+        };
+        if source[..end].ends_with("\\twocolumn") && boxed != Some(open) {
+            limitations.push((
+                "twocolumn_top_material",
+                Span::in_document(flashtex_compiler::DocumentId(entry), end, end),
+                "the optional argument of \\twocolumn sets material at the full \\textwidth \
+                 above both columns (\\@topnewpage); that is not done here, so the material \
+                 is set in the first column instead, brackets included"
+                    .to_string(),
+            ));
+        }
+    }
     let page_starts = clear_page_blocks(texts, &blocks);
     // After `listings::apply`, which can insert blocks: the ranges are
     // block indices, so they are taken once the block list is final.
@@ -2253,7 +2347,289 @@ pub fn adapt_cached(
         page_starts,
         abstract_pages,
         superseded,
+        top_material,
     }
+}
+
+/// The characters of `w` whose source lies in `lo..hi` of `document`, as a
+/// word of their own; `None` when none do. A word's `chars` are one per
+/// `char` of its `text`, in order, so the two are cut together.
+fn trim_word(w: &Word, document: flashtex_compiler::DocumentId, lo: usize, hi: usize) -> Option<Word> {
+    let mut segments: Vec<Segment> = Vec::new();
+    for s in &w.segments {
+        let mut text = String::new();
+        let mut chars: Vec<CharSrc> = Vec::new();
+        for (c, ch) in s.chars.iter().zip(s.text.chars()) {
+            if c.document == document && c.start >= lo && c.start < hi {
+                text.push(ch);
+                chars.push(c.clone());
+            }
+        }
+        if !text.is_empty() {
+            segments.push(Segment {
+                text,
+                chars,
+                style: s.style,
+            });
+        }
+    }
+    (!segments.is_empty()).then_some(Word { segments })
+}
+
+/// The source range an item covers in `document`, for the items that carry
+/// one. `None` is "no position of its own" (interword glue, `\hfill`, a
+/// `\label`), which belongs with whatever stands before it.
+fn item_range(it: &Item, document: flashtex_compiler::DocumentId) -> Option<(usize, usize)> {
+    let of = |s: Span| (s.document == document).then_some((s.start, s.end));
+    match it {
+        Item::Word(w) => of(w.span()),
+        Item::Math { span, .. } | Item::Logo { span, .. } | Item::Rule { span, .. } | Item::Footnote { span, .. } => of(*span),
+        _ => None,
+    }
+}
+
+/// The source range a block's material covers in `document`. `None` means
+/// the block carries no position there, which `split_top_material` reads as
+/// "cannot be placed relative to the box" and refuses.
+fn block_range(b: &Block, document: flashtex_compiler::DocumentId) -> Option<(usize, usize)> {
+    let of = |s: &Span| (s.document == document).then_some((s.start, s.end));
+    match b {
+        Block::Paragraph { parts, .. } => {
+            let mut range: Option<(usize, usize)> = None;
+            for part in parts {
+                let r = match part {
+                    ParaPart::Lines(items) => items.iter().filter_map(|i| item_range(i, document)).fold(None, |a: Option<(usize, usize)>, r| {
+                        Some(a.map_or(r, |a| (a.0.min(r.0), a.1.max(r.1))))
+                    }),
+                    ParaPart::Display { span, .. } | ParaPart::Rows { span, .. } => of(span),
+                };
+                if let Some(r) = r {
+                    range = Some(range.map_or(r, |a| (a.0.min(r.0), a.1.max(r.1))));
+                }
+            }
+            range
+        }
+        Block::Heading { span, .. }
+        | Block::Chapter { span, .. }
+        | Block::Part { span, .. }
+        | Block::Title { span, .. }
+        | Block::ClearPage { span, .. }
+        | Block::NoBreakFalse { span }
+        | Block::Chrome { span, .. }
+        | Block::Rule { span, .. } => of(span),
+        _ => None,
+    }
+}
+
+/// Whether a block contributes to the page's vertical list. The ones that
+/// do not (a page-style command, `\clearpage`) may stand on either side of
+/// `\twocolumn`'s box without saying anything about where the box is.
+fn is_material(b: &Block) -> bool {
+    !matches!(b, Block::Chrome { .. } | Block::ClearPage { .. } | Block::NoBreakFalse { .. })
+}
+
+/// Splits `\twocolumn`'s optional argument out of `blocks`. `open` and
+/// `close` are the byte offsets of its `[` and `]`, which are dropped.
+///
+/// `\@topnewpage` sets the argument in a box of its own, so the text after
+/// the `]` starts a fresh paragraph in vertical mode — hence the `indent`
+/// on the remainder of a paragraph the `]` fell inside.
+///
+/// Returns `None`, leaving `blocks` untouched, when the material cannot be
+/// cut exactly: anything the box's page would already have set before it,
+/// a block other than a paragraph straddling a bracket, or material from
+/// another document (`\input` inside the argument).
+fn split_top_material(blocks: &mut Vec<Block>, document: flashtex_compiler::DocumentId, open: usize, close: usize) -> Option<Vec<Block>> {
+    let mut top: Vec<Block> = Vec::new();
+    let mut keep: Vec<Block> = Vec::new();
+    // Blocks are in document order: once a material block starts past the
+    // `]`, every block after it does too, so they join `keep` without
+    // needing a source range of their own. Only blocks up to and including
+    // the one containing the `]` must place relative to the box — a later
+    // `tikzpicture`, `longtable`, `\tableofcontents` or `\input` block
+    // carries no entry-document range, and requiring one of it refused the
+    // whole split and lost the banner.
+    let mut past_close = false;
+    for block in blocks.iter() {
+        if !is_material(block) {
+            keep.push(block.clone());
+            continue;
+        }
+        if past_close {
+            keep.push(block.clone());
+            continue;
+        }
+        let (lo, hi) = block_range(block, document)?;
+        if hi <= open {
+            // Material before the `[`: the command is not this page's
+            // first material after all, and `\@topnewpage` never ran here.
+            return None;
+        }
+        if lo > close {
+            past_close = true;
+            keep.push(block.clone());
+            continue;
+        }
+        if lo > open && hi <= close {
+            top.push(block.clone());
+            continue;
+        }
+        // The block straddles a bracket. Only a paragraph can be cut.
+        let Block::Paragraph { parts, indent, .. } = block else {
+            return None;
+        };
+        if hi > close {
+            // This block already reaches past the `]`: everything after it
+            // in document order does too.
+            past_close = true;
+        }
+        let (inside, after) = split_parts(parts, document, open, close)?;
+        if !inside.is_empty() {
+            let mut b = block.clone();
+            if let Block::Paragraph { parts, indent, .. } = &mut b {
+                *parts = inside;
+                // `\@parboxrestore` zeroes `\parindent` in the box.
+                *indent = false;
+            }
+            top.push(b);
+        }
+        if !after.is_empty() {
+            let mut b = block.clone();
+            if let Block::Paragraph {
+                parts,
+                indent: ind,
+                env_open,
+                eject_before,
+                vspace_before,
+                addvspace_before,
+                addvspace_flex,
+                vspace_flex,
+                endlist_adjust,
+                ..
+            } = &mut b
+            {
+                *parts = after;
+                if !top.is_empty() {
+                    // A fresh paragraph in vertical mode after the box.
+                    *ind = true;
+                    *env_open = None;
+                    *eject_before = false;
+                    *vspace_before = 0.0;
+                    *addvspace_before = 0.0;
+                    *addvspace_flex = (0.0, 0.0);
+                    *vspace_flex = (0.0, 0.0);
+                    *endlist_adjust = 0.0;
+                } else {
+                    *ind = *indent;
+                }
+            }
+            keep.push(b);
+        }
+    }
+    // `Context::box_blocks` sets a box's body, and drops page-level
+    // material (a sectioning command, `longtable`) with a warning of its
+    // own. Rather than lose it, refuse the whole split and leave the
+    // argument where it was.
+    if top.iter().any(|b| !matches!(b, Block::Paragraph { .. } | Block::Rule { .. } | Block::Picture { .. })) {
+        return None;
+    }
+    // The box's vertical list starts in vertical mode, so an environment
+    // that opens the material is a `\begin` read in vertical mode and
+    // `\@topsepadd` keeps `\partopsep` -- at both ends, since the closing
+    // `\@endparenv` reads the same flag. The source scan cannot see this:
+    // what precedes the `\begin` there is `\twocolumn[`.
+    if let Some(Block::Paragraph { env_open: Some(e), .. }) = top.first_mut() {
+        e.vmode = true;
+    }
+    if top.is_empty() {
+        // `\twocolumn[]`: the box is empty and `\@colht` loses nothing
+        // (its height is `-\dbltextfloatsep`, which the `\vskip
+        // \dbltextfloatsep` below it gives straight back). Measured:
+        // identical to `\twocolumn` with no argument.
+        *blocks = keep;
+        return Some(Vec::new());
+    }
+    *blocks = keep;
+    Some(top)
+}
+
+/// [`split_top_material`] for one paragraph's parts: `(what is inside the
+/// brackets, what follows the `]`)`.
+fn split_parts(parts: &[ParaPart], document: flashtex_compiler::DocumentId, open: usize, close: usize) -> Option<(Vec<ParaPart>, Vec<ParaPart>)> {
+    let mut inside: Vec<ParaPart> = Vec::new();
+    let mut after: Vec<ParaPart> = Vec::new();
+    for part in parts {
+        match part {
+            ParaPart::Display { span, .. } | ParaPart::Rows { span, .. } => {
+                if span.document != document {
+                    return None;
+                }
+                if span.start > close {
+                    after.push(part.clone());
+                } else if span.start > open && span.end <= close {
+                    inside.push(part.clone());
+                } else {
+                    return None;
+                }
+            }
+            ParaPart::Lines(items) => {
+                let (a, b) = split_items(items, document, open, close)?;
+                if !a.is_empty() {
+                    inside.push(ParaPart::Lines(a));
+                }
+                if !b.is_empty() {
+                    after.push(ParaPart::Lines(b));
+                }
+            }
+        }
+    }
+    Some((inside, after))
+}
+
+/// [`split_parts`] for one run of items. Words are cut character by
+/// character, which is how the `[` and the `]` are dropped: the compiler
+/// glues them to the words they touch (`[Short` .. `Line]`).
+fn split_items(items: &[Item], document: flashtex_compiler::DocumentId, open: usize, close: usize) -> Option<(Vec<Item>, Vec<Item>)> {
+    let mut inside: Vec<Item> = Vec::new();
+    let mut after: Vec<Item> = Vec::new();
+    for it in items {
+        match it {
+            Item::Word(w) => {
+                let chars = || w.segments.iter().flat_map(|s| s.chars.iter());
+                if w.segments.iter().any(|s| s.chars.len() != s.text.chars().count()) || chars().any(|c| c.document != document) {
+                    return None;
+                }
+                if chars().any(|c| c.start < open) {
+                    return None;
+                }
+                if let Some(a) = trim_word(w, document, open + 1, close) {
+                    inside.push(Item::Word(a));
+                }
+                if let Some(b) = trim_word(w, document, close + 1, usize::MAX) {
+                    after.push(Item::Word(b));
+                }
+            }
+            other => match item_range(other, document) {
+                Some((lo, _)) if lo > close => after.push(other.clone()),
+                Some((_, hi)) if hi <= open => return None,
+                Some(_) => inside.push(other.clone()),
+                // No position of its own: interword glue, `\hfill`, a
+                // `\label`. It belongs with what stands before it.
+                None if after.is_empty() => inside.push(other.clone()),
+                None => after.push(other.clone()),
+            },
+        }
+    }
+    // A paragraph neither ends nor starts with interword glue: the `\par`
+    // that closes the box discards the one, `\@parboxrestore`'s new
+    // paragraph the other.
+    while matches!(inside.last(), Some(Item::Space { .. })) {
+        inside.pop();
+    }
+    while matches!(after.first(), Some(Item::Space { .. })) {
+        after.remove(0);
+    }
+    Some((inside, after))
 }
 
 /// `(document, start, end)` of every formula with a colour of its own
@@ -2326,7 +2702,15 @@ fn clear_page_blocks(texts: &[&str], blocks: &[Block]) -> Vec<usize> {
                 _ => None,
             }?;
             let text = texts.get(at.document.0)?.get(..at.start)?;
-            let clear = text.rfind("\\clearpage").max(text.rfind("\\cleardoublepage"));
+            // `\twocolumn`/`\onecolumn` open with `\clearpage`, not
+            // `\newpage`: in a two-column document they end the *page*, not
+            // the column (measured — pdflatex puts the material after an
+            // `\onecolumn` in a `[twocolumn]` article on a new page).
+            let clear = text
+                .rfind("\\clearpage")
+                .max(text.rfind("\\cleardoublepage"))
+                .max(text.rfind("\\twocolumn"))
+                .max(text.rfind("\\onecolumn"));
             let column = text.rfind("\\newpage").max(text.rfind("\\pagebreak"));
             (clear.is_some() && clear > column).then_some(i)
         })
@@ -2747,7 +3131,11 @@ enum UnitKind<'p> {
     },
 }
 
-const PAGE_BREAKS: [&str; 3] = ["newpage", "clearpage", "pagebreak"];
+/// `\twocolumn` and `\onecolumn` both open with `\clearpage` (latex.ltx
+/// 20256-20275), so both end the page: measured against pdflatex, a
+/// `\twocolumn` after a paragraph puts the following text on a new page,
+/// and so does an `\onecolumn` in a `[twocolumn]` document.
+const PAGE_BREAKS: [&str; 5] = ["newpage", "clearpage", "pagebreak", "twocolumn", "onecolumn"];
 
 /// The character the tie occupies in a compiler text run.
 ///
@@ -2773,9 +3161,6 @@ fn split_at_page_breaks<'p>(
     style: &Stylesheet,
 ) -> Vec<Unit<'p>> {
     let theorem_envs = theorem_environments(texts);
-    // `\end{abstract}` is an `\endtrivlist` only in the one-column branch
-    // (see [`crate::abstractenv::end_is_endtrivlist`]).
-    let abstract_ends_trivlist = crate::abstractenv::end_is_endtrivlist(style);
     let mut units = Vec::new();
     let mut prev_end: Option<Span> = None;
     // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
@@ -2879,6 +3264,11 @@ fn split_at_page_breaks<'p>(
         // The hanging indent and the label box are the pipeline's too
         // (`list_margins`): the compiler reports `leftmargin` as
         // unimplemented.
+        // The gap's own byte offset travels with it: `gap_has_trivlist_end`
+        // asks `\if@twocolumn` *at* the `\end{abstract}` it finds there.
+        let gap_base = |f: Span| -> usize {
+            prev_end.filter(|p| p.document == f.document && p.end <= f.start).map_or(0, |p| p.end)
+        };
         let gap_before = |f: Span| -> Option<&str> {
             match prev_end {
                 Some(p) if p.document == f.document && p.end <= f.start => texts.get(f.document.0).and_then(|t| t.get(p.end..f.start)),
@@ -2948,7 +3338,7 @@ fn split_at_page_breaks<'p>(
                 };
                 let outer_parskip = outer_parskip_skip.natural;
                 if label.is_some() {
-                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b))).or_else(|| {
+                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b, at.document.0, gap_base(at)))).or_else(|| {
                         // `\begin{thebibliography}{<widest>}` is the span of
                         // the compiler's own `References` heading, so the
                         // gap after that heading holds no `\begin`: look
@@ -2956,10 +3346,10 @@ fn split_at_page_breaks<'p>(
                         let p = prev_end.filter(|p| prev_vmode && p.document == at.document && p.start < at.start)?;
                         let g = texts.get(p.document.0)?.get(p.start..at.start)?;
                         let b = rfind_command(g, "begin")?;
-                        g[b..].strip_prefix("\\begin").is_some_and(|r| r.trim_start().starts_with("{thebibliography}")).then_some((g, b))
+                        g[b..].strip_prefix("\\begin").is_some_and(|r| r.trim_start().starts_with("{thebibliography}")).then_some((g, b, p.document.0, p.start))
                     });
                     match opens {
-                        Some((g, b)) if list_env_after_begin(&g[b..]) => {
+                        Some((g, b, gap_doc, gap_base)) if list_env_after_begin(&g[b..]) => {
                             let before = &g[..b];
                             // `\endtrivlist`'s `\@endparenv` leaves TeX in
                             // vertical mode, so a `\begin{<list>}` that
@@ -2973,7 +3363,7 @@ fn split_at_page_breaks<'p>(
                                 || prev_end.is_none()
                                 || has_blank_line(before)
                                 || find_command(before, "par").is_some()
-                                || gap_has_trivlist_end(before, &theorem_envs, abstract_ends_trivlist);
+                                || gap_has_trivlist_end(before, &theorem_envs, style, gap_doc, gap_base);
                             if let Some(i) = stack.len().checked_sub(1) {
                                 if list_vmode_by_depth.len() <= i {
                                     list_vmode_by_depth.resize(i + 1, false);
@@ -3094,7 +3484,7 @@ fn split_at_page_breaks<'p>(
                 || prev_end.is_none()
                 || has_blank_line(before)
                 || find_command(before, "par").is_some()
-                || gap_has_trivlist_end(before, &theorem_envs, abstract_ends_trivlist);
+                || gap_has_trivlist_end(before, &theorem_envs, style, f.document.0, gap_base(f));
             Some(EnvOpen { vmode, skips: None })
         });
         // `\@endpe`: a plain paragraph right after `\end{...}` (no blank line
@@ -5184,16 +5574,28 @@ const VMODE_END_ENVS: [&str; 2] = ["lstlisting", "lstlisting*"];
 /// Measured against pdflatex in `tests/vmode_boundary_skips.rs`: every one
 /// of these boundaries steps by `\baselineskip` + `\topsep` + `\partopsep`,
 /// never by `\topsep` alone.
-fn gap_has_trivlist_end(gap: &str, theorem_envs: &std::collections::HashSet<String>, abstract_ends_trivlist: bool) -> bool {
+///
+/// `gap` starts at byte `base` of document `document`, which `abstract`
+/// needs: whether *that* `\end{abstract}` is an `\endtrivlist` depends on
+/// `\if@twocolumn` where it stands, and `\twocolumn`/`\onecolumn` can
+/// change that between two of them.
+fn gap_has_trivlist_end(
+    gap: &str,
+    theorem_envs: &std::collections::HashSet<String>,
+    style: &Stylesheet,
+    document: usize,
+    base: usize,
+) -> bool {
     let Some(end) = rfind_command(gap, "end") else { return false };
     let rest = gap[end + "\\end".len()..].trim_start();
     let Some(rest) = rest.strip_prefix('{') else { return false };
     let Some((name, _)) = rest.split_once('}') else { return false };
     let name = name.trim();
     if name == "abstract" {
-        // Whether this `\end` is an `\endtrivlist` depends on the class
-        // options, not on the name ([`crate::abstractenv::end_is_endtrivlist`]).
-        return abstract_ends_trivlist;
+        // Whether this `\end` is an `\endtrivlist` depends on two-column
+        // mode where it stands, not on the name
+        // ([`crate::abstractenv::end_is_endtrivlist`]).
+        return crate::abstractenv::end_is_endtrivlist(style, document, base + end);
     }
     LIST_ENVS.contains(&name) || TRIVLIST_ENVS.contains(&name) || VMODE_END_ENVS.contains(&name) || theorem_envs.contains(name)
 }

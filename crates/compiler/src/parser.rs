@@ -1443,6 +1443,8 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "newpage",
     "clearpage",
     "cleardoublepage",
+    "twocolumn",
+    "onecolumn",
     "pagebreak",
     "nopagebreak",
     "linebreak",
@@ -3282,6 +3284,13 @@ impl P<'_> {
             "graphicspath" | "allowdisplaybreaks" | "pagestyle" | "thispagestyle" => {
                 self.argument_only_command(name, span)
             }
+            // Preamble or body: latex.ltx's `\twocolumn`/`\onecolumn`, which
+            // both open with `\clearpage` and then set `\if@twocolumn`.
+            // Which columns the page then has is the renderer's business
+            // (it reads the commands' positions from the source, as it
+            // already does for `\pagestyle`); the only thing the parser owes
+            // it is the page break and no "unknown command" error.
+            "twocolumn" | "onecolumn" => self.column_command(name, span, blocks, para),
             // `\hypersetup{key=value,...}` (hyperref): the same keys the
             // package options take, settable anywhere. Every key this
             // compiler recognises is a PDF annotation, outline or metadata
@@ -3683,6 +3692,79 @@ impl P<'_> {
             .unwrap_or(crate::xref::NumberStyle::Arabic);
         self.document_global_state = true;
         para.push(Inline::PageNumbering { style, span });
+    }
+
+    /// `\twocolumn[<material>]` / `\onecolumn` (latex.ltx lines 20256-20275).
+    ///
+    /// Both begin with `\clearpage`, so both end the current page: measured
+    /// against pdflatex (TeX Live 2026, `article`), a `\twocolumn` after a
+    /// paragraph puts the following text on a *new* page, and so does an
+    /// `\onecolumn` in a `[twocolumn]` document. A command with nothing
+    /// typeset before it ships no page, exactly as `\clearpage` does, which
+    /// is why this emits the same [`Block::PageBreak`] the kernel's own
+    /// `\clearpage` does rather than a column-specific node.
+    ///
+    /// The column count itself is not in this IR: the parser has no page
+    /// model, and the renderer already reads `\pagestyle` and friends back
+    /// out of the source by position. What it must not do is let
+    /// `\twocolumn` reach `unsupported`, which would report an unknown
+    /// command in addition to whatever this does with the argument.
+    ///
+    /// `\twocolumn[<material>]` sets `<material>` at the full `\textwidth`
+    /// above both columns (`\@topnewpage`); that positioning has no model
+    /// here either. What matters is *not* discarding the argument the way
+    /// `optional_bracket_argument` (an options-string reader) would: its
+    /// tokens are left exactly where they stand, unconsumed, so they typeset
+    /// as ordinary paragraph content right after the page break, brackets
+    /// included — real `Inline` items at the bracket's own byte positions,
+    /// the shape a renderer with a `\@topnewpage` box needs to find and cut
+    /// the material back out of this IR. Swallowing it here (#746) read
+    /// clean but made that impossible: nothing of `[<material>]` survived to
+    /// find. A diagnostic still says the positioning itself is not done.
+    #[inline(never)]
+    fn column_command(
+        &mut self,
+        name: &str,
+        _span: Span,
+        blocks: &mut Vec<Block>,
+        para: &mut Vec<Inline>,
+    ) {
+        if name == "twocolumn" {
+            if let Some(bracket) = self.peek_bracket_span() {
+                self.diags.push(Diagnostic::warning(
+                    "the optional argument of \\twocolumn sets material at the full \
+                     \\textwidth above both columns (\\@topnewpage); that positioning is not \
+                     implemented here, so the material is typeset as ordinary text instead, \
+                     brackets included"
+                        .to_string(),
+                    Some(bracket),
+                    None,
+                ));
+            }
+        }
+        self.document_global_state = true;
+        // A preamble `\twocolumn`/`\onecolumn` is the usual way to ask for
+        // the whole document, and its `\clearpage` has nothing to ship.
+        if !self.in_body {
+            return;
+        }
+        self.flush_paragraph(blocks, para);
+        blocks.push(Block::PageBreak);
+        self.finish_block_dependencies();
+    }
+
+    /// The span of a `[` that stands next in the token stream (after
+    /// skipping spaces, the way `\@ifnextchar [` does), without consuming
+    /// anything: a look-ahead for [`column_command`]'s diagnostic, which
+    /// must not take the bracket's tokens away from the paragraph that is
+    /// about to read them normally.
+    fn peek_bracket_span(&mut self) -> Option<Span> {
+        self.skip_spaces();
+        let first = self.peek()?;
+        match &first.kind {
+            TokenKind::Word(word) if word.starts_with('[') => Some(first.span),
+            _ => None,
+        }
     }
 
     /// Run-in `\paragraph`/`\subparagraph` (see the comment in [`P::command`]).
