@@ -629,6 +629,18 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
     (&["bmod", "mod"], "", "upright mod", true),
     (&["pmod"], "{n}", "parenthesised (mod n)", true),
     (
+        &["pod"],
+        "{n}",
+        "amsmath parenthesised (n): like \\pmod without the mod text; needs amsmath",
+        true,
+    ),
+    (
+        &["allowbreak"],
+        "",
+        "zero-penalty breakpoint in a formula (\\penalty0); layout-neutral, formulas never break",
+        true,
+    ),
+    (
         &["mathbb"],
         "{A-Z}",
         "double-struck capitals from Latin Modern Math; other arguments are diagnosed",
