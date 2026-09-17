@@ -768,7 +768,7 @@ Canonical sources:
 | `\mathfrak` | `{letters}` | Euler Fraktur letters as Unicode mathematical fraktur; digits and other characters unchanged |
 | `\mathcal` | `{A-Z}` | script capitals from New Computer Modern Math at cmsy10 metrics; other arguments are diagnosed |
 | `\varnothing` |  | empty set at msbm10's 0.7778em advance (\emptyset's glyph) |
-| `\Diamond` |  | open diamond at lasy10's 0.7917em advance (U+25C7, not \square's width) |
+| `\Diamond` |  | amsfonts alias of \lozenge (msam, 0.6667em); requires amsfonts/amssymb |
 | `\iff` |  | long double arrow between thick (5mu) spaces |
 | `\implies` |  | long double arrow between thick (5mu) spaces |
 | `\impliedby` |  | long double arrow between thick (5mu) spaces |

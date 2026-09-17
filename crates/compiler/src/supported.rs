@@ -650,7 +650,7 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
     (
         &["Diamond"],
         "",
-        "open diamond at lasy10's 0.7917em advance (U+25C7, not \\square's width)",
+        "amsfonts alias of \\lozenge (msam, 0.6667em); requires amsfonts/amssymb",
         true,
     ),
     (
