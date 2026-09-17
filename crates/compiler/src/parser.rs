@@ -515,9 +515,11 @@ pub enum UnderlineGeom {
     /// baseline. The fragment's depth grows to the rule bottom while its
     /// width and height stay the content's own: pdflatex 10pt `word` and
     /// `\hl{word}` are both 21.4167pt wide with the same height, and only
-    /// the depth changes (to 3.22914pt = 0.75ex). Like the other geoms the
-    /// fragment never breaks across lines (real soul's rule follows each
-    /// line fragment; that is a documented limitation, see `\hl`).
+    /// the depth changes (to 3.22914pt = 0.75ex). A fragment never breaks
+    /// within itself; a multi-word `\hl` is one fragment per word,
+    /// breakable between the fragments (real soul's rule also follows each
+    /// line fragment instead — the render-pipeline painting of a
+    /// line-broken highlight stays a known follow-up, see `\hl`).
     SoulHighlight,
 }
 
@@ -573,12 +575,16 @@ const SOUL_HIGHLIGHT_DEPTH_EX: f64 = 0.75;
 /// 10pt cmr: 1.75 * 4.30554pt = 7.5347pt above the baseline; 12pt cmr
 /// (x-height 5.16667pt): 9.0417pt. Together with
 /// [`SOUL_HIGHLIGHT_DEPTH_EX`] (0.75ex below) this is soul's
-/// `\setul{}{2.5ex}` rule. Only the depth arm is load-bearing in either
-/// layout today (the yellow is painted by the wrapping zero-sep color box,
-/// which has no top-overlap field); the top arm is kept exact so the
-/// geometry still describes the real behind-text highlight covering the
-/// ascenders, including its `.25pt` side overlap follow-up.
+/// `\setul{}{2.5ex}` rule. The depth arm extends the fragment below the
+/// baseline in both layouts; the top arm rides on the wrapping zero-sep
+/// color box as [`SoulHighlightExtents`] so the background paint path can
+/// extend the yellow fill above the glyphs (round-2 finding 3).
 const SOUL_HIGHLIGHT_TOP_EX: f64 = 1.75;
+
+/// How far past the content on each side soul's `\hl` fill reaches, in TeX
+/// points. Carried on the box by [`SoulHighlightExtents`] with the top
+/// above; the paint path consumes both as a follow-up.
+const SOUL_HIGHLIGHT_SIDE_PT: f64 = 0.25;
 
 /// An underline / strike wrapper (`Inline::Underline`).
 ///
@@ -588,8 +594,10 @@ const SOUL_HIGHLIGHT_TOP_EX: f64 = 1.75;
 /// [`UnderlineGeom::Underbar`] is kernel `\underbar` (content depth zeroed).
 /// [`UnderlineGeom::Strike`] is ulem `\sout`.
 /// [`UnderlineGeom::SoulHighlight`] is soul `\hl`'s behind-text rule
-/// (always emitted with thickness 0; only its depth arm is load-bearing).
-/// The fragment does not break across lines.
+/// (always emitted with thickness 0; its depth arm extends the fragment
+/// below the baseline while its top arm rides on the wrapping box as
+/// [`SoulHighlightExtents`]). A fragment never breaks within itself;
+/// a multi-word highlight breaks between its fragments.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Underline {
     pub content: Vec<Inline>,
@@ -601,10 +609,29 @@ pub struct Underline {
     pub space_before: bool,
 }
 
+/// soul `\hl` highlight extents carried on the background-paint node
+/// (round-2 finding 3): the wrapping zero-separation `ColorBox` paints its
+/// yellow fill from the content bounds, which never reach soul's highlight
+/// top above the glyphs. The fill must extend by these instead. `None` on
+/// an ordinary xcolor box.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SoulHighlightExtents {
+    /// How far above the baseline the yellow fill reaches, in ex (soul's
+    /// 1.75ex: [`SOUL_HIGHLIGHT_TOP_EX`]), resolved font-relatively
+    /// downstream like the underline geometry.
+    pub top_ex: f64,
+    /// How far past the content on each side the fill reaches, in TeX
+    /// points ([`SOUL_HIGHLIGHT_SIDE_PT`]).
+    pub side_pt: f64,
+}
+
 /// `\colorbox[model]{fill}{text}` or `\fcolorbox[model]{frame}{fill}{text}`
 /// (xcolor.sty 3.02 `\color@b@x`, `\XC@frameb@x`): `content` in an
 /// unbreakable box, behind it a `fill` rectangle `\fboxsep` larger on
 /// every side, and for `\fcolorbox` a `frame` of `\fboxrule` around that.
+/// soul `\hl` reuses this node with zero separation for its yellow
+/// behind-text rule (one box per word fragment); then `highlight` carries
+/// the fill extents above.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColorBox {
     pub fill: DeviceColor,
@@ -617,6 +644,9 @@ pub struct ColorBox {
     pub span: Span,
     /// See `Inline::Text::space_before`.
     pub space_before: bool,
+    /// soul `\hl` only (`None` for `\colorbox`/`\fcolorbox`): the
+    /// highlight top/overlap extents for the background paint path.
+    pub highlight: Option<SoulHighlightExtents>,
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -6642,6 +6672,7 @@ impl P<'_> {
             fboxrule_pt: self.fboxrule_pt,
             span: open.merge(argument_span).merge(end_span),
             space_before,
+            highlight: None,
         })));
     }
 
@@ -8532,15 +8563,16 @@ impl P<'_> {
                                 let em_pt =
                                     self.font_setup().em_ex_sp(style).0 as f64 / 65536.0;
                                 let outer = std::mem::replace(&mut self.style, style);
-                                let inner = self.soul_inner_content(&group, em_pt, false);
+                                let fragments =
+                                    self.soul_hl_fragments(&group, em_pt, full, space_before);
                                 self.style = outer;
-                                content.push(soul_highlight(inner, full, space_before));
+                                content.extend(fragments);
                             } else {
                                 let em_pt =
                                     self.font_setup().em_ex_sp(style).0 as f64 / 65536.0;
                                 let outer = std::mem::replace(&mut self.style, style);
                                 let mut spaced =
-                                    self.soul_inner_content(&group, em_pt, true);
+                                    self.soul_inner_content(&group, em_pt);
                                 self.style = outer;
                                 match spaced.first_mut() {
                                     Some(Inline::Text { space_before: first, .. }) => {
@@ -9035,10 +9067,11 @@ impl P<'_> {
         let em_pt = self.font_setup().em_ex_sp(self.style).0 as f64 / 65536.0;
         if name == "hl" {
             // soul's highlight is a yellow rule BEHIND the text (see
-            // `soul_highlight`); argument spaces are highlighted too, via
-            // `soul_inner_content` (review finding 8).
-            let content = self.soul_inner_content(&tokens, em_pt, false);
-            para.push(soul_highlight(content, full, space_before));
+            // `soul_highlight`): one breakable fragment per word with
+            // pdflatex's natural glue between the words (round-2 findings
+            // 1 and 2a), while argument-edge spaces stay painted inside
+            // the end fragments (review finding 8).
+            para.extend(self.soul_hl_fragments(&tokens, em_pt, full, space_before));
             return;
         }
         // `\so`: soul's letterspaced argument (soul.sty's `\sodef\textso`
@@ -9060,7 +9093,7 @@ impl P<'_> {
         if let Some(space_span) = leading_space.filter(|_| emit_leading) {
             para.push(soul_glue(SOUL_EDGE_SPACE_EM, em_pt, space_span));
         }
-        let mut spaced = self.soul_inner_content(&tokens, em_pt, true);
+        let mut spaced = self.soul_inner_content(&tokens, em_pt);
         let carry_space = space_before && !emit_leading;
         match spaced.first_mut() {
             Some(Inline::Text { space_before: first, .. }) => *first = carry_space,
@@ -9108,24 +9141,13 @@ impl P<'_> {
         false
     }
 
-    /// `\so`/`\hl` argument content with soul's inner word spaces: the raw
-    /// argument tokens split at top-level spaces, each segment boxed in turn
-    /// and letterspaced, and joined with soul's `.65em` replacement glue
-    /// carrying each split space's own span (review findings 1 and 8).
+    /// Raw `\so`/`\hl` argument tokens split at top-level spaces:
+    /// one token run per word plus the span of each split space.
     /// Splitting the raw tokens (rather than relying on the boxed runs'
     /// `space_before`) keeps argument-edge spaces that `box_inlines` would
-    /// otherwise fold away: a leading or trailing space becomes leading or
-    /// trailing inner glue, and consecutive spaces collapse to one, as in
-    /// TeX. Nested spaces (inside groups) keep the run-span glue that
-    /// `space_out_letters` bridges where adjacent. `letterspace` splits each
-    /// segment's runs into kerned letters (`\\so`); `\\hl` keeps its words
-    /// whole.
-    fn soul_inner_content(
-        &mut self,
-        tokens: &[InputToken],
-        em_pt: f64,
-        letterspace: bool,
-    ) -> Vec<Inline> {
+    /// otherwise fold away, and consecutive spaces collapse to one, as in
+    /// TeX. Spaces nested inside groups stay inside their segment.
+    fn soul_split_argument(tokens: &[InputToken]) -> (Vec<Vec<InputToken>>, Vec<Span>) {
         let mut segments: Vec<Vec<InputToken>> = vec![Vec::new()];
         let mut spaces: Vec<Span> = Vec::new();
         let mut depth = 0usize;
@@ -9146,15 +9168,21 @@ impl P<'_> {
                 _ => segments.last_mut().expect("at least one segment").push(token.clone()),
             }
         }
+        (segments, spaces)
+    }
+
+    /// `\so` argument content with soul's inner word spaces: each segment
+    /// boxed in turn and letterspaced, and joined with soul's `.65em`
+    /// replacement glue carrying each split space's own span (review
+    /// findings 1 and 8). Nested spaces (inside groups) keep the run-span
+    /// glue that `space_out_letters` bridges where adjacent.
+    fn soul_inner_content(&mut self, tokens: &[InputToken], em_pt: f64) -> Vec<Inline> {
+        let (segments, spaces) = Self::soul_split_argument(tokens);
         let last = segments.len() - 1;
         let boxed = self.soul_box_segments(&segments);
         let mut out = Vec::new();
         for (index, pieces) in boxed.into_iter().enumerate() {
-            let mut pieces = if letterspace {
-                space_out_letters(&pieces, em_pt)
-            } else {
-                pieces
-            };
+            let mut pieces = space_out_letters(&pieces, em_pt);
             // An empty middle segment is a collapsed consecutive space: its
             // glue is skipped, while leading/trailing ones stay (finding 8).
             if index > 0 && (!segments[index].is_empty() || index == last) {
@@ -9174,6 +9202,97 @@ impl P<'_> {
             out.extend(pieces);
         }
         out
+    }
+
+    /// soul `\hl` argument content (round-2 findings 1 and 2a): one yellow
+    /// behind-text fragment per word, so the highlight is genuinely
+    /// breakable at the compiler level instead of one overfull box. Gaps
+    /// between words are pdflatex's natural interword glue — no explicit
+    /// `HSpace`, so `\hl{a b}` is exactly as wide as `a b` — while a
+    /// leading or trailing argument space stays painted inside its end
+    /// fragment at that same natural width (finding 8). Consecutive spaces
+    /// collapse to one, as in TeX; spaces nested inside groups keep their
+    /// natural boxed glue. A fragment's span covers its word's bytes, so the
+    /// layouts read the natural gaps from the source between the fragments.
+    fn soul_hl_fragments(
+        &mut self,
+        tokens: &[InputToken],
+        em_pt: f64,
+        full: Span,
+        space_before: bool,
+    ) -> Vec<Inline> {
+        let (segments, spaces) = Self::soul_split_argument(tokens);
+        let boxed = self.soul_box_segments(&segments);
+        // Segments with rendered content, in order, with their word spans.
+        let mut words: Vec<(usize, Span, Vec<Inline>)> = Vec::new();
+        for (index, pieces) in boxed.into_iter().enumerate() {
+            if pieces.is_empty() {
+                continue;
+            }
+            let span = segments[index]
+                .first()
+                .map(|first| {
+                    segments[index]
+                        .last()
+                        .map(|last| first.token.span.merge(last.token.span))
+                        .unwrap_or(first.token.span)
+                })
+                .unwrap_or(full);
+            words.push((index, span, pieces));
+        }
+        if words.is_empty() {
+            // `\hl{}` typesets nothing; `\hl{ }` highlights one natural
+            // space (finding 8: argument spaces are highlighted too).
+            if let Some(space) = spaces.first() {
+                let content = vec![soul_glue(SOUL_HL_SPACE_EM, em_pt, *space)];
+                return vec![soul_highlight(content, full, space_before)];
+            }
+            return Vec::new();
+        }
+        let first_word = words.first().expect("at least one word").0;
+        let last_word = words.last().expect("at least one word").0;
+        let last_position = words.len() - 1;
+        words
+            .into_iter()
+            .enumerate()
+            .map(|(position, (_, span, mut pieces))| {
+                if position == 0 {
+                    // A leading argument space stays painted inside the
+                    // first fragment at the natural width (finding 8,
+                    // corrected to the natural width by finding 1).
+                    if first_word > 0 {
+                        pieces.insert(
+                            0,
+                            soul_glue(SOUL_HL_SPACE_EM, em_pt, spaces[first_word - 1]),
+                        );
+                    }
+                } else {
+                    // Past the first fragment the pieces follow a natural
+                    // interword gap, which the layouts read from the source
+                    // between the fragments; the flag carries it in the
+                    // layout that keys gaps off `space_before`.
+                    match pieces.first_mut() {
+                        Some(Inline::Text { space_before: first, .. }) => *first = true,
+                        Some(Inline::ColorBox(b)) => b.space_before = true,
+                        Some(Inline::Underline(u)) => u.space_before = true,
+                        _ => {}
+                    }
+                }
+                // A trailing argument space stays painted inside the last
+                // fragment at the natural width (finding 8, corrected to
+                // the natural width by finding 1).
+                if position == last_position && last_word < segments.len() - 1 {
+                    if let Some(space) = spaces.last() {
+                        pieces.push(soul_glue(SOUL_HL_SPACE_EM, em_pt, *space));
+                    }
+                }
+                soul_highlight(
+                    pieces,
+                    span,
+                    if position == 0 { space_before } else { true },
+                )
+            })
+            .collect()
     }
 
     /// Box each of `\so`/`\hl`'s space-separated argument segments in turn,
@@ -10680,6 +10799,16 @@ const SOUL_INNER_SPACE_EM: f64 = 0.65;
 /// spaces (2 * (5.5pt - 3.33333pt) = +4.33334pt). Lowered as [`soul_glue`].
 const SOUL_EDGE_SPACE_EM: f64 = 0.55;
 
+// Round-2 finding 1 keeps pdflatex's natural glue inside `\hl` (unlike
+/// `\so`, soul never widens highlight spaces: `\hl{a b}` is exactly as
+/// wide as `a b`). cmr's interword glue is `em/3` (fontdimen2; see
+/// [`SOUL_GLUE_STRETCH_FRAC`]), so [`soul_glue`] with this fraction
+/// reproduces the natural space — finite stretch/shrink included. Only
+/// argument-edge spaces are lowered this way, painted inside their end
+/// fragment; gaps between words stay ordinary source glue so the
+/// highlight breaks there (round-2 finding 2a).
+const SOUL_HL_SPACE_EM: f64 = 1.0 / 3.0;
+
 /// Stretch/shrink of soul's replacement spaces, as fractions of the natural
 /// width: cmr's interword glue is `em/3` plus `em/6` minus `em/9`
 /// (fontdimen2/3/4), so the stretch is half the natural width and the shrink
@@ -10722,8 +10851,11 @@ fn soul_glue(em_frac: f64, em_pt: f64, span: Span) -> Inline {
 /// fragment to the highlight depth. A bare `Inline::Underline` would be the
 /// natural node — except the pipeline paints every underline rule black and
 /// *over* the text, which would bury the glyphs under a black bar.
-/// Single-line only (an unbreakable box): real soul's rule follows each line
-/// fragment instead, a documented limitation (review finding 3).
+/// One word-fragment only (an unbreakable box within the word): a
+/// multi-word `\hl` is one of these per word (see `soul_hl_fragments`),
+/// breakable between the fragments, while real soul's rule also follows
+/// each line fragment — the render-pipeline painting of a line-broken
+/// highlight stays a known follow-up.
 fn soul_highlight(content: Vec<Inline>, span: Span, space_before: bool) -> Inline {
     let yellow = DeviceColor::from_billionths(ColorSpace::Cmyk, &[0, 0, 1_000_000_000, 0])
         .unwrap_or(DeviceColor::BLACK);
@@ -10746,6 +10878,10 @@ fn soul_highlight(content: Vec<Inline>, span: Span, space_before: bool) -> Inlin
         fboxrule_pt: 0.0,
         span,
         space_before,
+        highlight: Some(SoulHighlightExtents {
+            top_ex: SOUL_HIGHLIGHT_TOP_EX,
+            side_pt: SOUL_HIGHLIGHT_SIDE_PT,
+        }),
     }))
 }
 

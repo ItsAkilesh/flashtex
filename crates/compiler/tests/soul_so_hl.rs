@@ -20,7 +20,7 @@
 //!   work) and must keep its exact `unknown_command` error.
 use flashtex_compiler::color::{ColorSpace, DeviceColor};
 use flashtex_compiler::diagnostics::DiagnosticCode;
-use flashtex_compiler::parser::{parse, Block, Inline, UnderlineGeom};
+use flashtex_compiler::parser::{parse, Block, Inline, SoulHighlightExtents, UnderlineGeom};
 use flashtex_compiler::text_builtins::TextDimen;
 
 fn soul_doc(body: &str) -> String {
@@ -199,13 +199,13 @@ fn hl_with_soul_is_a_natural_width_highlight() {
     assert_eq!(hl.fboxrule_pt, 0.0, "no frame rule: {inlines:?}");
     // The depth comes from the zero-thickness highlight underline inside:
     // thickness 0 draws no rule in either layout, while the SoulHighlight
-    // geometry still extends the fragment to the rule depth. Single
-    // unbreakable fragment (real soul's rule follows each line fragment
-    // instead — documented limitation, not silently ignored).
+    // geometry still extends the fragment to the rule depth. One word is
+    // one fragment; several words become one fragment each, breakable
+    // between them (round-2 finding 2a).
     assert_eq!(
         hl.content.len(),
         1,
-        "single unbreakable fragment: {inlines:?}"
+        "one underline per fragment: {inlines:?}"
     );
     let inner = match &hl.content[0] {
         Inline::Underline(u) => u,
@@ -782,7 +782,8 @@ fn so_leading_arg_space_becomes_inner_glue() {
 
 /// Slice-1 finding 8: `\hl{bc }` highlights the argument's trailing space —
 /// the highlight content ends with that space's glue (pre-fix the space was
-/// discarded before the box was built).
+/// discarded before the box was built). Round-2 finding 1 corrects the
+/// width to pdflatex's natural interword glue (was soul's `.65em`).
 #[test]
 fn hl_trailing_arg_space_is_highlighted() {
     let source = soul_doc("\\hl{bc }");
@@ -817,8 +818,120 @@ fn hl_trailing_arg_space_is_highlighted() {
         inner.content
     );
     assert!(
-        (glue[0].0 - 6.5).abs() < 0.001,
-        "highlighted at soul's inner width: got {:?}",
+        (glue[0].0 - 10.0 / 3.0).abs() < 0.01,
+        "highlighted at the natural interword width: got {:?}",
+        glue[0]
+    );
+    assert_eq!(
+        (glue[0].1.start, glue[0].1.end),
+        (space_at, space_at + 1),
+        "with the argument space's span"
+    );
+}
+
+/// Round-2 finding 3: `\hl{x}` carries soul's highlight top/overlap
+/// extents on the background-paint node. The yellow fill is painted from
+/// the `ColorBox` bounds, which cover only the content — without explicit
+/// extents the fill never reaches soul's highlight top (-1.75ex, well above
+/// the glyphs for `x`). The box now records that top (in ex, resolved
+/// font-relatively downstream like the underline geometry) plus soul's
+/// side overlap, so the paint path can extend the fill; an ordinary
+/// `\colorbox` carries none.
+#[test]
+fn hl_box_carries_highlight_top_extents() {
+    let source = soul_doc("\\hl{x}");
+    assert!(
+        parse(&source).diagnostics.is_empty(),
+        "silent: {:?}",
+        parse(&source).diagnostics
+    );
+    let inlines = paragraph_inlines(&source);
+    let boxed = inlines
+        .iter()
+        .find_map(|inline| match inline {
+            Inline::ColorBox(b) => Some(b),
+            _ => None,
+        })
+        .expect("highlight box survives");
+    assert_eq!(
+        boxed.highlight,
+        Some(SoulHighlightExtents {
+            top_ex: 1.75,
+            side_pt: 0.25,
+        }),
+        "explicit top/overlap extents on the background-paint node: {inlines:?}"
+    );
+    // The carried top agrees with the underline geometry: at 10pt cmr
+    // (x-height 4.30554pt) the rule top is exactly -1.75ex above the
+    // baseline, covering the ascenders the content bounds miss.
+    let ex_10pt_cmr = 4.30554;
+    let (top, _) =
+        UnderlineGeom::SoulHighlight.rule_top_and_depth(0.0, 0.0, 2.5, ex_10pt_cmr);
+    let extents = boxed.highlight.expect("highlight extents");
+    assert!(
+        (top + extents.top_ex * ex_10pt_cmr).abs() < 1e-9,
+        "carried top matches the soul geometry: {top} vs -1.75ex"
+    );
+    // An ordinary xcolor box carries no highlight extents.
+    let plain = "\\documentclass{article}\n\\usepackage{xcolor}\n\\begin{document}\n\\colorbox{yellow}{x}\n\\end{document}";
+    assert!(
+        parse(plain).diagnostics.is_empty(),
+        "colorbox silent: {:?}",
+        parse(plain).diagnostics
+    );
+    let plain_box = paragraph_inlines(plain)
+        .into_iter()
+        .find_map(|inline| match inline {
+            Inline::ColorBox(b) => Some(b),
+            _ => None,
+        })
+        .expect("xcolor box survives");
+    assert_eq!(
+        plain_box.highlight, None,
+        "xcolor boxes carry no highlight extents"
+    );
+}
+
+/// Finding 8 mirror of the trailing-space test: `\hl{ bc}` paints the
+/// leading argument space inside the first fragment at the natural width.
+#[test]
+fn hl_leading_arg_space_is_highlighted() {
+    let source = soul_doc("\\hl{ bc}");
+    assert!(
+        parse(&source).diagnostics.is_empty(),
+        "silent: {:?}",
+        parse(&source).diagnostics
+    );
+    let inlines = paragraph_inlines(&source);
+    let space_at = source.find("{ bc}").expect("argument space") + 1;
+    let boxed = inlines
+        .iter()
+        .find_map(|inline| match inline {
+            Inline::ColorBox(b) => Some(b),
+            _ => None,
+        })
+        .expect("highlight box survives");
+    let inner = match &boxed.content[0] {
+        Inline::Underline(u) => u,
+        other => panic!("highlight wraps one underline: {other:?}"),
+    };
+    let glue = inner
+        .content
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::HSpace { pt, span, .. } => Some((*pt, *span)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        glue.len(),
+        1,
+        "leading space inside the highlight: {:?}",
+        inner.content
+    );
+    assert!(
+        (glue[0].0 - 10.0 / 3.0).abs() < 0.01,
+        "highlighted at the natural interword width: got {:?}",
         glue[0]
     );
     assert_eq!(
@@ -924,10 +1037,13 @@ fn so_declaration_spans_segments() {
     assert_eq!(glue_pts(&inlines), vec![6.5], "inner glue kept: {inlines:?}");
 }
 
-/// Slice-1: `\hl{a b}` highlights the inner space too — the highlight
-/// content carries the same replacement glue as `\so`.
+/// Round-2 finding 1: `\hl{a b}` keeps pdflatex's NATURAL interword glue,
+/// not soul's `.65em` `\so` replacement space (`\hl{a b}` was ~3.17pt too
+/// wide at 10pt: 6.5pt instead of 3.33333pt). The gap between the words is
+/// therefore an ordinary breakable space — no explicit `HSpace` at all —
+/// while each word keeps its own yellow fragment (round-2 finding 2a).
 #[test]
-fn hl_multiword_highlights_inner_space() {
+fn hl_multiword_inner_space_is_natural() {
     let source = soul_doc("\\hl{a b}");
     assert!(
         parse(&source).diagnostics.is_empty(),
@@ -935,24 +1051,67 @@ fn hl_multiword_highlights_inner_space() {
         parse(&source).diagnostics
     );
     let inlines = paragraph_inlines(&source);
-    let boxed = inlines.iter().find_map(|inline| match inline {
-        Inline::ColorBox(b) => Some(b),
-        _ => None,
-    });
-    let boxed = boxed.expect("highlight box survives");
-    let inner = match &boxed.content[0] {
-        Inline::Underline(u) => u,
-        other => panic!("highlight wraps one underline: {other:?}"),
-    };
-    assert!(
-        inner.content.iter().any(|i| matches!(
-            i,
-            Inline::HSpace { pt, .. } if (pt - 6.5).abs() < 0.001
-        )),
-        "inner .65em glue inside the highlight: {:?}",
-        inner.content
+    let boxes: Vec<_> = inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::ColorBox(b) => Some(b),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        boxes.len(),
+        2,
+        "one highlight fragment per word, breakable between them: {inlines:?}"
     );
-    assert_eq!(text_of(&boxed.content).replace(' ', ""), "ab");
+    assert_eq!(text_of(&boxes[0].content), "a");
+    assert_eq!(text_of(&boxes[1].content), "b");
+    assert!(
+        boxes[1].space_before,
+        "the inter-word gap is natural glue, not explicit: {inlines:?}"
+    );
+    assert!(
+        !inlines.iter().any(|i| matches!(
+            i,
+            Inline::HSpace { pt, .. } if (pt - 6.5).abs() < 0.01
+        )),
+        "no soul .65em space anywhere in \\hl: {inlines:?}"
+    );
+    // Width proof in this layout: the a->b advance inside `\hl{a b}` is
+    // exactly the advance of a plain `a b` (pre-fix it was wider by
+    // .65em minus one natural space).
+    assert!(
+        (ab_gap("\\hl{a b}") - ab_gap("a b")).abs() < 0.05,
+        "\\hl{{a b}} advances like plain `a b`"
+    );
+}
+
+/// Advance from the `a` item to the `b` item at 10pt in this layout.
+fn ab_gap(body: &str) -> f64 {
+    let source = soul_doc(body);
+    let parsed = parse(&source);
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "{body} silent: {:?}",
+        parsed.diagnostics
+    );
+    let constraints = flashtex_compiler::layout::LayoutConstraints {
+        font_size_pt: 10.0,
+        ..Default::default()
+    };
+    let pages =
+        flashtex_compiler::layout::layout_with_constraints(&parsed.blocks, constraints);
+    let items: Vec<_> = pages.iter().flat_map(|p| &p.items).collect();
+    let xa = items
+        .iter()
+        .find(|item| item.text == "a")
+        .expect("item a")
+        .x_pt;
+    let xb = items
+        .iter()
+        .find(|item| item.text == "b")
+        .expect("item b")
+        .x_pt;
+    xb - xa
 }
 
 /// Slice-1: nested styling across a top-level `\so` space keeps working —
@@ -987,6 +1146,62 @@ fn caption_content(source: &str) -> Vec<Inline> {
             _ => None,
         })
         .unwrap_or_default()
+}
+
+/// Round-2 finding 2 (Commander ruling, option (a)): a long `\\hl{...}` is
+/// genuinely breakable at the compiler level — one highlight box per word
+/// with natural glue between the boxes, so the line breaker can split
+/// them. Only the render-pipeline painting of a line-broken highlight
+/// (yellow across the line gap) stays a known follow-up.
+#[test]
+fn hl_long_highlight_breaks_between_word_fragments() {
+    let body = "\\hl{aa bb cc dd ee ff}";
+    let source = soul_doc(body);
+    assert!(
+        parse(&source).diagnostics.is_empty(),
+        "silent: {:?}",
+        parse(&source).diagnostics
+    );
+    let inlines = paragraph_inlines(&source);
+    let boxes: Vec<_> = inlines
+        .iter()
+        .filter_map(|inline| match inline {
+            Inline::ColorBox(b) => Some(b),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        boxes.len(),
+        6,
+        "one breakable fragment per word, not one overfull box: {inlines:?}"
+    );
+    for fragment in &boxes[1..] {
+        assert!(
+            fragment.space_before,
+            "natural breakable glue between fragments: {inlines:?}"
+        );
+    }
+    // Behavior: at a narrow measure the fragments wrap onto several lines
+    // instead of forming one overfull box.
+    let constraints = flashtex_compiler::layout::LayoutConstraints {
+        font_size_pt: 10.0,
+        measure_pt: 30.0,
+        ..Default::default()
+    };
+    let parsed = parse(&source);
+    let pages =
+        flashtex_compiler::layout::layout_with_constraints(&parsed.blocks, constraints);
+    let mut lines: Vec<f64> = pages
+        .iter()
+        .flat_map(|p| &p.items)
+        .map(|item| item.baseline_y_pt)
+        .collect();
+    lines.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+    lines.dedup();
+    assert!(
+        lines.len() >= 2,
+        "highlight wraps at a narrow measure: {lines:?}"
+    );
 }
 
 /// Slice-1 finding 4: `\caption{\so{word}}` letterspaces too — captions
