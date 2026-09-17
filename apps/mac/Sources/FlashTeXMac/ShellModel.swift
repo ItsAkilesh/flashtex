@@ -734,7 +734,9 @@ final class ShellModel {
 
     // MARK: loading
 
-    func loadFixtures(request: URL?, result: URL) {
+    /// `beforeReplacing` runs once the fixture is valid, just before the
+    /// project is replaced; returning false replaces nothing (#806).
+    func loadFixtures(request: URL?, result: URL, beforeReplacing: () -> Bool = { true }) {
         loadError = nil
         do {
             let res = try RuntimeV1.decodeCompileResult(Data(contentsOf: result))
@@ -754,6 +756,7 @@ final class ShellModel {
                 loadError = "Rejected \(result.lastPathComponent): \(violation)"
                 return
             }
+            guard beforeReplacing() else { return }
             // Fixtures replace the whole project: detach any real file identity
             // first so Save can never write fixture content over the user's
             // document, and stop watching the file that's no longer open (#72).
@@ -816,7 +819,7 @@ final class ShellModel {
         guard documentURL != nil || hasUnsavedDocuments else { load(.none); return }
         let alert = NSAlert()
         alert.messageText = "Save changes to \(unsavedDocumentsDescription) before loading the fixture?"
-        alert.informativeText = "Loading a fixture replaces the whole project. Discarded text stays recoverable this session via Edit > Restore Discarded Buffer."
+        alert.informativeText = "Loading a fixture replaces the whole project." + (hasUnsavedDocuments ? " Discarded text stays recoverable: \(discardRecoveryRoutes)" : "")
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Cancel")
@@ -836,15 +839,21 @@ final class ShellModel {
     /// Loads a fixture in place of the project once every dirty document is
     /// saved or explicitly discarded (`authorizeProjectReplacement`): a failed
     /// or conflicted save of any document — entry or member, active or not —
-    /// loads nothing.
+    /// loads nothing. A discard is recorded only once the fixture is valid, and
+    /// a discard whose text cannot be kept loads nothing (#806).
     @discardableResult
     func loadFixturesReplacingProject(request: URL?, result: URL, dirty: DirtyDisposition) -> OpenOutcome {
         switch authorizeProjectReplacement(dirty, before: "loading the fixture") {
         case .refused(let outcome):
             return outcome
         case .proceed(let discarding):
-            if let discarding { keepDiscarded(discarding, reason: "discarded when a fixture was loaded") }
-            loadFixtures(request: request, result: result)
+            var kept = true
+            loadFixtures(request: request, result: result) {
+                guard let discarding else { return true }
+                kept = keepDiscarded(discarding, reason: "discarded when a fixture was loaded", before: "loading the fixture")
+                return kept
+            }
+            guard kept else { return .saveFailed }
             return loadError == nil ? .opened : .readFailed
         }
     }

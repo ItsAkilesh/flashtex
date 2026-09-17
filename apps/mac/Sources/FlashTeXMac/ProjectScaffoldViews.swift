@@ -234,7 +234,7 @@ struct NewProjectSheet: View {
         guard model.hasUnsavedDocuments else { state.createProject(); return }
         let alert = NSAlert()
         alert.messageText = "Save changes to \(model.unsavedDocumentsDescription) before creating the project?"
-        alert.informativeText = "Discarded text stays recoverable this session via Edit > Restore Discarded Buffer."
+        alert.informativeText = "Discarded text stays recoverable: \(model.discardRecoveryRoutes)"
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Cancel")
