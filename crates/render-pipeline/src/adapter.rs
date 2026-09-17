@@ -232,6 +232,8 @@ pub enum Item {
     /// ulem `\uline`/`\sout` or kernel text `\underline` (compiler
     /// `Inline::Underline`).
     Underline(Box<UnderlineItem>),
+    /// `\textsuperscript`/`\textsubscript` (compiler `Inline::TextScript`).
+    TextScript(Box<TextScriptItem>),
     /// LaTeX's `\leavevmode`: an empty zero-width `\hbox`.
     ///
     /// Emitted only in front of a verbatim blank that would otherwise open
@@ -268,6 +270,19 @@ pub struct ColorBoxItem {
 pub struct UnderlineItem {
     pub thickness_pt: f64,
     pub geom: UnderlineGeom,
+    pub items: Vec<Item>,
+    pub span: Span,
+}
+
+/// latex.ltx `\@textsuperscript`/`\@textsubscript`:
+/// `{\m@th\ensuremath{^{\mbox{\fontsize\sf@size\z@\selectfont #1}}}}` (or
+/// `_{...}`). `items` are set at the `\sf@size` of the text size in effect
+/// at the command (`size_cpt`, 0 for the paragraph's), then shifted as a
+/// text-style script of an empty nucleus (`typeset::text_script_box`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextScriptItem {
+    pub superscript: bool,
+    pub size_cpt: u16,
     pub items: Vec<Item>,
     pub span: Span,
 }
@@ -2260,6 +2275,7 @@ fn math_colors(blocks: &[flashtex_compiler::parser::Block]) -> std::collections:
                 }
                 Inline::ColorBox(b) => walk(&b.content, out),
                 Inline::Underline(u) => walk(&u.content, out),
+                Inline::TextScript(t) => walk(&t.content, out),
                 _ => {}
             }
         }
@@ -2337,6 +2353,7 @@ fn inline_span(i: &Inline) -> Span {
         Inline::Tabular(t) => t.span,
         Inline::ColorBox(b) => b.span,
         Inline::Underline(u) => u.span,
+        Inline::TextScript(t) => t.span,
         Inline::Graphic(g) => g.span,
         Inline::Transform(t) => t.span,
         // Nodes only a re-pinned compiler emits; all of them carry the
@@ -8028,6 +8045,9 @@ fn items_cached(
             Inline::Underline(u) => {
                 format!("{u:?}").hash(&mut h);
             }
+            Inline::TextScript(t) => {
+                format!("{t:?}").hash(&mut h);
+            }
             Inline::Logo { logo, style, .. } => {
                 logo.hash(&mut h);
                 style.hash(&mut h);
@@ -8281,6 +8301,39 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     items: content,
                     span,
                 })));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
+            }
+            Inline::TextScript(t) => {
+                // A formula (`\ensuremath`): the space before it is read
+                // like one, and the space factor after it is 1000.
+                let span = t.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                let size_cpt = declared_size(t.style.size, size);
+                let mut content = items_from_inlines_styled(texts, &t.content, styles, labels, size, heading, compiler_weight);
+                // `\fontsize\sf@size` replaces the declared size the
+                // argument inherited from the command's context.
+                if size_cpt != 0 {
+                    for item in &mut content {
+                        match item {
+                            Item::Word(w) => {
+                                for seg in &mut w.segments {
+                                    if seg.style.size_cpt == size_cpt {
+                                        seg.style.size_cpt = 0;
+                                    }
+                                }
+                            }
+                            Item::Space { style, .. } if style.size_cpt == size_cpt => style.size_cpt = 0,
+                            _ => {}
+                        }
+                    }
+                }
+                items.push(Item::TextScript(Box::new(TextScriptItem { superscript: t.superscript, size_cpt, items: content, span })));
                 prev_end = Some(span.end);
                 prev_span = Some(span);
                 factor = 1000;
