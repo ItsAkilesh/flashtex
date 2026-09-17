@@ -6888,7 +6888,11 @@ fn gap_has_space_after_control_word(rest: &str) -> bool {
 
 /// The sum of every `\vspace{<dimen>}`/`\vspace*{<dimen>}` in `gap`, in
 /// points; `None` when there is none or one does not parse.
-fn vspace_in_gap(gap: &str, size: u32) -> Option<f64> {
+///
+/// `pub(crate)` so [`crate::abstractenv`] can re-derive how much of a
+/// paragraph's leading skip came from inside a `\begin{abstract}` rather
+/// than before it.
+pub(crate) fn vspace_in_gap(gap: &str, size: u32) -> Option<f64> {
     let mut from = 0;
     let mut total = 0.0;
     let mut any = false;

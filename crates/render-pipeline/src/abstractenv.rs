@@ -280,25 +280,31 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
         let last = blocks.iter().rposition(inside).unwrap_or(first);
         if form == Branch::TitlePage {
             // The body is ordinary `\normalsize` paragraphs at the full
-            // measure: whatever the compiler set for the plain text is
-            // already that, so only the environment's own trappings come
-            // off. `\end{center}` leaves `\@endpetrue`, so `\@doendpe`
-            // takes the `\parindent` box off the first of them.
-            for (k, block) in blocks[first..=last].iter_mut().enumerate() {
-                let Block::Paragraph { indent, env_open, env_close, list, sized, .. } = block else { continue };
-                *indent = k != 0;
+            // measure: whatever the compiler (and the environment/list
+            // detection that already ran over the source before this) set
+            // for each of them is right as it stands, including a nested
+            // `\noindent` and a nested list's own `env_open`/`env_close`/
+            // `list`. Only the outer `abstract` wrapper's own trapping
+            // comes off, and only on the paragraph right after
+            // `\begin{abstract}`: `\end{center}` leaves `\@endpetrue`, so
+            // `\@doendpe` takes the `\parindent` box off it, and whatever
+            // the compiler thought `\begin{abstract}` itself opened is
+            // superseded by the head block's own `env_open`, inserted
+            // below.
+            if let Some(Block::Paragraph { indent, env_open, .. }) = blocks.get_mut(first) {
+                *indent = false;
                 *env_open = None;
-                *env_close = false;
-                *list = None;
-                *sized = None;
             }
             // `\titlepage`'s `\newpage` discards whatever skip stood
             // between the previous block and `\begin{abstract}`: the glue
             // stays on the page that ends, and the page this opens starts
             // at `\topskip`. (`typeset::build` supplies the `\null`s, the
             // page break on each side and the `\vfil` centring; they are
-            // page-level, not block-level.)
-            drop_lead(&mut blocks[first]);
+            // page-level, not block-level.) A `\vspace` written *inside*
+            // the environment, after `\begin{abstract}` and before the
+            // body's own first character, is not discarded: it is real
+            // glue between the head and the body, and stays on the body.
+            drop_lead(&mut blocks[first], texts, range, style);
             blocks.insert(first, page_head_block(texts, document, range));
             superseded.push(span);
             continue;
@@ -313,7 +319,7 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
                 *indent = false;
             }
             let mut head = section_head_block(texts, document, range);
-            take_lead(&mut blocks[first], &mut head);
+            take_lead(&mut blocks[first], &mut head, texts, range, style);
             blocks.insert(first, head);
             superseded.push(span);
             continue;
@@ -343,7 +349,7 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
             });
         }
         let mut head = head_block(texts, document, range, &small);
-        take_lead(&mut blocks[first], &mut head);
+        take_lead(&mut blocks[first], &mut head, texts, range, style);
         blocks.insert(first, head);
         superseded.push(span);
     }
@@ -382,7 +388,19 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
 /// rather than moved, and the control that says the drop is right rather
 /// than merely smaller is a real `\section*{Abstract}` in the same
 /// position, which pdflatex and the pipeline already agree on exactly.
-fn take_lead(body: &mut Block, head: &mut Block) {
+///
+/// `\vspace` written *inside* the environment (`\begin{abstract}
+/// \vspace{20pt}Body\end{abstract}`) is not "whatever stood between the
+/// previous block and `\begin{abstract}`" — it comes after the command, and
+/// the compiler's own gap re-read ([`crate::adapter::vspace_in_gap`], used
+/// to build `vspace_before` in the first place) cannot tell the two apart:
+/// it sums every `\vspace` between the previous block and this one, whether
+/// they fall before `\begin{abstract}` or after it. [`inside_vspace`]
+/// re-derives the after-the-command part from the source bytes directly, so
+/// only the before part travels with the head; the rest is left on the body,
+/// between the head and the first line, which is where it belongs.
+fn take_lead(body: &mut Block, head: &mut Block, texts: &[&str], range: Range, style: &Stylesheet) {
+    let inside = inside_vspace(texts, range, body, style);
     let Block::Paragraph {
         eject_before: b_eject,
         vspace_before: b_vspace,
@@ -395,12 +413,24 @@ fn take_lead(body: &mut Block, head: &mut Block) {
     else {
         return;
     };
+    let total_vspace = *b_vspace;
+    let inside = inside.clamp(0.0, total_vspace.max(0.0));
+    let lead_vspace = total_vspace - inside;
+    // The stretch/shrink of a `\vspace` travels with its own natural part;
+    // split it in the same proportion (1.0, i.e. all of it, when nothing of
+    // the skip is from inside the environment — the common case, and the
+    // one every other branch's flex already assumed).
+    let ratio = if total_vspace.abs() > f64::EPSILON { lead_vspace / total_vspace } else { 1.0 };
+    *b_vspace = inside;
+    let lead_vflex = (b_vflex.0 * ratio, b_vflex.1 * ratio);
+    b_vflex.0 -= lead_vflex.0;
+    b_vflex.1 -= lead_vflex.1;
     let (eject, vspace, addvspace, addflex, vflex, endlist) = (
         std::mem::replace(b_eject, false),
-        std::mem::replace(b_vspace, 0.0),
+        lead_vspace,
         std::mem::replace(b_addvspace, 0.0),
         std::mem::replace(b_addflex, (0.0, 0.0)),
-        std::mem::replace(b_vflex, (0.0, 0.0)),
+        lead_vflex,
         std::mem::replace(b_endlist, 0.0),
     );
     match head {
@@ -477,8 +507,13 @@ pub fn page_ranges(texts: &[&str], blocks: &[Block], style: &Stylesheet) -> Vec<
 
 /// Drops the vertical skip and page break the compiler hung on the first
 /// block of a [`Branch::TitlePage`] body: the page break the environment
-/// opens with supersedes both.
-fn drop_lead(body: &mut Block) {
+/// opens with supersedes both. A `\vspace` written *inside* the environment
+/// (between `\begin{abstract}` and the body's own first character) is not
+/// part of what the page break supersedes — it is real glue between the
+/// head and the body — so [`inside_vspace`] re-derives it from the source
+/// and it is left on `body` rather than dropped with the rest.
+fn drop_lead(body: &mut Block, texts: &[&str], range: Range, style: &Stylesheet) {
+    let inside = inside_vspace(texts, range, body, style);
     let Block::Paragraph {
         eject_before,
         vspace_before,
@@ -491,12 +526,50 @@ fn drop_lead(body: &mut Block) {
     else {
         return;
     };
+    let inside = inside.clamp(0.0, vspace_before.max(0.0));
     *eject_before = false;
-    *vspace_before = 0.0;
+    *vspace_before = inside;
     *addvspace_before = 0.0;
     *addvspace_flex = (0.0, 0.0);
-    *vspace_flex = (0.0, 0.0);
+    // The stretch/shrink is dropped along with the rest whenever none of
+    // the natural skip survived (the common case); when some did, it is a
+    // single `\vspace` inside the environment and its own flex stays whole.
+    if inside <= 0.0 {
+        *vspace_flex = (0.0, 0.0);
+    }
     *endlist_adjust = 0.0;
+}
+
+/// The part of `body`'s own `vspace_before` that the source places *after*
+/// `\begin{abstract}` (`range.begin.1`) rather than before it — e.g. the
+/// `20pt` of `\begin{abstract}\vspace{20pt}Body\end{abstract}`.
+///
+/// The compiler has no concept of `abstract`'s boundary: `vspace_before` is
+/// the sum of every `\vspace` between the previous block and this one,
+/// wherever in that gap they fall ([`crate::adapter::vspace_in_gap`]), so
+/// [`take_lead`] and [`drop_lead`] cannot tell a `\vspace` that belongs to
+/// whatever came before the environment from one the document put inside
+/// it. Re-scanning just the part of the gap after `\begin{abstract}` itself
+/// answers that directly from source position, which is all `vspace_before`
+/// was ever built from.
+fn inside_vspace(texts: &[&str], range: Range, body: &Block, style: &Stylesheet) -> f64 {
+    let Some(span) = block_span(body) else { return 0.0 };
+    if span.start < range.begin.1 {
+        return 0.0;
+    }
+    let Some(text) = texts.get(span.document.0) else { return 0.0 };
+    let Some(gap) = text.get(range.begin.1..span.start) else { return 0.0 };
+    // The compiler evaluates `em`/`ex` in `\vspace` at a fixed 12pt; LaTeX
+    // uses the class's `\normalsize` (see the re-read this mirrors, in
+    // `crate::adapter`'s own unit-building loop).
+    let size = if style.body_size_pt >= 11.5 {
+        12
+    } else if style.body_size_pt >= 10.5 {
+        11
+    } else {
+        10
+    };
+    crate::adapter::vspace_in_gap(gap, size).unwrap_or(0.0)
 }
 
 /// `\begin{center}\bfseries \abstractname\end{center}` (report.cls 446-449),

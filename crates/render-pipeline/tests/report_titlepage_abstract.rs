@@ -308,6 +308,81 @@ fn a_two_column_titlepage_abstract_keeps_the_compiler_warning() {
     assert!(!l.words.iter().any(|w| w.text == "Abstract"), "and no head is set");
 }
 
+/// A nested `\noindent`/`\begin{itemize}` inside a `titlepage` abstract
+/// keeps its own indentation and item label: the fix only normalises the
+/// paragraph right after `\begin{abstract}` (`\@doendpe`'s unindent and the
+/// head's own `env_open`), not every paragraph of the body. Before the fix,
+/// the loop forced `indent = k != 0` and cleared `list`/`env_open`/
+/// `env_close` on *every* body paragraph, so a `\noindent` second paragraph
+/// was re-indented and an itemize's bullet vanished.
+#[test]
+fn nested_noindent_and_list_survive_the_titlepage_wrapper() {
+    if !lm_available() {
+        return;
+    }
+    let src = "\\documentclass[10pt]{report}\n\\begin{document}\n\\begin{abstract}\n\
+First paragraph of the abstract.\n\n\
+\\noindent Second paragraph, explicitly not indented.\n\n\
+\\begin{itemize}\n\\item Bulleted point.\n\\end{itemize}\n\
+\\end{abstract}\n\\end{document}";
+    let l = layout(src);
+    assert!(
+        !abstract_unimplemented(&l),
+        "the titlepage abstract is set: {:?}",
+        l.diagnostics
+    );
+    const TEXT_X: f64 = 133.768;
+    let first = word(&l, "First");
+    assert!((first.x - TEXT_X).abs() < GATE_BP, "first body paragraph unindented by \\@doendpe: {} bp", first.x);
+    let second = word(&l, "Second");
+    assert!(
+        (second.x - TEXT_X).abs() < GATE_BP,
+        "\\noindent must survive the wrapper, not be re-indented to \\listparindent: {} bp, expected {TEXT_X} bp",
+        second.x
+    );
+    assert!(
+        l.words.iter().any(|w| w.text == "•"),
+        "the nested itemize's own list metadata (and its bullet) must survive the wrapper: {:?}",
+        l.words.iter().map(|w| &w.text).collect::<Vec<_>>()
+    );
+}
+
+/// `\vspace` written *inside* `\begin{abstract}...\end{abstract}` (after the
+/// command, before the body's first character) is glue between the head and
+/// the body, not glue that stood before `\begin{abstract}`: it must neither
+/// move above the head nor be dropped by the page break's own lead-skip
+/// reset. Before the fix, `drop_lead` zeroed `vspace_before` unconditionally,
+/// discarding the 20pt outright.
+#[test]
+fn vspace_inside_the_titlepage_abstract_stays_between_head_and_body() {
+    if !lm_available() {
+        return;
+    }
+    let src = "\\documentclass[10pt]{report}\n\\begin{document}\n\\begin{abstract}\n\\vspace{20pt}\n\
+Body text after the vspace.\n\\end{abstract}\n\\end{document}";
+    let with_vspace = layout(src);
+    let without = "\\documentclass[10pt]{report}\n\\begin{document}\n\\begin{abstract}\n\
+Body text after the vspace.\n\\end{abstract}\n\\end{document}";
+    let baseline = layout(without);
+    // The three `\vfil`s (see the module doc comment) redistribute when a
+    // \vspace grows the page's natural content height, so the head itself
+    // shifts a little too; what isolates the inserted glue from that shared
+    // redistribution is the *gap* between the head and the body, which only
+    // the environment's own skips and this \vspace can widen.
+    let head_y = word(&with_vspace, "Abstract").baseline;
+    let base_head_y = word(&baseline, "Abstract").baseline;
+    let body_y = word(&with_vspace, "Body").baseline;
+    let base_body_y = word(&baseline, "Body").baseline;
+    let gap = body_y - head_y;
+    let base_gap = base_body_y - base_head_y;
+    assert!(
+        (gap - base_gap - 20.0).abs() < GATE_BP,
+        "the 20pt must land between the head and the body, not be dropped or moved above the head: \
+         gap {gap} bp vs {base_gap} bp without the \\vspace (delta {}, expected +20)",
+        gap - base_gap
+    );
+}
+
 /// `twoside` is `\flushbottom`, so the three `\vfil`s share the page's
 /// slack without `\raggedbottom`'s `.0001fil` fourth claimant, and the
 /// abstract lands 0.006 bp lower than in the one-sided document.
