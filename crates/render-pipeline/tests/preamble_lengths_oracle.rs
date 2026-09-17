@@ -132,18 +132,45 @@ fn untested_preamble_lengths_reach_the_resolved_page_params() {
     if !lm_available() {
         return;
     }
+    // Values chosen to differ from the class's own defaults for a plain
+    // `article` on US Letter (11in/12pt/30pt/65pt/10pt): 5 of the original
+    // 6 values here happened to equal those defaults, so the assertion
+    // could not have failed even if `\setlength` were silently dropped for
+    // those five registers. `evensidemargin`'s 0.5in already differed and
+    // is kept.
     for (name, dimen, get) in [
         (
             "paperheight",
-            "11in",
+            "10in",
             (|p: &flashtex_class_geometry::PageParams| p.paperheight) as fn(&flashtex_class_geometry::PageParams) -> Sp,
         ),
         ("evensidemargin", "0.5in", |p| p.evensidemargin),
-        ("headheight", "12pt", |p| p.headheight),
-        ("footskip", "30pt", |p| p.footskip),
-        ("marginparwidth", "65pt", |p| p.marginparwidth),
-        ("columnsep", "10pt", |p| p.columnsep),
+        ("headheight", "20pt", |p| p.headheight),
+        ("footskip", "40pt", |p| p.footskip),
+        ("marginparwidth", "50pt", |p| p.marginparwidth),
+        ("columnsep", "25pt", |p| p.columnsep),
     ] {
+        let default_src = wrap("");
+        let default_parsed = parse(&default_src);
+        let default_doc = adapter::adapt(
+            &[&default_src],
+            0,
+            &default_parsed,
+            &RenderOptions::default(),
+            &Labels::default(),
+        );
+        let default_params = &default_doc
+            .style
+            .class_geometry
+            .as_ref()
+            .unwrap_or_else(|| panic!("{name}: class geometry did not resolve for the default document"))
+            .params;
+        assert_ne!(
+            get(default_params),
+            Sp::parse(dimen).unwrap(),
+            "{name}: test value {dimen} must differ from the class default, or this assertion can't fail"
+        );
+
         let src = wrap(&format!("\\setlength{{\\{name}}}{{{dimen}}}\n"));
         let parsed = parse(&src);
         let doc = adapter::adapt(&[&src], 0, &parsed, &RenderOptions::default(), &Labels::default());
