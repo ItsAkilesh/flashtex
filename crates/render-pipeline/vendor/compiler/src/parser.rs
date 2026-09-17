@@ -331,6 +331,14 @@ pub enum Inline {
     /// does not break across lines (ulem's leaders can). Geometry is
     /// [`Underline::geom`].
     Underline(Box<Underline>),
+    /// Kernel text-mode `\textsuperscript{...}` / `\textsubscript{...}`
+    /// (latex.ltx `ltmisc.dtx` `\@textsuperscript` / `\@textsubscript`):
+    /// the argument as one unbreakable fragment (`\mbox`), set at the
+    /// `\sf@size` of the current size and raised (`superscript`) or
+    /// lowered like a math script of an empty nucleus. Consumers apply
+    /// their own raise: the render pipeline mirrors its footnote-mark
+    /// shift, this crate's Core 14 layout its own mark raise.
+    TextScript(Box<TextScript>),
     /// `\includegraphics` in running text: an image box (see
     /// `crate::graphics`). Figures and tables re-derive their graphics from
     /// the source instead.
@@ -559,6 +567,27 @@ pub struct Underline {
     pub span: Span,
     /// See `Inline::Text::space_before`.
     pub space_before: bool,
+}
+
+/// A `\textsuperscript{...}` / `\textsubscript{...}` wrapper
+/// (`Inline::TextScript`). `content` is the braced argument parsed as an
+/// `\hbox` (commands inside work, like `\underline`'s); `superscript`
+/// selects raising over lowering. `style` is the declarations in effect
+/// where the command appears, so layout can resolve the `\sf@size` and the
+/// shifts against the local size (`{\large ...}`), not the body size.
+/// The fragment does not break across lines (real LaTeX boxes it with
+/// `\mbox`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextScript {
+    pub content: Vec<Inline>,
+    pub superscript: bool,
+    /// From the command through the argument's closing brace.
+    pub span: Span,
+    /// See `Inline::Text::space_before`.
+    pub space_before: bool,
+    /// Declarations in effect at the command (only `size` is read, by
+    /// layout's `Inline::TextScript` arm).
+    pub style: TextStyle,
 }
 
 /// `\colorbox[model]{fill}{text}` or `\fcolorbox[model]{frame}{fill}{text}`
@@ -1373,6 +1402,9 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "closing",
     "cc",
     "encl",
+    // The kernel's `\hangfrom` (ltsect.dtx), also behind letter.cls's
+    // `\@hangfrom`: one label argument, typeset inline.
+    "hangfrom",
     "ps",
     "startbreaks",
     "stopbreaks",
@@ -1466,6 +1498,8 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "underline",
     "underbar",
     "sout",
+    "textsuperscript",
+    "textsubscript",
 ];
 
 /// Parses a LaTeX dimension using the legacy body-size context (`em` is the
@@ -2074,6 +2108,7 @@ pub fn parse_project_with(
         bib_cursor: 0,
         natbib_limitations: std::collections::BTreeSet::new(),
         natbib_forced_numbers_reported: false,
+        hangfrom_hang_indent_reported: false,
         title: None,
         author: None,
         date: None,
@@ -2316,6 +2351,8 @@ struct P<'a> {
     natbib_limitations: std::collections::BTreeSet<String>,
     /// Whether natbib's `\NAT@force@numbers` fallback has been reported.
     natbib_forced_numbers_reported: bool,
+    /// Whether `\hangfrom`'s missing hanging indent has been reported.
+    hangfrom_hang_indent_reported: bool,
     /// Current text style; saved on `{` and environment entry, restored on
     /// the matching `}` or `\end`.
     style: TextStyle,
@@ -2967,6 +3004,52 @@ impl P<'_> {
             "opening" => self.letter_opening(span, blocks, para),
             "closing" => self.letter_closing(span, blocks, para),
             "cc" | "encl" => self.letter_annotation(name, span, blocks, para),
+            // `\hangfrom{label}` (ltsect.dtx): `\hangindent` after the
+            // label, then `\noindent` with the label text, continuing the
+            // current paragraph. Unlike `\cc`/`\encl` it takes exactly one
+            // argument and starts no block of its own; and like them this
+            // compiler has no hanging indent outside `\item` (see
+            // `letter_annotation`), so the label is emitted as ordinary
+            // inline content at this point — a plain brace group in
+            // effect — with no flush. The trailing `\noindent` starts
+            // the paragraph, as `\noindent` itself does.
+            //
+            // Unlike `\cc`/`\encl`, the hanging indent is not incidental to
+            // `\hangfrom` — it is the command's entire reason to exist, so
+            // silently dropping it is worth a diagnostic (once per
+            // document), not just a doc-comment note.
+            "hangfrom" => {
+                self.paragraph_started = true;
+                let (tokens, _) = self.required_group(name, span);
+                // `required_group` keeps a trailing `Space` token inside the
+                // braces, but `inlines_from_tokens` only ever attaches
+                // `space_before` to the token *after* a space; a space with
+                // nothing following it inside the group has nothing to
+                // attach to and is silently dropped, so `\hangfrom{1. }text`
+                // loses the label/body gap. Re-emit it explicitly.
+                let trailing_space = matches!(
+                    tokens.last().map(|t| &t.token.kind),
+                    Some(TokenKind::Space)
+                );
+                let style = self.style;
+                para.extend(self.inlines_from_tokens(tokens, style));
+                if trailing_space {
+                    para.push(Inline::Text {
+                        text: " ".to_string(),
+                        span,
+                        style,
+                        space_before: false,
+                    });
+                }
+                if !self.hangfrom_hang_indent_reported {
+                    self.hangfrom_hang_indent_reported = true;
+                    self.diags.push(Diagnostic::warning(
+                        "\\hangfrom's hanging indent is not applied; a continuation line starts at the left margin instead of under the label",
+                        Some(span),
+                        Some("typeset the label inline anyway".into()),
+                    ));
+                }
+            }
             // `\ps` takes NO argument: letter.cls line 245 is
             // `\newcommand*\ps{\par\startbreaks}`. A document writing
             // `\ps{P.S. ...}` — as the corpus fixture does — gets the
@@ -3253,6 +3336,12 @@ impl P<'_> {
             // `\underline` is latex.ltx `$\@@underline{\hbox{#1}}$` (TeXbook
             // Rule 10); math-mode `\underline`/`\underbar` are in `math.rs`.
             "uline" | "underline" | "underbar" | "sout" => self.underline_command(name, span, para),
+            // Kernel text-mode `\textsuperscript` / `\textsubscript`
+            // (latex.ltx `ltmisc.dtx`): no package needed, unlike ulem's
+            // commands above.
+            "textsuperscript" | "textsubscript" => {
+                self.text_script(name, span, para);
+            }
             // `\xspace` (xspace.sty): a word space unless the token after
             // the macro call is `}`, another command, or `, . ! ? ; : ' /`.
             "xspace" => self.xspace(span),
@@ -6863,7 +6952,8 @@ impl P<'_> {
                 ),
             ));
         }
-        let list = math::parse_tokens(&raw, self.math_packages, &mut self.diags);
+        // `equation`/`equation*` are always display math.
+        let list = math::parse_tokens_display(&raw, self.math_packages, &mut self.diags, true);
         let tag = Self::custom_tag_text(&list, self.documents[open.document.0].text, open.document);
         let color_ranges = self.math_color_ranges(&raw);
         para.push(Inline::Math {
@@ -7140,9 +7230,11 @@ impl P<'_> {
                 .then(|| Self::take_row_shove(&mut cells))
                 .flatten();
             let packages = self.math_packages;
+            // gather/align/multline/eqnarray and their variants are always
+            // display math.
             let cells = cells
                 .iter()
-                .map(|cell| math::parse_tokens(cell, packages, &mut self.diags))
+                .map(|cell| math::parse_tokens_display(cell, packages, &mut self.diags, true))
                 .collect();
             math_rows.push(MathRow {
                 cells,
@@ -7334,6 +7426,7 @@ impl P<'_> {
             self.math_packages,
             &mut self.diags,
             !found,
+            display,
         );
         // The span covers the opener through the close (or the last content
         // token). Expanded content can carry spans from before the opener or
@@ -8933,6 +9026,36 @@ impl P<'_> {
             geom,
             span: full,
             space_before,
+        })));
+    }
+
+    /// Kernel text-mode `\textsuperscript{...}` / `\textsubscript{...}`
+    /// (latex.ltx `ltmisc.dtx` `\@textsuperscript` / `\@textsubscript`):
+    /// always supported, no package needed. The argument is parsed as an
+    /// `\hbox` so commands inside it work; the size reduction and the
+    /// raise/lower are applied by each consumer (see `Inline::TextScript`).
+    ///
+    /// Real LaTeX opens that box with `\fontsize\sf@size\z@\selectfont`,
+    /// so the outer size declaration must not leak into the argument:
+    /// `{\large a\textsuperscript{b}}` sets `b` at the `\sf@size` of
+    /// `\large`, not at `\large` itself. The declaration is therefore
+    /// cleared (only `size`; family/series/shape/colour still inherit)
+    /// while the argument parses — an explicit declaration *inside* the
+    /// argument still takes effect, exactly like `\mbox` contents.
+    fn text_script(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let (tokens, argument_span) = self.required_group(name, span);
+        let full = span.merge(argument_span);
+        let style = self.style;
+        let outer_size = std::mem::replace(&mut self.style.size, None);
+        let content = self.box_inlines(tokens);
+        self.style.size = outer_size;
+        para.push(Inline::TextScript(Box::new(TextScript {
+            content,
+            superscript: name == "textsuperscript",
+            span: full,
+            space_before,
+            style,
         })));
     }
 
@@ -14434,5 +14557,77 @@ mod tests {
         let parsed = parse(r"Text\marginpar[left]{right}");
         assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
         assert!(parsed.diagnostics[0].message.contains("[left]"));
+    }
+
+    #[test]
+    fn hangfrom_typesets_its_label_inline_and_reports_the_missing_hang() {
+        let parsed = parse(r"\hangfrom{1.}text");
+        assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
+        assert!(parsed.diagnostics[0].message.contains("hanging indent"), "{:?}", parsed.diagnostics);
+        let prose: String = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(p) => Some(plain_inline_text(p)),
+                _ => None,
+            })
+            .collect();
+        let label = prose.find("1.").expect("hangfrom label missing");
+        let body = prose.find("text").expect("hangfrom body missing");
+        assert!(label < body, "{prose:?}");
+    }
+
+    #[test]
+    fn hangfrom_preserves_a_trailing_space_in_its_label() {
+        // `inlines_from_tokens` only attaches `space_before` to the token
+        // *after* a space; a space with nothing following it inside the
+        // `{...}` group has nothing to attach to and used to be silently
+        // dropped, merging the label into the following body word.
+        let parsed = parse(r"\hangfrom{1. }text");
+        assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
+        let prose: String = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(p) => Some(plain_inline_text(p)),
+                _ => None,
+            })
+            .collect();
+        assert!(prose.contains("1. text"), "space between label and body must survive, got {prose:?}");
+    }
+
+    /// `\hangfrom` is `\hangindent` after the label (ltsect.dtx), and this
+    /// compiler has no hanging indent outside `\item` — the same documented
+    /// simplification as `\cc`/`\encl`'s `letter_annotation`: the label is
+    /// emitted inline, so a wrapped continuation line starts at the left
+    /// margin instead of hanging under the label. That is a placement
+    /// difference within the one paragraph block, not dropped content, and
+    /// — unlike `\cc`/`\encl` — it is reported with a diagnostic, since the
+    /// hang is the entire point of this command.
+    #[test]
+    fn hangfrom_continuation_lines_do_not_hang() {
+        let parsed = parse(r"\hangfrom{1.}text");
+        assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
+        assert!(
+            parsed.diagnostics[0].message.contains("left margin"),
+            "{:?}",
+            parsed.diagnostics
+        );
+        let paragraphs: Vec<_> = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(p) => Some(plain_inline_text(p)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(paragraphs.len(), 1, "{:?}", parsed.blocks);
+        assert!(paragraphs[0].contains("1."), "{:?}", parsed.blocks);
+    }
+
+    #[test]
+    fn hangfrom_reports_its_missing_hang_only_once_per_document() {
+        let parsed = parse(r"\hangfrom{1.}one \hangfrom{2.}two");
+        assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
     }
 }
