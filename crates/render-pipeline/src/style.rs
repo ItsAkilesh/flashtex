@@ -456,29 +456,6 @@ impl SmallSize {
 /// loading them inherit.
 const CMEX_DESIGN_PACKAGES: [&str; 5] = ["amsmath", "amsfonts", "amssymb", "mathtools", "physics"];
 
-/// Whether family 3 (`largesymbols`) follows the sizes amsmath/amsfonts
-/// declare instead of the LaTeX kernel's `omxcmex.fd` `<->sfixed*cmex10`.
-///
-/// `lmodern` wins over amsmath in either load order, because it rebinds the
-/// symbol font itself (`\DeclareSymbolFont{largesymbols}{OMX}{lmex}{m}{n}`)
-/// rather than the `cmex` shape amsmath redeclares, and `omxlmex.fd` keeps
-/// `sfixed*lmex10`. amsmath's `cmex10` option restores the kernel's
-/// declaration.
-///
-/// Measured with `\fontname\textfont3` under pdfTeX 3.141592653-2.6-1.40.27
-/// (TeX Live 2025), `article`:
-///
-/// | packages | 10pt | 11pt | 12pt |
-/// |---|---|---|---|
-/// | (none), `amsthm`, `siunitx` | `cmex10` | `cmex10` | `cmex10` |
-/// | `amsmath` / `amsfonts` / `amssymb` / `mathtools` / `physics` | `cmex10` | `cmex10 at 10.95pt` | `cmex10 at 12.0pt` |
-/// | any of those **+ `lmodern`** (either order) | `lmex10` | `lmex10` | `lmex10` |
-/// | `[cmex10]{amsmath}` | `cmex10` | `cmex10` | `cmex10` |
-///
-/// `\scriptfont3`/`\scriptscriptfont3` follow the same declaration:
-/// `cmex7`/`cmex7 at 5.0pt` at 10pt and `cmex8`/`cmex7 at 6.0pt` at 11 and
-/// 12pt, which is why the 10pt case still differs from `sfixed` inside
-/// scripts even though its text size agrees.
 /// Whether math family 0 (`operators`, the roman family: digits,
 /// parentheses, `\mathrm`, operator names) is Latin Modern's `rm-lmr*`
 /// rather than the LaTeX kernel's `cmr*`.
@@ -508,6 +485,29 @@ pub fn math_roman_lm(packages: &[String]) -> bool {
     packages.iter().any(|p| p == "lmodern")
 }
 
+/// Whether family 3 (`largesymbols`) follows the sizes amsmath/amsfonts
+/// declare instead of the LaTeX kernel's `omxcmex.fd` `<->sfixed*cmex10`.
+///
+/// `lmodern` wins over amsmath in either load order, because it rebinds the
+/// symbol font itself (`\DeclareSymbolFont{largesymbols}{OMX}{lmex}{m}{n}`)
+/// rather than the `cmex` shape amsmath redeclares, and `omxlmex.fd` keeps
+/// `sfixed*lmex10`. amsmath's `cmex10` option restores the kernel's
+/// declaration.
+///
+/// Measured with `\fontname\textfont3` under pdfTeX 3.141592653-2.6-1.40.27
+/// (TeX Live 2025), `article`:
+///
+/// | packages | 10pt | 11pt | 12pt |
+/// |---|---|---|---|
+/// | (none), `amsthm`, `siunitx` | `cmex10` | `cmex10` | `cmex10` |
+/// | `amsmath` / `amsfonts` / `amssymb` / `mathtools` / `physics` | `cmex10` | `cmex10 at 10.95pt` | `cmex10 at 12.0pt` |
+/// | any of those **+ `lmodern`** (either order) | `lmex10` | `lmex10` | `lmex10` |
+/// | `[cmex10]{amsmath}` | `cmex10` | `cmex10` | `cmex10` |
+///
+/// `\scriptfont3`/`\scriptscriptfont3` follow the same declaration:
+/// `cmex7`/`cmex7 at 5.0pt` at 10pt and `cmex8`/`cmex7 at 6.0pt` at 11 and
+/// 12pt, which is why the 10pt case still differs from `sfixed` inside
+/// scripts even though its text size agrees.
 pub fn cmex_designs(packages: &[String], cmex10_option: bool) -> bool {
     !cmex10_option
         && !packages.iter().any(|p| p == "lmodern")

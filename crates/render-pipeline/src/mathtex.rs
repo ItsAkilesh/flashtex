@@ -1,13 +1,14 @@
 //! `MathFontMetrics` with TeX's own metrics: the Appendix G parameters and
 //! glyph boxes of the `lmmi`/`lmsy`/`lmex` TFMs that pdfLaTeX+`lmodern`
 //! lays math out with, and `rm-lmr*` for the roman family (digits,
-//! parentheses, operators). Latin Modern's math TFMs are metric-identical
-//! to Computer Modern's (verified byte for byte on `lmmi12`, `lmsy10`,
-//! `lmex10`, `lmmi8`, `lmsy8` against `cmmi12`, `cmsy10`, `cmex10`,
-//! `cmmi8`, `cmsy8`), so families 1–3 come from math-layout's embedded
-//! `CmMathMetrics` (`latex_12pt`/`latex_10pt`, plus LaTeX's 11pt sizes) and
-//! only family 0, where `rm-lmr` differs from `cmr` in heights by up to
-//! 0.015 em, is read from the installed TFM.
+//! parentheses, operators) *when `lmodern` is loaded* -- family 0 is the
+//! LaTeX kernel's own `cmr*` otherwise (`style::math_roman_lm`). Latin
+//! Modern's math TFMs are metric-identical to Computer Modern's (verified
+//! byte for byte on `lmmi12`, `lmsy10`, `lmex10`, `lmmi8`, `lmsy8` against
+//! `cmmi12`, `cmsy10`, `cmex10`, `cmmi8`, `cmsy8`), so families 1–3 come
+//! from math-layout's embedded `CmMathMetrics` (`latex_12pt`/`latex_10pt`,
+//! plus LaTeX's 11pt sizes) and only family 0, where `rm-lmr` differs from
+//! `cmr` in heights by up to 0.015 em, is read from the installed TFM.
 //!
 //! Painting still uses the Latin Modern Math OpenType program: every glyph
 //! the layout places is a (TFM font, code) pair that [`TexMathMetrics::otf_gid`]
