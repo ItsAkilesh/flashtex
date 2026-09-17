@@ -3776,12 +3776,16 @@ fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>, notes: &
                 // which spans the command too. It is not a label; the
                 // pipeline places the tag itself.
                 Nucleus::Space { .. } => {}
-                // A rich label. `text_run_reference_text` is the flattening
-                // the compiler itself uses for `\eqref` to this tag, so the
-                // set label and the reference to it read alike.
+                // A rich label. `text_run_reference_text_with_source` is the
+                // flattening the compiler itself uses for `\eqref` to this
+                // tag, so the set label and the reference to it read
+                // alike; composite atoms with no single glyph (e.g.
+                // `\frac`) fall back to their source text there, and must
+                // do the same here.
                 #[cfg(feature = "compiler-node-surface")]
                 Nucleus::TextRun(pieces) => {
-                    let text = flashtex_compiler::math::text_run_reference_text(pieces);
+                    let source = texts.get(a.span.document.0).copied().unwrap_or("");
+                    let text = flashtex_compiler::math::text_run_reference_text_with_source(pieces, source);
                     notes.push((
                         "math_limitation",
                         a.span,
