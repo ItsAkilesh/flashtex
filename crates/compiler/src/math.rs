@@ -2409,7 +2409,7 @@ impl MathParser<'_> {
             // The kernel's `\pmod` (`latex.ltx` 15709) opens with
             // `\mkern18mu`; amsmath renews it through `\pod`, which is
             // `\if@display\mkern18mu\else\mkern8mu\fi` (`amsmath.sty`
-            // 719-724), so **inline** it is 10mu narrower while display is
+            // 907-910), so **inline** it is 10mu narrower while display is
             // byte-identical. Both then set `(mod` + 6mu + the argument + `)`
             // — the kernel as `\,\,`, amsmath as `\mkern6mu`.
             //
@@ -2426,7 +2426,7 @@ impl MathParser<'_> {
             // always opens with 18mu (`QUAD_EM`), so display formulas are
             // byte-identical under both, exactly as the measurements above.
             //
-            // amsmath's `\pod` (`amsmath.sty` 716-724) is the same construct
+            // amsmath's `\pod` (`amsmath.sty` 907-910) is the same construct
             // without the `mod` text and its 6mu: `\pmod` is defined through
             // it (`\pod{{\operator@font mod}}`). The kernel has no `\pod`,
             // so it needs amsmath, like `\mod`. Both open with amsmath's real
