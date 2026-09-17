@@ -422,6 +422,8 @@ final class ShellModel {
         return 0
     }()
     @ObservationIgnored private var autosaveWork: DispatchWorkItem?
+    /// Documents whose asynchronous (helper-routed) autosave has not answered yet.
+    @ObservationIgnored private var autosaveInFlight: Set<String> = []
     /// Quiet time after the last edit before autosave writes to disk
     /// (`EditorPreferences.autosave`, owner: "autosave should be on by
     /// default"). `FLASHTEX_AUTOSAVE_MS` overrides; 0 makes it synchronous.
@@ -865,37 +867,67 @@ final class ShellModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounceInterval, execute: item)
     }
 
-    /// Writes the entry document to disk a quiet moment after the last edit
-    /// (`EditorPreferences.autosave`, default on — owner: "autosave should
-    /// be on by default"). Scoped to the entry document only: a non-entry
-    /// member's save goes through the async, conflict-panel-capable
-    /// `project.saveDocument` path (`saveTexInteractive`) that autosave
-    /// deliberately does not drive in the background. Never touches a
-    /// buffer with no file yet (`documentURL == nil`) — `saveTex()` would
-    /// otherwise fall back to `saveTexAs()` and pop a Save panel mid-typing.
+    /// Writes every dirty, file-backed document to disk a quiet moment after
+    /// the last edit (`EditorPreferences.autosave`, default on — owner:
+    /// "autosave should be on by default"). The timer is shared: any edit
+    /// re-arms it, and when it fires it saves *all* dirty documents (entry
+    /// and project members, active or not), so switching tabs or typing in
+    /// another document never drops a pending save. Never touches a buffer
+    /// with no file yet (`documentURL == nil`) — `saveTex()` would otherwise
+    /// fall back to `saveTexAs()` and pop a Save panel mid-typing.
     private func scheduleAutosave() {
         autosaveWork?.cancel()
         autosaveWork = nil
-        guard EditorPreferences.shared.autosave, activePath == project.entryPath, documentURL != nil else { return }
-        guard !Self.autosaveSuppressedUnderTest else { return } // flushPendingAutosave() still performs it, on demand
-        if Self.autosaveInterval == 0 { performAutosave(); return }
+        guard EditorPreferences.shared.autosave, documentURL != nil else { return }
         let item = DispatchWorkItem { [weak self] in self?.performAutosave() }
         autosaveWork = item
+        guard !Self.autosaveSuppressedUnderTest else { return } // flushPendingAutosave() performs it, on demand
+        if Self.autosaveInterval == 0 { flushPendingAutosave(); return }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.autosaveInterval, execute: item)
     }
 
+    /// Saves each dirty document through its normal conflict-checked save
+    /// path (the same ones Command-S uses), minus any panel: a refused save
+    /// keeps the buffer, records the conflict, and is not retried until the
+    /// conflict is resolved.
     private func performAutosave() {
         autosaveWork = nil
-        guard EditorPreferences.shared.autosave, activePath == project.entryPath, documentURL != nil, isDirty else { return }
-        _ = saveTex()
+        guard EditorPreferences.shared.autosave, documentURL != nil else { return }
+        let entry = project.entryPath
+        if project.isDirty(entry), files.conflict == nil, !autosaveInFlight.contains(entry) {
+            if activePath == entry, controllerRoutesFiles {
+                autosaveInFlight.insert(entry)
+                Task { @MainActor [weak self] in
+                    _ = await self?.controllerSave()
+                    self?.autosaveInFlight.remove(entry)
+                }
+            } else {
+                saveEntryTex()
+            }
+        }
+        for path in documents.map(\.path) where path != entry && project.isDirty(path) && !autosaveInFlight.contains(path) {
+            if let conflict = project.saveConflict, let root = project.projectRoot,
+               conflict.url.standardizedFileURL == root.appendingPathComponent(path).standardizedFileURL { continue }
+            if controllerAttached {
+                autosaveInFlight.insert(path)
+                Task { @MainActor [weak self] in
+                    _ = await self?.project.saveDocument(path)
+                    self?.autosaveInFlight.remove(path)
+                }
+            } else {
+                _ = project.saveDocumentNow(path)
+            }
+        }
     }
 
     /// Performs a pending autosave immediately instead of waiting out
     /// `autosaveInterval` (real time is suppressed under XCTest, see
     /// `autosaveSuppressedUnderTest`, so tests exercise the write through
-    /// here rather than a live timer that could race the test).
+    /// here rather than a live timer that could race the test). A no-op when
+    /// no edit scheduled one.
     func flushPendingAutosave() {
-        autosaveWork?.cancel()
+        guard let pending = autosaveWork else { return }
+        pending.cancel()
         performAutosave()
     }
 
