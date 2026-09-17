@@ -185,7 +185,7 @@ private struct ProjectSection: View {
         if id.hasPrefix("closed:") {
             let name = String(id.dropFirst("closed:".count))
             let from = closure.nodes.first { ($0.resolvedPath ?? $0.reference.argument) == name && $0.state == .available }?.from ?? model.chrome.entryPath
-            Task { await model.project.openDocument(name, role: .included(from: from)) }
+            Task { await model.openAndSwitch(name, role: .included(from: from)) { model.captureNote = $0 } }
         } else if id.hasPrefix("missing:") {
             let parts = id.dropFirst("missing:".count).split(separator: ":", maxSplits: 1).map(String.init)
             guard parts.count == 2 else { return }
@@ -385,5 +385,24 @@ extension ShellModel {
     /// unknown member) lands in the footer note instead of silently failing.
     func switchOrNote(_ path: String) {
         if case .refused(let why) = project.switchDocument(to: path) { navigationNote = why }
+    }
+
+    /// Opens `path` and switches to it once it is a project member; a
+    /// refusal (blocked by unsaved edits on the entry, read failure, …) is
+    /// reported through `onRefusal` instead of being silently dropped.
+    /// Shared by go-to-definition file targets, the command palette's Files
+    /// rows, the sidebar's closed-row click, and the Project menu's
+    /// "Open <name>" item — call sites that previously discarded
+    /// `ProjectDocuments.OpenOutcome`.
+    @discardableResult
+    func openAndSwitch(_ path: String, role: ProjectDocument.Role, onRefusal: (String) -> Void) async -> Bool {
+        switch await project.openDocument(path, role: role) {
+        case .opened, .alreadyOpen:
+            switchOrNote(path)
+            return true
+        case .refused(let why):
+            onRefusal(why)
+            return false
+        }
     }
 }

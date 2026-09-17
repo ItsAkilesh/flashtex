@@ -206,7 +206,10 @@ extension ShellModel {
         case .environment(let name)?:
             if let hit = definition(ofCommand: name, environment: true) { reveal(hit) } else { goToMatching() }
         case .label?, .citation?: goToMatching()
-        case .file(let path, _)?: Task { await project.openDocument(path, role: .opened) }
+        case .file(let path, _)?:
+            Task { @MainActor [weak self] in
+                await self?.openAndSwitch(path, role: .opened) { self?.navigationNote = $0 }
+            }
         case nil: navigationNote = "Caret is not on a command, reference or file."
         }
     }
