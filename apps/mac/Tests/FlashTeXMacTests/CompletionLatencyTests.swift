@@ -183,6 +183,7 @@ final class CompletionLatencyTests: XCTestCase {
         _ = msUntil("full list", from: MonotonicClock.nowNs()) { tv.session != nil }
         let items = try XCTUnwrap(tv.session?.items)
         XCTAssertEqual(items.count, Completion.maxSuggestions)
+        guard items.count == Completion.maxSuggestions else { return XCTFail("expected \(Completion.maxSuggestions) items, got \(items.count)") }
         let popup = tv.completionPopup
         var fast: [Double] = [], reload: [Double] = [], arrows: [Double] = []
         for round in 0..<10 {

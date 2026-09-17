@@ -300,7 +300,7 @@ The section below is generated from the compiler itself
 <!-- BEGIN GENERATED supported-latex: `flashtex-compiler --supported markdown`; do not edit by hand -->
 ## Supported LaTeX
 
-This compiler implements a finite LaTeX subset: 353 text-mode and 566 math-mode command entries, 67 environments and 24 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
+This compiler implements a finite LaTeX subset: 355 text-mode and 566 math-mode command entries, 67 environments and 24 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
 
 Regenerate with `crates/compiler/scripts/render_supported_latex.sh`; `cargo test --test supported_latex` fails when this section is stale.
 
@@ -662,6 +662,8 @@ Canonical sources:
 | `\underline` | `{...}` | kernel text underline: TeXbook Rule 10 math-rule under an unbreakable hbox |
 | `\underbar` | `{...}` | kernel text underline: Rule 10 rule like \underline but content depth zeroed (fixed position) |
 | `\sout` | `{...}` | ulem strike-out: 0.4pt rule 0.55ex above the baseline (single-line; needs ulem) |
+| `\textsuperscript` | `{...}` | kernel text superscript: argument at \sf@size raised like a math superscript (single-line) |
+| `\textsubscript` | `{...}` | kernel text subscript: argument at \sf@size lowered like a math subscript (single-line) |
 | `\newtheorem` | `{env}[counter]{name}` | defines a numbered theorem-like environment (amsthm) |
 | `\theoremstyle` | `{style}` | selects the amsthm style for following \newtheorem |
 | `\\` |  | line break; an optional [length] is consumed |
