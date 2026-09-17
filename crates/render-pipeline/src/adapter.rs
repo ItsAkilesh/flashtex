@@ -2355,7 +2355,8 @@ pub fn adapt_cached(
             // can cut them back out. This is that renderer, and it just did:
             // the warning describes an output this pipeline does not
             // produce, so it is superseded the way `abstract`'s is. The
-            // unboxed case below keeps it and adds `twocolumn_top_material`.
+            // unboxed case below supersedes it too, replacing it with the
+            // typed `twocolumn_top_material` limitation.
             superseded.push(Span::in_document(document, open, open));
         }
     }
