@@ -3158,20 +3158,6 @@ impl<'a> Context<'a> {
                     }
                 }
             }
-            // `\addvspace`: only the excess over the skip the previous
-            // block already left (`\@xaddvskip`).
-            if *addvspace_before != 0.0 {
-                let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
-                vspace += (addvspace_before - prev_after).max(0.0);
-                // `\@xaddvskip` keeps whichever skip is larger *whole*: when
-                // the previous block's trailing skip wins, its own stretch
-                // and shrink are what survive, so the list skip's are not
-                // added on top of them.
-                if prev_after <= 0.0 {
-                    flex.0 += addvspace_flex.0;
-                    flex.1 += addvspace_flex.1;
-                }
-            }
             // `\begin{center}`/`\begin{quote}`: `\addvspace{\topsep}` (plus
             // `\partopsep` from vertical mode) before the first paragraph;
             // `\end{...}` adds the same after the last (`\@endparenv`).
@@ -3180,6 +3166,33 @@ impl<'a> Context<'a> {
                 let p = if vmode { ctx.style.partopsep } else { crate::style::Skip::default() };
                 (t.natural + p.natural, t.stretch + p.stretch, t.shrink + p.shrink)
             };
+            // The environment's own opening `\addvspace\@topsep`, when this
+            // block opens one. It competes for the same `\lastskip` as
+            // `addvspace_before` (the `\@topsepadd` a list closed just
+            // before left behind), and two `\addvspace`s keep the larger —
+            // they never sum. So it is resolved here, before the
+            // `addvspace_before` bookkeeping, rather than added on top of
+            // it: `\end{itemize}\begin{quote}` used to be 10pt + 8pt = 18pt
+            // where pdflatex puts max(10pt, 10pt) = 10pt.
+            let env_natural = env_open.map_or(0.0, |e| match e.skips {
+                Some(s) => s.open.natural,
+                None => env_skip(e.vmode).0,
+            });
+            // `\addvspace`: only the excess over the skip the previous
+            // block already left (`\@xaddvskip`).
+            if *addvspace_before != 0.0 {
+                let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
+                vspace += (addvspace_before - prev_after).max(0.0);
+                // `\@xaddvskip` keeps whichever skip is larger *whole*: when
+                // the previous block's trailing skip wins, its own stretch
+                // and shrink are what survive, so the list skip's are not
+                // added on top of them. The environment's own opening skip
+                // wins the same way, and brings its own flex with it.
+                if prev_after <= 0.0 && env_natural <= *addvspace_before {
+                    flex.0 += addvspace_flex.0;
+                    flex.1 += addvspace_flex.1;
+                }
+            }
             if let Some(e) = env_open {
                 st.env_vmode = e.vmode;
                 st.env_skips = e.skips;
@@ -3207,7 +3220,14 @@ impl<'a> Context<'a> {
                     Some(s) => (s.open.natural, s.open.stretch, s.open.shrink),
                     None => env_skip(e.vmode),
                 };
-                let last = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
+                // `\lastskip` as `\@item`'s `\addvspace\@topsep` sees it:
+                // the previous block's trailing skip, already raised to
+                // `addvspace_before` above when that was the larger.
+                let last = blocks
+                    .last()
+                    .and_then(|b| b.vertical.space_after)
+                    .map_or(0.0, |s| s.0)
+                    .max(*addvspace_before);
                 if st.after_heading || last >= n {
                     (0.0, 0.0, 0.0)
                 } else {
@@ -7992,9 +8012,30 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     let mut wide_blocks: Vec<usize> = Vec::new();
     // longtable page-breaking regions, by built-block index.
     let mut longtables: Vec<(usize, pagebuild::Region)> = Vec::new();
+    // `titlepage` `abstract` pages (`adapter::Doc::abstract_pages`), as
+    // `(the opening \null, the last block of the body, the closing \null)`
+    // in built-block indices; the `\vfil`s are resolved after the loop.
+    let mut abstract_pages: Vec<(usize, usize, usize)> = Vec::new();
+    let mut open_abstract: Option<usize> = None;
     for (doc_index, block) in doc.blocks.iter().enumerate() {
         if doc.page_starts.binary_search(&doc_index).is_ok() {
             page_start_blocks.push(blocks.len());
+        }
+        // `titlepage`'s `abstract` (report.cls 441-450): `\titlepage` is
+        // `\newpage \thispagestyle{empty} \setcounter{page}\@ne`, and the
+        // environment opens `\null\vfil` under it. The `\null` is what
+        // fixes the head's distance from the text top: without it the
+        // first box on the page would be the head line itself, and
+        // `\topskip` would shrink by its height.
+        if doc.abstract_pages.iter().any(|&(start, _)| start == doc_index) && open_abstract.is_none() {
+            let span = crate::abstractenv::block_span(block).unwrap_or_else(|| Span::in_document(flashtex_compiler::DocumentId(0), 0, 0));
+            events.push((blocks.len(), adapter::ChromeEvent::ThisPageStyle(flashtex_class_geometry::PageStyle::Empty), span));
+            events.push((blocks.len(), adapter::ChromeEvent::SetPage(1), span));
+            let mut null = plain_vblock(vec![(0.0, 0.0)]);
+            null.penalty_before = Some(pagebuild::EJECT_PENALTY);
+            open_abstract = Some(blocks.len());
+            blocks.push(empty_block(null));
+            after_heading = false;
         }
         match block {
             Block::Heading {
@@ -8275,6 +8316,48 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 blocks.push(b);
                 after_heading = false;
             }
+        }
+        // `\end{abstract}` is `\par\vfil\null\endtitlepage`, and
+        // `\endtitlepage` is `\newpage` plus, one-sided,
+        // `\setcounter{page}\@ne` again -- so the material after the
+        // environment starts the next page, which is half of what this
+        // branch of the environment is.
+        if let Some(start) = open_abstract.filter(|_| doc.abstract_pages.iter().any(|&(_, last)| last == doc_index)) {
+            let last_material = (blocks.len().saturating_sub(1)).max(start);
+            let mut null = plain_vblock(vec![(0.0, 0.0)]);
+            null.penalty_after = Some(pagebuild::EJECT_PENALTY);
+            blocks.push(empty_block(null));
+            if geo.is_none_or(|g| !g.flags.twoside) {
+                let span = crate::abstractenv::block_span(block).unwrap_or_else(|| Span::in_document(flashtex_compiler::DocumentId(0), 0, 0));
+                events.push((blocks.len(), adapter::ChromeEvent::SetPage(1), span));
+            }
+            abstract_pages.push((start, last_material, blocks.len() - 1));
+            open_abstract = None;
+            after_heading = false;
+        }
+    }
+    // The two `\vfil`s of a `titlepage` `abstract` and `\newpage`'s third
+    // share what the page leaves over (a fourth of `.0001fil` under
+    // `\raggedbottom`'s `\@textbottom`), exactly as the `titlepage`
+    // `\maketitle` does. The page builder has no stretchable vertical glue,
+    // so the share is resolved here into a rigid skip against the page's
+    // own natural height -- which is why it runs after every block of the
+    // page is built and not while one is.
+    for &(start, last_material, end) in &abstract_pages {
+        let p = page_params(style);
+        let vb: Vec<VBlock> = blocks[start..=end].iter().map(|b| b.vertical.clone()).collect();
+        let (_, natural) = pagebuild::natural_layout(&p, &pagebuild::vlist(&p, &vb), true);
+        let fils = 3.0 + if style.raggedbottom { 1e-4 } else { 0.0 };
+        let fil = ((style.text_height_pt - natural) / fils).max(0.0);
+        // `\null\vfil` and `\par\vfil\null`: the two are one glue when the
+        // abstract set no body at all.
+        let takers = if start == last_material { 1 } else { 2 };
+        for &at in [start, last_material].iter().take(takers) {
+            let v = &mut blocks[at].vertical;
+            v.space_after = Some(match v.space_after {
+                Some((n, s, k)) => (n + fil, s, k),
+                None => (fil, 0.0, 0.0),
+            });
         }
     }
     // `\twocolumn` begins with `\clearpage`: column material after
