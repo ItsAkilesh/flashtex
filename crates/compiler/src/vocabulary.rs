@@ -39,7 +39,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     // LaTeX2e document structure and front matter.
     "part", "chapter", "subsubsection", "appendix", "maketitle",
     "title", "author", "date", "thanks", "and", "today", "tableofcontents", "listoffigures",
-    "listoftables", "abstractname", "footnote", "footnotemark", "footnotetext", "marginpar",
+    "listoftables", "abstractname", "footnote", "footnotemark", "footnotetext",
     "index", "glossary", "bibliography", "bibliographystyle", "bibitem", "cite", "nocite",
     // Boxes, spacing, breaking and page control.
     "centering", "raggedright", "raggedleft", "linespread", "vfill", "hss", "vss", "vbox",
@@ -137,6 +137,16 @@ pub fn is_known_command(name: &str) -> bool {
     KNOWN
         .get_or_init(|| implemented_commands().chain(KNOWN_UNIMPLEMENTED_COMMANDS.iter().copied()).collect())
         .contains(name)
+}
+
+/// Whether `name` is still carried in `KNOWN_UNIMPLEMENTED_COMMANDS`
+/// specifically — distinct from [`is_known_command`], which is also `true`
+/// for anything actually implemented. A name that is real LaTeX and
+/// implemented must not be in both: `unsupported` (`parser.rs`) asserts the
+/// two lists are disjoint at debug time, and this lets a test enforce it for
+/// a specific name without depending on that debug-only check.
+pub fn is_listed_as_unimplemented(name: &str) -> bool {
+    KNOWN_UNIMPLEMENTED_COMMANDS.contains(&name)
 }
 
 pub fn is_known_environment(name: &str) -> bool {
