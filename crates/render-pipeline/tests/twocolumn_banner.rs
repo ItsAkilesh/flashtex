@@ -300,6 +300,36 @@ fn a_sectioning_command_in_the_argument_is_still_reported() {
     assert!(codes.iter().any(|c| c == "twocolumn_top_material"), "{codes:?}");
 }
 
+/// Material after the banner that carries no entry-document range — a
+/// `tikzpicture` here, an `\input` file's blocks, a `longtable` or the
+/// `\tableofcontents` — must not refuse the whole split. It stands past the
+/// `]`, so it joins the kept blocks without needing a source range of its
+/// own, and the banner is still set at the full `\textwidth`.
+#[test]
+fn trailing_unpositioned_material_does_not_refuse_the_box() {
+    let src = "\\documentclass[10pt]{article}\n\\pagestyle{empty}\n\\begin{document}\n\
+        \\twocolumn[Short banner line]\nZulu aaa bbb ccc ddd eee ggg hhh iii jjj kkk lll mmm.\n\n\
+        \\begin{tikzpicture}\n\\draw (0,0) -- (2,1);\n\\end{tikzpicture}\n\n\
+        Tail words here.\n\\end{document}\n";
+    let (codes, first, zulu) = probe(src, "Short");
+    assert!(!codes.iter().any(|c| c == "twocolumn_top_material"), "{codes:?}");
+    close(first.baseline, 131.720, "banner baseline");
+    close(first.x, 133.768, "banner x");
+    close(zulu.baseline, 141.683, "first column baseline");
+}
+
+/// A blank line between `\twocolumn` and `[x]` is a `\par`, not a space
+/// token, so `\@ifnextchar [` never sees the bracket: real pdflatex typesets
+/// `[x]` as ordinary text, and there is no `twocolumn_top_material` to
+/// report.
+#[test]
+fn a_blank_line_before_the_bracket_is_plain_text_not_a_warning() {
+    let src = "\\documentclass[10pt]{article}\n\\begin{document}\n\\twocolumn\n\n[x]\nAaa\n\\end{document}\n";
+    let (codes, words) = layout(src);
+    assert!(!codes.iter().any(|c| c == "twocolumn_top_material"), "{codes:?}");
+    assert!(words.iter().any(|w| w.text.contains('[')), "the bracket is typeset as ordinary text: {words:?}");
+}
+
 /// A `\twocolumn` after material cannot open the box (`\@topnewpage` runs
 /// `\@nodocument`, and the frame cannot change the column count mid-document
 /// either), so its argument is left alone and reported as before.

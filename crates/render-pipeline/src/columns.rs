@@ -76,8 +76,9 @@ pub struct ColumnMode {
     top: Option<(usize, usize)>,
 }
 
-/// Every `\twocolumn`/`\onecolumn` in `source`, outside comments, in order,
-/// as `(start byte, end byte, `\if@twocolumn` after it)`.
+/// Every `\twocolumn`/`\onecolumn` in `source`, outside comments and outside
+/// macro-definition bodies, in order, as `(start byte, end byte,
+/// `\if@twocolumn` after it)`.
 fn switches(source: &str) -> Vec<(usize, usize, bool)> {
     let bytes = source.as_bytes();
     let mut out = Vec::new();
@@ -92,6 +93,17 @@ fn switches(source: &str) -> Vec<(usize, usize, bool)> {
             // A control symbol is one character long, `\%` included, so the
             // escaped percent never opens a comment.
             b'\\' => {
+                // A definition body is not executed text: skip it whole, so
+                // a switch inside an uninvoked (or only later invoked) macro
+                // never moves the mode. This is the narrow version of
+                // `adapter::skip_macro_definition` for this byte scanner:
+                // that helper is `adapter`-private, misses `[n]`-argument
+                // bodies, and does not cover `\newenvironment`'s two
+                // bodies, so it is not reused here.
+                if let Some(end) = definition_end(source, i) {
+                    i = end;
+                    continue;
+                }
                 let mut step = 2;
                 for (name, on) in [("twocolumn", true), ("onecolumn", false)] {
                     let Some(rest) = source[i + 1..].strip_prefix(name) else {
@@ -150,7 +162,10 @@ fn first_material(source: &str) -> usize {
 /// `\@ifnextchar` skips space tokens, so spaces, tabs and one newline may
 /// stand between; a *blank* line is a `\par`, which is not a space token
 /// and does not reach the `[`.
-fn optional_bracket(source: &str, end: usize) -> Option<usize> {
+///
+/// `pub(crate)` so the `twocolumn_top_material` limitation in [`crate::adapter`]
+/// applies exactly this rule instead of its own whitespace test.
+pub(crate) fn optional_bracket(source: &str, end: usize) -> Option<usize> {
     let bytes = source.as_bytes();
     let mut i = end;
     let mut newlines = 0;
@@ -169,6 +184,154 @@ fn optional_bracket(source: &str, end: usize) -> Option<usize> {
         }
     }
     None
+}
+
+/// Byte just past the macro definition a `\` at `at` opens, when the control
+/// word there is one of `\newcommand`, `\renewcommand`, `\providecommand`,
+/// `\def`, `\newenvironment` or `\renewenvironment`; `None` otherwise.
+///
+/// A body that never runs cannot switch the columns — real pdflatex keeps
+/// the class's own column count when the macro is never invoked — so the
+/// byte scan skips the definition whole: the defined name, any `[...]`
+/// argument specs, and the brace-delimited bodies (two for the
+/// environments). Comment- and escape-aware like [`switches`]' own scan,
+/// and each body is one correctly brace-matched skip; a malformed
+/// definition ends the skip where the parse gives up, and scanning resumes
+/// there.
+fn definition_end(source: &str, at: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut i = at + 1;
+    while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+        i += 1;
+    }
+    match &source[at + 1..i] {
+        "newcommand" | "renewcommand" | "providecommand" => {
+            i = skip_ws_comments(source, i);
+            if bytes.get(i) == Some(&b'*') {
+                i = skip_ws_comments(source, i + 1);
+            }
+            // The defined name, `{...}` or a control sequence.
+            i = skip_control_or_group(source, i)?;
+            i = skip_arg_specs(source, i);
+            Some(skip_group(source, i)?)
+        }
+        "def" => {
+            // `\def\name<parameter text>{body}`.
+            i = skip_control_or_group(source, skip_ws_comments(source, i))?;
+            // The parameter text holds no braces to match.
+            while i < bytes.len() && bytes[i] != b'{' {
+                i += 1;
+            }
+            Some(skip_group(source, i)?)
+        }
+        "newenvironment" | "renewenvironment" => {
+            i = skip_ws_comments(source, i);
+            if bytes.get(i) == Some(&b'*') {
+                i = skip_ws_comments(source, i + 1);
+            }
+            i = skip_control_or_group(source, i)?;
+            i = skip_arg_specs(source, i);
+            // The begin code and the end code.
+            i = skip_group(source, i)?;
+            Some(skip_group(source, i)?)
+        }
+        _ => None,
+    }
+}
+
+/// `i` past whitespace and `%` comments.
+fn skip_ws_comments(source: &str, mut i: usize) -> usize {
+    let bytes = source.as_bytes();
+    loop {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'%') {
+            return i;
+        }
+        while i < bytes.len() && bytes[i] != b'\n' {
+            i += 1;
+        }
+    }
+}
+
+/// Byte just past the `{...}` group opening at `i` — one correctly
+/// brace-matched skip, comment- and escape-aware like [`switches`]' own
+/// scan — or `None` when `i` is not a `{` or the group never closes.
+fn skip_group(source: &str, i: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    if bytes.get(i) != Some(&b'{') {
+        return None;
+    }
+    let mut j = i + 1;
+    let mut depth = 1i32;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'\\' => j += 2,
+            b'%' => {
+                while j < bytes.len() && bytes[j] != b'\n' {
+                    j += 1;
+                }
+            }
+            b'{' => {
+                depth += 1;
+                j += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                j += 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => j += 1,
+        }
+    }
+    None
+}
+
+/// Byte just past the defined name at `i`: a `{...}` group or a control
+/// sequence; `None` when neither follows.
+fn skip_control_or_group(source: &str, i: usize) -> Option<usize> {
+    let i = skip_ws_comments(source, i);
+    let bytes = source.as_bytes();
+    if bytes.get(i) == Some(&b'{') {
+        return skip_group(source, i);
+    }
+    if bytes.get(i) != Some(&b'\\') {
+        return None;
+    }
+    let mut j = (i + 1).min(bytes.len());
+    if bytes.get(j).is_some_and(|c| c.is_ascii_alphabetic()) {
+        while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+            j += 1;
+        }
+        Some(j)
+    } else if j < bytes.len() {
+        // A control symbol, e.g. the `\,` in `\def\,{...}`.
+        Some(j + 1)
+    } else {
+        None
+    }
+}
+
+/// Byte just past any `[...]` argument specs at `i` (`\newcommand`'s `[n]`
+/// and `[default]`).
+fn skip_arg_specs(source: &str, mut i: usize) -> usize {
+    let bytes = source.as_bytes();
+    loop {
+        i = skip_ws_comments(source, i);
+        if bytes.get(i) != Some(&b'[') {
+            return i;
+        }
+        i += 1;
+        while i < bytes.len() && bytes[i] != b']' {
+            i += 1;
+        }
+        if i < bytes.len() {
+            i += 1;
+        }
+    }
 }
 
 /// The `]` that ends `\long\def\@topnewpage[#1]`'s delimited argument: the
@@ -381,6 +544,45 @@ mod tests {
         // `\@ifnextchar [` skips space tokens; a blank line is a `\par`.
         let m = scan_test("\\begin{document}\n\\twocolumn\n\n[Banner]\nAaa\n\\end{document}\n", false);
         assert_eq!(m.top_material(), None);
+    }
+
+    #[test]
+    fn switches_inside_uninvoked_macro_bodies_do_not_move_the_mode() {
+        // Neither macro is ever invoked: real pdflatex keeps the class's
+        // own column count in every case, since the body never runs.
+        for class_option in [false, true] {
+            for (def, switch, word) in [
+                ("newcommand", "onecolumn", "wide"),
+                ("newcommand", "twocolumn", "narrow"),
+                ("renewcommand", "onecolumn", "wide"),
+                ("renewcommand", "twocolumn", "narrow"),
+                ("providecommand", "onecolumn", "wide"),
+                ("providecommand", "twocolumn", "narrow"),
+            ] {
+                let src = format!(
+                    "\\documentclass{options}{{article}}\n\\{def}{{\\{word}}}{{\\{switch}}}\n\\begin{{document}}x\\end{{document}}",
+                    options = if class_option { "[twocolumn]" } else { "" },
+                );
+                let m = scan_test(&src, class_option);
+                assert_eq!(m.start(), class_option, "{src}");
+                assert!(m.unmodelled().is_empty(), "{src}");
+            }
+        }
+    }
+
+    #[test]
+    fn def_and_newenvironment_bodies_do_not_move_the_mode_either() {
+        for (class_option, src) in [
+            (false, "\\documentclass{article}\n\\def\\wide{\\onecolumn}\n\\begin{document}x\\end{document}"),
+            (false, "\\documentclass{article}\n\\def\\narrow{\\twocolumn}\n\\begin{document}x\\end{document}"),
+            (true, "\\documentclass[twocolumn]{article}\n\\newenvironment{wide}{\\onecolumn}{}\n\\begin{document}x\\end{document}"),
+            (true, "\\documentclass[twocolumn]{article}\n\\renewenvironment{narrow}{\\twocolumn}{}\n\\begin{document}x\\end{document}"),
+            (false, "\\documentclass{article}\n\\newenvironment{narrow}{\\twocolumn}{\\onecolumn}\n\\begin{document}x\\end{document}"),
+        ] {
+            let m = scan_test(src, class_option);
+            assert_eq!(m.start(), class_option, "{src}");
+            assert!(m.unmodelled().is_empty(), "{src}");
+        }
     }
 
     #[test]

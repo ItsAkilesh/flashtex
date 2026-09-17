@@ -2235,8 +2235,13 @@ pub fn adapt_cached(
     // of the column text exactly. The compiler leaves those where they
     // stand, brackets and all, which is what #746 reported.
     for &(_, end) in style.columns.spans() {
-        let open = end + source[end..].len() - source[end..].trim_start().len();
-        if source[end..].trim_start().starts_with('[') && source[..end].ends_with("\\twocolumn") && boxed != Some(open) {
+        // The same rule `columns::optional_bracket` uses: `\@ifnextchar [`
+        // skips space tokens, and a blank line is a `\par`, not a space —
+        // so a `[` after a blank line is ordinary text, not the argument.
+        let Some(open) = crate::columns::optional_bracket(source, end) else {
+            continue;
+        };
+        if source[..end].ends_with("\\twocolumn") && boxed != Some(open) {
             limitations.push((
                 "twocolumn_top_material",
                 Span::in_document(flashtex_compiler::DocumentId(entry), end, end),
@@ -2354,8 +2359,20 @@ fn is_material(b: &Block) -> bool {
 fn split_top_material(blocks: &mut Vec<Block>, document: flashtex_compiler::DocumentId, open: usize, close: usize) -> Option<Vec<Block>> {
     let mut top: Vec<Block> = Vec::new();
     let mut keep: Vec<Block> = Vec::new();
+    // Blocks are in document order: once a material block starts past the
+    // `]`, every block after it does too, so they join `keep` without
+    // needing a source range of their own. Only blocks up to and including
+    // the one containing the `]` must place relative to the box — a later
+    // `tikzpicture`, `longtable`, `\tableofcontents` or `\input` block
+    // carries no entry-document range, and requiring one of it refused the
+    // whole split and lost the banner.
+    let mut past_close = false;
     for block in blocks.iter() {
         if !is_material(block) {
+            keep.push(block.clone());
+            continue;
+        }
+        if past_close {
             keep.push(block.clone());
             continue;
         }
@@ -2366,6 +2383,7 @@ fn split_top_material(blocks: &mut Vec<Block>, document: flashtex_compiler::Docu
             return None;
         }
         if lo > close {
+            past_close = true;
             keep.push(block.clone());
             continue;
         }
@@ -2377,6 +2395,11 @@ fn split_top_material(blocks: &mut Vec<Block>, document: flashtex_compiler::Docu
         let Block::Paragraph { parts, indent, .. } = block else {
             return None;
         };
+        if hi > close {
+            // This block already reaches past the `]`: everything after it
+            // in document order does too.
+            past_close = true;
+        }
         let (inside, after) = split_parts(parts, document, open, close)?;
         if !inside.is_empty() {
             let mut b = block.clone();
