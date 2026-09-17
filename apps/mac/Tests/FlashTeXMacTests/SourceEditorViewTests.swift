@@ -16,16 +16,6 @@ final class SourceEditorViewTests: XCTestCase {
 
     // MARK: fixtures
 
-    /// 1-minute load average (see `CompletionLatencyTests.loadAverage1`): the
-    /// timing bounds below are only enforced under it, since a busy shared
-    /// machine can genuinely inflate even per-thread CPU time (cache and
-    /// memory-bandwidth contention, thermal throttling), not just wall time.
-    static var loadAverage1: Double {
-        var load = [0.0, 0.0, 0.0]
-        getloadavg(&load, 3)
-        return load[0]
-    }
-
     /// ASCII plus multi-byte text on every line, `bytes` or slightly more UTF-8 bytes.
     static func largeDocument(bytes: Int) -> String {
         var s = "\\documentclass{article}\n\\begin{document}\n"
@@ -260,7 +250,7 @@ final class SourceEditorViewTests: XCTestCase {
     // MARK: marks
 
     func testMarksArePaintedOnlyAroundTheVisibleWindowAndFast() throws {
-        let load = Self.loadAverage1
+        let load = TimingGate.loadAverage1
         let text = Self.largeDocument(bytes: 60_000)
         let scroll = CompletingTextView.scrollable()
         let tv = scroll.documentView as! NSTextView
@@ -325,7 +315,7 @@ final class SourceEditorViewTests: XCTestCase {
               + passes.map { "\($0.0) \($0.1.cpu) ms CPU / \($0.1.wall) ms wall" }.joined(separator: ", "))
         // Timing bounds only (the functional checks below always run): a busy
         // shared machine can genuinely inflate even per-thread CPU time.
-        if load < 20 {
+        if TimingGate.enforced(load: load) {
             for (name, t) in passes {
                 XCTAssertLessThan(t.cpu, 2.0, "\(name) mark pass took \(t.cpu) ms CPU (\(t.wall) ms wall)")
             }
@@ -1120,7 +1110,7 @@ final class SourceEditorViewTests: XCTestCase {
     // MARK: large document keystrokes
 
     func testLargeDocumentKeystrokeRoundTripAndCaretBytesStayCorrect() async throws {
-        let load = Self.loadAverage1
+        let load = TimingGate.loadAverage1
         let model = ShellModel()
         let seed = Self.largeDocument(bytes: 60_000)
         model.replaceProject(entryText: seed)
@@ -1181,7 +1171,7 @@ final class SourceEditorViewTests: XCTestCase {
         // per-thread CPU time (cache/memory-bandwidth contention, thermal
         // throttling), so these bounds are only enforced under low load; the
         // numbers above are still measured and printed either way.
-        if load < 20 {
+        if TimingGate.enforced(load: load) {
             for (i, ms) in roundTripsMs.enumerated() {
                 XCTAssertTrue(ms < 1.0 || roundTripsCpuMs[i] < 1.0,
                               "keystroke \(i) (\(script[i].debugDescription)) textDidChange -> binding took \(ms) ms wall, \(roundTripsCpuMs[i]) ms CPU (\(keystrokeCpuMs[i]) ms CPU for the whole keystroke)")
