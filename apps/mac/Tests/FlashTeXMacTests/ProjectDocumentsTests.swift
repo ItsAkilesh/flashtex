@@ -236,6 +236,69 @@ final class ProjectDocumentsTests: XCTestCase {
         XCTAssertTrue(why.contains("no project root"), why)
     }
 
+    // MARK: silent-failure fixes (GH: tab bar / Project menu save, go-to-definition
+    // / palette / sidebar open) — `ShellModel.saveDocumentInteractive` and
+    // `.openAndSwitch` map a discarded `SaveOutcome`/`OpenOutcome` to a footer note.
+
+    /// The entry document is unsaved (no project root): `saveDocumentInteractive`
+    /// (shared by the tab bar's and Project menu's "Save <path>" items) must not
+    /// drop the refusal — it names the reason in `captureNote`.
+    func testSaveDocumentInteractiveNamesTheReasonWhenTheDocumentIsNotOpen() async {
+        let model = ShellModel()
+        model.detachWorker()
+        model.replaceProject(entryText: "\\input{chapter}\n")
+        XCTAssertNil(model.captureNote)
+        await model.saveDocumentInteractive("chapter.tex")
+        XCTAssertEqual(model.captureNote, "Save of chapter.tex failed: chapter.tex is not open")
+    }
+
+    /// The success path the tab bar's and Project menu's "Save <path>" items
+    /// now go through directly (previously they discarded the outcome entirely).
+    func testSaveDocumentInteractiveSavesAnOpenNonEntryDocument() async throws {
+        let project = try TempProject(main: "\\begin{document}\nMain.\n\\input{chapter}\n\\end{document}\n", chapter: "Chapter.\n")
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let opened = await model.project.openDiscoveredIncludes()
+        XCTAssertEqual(opened, [.opened(path: "chapter.tex")])
+        model.project.switchDocument(to: "chapter.tex")
+        model.updateActiveText("Chapter, saved via the tab bar's context menu.\n")
+        await model.saveDocumentInteractive("chapter.tex")
+        XCTAssertEqual(model.captureNote, "Saved chapter.tex")
+        let chapterURL = project.root.appendingPathComponent("project/chapter.tex")
+        XCTAssertEqual(try String(contentsOf: chapterURL, encoding: .utf8), "Chapter, saved via the tab bar's context menu.\n")
+    }
+
+    /// `openAndSwitch` (shared by go-to-definition file targets, the command
+    /// palette's Files rows, the sidebar's closed-row click, and the Project
+    /// menu's "Open <name>" item) reports a refusal through the caller's note
+    /// instead of leaving the open silently failed.
+    func testOpenAndSwitchReportsARefusalInsteadOfDroppingIt() async {
+        let model = ShellModel()
+        model.detachWorker()
+        model.replaceProject(entryText: "\\input{chapter}\n")
+        var note: String?
+        let ok = await model.openAndSwitch("chapter.tex", role: .opened) { note = $0 }
+        XCTAssertFalse(ok)
+        XCTAssertEqual(note.map { $0.contains("no project root") }, true, note ?? "nil")
+    }
+
+    /// On success `openAndSwitch` switches the active document, the same as
+    /// the other go-to-definition branches (`reveal`).
+    func testOpenAndSwitchSwitchesToTheOpenedDocumentOnSuccess() async throws {
+        let project = try TempProject(extra: ["ch/two.tex": "Two.\n"])
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        var note: String?
+        let ok = await model.openAndSwitch("chapter.tex", role: .included(from: "main.tex")) { note = $0 }
+        XCTAssertTrue(ok)
+        XCTAssertNil(note)
+        XCTAssertEqual(model.activePath, "chapter.tex")
+    }
+
     func testNavigationSwitchRecordsTheOutgoingCaret() throws {
         // Navigation.swift switches `activePath` directly for a span in another
         // open document; the caret of the document being left is still recorded.

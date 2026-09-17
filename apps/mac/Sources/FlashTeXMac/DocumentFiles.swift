@@ -598,6 +598,20 @@ extension ShellModel {
         return write(to: url, expected: expectedOnDisk(for: url), force: false)
     }
 
+    /// Saves a non-entry project member and reports the outcome in the
+    /// footer note — saved, conflict summary, or failure reason — instead of
+    /// leaving a failed or conflicted save with no feedback. Shared by
+    /// `saveTexInteractive` and the tab bar's/Project menu's "Save <path>"
+    /// items (DocumentTabBar.swift), which previously discarded the
+    /// `ProjectDocuments.SaveOutcome`.
+    func saveDocumentInteractive(_ path: String) async {
+        switch await project.saveDocument(path) {
+        case .saved(let p, _): captureNote = "Saved \(p)"
+        case .conflict(let c): captureNote = c.summary
+        case .failed(let why): captureNote = "Save of \(path) failed: \(why)"
+        }
+    }
+
     /// Menu-driven save: on a conflict, asks the user how to resolve it.
     func saveTexInteractive() {
         // A non-entry document saves to its own rooted file (never to the
@@ -606,12 +620,7 @@ extension ShellModel {
         if activePath != project.entryPath {
             let path = activePath
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                switch await project.saveDocument(path) {
-                case .saved(let p, _): captureNote = "Saved \(p)"
-                case .conflict(let c): captureNote = c.summary
-                case .failed(let why): captureNote = "Save of \(path) failed: \(why)"
-                }
+                await self?.saveDocumentInteractive(path)
             }
             return
         }
