@@ -165,7 +165,8 @@ final class DisplayCandidateTests: XCTestCase {
         state.releaseDeferred(.timeout)
         XCTAssertEqual(state.deferredReleasedByTimeout, 0, "nothing held: nothing counted")
         // Model-level: OFF (not negotiated) runs the work inline; negotiated + accepted display-list-v2 holds it,
-        // and a hold for a newer request runs the older request's work first (never drops it).
+        // and a hold for a newer request carries the older request's work into itself (never drops it,
+        // never runs it while the newer sibling is expected).
         let model = ShellModel()
         var inline = 0
         model.displayCandidatesAfterSibling(of: "pc-1", acceptedLayout: ["display-list-v2"]) { inline += 1 }
@@ -179,10 +180,14 @@ final class DisplayCandidateTests: XCTestCase {
         model.displayCandidatesAfterSibling(of: "pc-3", acceptedLayout: ["display-list-v2"], holdsRelease: true) { held.append("3b") }
         XCTAssertEqual(held, []); XCTAssertEqual(model.displayCandidates.deferred?.works.count, 2)
         model.displayCandidatesAfterSibling(of: "pc-4", acceptedLayout: ["display-list-v2"]) { held.append("4") }
-        XCTAssertEqual(held, ["3a", "3b"], "a newer request's hold releases the older request's work first")
+        // GH-799: running 3a/3b here put a completion fetch on the wire inside pc-4's sibling window; its
+        // required reply evicted pc-4's queued candidate in the helper, and that revision never got a v2 frame.
+        XCTAssertEqual(held, [], "a newer request's hold does not run the older request's work inside its own sibling window")
+        XCTAssertEqual(model.displayCandidates.deferred?.requestID, "pc-4")
+        XCTAssertEqual(model.displayCandidates.deferred?.works.count, 3, "the older work is carried into the newer hold")
         XCTAssertEqual(model.displayCandidates.deferredReleasedBySupersession, 1)
         try await Task.sleep(nanoseconds: UInt64((ShellModel.displayCandidateSiblingWaitMs + 40) * 1_000_000))
-        XCTAssertEqual(held, ["3a", "3b", "4"], "the bound releases a hold whose sibling never came")
+        XCTAssertEqual(held, ["3a", "3b", "4"], "the bound releases a hold whose sibling never came, carried work first")
         XCTAssertEqual(model.displayCandidates.deferredReleasedByTimeout, 1)
         XCTAssertNil(model.displayCandidates.deferred)
         // Invalidation (close / helper exit / restart) runs the held work too: a held in-flight release must never be lost.
