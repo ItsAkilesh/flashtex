@@ -513,7 +513,7 @@ final class ProjectDocumentsTests: XCTestCase {
         XCTAssertEqual(c.url, chapterURL)
         XCTAssertEqual(try String(contentsOf: chapterURL, encoding: .utf8), "external chapter\n")
         XCTAssertTrue(p.isDirty("chapter.tex"))
-        XCTAssertEqual(p.saveConflict, c)
+        XCTAssertEqual(p.saveConflict(for: "chapter.tex"), c)
         XCTAssertEqual(model.activeText, "Chapter one, saved twice.\n")
     }
 

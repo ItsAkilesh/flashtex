@@ -275,7 +275,7 @@ final class DocumentFilesState {
     /// `force` overwrites regardless (only after an explicit user decision).
     /// `conflict`/`lastDiskState` describe the *entry* document: a project
     /// member's save passes `recordsState: false` and keeps its own record
-    /// (`ProjectDocuments.saveConflict`), so it can neither clear nor raise
+    /// (`ProjectDocuments.saveConflicts`), so it can neither clear nor raise
     /// the entry's conflict.
     func save(_ url: URL, text: String, expected: ProjectFilesV1.Expected, force: Bool, recordsState: Bool = true,
               lateReceipt: @escaping @MainActor (String) -> Void = { _ in }) -> SaveResult {
@@ -515,9 +515,9 @@ extension ShellModel {
         panel.allowedContentTypes = [Self.texType, .plainText]
         panel.message = "Open a LaTeX source file as the entry document"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard isDirty else { openTex(at: url); return }
+        guard hasUnsavedDocuments else { openTex(at: url); return }
         let alert = NSAlert()
-        alert.messageText = "Save changes to \(documentURL?.lastPathComponent ?? "the unsaved buffer") before opening \(url.lastPathComponent)?"
+        alert.messageText = "Save changes to \(unsavedDocumentsDescription) before opening \(url.lastPathComponent)?"
         alert.informativeText = "Discarded text stays recoverable this session via Edit > Restore Discarded Buffer."
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Discard")
@@ -540,33 +540,78 @@ extension ShellModel {
     /// discard remains recoverable within the session.
     struct RecoverableBuffer: Equatable { var url: URL?; var text: String }
 
-    /// Opens a `.tex` file as the entry document. When the current buffer is
-    /// dirty, nothing is replaced unless the caller passes an explicit
-    /// disposition: `.saveFirst` writes the current file (or refuses if it has
-    /// no URL), `.discard` replaces it but keeps the text in `recoverableBuffer`.
+    /// Every document with unsaved edits (entry and members, active or not):
+    /// what replacing the project would drop (#786).
+    var hasUnsavedDocuments: Bool { isDirty || project.anyDirty }
+
+    /// Names the dirty documents for a Save/Discard prompt.
+    var unsavedDocumentsDescription: String {
+        let dirty = project.listing.filter(\.isDirty).map(\.path)
+        if documentURL == nil || dirty.isEmpty { return documentURL?.lastPathComponent ?? "the unsaved buffer" }
+        return dirty.joined(separator: ", ")
+    }
+
+    /// Whether a project replacement (open, fixture load, reload, New Project)
+    /// may proceed. It drops *every* document, so every dirty one counts, not
+    /// just the active tab (#786): `.none` refuses, `.saveFirst` saves the
+    /// entry and each dirty member and refuses on the first failure or
+    /// conflict (nothing replaced), `.discard` proceeds with the entry's buffer
+    /// to keep (`keepDiscarded` also snapshots each dirty member).
+    enum ReplacementAuthorization: Equatable { case proceed(discarding: RecoverableBuffer?), refused(OpenOutcome) }
+
+    func authorizeProjectReplacement(_ dirty: DirtyDisposition, before action: String) -> ReplacementAuthorization {
+        guard hasUnsavedDocuments else { return .proceed(discarding: nil) }
+        switch dirty {
+        case .none:
+            captureNote = "\(unsavedDocumentsDescription) \(project.listing.filter(\.isDirty).count > 1 ? "have" : "has") unsaved edits; save or discard before \(action)."
+            return .refused(.blockedByUnsavedEdits)
+        case .saveFirst:
+            if project.isDirty(project.entryPath) {
+                guard documentURL != nil, saveTex() else {
+                    captureNote = "Could not save the current buffer (\(files.status)); nothing replaced before \(action)."
+                    return .refused(.saveFailed)
+                }
+            }
+            for path in documents.map(\.path) where path != project.entryPath && project.isDirty(path) {
+                guard case .saved = project.saveDocumentNow(path) else {
+                    captureNote = "Could not save \(path) (\(project.status)); nothing replaced before \(action)."
+                    return .refused(.saveFailed)
+                }
+            }
+            return .proceed(discarding: nil)
+        case .discard:
+            return .proceed(discarding: RecoverableBuffer(url: documentURL, text: entryText)) // the entry's buffer, whichever tab is active
+        }
+    }
+
+    /// Consumes a discard decision just before the project is replaced: the
+    /// entry's buffer goes to `recoverableBuffer` (and a durable snapshot), and
+    /// every dirty member gets its own durable snapshot under its rooted file
+    /// (File > Restore Unsaved Snapshot…) — never another document's text.
+    func keepDiscarded(_ discarding: RecoverableBuffer, reason: String) {
+        // Session memory is one slot; the store keeps one per file across
+        // sessions (the ledger route keeps it in undo history instead). A
+        // clean entry (only members dirty) replaces neither.
+        if project.isDirty(project.entryPath) {
+            recoverableBuffer = discarding
+            if let from = discarding.url { preserveDirtyText(discarding.text, at: from, reason: reason) }
+        }
+        guard let root = project.projectRoot else { return }
+        for doc in documents where doc.path != project.entryPath && project.isDirty(doc.path) {
+            preserveDirtyText(doc.text, at: root.appendingPathComponent(doc.path), reason: reason)
+        }
+    }
+
+    /// Opens a `.tex` file as the entry document. When any document is dirty,
+    /// nothing is replaced unless the caller passes an explicit disposition
+    /// (`authorizeProjectReplacement`): `.saveFirst` writes every dirty
+    /// document (or refuses), `.discard` replaces them but keeps their text.
     @discardableResult
     func openTex(at url: URL, dirty: DirtyDisposition = .none) -> OpenOutcome {
-        var discarding: RecoverableBuffer?
-        if isDirty {
-            switch dirty {
-            case .none:
-                captureNote = "\(documentURL?.lastPathComponent ?? "The unsaved buffer") has unsaved edits; save or discard before opening \(url.lastPathComponent)."
-                return .blockedByUnsavedEdits
-            case .saveFirst:
-                guard documentURL != nil, !project.isDirty(project.entryPath) || saveTex() else {
-                    captureNote = "Could not save the current buffer (\(files.status)); \(url.lastPathComponent) was not opened."
-                    return .saveFailed
-                }
-                // The open replaces the whole project: dirty members are saved too.
-                for path in documents.map(\.path) where path != project.entryPath && project.isDirty(path) {
-                    guard case .saved = project.saveDocumentNow(path) else {
-                        captureNote = "Could not save \(path) (\(project.status)); \(url.lastPathComponent) was not opened."
-                        return .saveFailed
-                    }
-                }
-            case .discard:
-                discarding = RecoverableBuffer(url: documentURL, text: entryText) // the entry's buffer, whichever tab is active
-            }
+        let discarding: RecoverableBuffer?
+        switch authorizeProjectReplacement(dirty, before: "opening \(url.lastPathComponent)") {
+        case .refused(let outcome): return outcome
+        case .proceed(let kept): discarding = kept
         }
         switch files.read(url) {
         case .text(let text):
@@ -594,12 +639,7 @@ extension ShellModel {
     /// the dirty buffer in place, not "discarded".
     private func adoptOpenedText(_ text: String, url: URL, discarding: RecoverableBuffer?) {
         if let discarding {
-            recoverableBuffer = discarding
-            // Session memory is one slot; the store keeps one per file across
-            // sessions (the ledger route keeps it in undo history instead).
-            if let from = discarding.url {
-                preserveDirtyText(discarding.text, at: from, reason: from == url ? "discarded by a reload from disk" : "discarded when \(url.lastPathComponent) was opened")
-            }
+            keepDiscarded(discarding, reason: discarding.url == url ? "discarded by a reload from disk" : "discarded when \(url.lastPathComponent) was opened")
         }
         replaceProject(entryText: text, named: url.lastPathComponent)
         documentURL = url
@@ -615,7 +655,7 @@ extension ShellModel {
     @discardableResult
     func restoreDiscardedBuffer() -> Bool {
         guard let kept = recoverableBuffer else { return false }
-        if isDirty {
+        if hasUnsavedDocuments {
             captureNote = "Current buffer has unsaved edits; save it before restoring the discarded buffer."
             return false
         }
@@ -852,7 +892,7 @@ extension ShellModel {
                 durable = .init(revision: d.revision, sha256: d.sha256)
             }
             return ReloadReview(url: url, currentText: activeText, diskText: diskText,
-                                diskSha256: SourceDigest.sha256Hex(diskText), bufferDirty: isDirty, durable: durable)
+                                diskSha256: SourceDigest.sha256Hex(diskText), bufferDirty: durable == nil ? hasUnsavedDocuments : isDirty, durable: durable)
         }
     }
 
@@ -873,10 +913,12 @@ extension ShellModel {
     @discardableResult
     func confirmReload(_ review: ReloadReview, dirty: DirtyDisposition = .none) async -> OpenOutcome {
         var discarding: RecoverableBuffer?
-        if isDirty {
+        // A direct reload replaces the whole project (every member's edits);
+        // the controller's reload changes only the entry's buffer.
+        if review.viaController ? isDirty : hasUnsavedDocuments {
             switch dirty {
             case .none:
-                captureNote = "\(review.url.lastPathComponent) has unsaved edits; discard them explicitly to reload."
+                captureNote = "\(review.viaController ? review.url.lastPathComponent : unsavedDocumentsDescription) has unsaved edits; discard them explicitly to reload."
                 return .blockedByUnsavedEdits
             case .saveFirst:
                 captureNote = "Cannot save over \(review.url.lastPathComponent) while reloading it; overwrite or discard instead."
@@ -906,10 +948,11 @@ extension ShellModel {
             captureNote = "\(review.url.lastPathComponent) is held by the preview controller; use the reviewed reload (Resolve On-Disk Conflict…)."
             return .readFailed
         }
-        if isDirty {
+        let dirtyNow = hasUnsavedDocuments // a direct reload replaces the whole project
+        if dirtyNow {
             switch dirty {
             case .none:
-                captureNote = "\(review.url.lastPathComponent) has unsaved edits; discard them explicitly to reload."
+                captureNote = "\(unsavedDocumentsDescription) has unsaved edits; discard them explicitly to reload."
                 return .blockedByUnsavedEdits
             case .saveFirst:
                 captureNote = "Cannot save over \(review.url.lastPathComponent) while reloading it; overwrite or discard instead."
@@ -917,7 +960,7 @@ extension ShellModel {
             case .discard: break
             }
         }
-        return directReload(review, discarding: isDirty ? RecoverableBuffer(url: documentURL, text: entryText) : nil)
+        return directReload(review, discarding: dirtyNow ? RecoverableBuffer(url: documentURL, text: entryText) : nil)
     }
 
     private func directReload(_ review: ReloadReview, discarding: RecoverableBuffer?) -> OpenOutcome {
