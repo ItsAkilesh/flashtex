@@ -3201,6 +3201,11 @@ impl Engine {
             // `\begin{name}`/`\end{name}` below skip it silently instead
             // of executing the shadowed command.
             self.st.rejected_theorem_envs.insert(name);
+            // A pending `\global` (or `\long`/`\outer`/`\protected`, though
+            // none of those apply to `\newtheorem`) must not survive a
+            // rejected declaration and leak onto whatever command reads
+            // prefixes next.
+            self.clear_prefixes();
             return;
         }
         if !name.is_empty() {

@@ -773,6 +773,19 @@ fn newtheorem_rejection_leaves_the_shadowed_primitive_usable() {
 }
 
 #[test]
+fn newtheorem_rejection_does_not_leak_a_pending_global() {
+    // A rejected declaration returned early without clearing pending
+    // prefixes, so `\global` (or `\long`/`\outer`/`\protected`, though none
+    // apply here) leaked onto whatever command read prefixes next.
+    let r = expand_str(r"{\global\newtheorem{def}{D}\def\foo{hi}}\ifdefined\foo Y\else N\fi");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\def already defined."], "{messages:?}");
+    // `\foo` was defined inside the group without `\global` surviving onto
+    // it, so it does not exist once the group closes.
+    assert_eq!(text(&r.tokens), "N", "{:?}", r.tokens);
+}
+
+#[test]
 fn newtheorem_second_declaration_of_the_same_name_errors() {
     // Like `\newenvironment`, a repeated declaration keeps the first
     // definition and reports the collision once per redeclaration.
