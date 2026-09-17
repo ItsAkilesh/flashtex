@@ -4848,7 +4848,11 @@ impl<'a> Context<'a> {
             let shift = footnotes::sup2_pt(local).max(dp + 0.25 * x_height);
             (shift, ht + shift, (dp - shift).max(0.0))
         } else {
-            let shift = footnotes::sub1_pt(local).max(ht - 0.8 * x_height);
+            let shift = footnotes::textsub_shift_pt(
+                footnotes::sub_drop_pt(sf),
+                footnotes::sub1_pt(local),
+                ht - 0.8 * x_height,
+            );
             (-shift, (ht - shift).max(0.0), dp + shift)
         };
         let width = content_width + footnotes::SCRIPT_SPACE;
