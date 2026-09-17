@@ -916,15 +916,18 @@ impl FontSizeLevel {
 
     /// Real `relsize.sty` semantics for `\larger` (`delta > 0`) and
     /// `\smaller` (`delta < 0`): scale the ACTUAL current point size
-    /// (`None` is `\normalsize`, i.e. exactly `body_size_pt`) by ×1.2 (or
-    /// ÷1.2), then switch to whichever defined level's real point value
+    /// (`None` is `\normalsize`, i.e. the class's real `\f@size`, which at
+    /// 11pt is 10.95pt rather than this compiler's literal 11pt body-size
+    /// approximation — see `closest_step`) by ×1.2 (or ÷1.2), then switch
+    /// to whichever defined level's real point value
     /// (`layout::size_declaration_pt` for this document's 10/11/12pt class
     /// table) is CLOSEST to that target — not "one slot along the table",
     /// which only agrees when the ladder is a uniform ×1.2 progression
     /// (false below `\normalsize` and at the top of every standard class).
-    /// A `|delta| > 1` repeats the single step, matching nested
-    /// `\larger{\larger{...}}`. Clamps at the ends: past `\tiny`/`\Huge`
-    /// the closest defined size is the end itself, so the size holds.
+    /// A `|delta| > 1` repeats the single step, matching `\larger[2]` and
+    /// nested `\larger` declarations. Clamps at the ends: past `\tiny` /
+    /// `\Huge` the closest defined size is the end itself, so the size
+    /// holds.
     pub fn stepped(
         current: Option<FontSizeLevel>,
         delta: i32,
@@ -940,14 +943,52 @@ impl FontSizeLevel {
         result
     }
 
+    /// Position of a level in real `relsize.sty`'s scan order
+    /// (`normalsize, small, footnotesize, large, Large, LARGE, scriptsize,
+    /// tiny, huge, Huge`): the first level in this order wins any tie for
+    /// closest to the ×1.2 target.
+    fn scan_rank(level: Option<FontSizeLevel>) -> usize {
+        match level {
+            None => 0,
+            Some(FontSizeLevel::Small) => 1,
+            Some(FontSizeLevel::FootnoteSize) => 2,
+            Some(FontSizeLevel::Large1) => 3,
+            Some(FontSizeLevel::Large2) => 4,
+            Some(FontSizeLevel::Large3) => 5,
+            Some(FontSizeLevel::ScriptSize) => 6,
+            Some(FontSizeLevel::Tiny) => 7,
+            Some(FontSizeLevel::Huge1) => 8,
+            Some(FontSizeLevel::Huge2) => 9,
+        }
+    }
+
     /// One ×1.2 (`direction > 0`) or ÷1.2 step with closest-match pickup.
     fn closest_step(
         current: Option<FontSizeLevel>,
         direction: i32,
         body_size_pt: f64,
     ) -> Option<FontSizeLevel> {
+        // `None` (no declaration active) searches from real LaTeX's
+        // `\normalsize` `\f@size` for the active class — 10pt, 10.95pt,
+        // 12pt — NOT this compiler's literal `body_size_pt` approximation
+        // (11.0pt at 11pt). At 11pt the approximation's target, 13.2pt,
+        // sits almost exactly between `\large` (12pt) and `\Large`
+        // (14.4pt) and the tie-break picks the wrong, larger size; the
+        // real target, 13.14pt, is unambiguously closest to `\large`,
+        // which is what pdflatex picks. This changes only the search: the
+        // winning level still renders at its own `size_declaration_pt`
+        // table value (and a `None` winner still renders at exactly
+        // `body_size_pt`), exactly as today — see that function's doc
+        // comment, which this deliberately does not disturb.
+        let real_normalsize_pt = if body_size_pt <= 10.5 {
+            10.0
+        } else if body_size_pt <= 11.5 {
+            10.95
+        } else {
+            12.0
+        };
         let point_size = |level: Option<FontSizeLevel>| match level {
-            None => body_size_pt,
+            None => real_normalsize_pt,
             Some(level) => crate::layout::size_declaration_pt(level, body_size_pt),
         };
         let current_pt = point_size(current);
@@ -981,22 +1022,11 @@ impl FontSizeLevel {
             .filter(|&(_, _, pt)| (pt - current_pt).abs() > EPS)
             .collect();
         let pool = if changed.is_empty() { tied } else { changed };
-        // Any remaining tie (e.g. `\huge`/`\Huge`) keeps moving in the
-        // step's direction: the extreme point value that way, and the
-        // extreme table index within it, deterministically.
-        let pick = if direction > 0 {
-            pool.iter().max_by(|a, b| {
-                a.2.partial_cmp(&b.2)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then(a.0.cmp(&b.0))
-            })
-        } else {
-            pool.iter().min_by(|a, b| {
-                a.2.partial_cmp(&b.2)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then(a.0.cmp(&b.0))
-            })
-        };
+        // Any remaining tie (e.g. `\huge`/`\Huge`) goes to the level
+        // relsize's own scan reaches first.
+        let pick = pool
+            .iter()
+            .min_by_key(|(_, level, _)| Self::scan_rank(*level));
         pick.map(|&(_, level, _)| level).unwrap_or(current)
     }
 }
@@ -3306,14 +3336,12 @@ impl P<'_> {
                 self.transform_box(name, span, para)
             }
             "url" | "nolinkurl" | "href" => self.url_command(name, span, para),
-            // `\larger`/`\smaller` (relsize): scale the actual current
-            // point size by ×1.2 (or ÷1.2) and take the closest defined
-            // size (see `FontSizeLevel::stepped`). With a braced argument
-            // the step is scoped to it, exactly like `\textbf{...}`;
-            // without one it is a declaration for the rest of the scope,
-            // like `\Large` — the real package's own two forms. That second
-            // form is why these do not go through
-            // `style_command_argument`, which always demands a group.
+            // `\larger`/`\smaller` (relsize): declarations with an
+            // optional `[n]` step count (see `FontSizeLevel::stepped`). A
+            // following `{...}` is only an ordinary group — the step stays
+            // in effect past it, like `\Large` — so unlike
+            // `style_command_argument` (which always demands a group) this
+            // path consumes no braces itself.
             "larger" | "smaller" => self.relative_size_command(name, span, para),
             _ if style_command(name) => self.style_command_argument(name, span, para),
             _ if style_declaration(name) => {
@@ -3910,27 +3938,41 @@ impl P<'_> {
         self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT)
     }
 
-    /// relsize's `\larger`/`\smaller`, in both of the real package's calling
-    /// conventions: `\larger{text}` scopes the step to its argument like
-    /// `\textbf{...}`, a bare `\larger` is a declaration for the rest of the
-    /// scope like `\Large`.
+    /// relsize's `\larger`/`\smaller`: declarations with an optional
+    /// `[n]` step count (default 1), not argument-taking commands. The step
+    /// applies to the rest of the enclosing scope: a following `{...}` is
+    /// just an ordinary group — it restores the stepped size on close, like
+    /// every group restores assignments made before it — so the size stays
+    /// in effect past the braces, exactly like real LaTeX and like `\Large`
+    /// (`\textlarger`/`\textsmaller` would be the scoped forms, and are
+    /// out of scope here).
     #[inline(never)]
-    fn relative_size_command(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+    fn relative_size_command(&mut self, name: &str, span: Span, _para: &mut Vec<Inline>) {
         self.skip_spaces();
-        let next = apply_style(self.style, name, self.body_size_pt());
-        if let Some(open) = self.closed_group_start() {
-            // Re-enter the argument as an ordinary group so math and
-            // other commands inside it are parsed normally.
-            self.i += 1;
-            self.open_group(open);
-            self.style = next;
-        } else if matches!(self.peek().map(|token| &token.kind), Some(TokenKind::LBrace)) {
-            // Unbalanced brace: `required_group` reports it, scoped.
-            let (tokens, _) = self.required_group(name, span);
-            para.extend(self.inlines_from_tokens(tokens, next));
-        } else {
-            self.style = next;
+        // The optional `[n]`: absent is one step, and a present but
+        // unparseable count falls back to one step as well.
+        let steps: i32 = match self.optional_bracket_argument() {
+            None => 1,
+            Some((content, _)) => content.trim().parse().unwrap_or(1),
+        };
+        // Without the package this is "Undefined control sequence" in real
+        // LaTeX: diagnose (naming the missing package, like the ulem gate
+        // in `text_underline_cmd`) and leave the size alone, so the content
+        // that follows still typesets as plain text instead of being
+        // dropped.
+        if !self.packages.iter().any(|package| package == "relsize") {
+            self.diags.push(Diagnostic::command_error(
+                name,
+                format!("\\{name} needs \\usepackage{{relsize}}"),
+                Some(span),
+                Some("typeset the content as plain text".into()),
+            ));
+            return;
         }
+        let delta = if name == "larger" { steps } else { -steps };
+        let mut next = self.style;
+        next.size = FontSizeLevel::stepped(next.size, delta, self.body_size_pt());
+        self.style = next;
     }
 
     /// A text style command with an argument (`\textbf{..}`, `\emph{..}`, ...).
@@ -10220,6 +10262,9 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // `\uline` and `\sout` are implemented; `\emph` is not redefined
         // (ulem's default `ULforem`) and `\uuline` stays unsupported if used.
         "ulem" => options.iter().all(|option| *option == "normalem"),
+        // `\larger`/`\smaller` are implemented above, so loading the
+        // package is silent (same rule as `ulem`); relsize takes no options.
+        "relsize" => options.is_empty(),
         _ => false,
     }
 }
@@ -13480,17 +13525,19 @@ mod tests {
         // No `\documentclass`, so the body size is the 12pt class's own
         // table: `\small` is 10.95pt and one step up is `\normalsize` at
         // exactly the body size — not `\large`'s fixed 14.4pt.
-        let (parsed, items) = items(r"{\small d \larger{X}}");
+        let (parsed, items) = items(r"\usepackage{relsize}{\small d \larger{X} Y}");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(size_of(&items, "d"), 10.95);
         assert_eq!(size_of(&items, "X"), crate::layout::BODY_SIZE_PT);
+        // `\larger` is a declaration: the step also holds past the `{X}` group.
+        assert_eq!(size_of(&items, "Y"), crate::layout::BODY_SIZE_PT);
     }
 
     #[test]
     fn smaller_is_one_step_down_from_the_size_in_effect() {
         // `\Large` is 17.28pt in the 12pt table; one step down is `\large`
         // at 14.4pt — not `\small`'s fixed size.
-        let (parsed, items) = items(r"{\Large g \smaller{X}}");
+        let (parsed, items) = items(r"\usepackage{relsize}{\Large g \smaller{X}}");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(size_of(&items, "g"), 17.28);
         assert_eq!(size_of(&items, "X"), 14.4);
@@ -13501,7 +13548,7 @@ mod tests {
         // Real `relsize.sty` (v4.1, 12pt class): `10 × 1.2 = 12.0` is an
         // EXACT match for `\normalsize` — not one table slot up (`\small`,
         // 10.95pt), which the old ordinal-step approach produced.
-        let (parsed, items) = items(r"{\footnotesize f \larger{X}}");
+        let (parsed, items) = items(r"\usepackage{relsize}{\footnotesize f \larger{X}}");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(size_of(&items, "f"), 10.0);
         assert_eq!(size_of(&items, "X"), crate::layout::BODY_SIZE_PT);
@@ -13513,7 +13560,7 @@ mod tests {
         // exact match for `\footnotesize` — probably the single most common
         // real-world use of `\smaller`, and the reverse of the case above.
         // The old ordinal-step approach produced `\small` (10.95pt).
-        let (parsed, items) = items(r"{\normalsize n \smaller{X}}");
+        let (parsed, items) = items(r"\usepackage{relsize}{\normalsize n \smaller{X}}");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(size_of(&items, "n"), crate::layout::BODY_SIZE_PT);
         assert_eq!(size_of(&items, "X"), 10.0);
@@ -13525,7 +13572,7 @@ mod tests {
         // closest to `\LARGE` (20.74pt). The old ordinal-step approach
         // stepped Huge2 → Huge1, which are numerically IDENTICAL in the
         // 12pt table — no visible size change at all.
-        let (parsed, items) = items(r"{\Huge h \smaller{X}}");
+        let (parsed, items) = items(r"\usepackage{relsize}{\Huge h \smaller{X}}");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(size_of(&items, "h"), 24.88);
         assert_eq!(size_of(&items, "X"), 20.74);
@@ -13544,7 +13591,7 @@ mod tests {
             ("10pt", r"{\footnotesize f \larger{X}}", "X", 10.0),
         ] {
             let source =
-                format!("\\documentclass[{class_option}]{{article}}\\begin{{document}}{body}\\end{{document}}");
+                format!("\\documentclass[{class_option}]{{article}}\\usepackage{{relsize}}\\begin{{document}}{body}\\end{{document}}");
             let parsed = parse(&source);
             assert!(
                 parsed.diagnostics.is_empty(),
@@ -13568,7 +13615,7 @@ mod tests {
     fn larger_composes_across_nesting() {
         // Two nested `\larger`s from `\normalsize` are two steps
         // (`\large` then `\Large`), not one clamped step.
-        let (parsed, items) = items(r"\larger{\larger{X}}");
+        let (parsed, items) = items(r"\usepackage{relsize}\larger{\larger{X}}");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(size_of(&items, "X"), 17.28);
     }
@@ -13578,7 +13625,7 @@ mod tests {
         // Five steps down from `\normalsize` would leave the table; the
         // size holds at `\tiny` (6.0pt) instead of erroring or wrapping.
         let (parsed_tiny, tiny_items) =
-            items(r"{\smaller{\smaller{\smaller{\smaller{\smaller{T}}}}}}");
+            items(r"\usepackage{relsize}{\smaller{\smaller{\smaller{\smaller{\smaller{T}}}}}}");
         assert!(
             parsed_tiny.diagnostics.is_empty(),
             "{:?}",
@@ -13586,7 +13633,7 @@ mod tests {
         );
         assert_eq!(size_of(&tiny_items, "T"), 6.0);
         // Likewise one step up from `\Huge` holds at `\Huge` (24.88pt).
-        let (parsed_top, top_items) = items(r"{\Huge h \larger{X}}");
+        let (parsed_top, top_items) = items(r"\usepackage{relsize}{\Huge h \larger{X}}");
         assert!(
             parsed_top.diagnostics.is_empty(),
             "{:?}",
@@ -13600,10 +13647,105 @@ mod tests {
     fn larger_without_an_argument_is_a_declaration_for_the_scope() {
         // The real package's declaration form: the step applies to the rest
         // of the scope and the group restores the old size afterwards.
-        let (parsed, items) = items(r"{\small \larger up} down");
+        let (parsed, items) = items(r"\usepackage{relsize}{\small \larger up} down");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(size_of(&items, "up"), crate::layout::BODY_SIZE_PT);
         assert_eq!(size_of(&items, "down"), crate::layout::BODY_SIZE_PT);
+    }
+
+    #[test]
+    fn larger_group_after_is_not_a_scope_at_11pt() {
+        // Measured with TeX Live pdflatex (`\typeout{\f@size}`):
+        // `\documentclass[11pt]{article}\usepackage{relsize}` with
+        // `{\normalsize a \larger{big} more}` sets `more` at 12pt — the
+        // `{...}` after `\larger` is only a group, not a scope for the
+        // step, so everything after `\larger` stays larger to the end of
+        // the enclosing group.
+        let source = r"\documentclass[11pt]{article}\usepackage{relsize}\begin{document}{\normalsize a \larger{big} more}\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let output =
+            crate::incremental::compile_full(source, layout::LayoutConstraints::default());
+        let size_of = |text: &str| {
+            output
+                .pages
+                .iter()
+                .flat_map(|page| &page.items)
+                .find(|item| item.text == text)
+                .unwrap_or_else(|| panic!("no item {text:?}"))
+                .font_size_pt
+        };
+        assert_eq!(size_of("a"), 11.0);
+        assert_eq!(size_of("big"), 12.0);
+        assert_eq!(size_of("more"), 12.0);
+    }
+
+    #[test]
+    fn smaller_bracket_step_count_takes_two_steps_at_11pt() {
+        // Measured with TeX Live pdflatex (`\typeout{\f@size}`): 11pt
+        // class, `{\smaller[2] x}` gives 8 (two steps down) with no
+        // bracket text typeset.
+        let source = r"\documentclass[11pt]{article}\usepackage{relsize}\begin{document}{\smaller[2] x}\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let output =
+            crate::incremental::compile_full(source, layout::LayoutConstraints::default());
+        let word = output
+            .pages
+            .iter()
+            .flat_map(|page| &page.items)
+            .find(|item| item.text == "x")
+            .unwrap_or_else(|| panic!("no item \"x\""));
+        assert_eq!(word.font_size_pt, 8.0);
+        // The `[2]` is a step count, not text: no bracket survives.
+        assert!(
+            !output
+                .pages
+                .iter()
+                .flat_map(|page| &page.items)
+                .any(|item| item.text.contains('[')),
+            "bracket text leaked into the output"
+        );
+    }
+
+    #[test]
+    fn larger_from_normalsize_at_11pt_lands_on_large() {
+        // Measured with TeX Live pdflatex (`\typeout{\f@size}`):
+        // `\documentclass[11pt]{article}\usepackage{relsize}` with
+        // `{\larger x}` gives 12pt (`\large`). The real target is
+        // 10.95 × 1.2 = 13.14 (true errors 1.14 vs 1.26), not the
+        // 11.0 × 1.2 = 13.2 near-tie the body-size approximation
+        // computes, which the old tie-break resolved to `\Large`.
+        let source = r"\documentclass[11pt]{article}\usepackage{relsize}\begin{document}{\larger x}\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let output =
+            crate::incremental::compile_full(source, layout::LayoutConstraints::default());
+        let size = output
+            .pages
+            .iter()
+            .flat_map(|page| &page.items)
+            .find(|item| item.text == "x")
+            .unwrap_or_else(|| panic!("no item \"x\""))
+            .font_size_pt;
+        assert_eq!(size, 12.0);
+    }
+
+    #[test]
+    fn larger_without_relsize_diagnoses_and_keeps_the_prose() {
+        // Without `\usepackage{relsize}` this is "Undefined control
+        // sequence" in pdflatex: diagnose, naming the missing package
+        // (like the ulem gate), but still typeset the content as plain
+        // text instead of dropping it.
+        let (parsed, items) = items(r"{\larger{X}}");
+        assert!(
+            parsed.diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("\\larger needs \\usepackage{relsize}")),
+            "{:?}",
+            parsed.diagnostics
+        );
+        assert_eq!(size_of(&items, "X"), crate::layout::BODY_SIZE_PT);
     }
 
     #[test]
