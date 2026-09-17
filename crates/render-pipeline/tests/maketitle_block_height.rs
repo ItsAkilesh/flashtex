@@ -27,8 +27,11 @@
 //! `\@endparenv` skip, `\addvspace{\@topsepadd}` — `12.0 plus 4.0 minus 6.0`
 //! at an 11 pt base (`\topsep` + `\partopsep`). Everything else in the block
 //! (`\vskip 2em`, `\vskip 1.5em`, `\vskip 1em`, every `\baselineskip`) is
-//! rigid. So when page 1 is *shrunk*, the whole title block rides up by
-//! `ratio × 6 pt`, and so does every line under it.
+//! rigid, and `\@topsepadd` is `center`'s *closing* skip: it sits *below*
+//! the title, author and date lines, not above them. So when page 1 is
+//! *shrunk*, the title block itself does not move at all — its three
+//! baselines are anchored — and everything *below* the block (the first
+//! body line and every line after it) rides up by `ratio × 6 pt`.
 //!
 //! Both offending corpus pages are shrunk pages. pdfTeX's own `\tracingoutput`
 //! says so:
@@ -40,7 +43,7 @@
 //!
 //! Shrinkable glue above the first body line is `\@topsepadd`'s 6 pt plus
 //! `\section*`'s `\@minus.2ex` (0.94266 pt at 11 pt) = 6.94267 pt, so pdfTeX
-//! lifts that line by 0.74042 × 6.94267 = 5.1396 pt = **5.1204 bp** on
+//! lifts that line by 0.74042 × 6.94267 = 5.1405 pt = **5.1213 bp** on
 //! `math-sheet` and by 0.30122 × 6.94267 = 2.0912 pt = **2.0834 bp** on
 //! `lecture-notes`. Truncating each fixture so page 1 no longer overflows
 //! removes exactly those amounts from the reference, and the reported step
@@ -182,9 +185,11 @@ fn the_title_block_is_pdflatexs_at_ten_eleven_and_twelve_point() {
 
 /// The cumulative half: a whole page's baseline sequence below the title, on a
 /// page pdfTeX *shrinks* (`\tracingoutput`: `glue set - 0.23944`), which is the
-/// regime both corpus fixtures are in. The title block rides up with the rest
-/// of the page here, so a wrong `\@topsepadd` — or a shrink ratio computed off
-/// the wrong natural height — moves all 29 of these, not just the block.
+/// regime both corpus fixtures are in. `\@topsepadd` is the block's *closing*
+/// glue, so the title, author and date baselines are anchored and do not move
+/// under shrink — but a wrong `\@topsepadd`, or a shrink ratio computed off
+/// the wrong natural height, moves every line *below* the block, which is all
+/// but the first 3 of these 29.
 #[test]
 fn a_shrunk_page_keeps_every_baseline() {
     if !common::lm_available() {

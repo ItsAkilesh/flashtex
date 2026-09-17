@@ -101,7 +101,7 @@ Shrinkable glue above the first body line is `\@topsepadd`'s 6 pt plus
 reference's first body line is lifted by
 
 ```
-math-sheet     0.74042 x 6.94267 = 5.1396 pt = 5.1204 bp
+math-sheet     0.74042 x 6.94267 = 5.1405 pt = 5.1213 bp
 lecture-notes  0.30122 x 6.94267 = 2.0912 pt = 2.0834 bp
 ```
 
