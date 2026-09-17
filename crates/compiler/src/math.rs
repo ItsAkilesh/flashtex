@@ -2127,11 +2127,49 @@ impl MathParser<'_> {
                 self.pending.push(space(BMOD_EXTRA_MU / 18.0, span));
                 space(BMOD_EXTRA_MU / 18.0, span)
             }
-            // amsmath's `\mod` (`amsmath.sty` 726-728) is a different command
-            // with a different kern and no parentheses, and is undefined in
-            // base LaTeX2e; it is left exactly as it was, with the rest of the
-            // amsmath-provided constructs.
-            "mod" => text_atom("mod".into(), span),
+            // amsmath's `\mod` (`amsmath.sty` 910-911) is a different command
+            // from `\bmod` and `\pmod`, undefined in base LaTeX2e:
+            //
+            //   \allowbreak\if@display\mkern18mu\else\mkern12mu\fi
+            //   {\operator@font mod}\,\,#1
+            //
+            // so: an opening kern, an **ordinary** upright `mod` (a braced
+            // group, not `\mathbin` — unlike `\bmod`), 6mu, and one argument.
+            //
+            // Measured with TeX Live 2025 pdflatex at 10pt:
+            //
+            //   $x\mod{y}$                            40.14336
+            //   $x\mkern12mu\mathrm{mod}\,\,y$        40.14336
+            //   $x\mkern12mu\mathrm{mod}\mkern6mu y$  40.14336
+            //   $\mod{y}$                             34.42809
+            //   $\mkern12mu\mathrm{mod}\,\,y$         34.42809
+            //
+            // and `$x\mod y$` is 40.14336 too, so the unbraced argument is
+            // the same one token `required_group` takes.
+            //
+            // `\if@display` is false inside `$...$` even under
+            // `\displaystyle` — it is `\everydisplay` that sets it — and this
+            // compiler has no display flag on the atom, exactly as `\pmod`
+            // records, so 12mu is the definition that applies. `$\displaystyle
+            // x\mod{y}$` measures 40.14336, the inline number, which is what
+            // makes that the right one to hardcode; real display math
+            // (`\[x\mod{y}\]`) is the 18mu case and is the residual.
+            //
+            // The class override is load-bearing: `atom_class` classifies a
+            // `mod` text nucleus as Bin for `\bmod`, and amsmath's `\mod`
+            // wraps it in a group instead, so the 4mu the Bin class would add
+            // on each side is not there.
+            "mod" if !self.packages.amsmath => self.missing_package(&name, "amsmath", span),
+            "mod" => {
+                let argument = self.required_group("mod", span);
+                self.pending.push(MathAtom {
+                    class_override: Some(AtomClass::Ord),
+                    ..text_atom("mod".into(), span)
+                });
+                self.pending.push(space(AMSMATH_MOD_TRAILING_MU / 18.0, span));
+                self.pending.extend(argument.atoms);
+                space(AMSMATH_MOD_OPENING_MU / 18.0, span)
+            }
             // amsmath.sty lines 237-241: `\dfrac` = `\genfrac{}{}{}0`,
             // `\tfrac` = `\genfrac{}{}{}1`, `\binom` = `\genfrac()\z@{}`,
             // `\dbinom` = `\genfrac(){0pt}0`, `\tbinom` = `\genfrac(){0pt}1`.
@@ -3713,6 +3751,14 @@ pub(crate) const BMOD_EXTRA_MU: f64 = 1.0;
 /// The mu amsmath's `\pod` opens with in a non-display formula, against the
 /// kernel's 18mu (`QUAD_EM`).
 pub(crate) const AMSMATH_POD_MU: f64 = 8.0;
+
+/// The mu amsmath's `\mod` opens with in a non-display formula
+/// (`\if@display\mkern18mu\else\mkern12mu\fi`).
+pub(crate) const AMSMATH_MOD_OPENING_MU: f64 = 12.0;
+
+/// The mu amsmath's `\mod` puts between `mod` and its argument: `\,\,`, two
+/// `\thinmuskip`s of 3mu.
+pub(crate) const AMSMATH_MOD_TRAILING_MU: f64 = 6.0;
 
 /// The kernel `\angle`'s advance in ems, without amsfonts: `fontmath.ltx` 243
 /// builds it from an `\ialign` of rules, so it has no character and no font —
@@ -8378,6 +8424,31 @@ mod package_gating_tests {
                 x(&label, "y") - x(&label, "(mod")
             });
         }
+    }
+
+    #[test]
+    fn mod_needs_amsmath() {
+        // pdflatex without amsmath: `! Undefined control sequence. \mod`.
+        let (_, diagnostics) = parsed(r"a\mod{b}", MathPackages::KERNEL);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.message == "\\mod requires \\usepackage{amsmath}"),
+            "{diagnostics:?}"
+        );
+    }
+
+    /// amsmath's `\mod` (`amsmath.sty` 910-911) opens with `\mkern12mu`
+    /// outside display and puts `\,\,` (6mu) before its argument. Measured at
+    /// 10pt: `$x\mod{y}$` is 40.14336pt, matching `$x\mkern12mu\mathrm{mod}
+    /// \mkern6mu y$` exactly.
+    #[test]
+    fn mod_opens_with_twelve_mu_and_puts_six_before_its_argument() {
+        let b = laid_out(r"x\mod{y}", AMSMATH);
+        let x_width = laid_out("x", AMSMATH).width;
+        let word = laid_out(r"\mathrm{mod}", AMSMATH).width;
+        close(x(&b, "mod"), x_width + AMSMATH_MOD_OPENING_MU);
+        close(x(&b, "y"), x(&b, "mod") + word + AMSMATH_MOD_TRAILING_MU);
     }
 
     /// Which `\usepackage` and `\documentclass` names set which flag, measured
