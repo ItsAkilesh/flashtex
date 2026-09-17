@@ -185,7 +185,7 @@ struct ProjectMenu: View {
                 case .available:
                     Button(indent + "Open \(name)") { Task { await model.openAndSwitch(name, role: .included(from: n.from)) { model.captureNote = $0 } } }
                 case .open:
-                    Button(indent + "Show \(name)") { model.project.switchDocument(to: name) }
+                    Button(indent + "Show \(name)") { model.switchOrNote(name) }
                 case .unresolvable(let why):
                     Text(indent + "\\\(n.reference.kind.rawValue){\(n.reference.argument)}: \(why)")
                 }
