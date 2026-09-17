@@ -174,6 +174,7 @@ extension ShellModel {
                     applied += 1
                 } else if let new = doc.applied(to: text) {
                     documents[i].text = new // an open non-active buffer (no helper: nothing durable to reconcile; the next compile sends it)
+                    scheduleAutosave() // `updateActiveText` does this for the active buffer only
                     applied += 1
                 }
             }

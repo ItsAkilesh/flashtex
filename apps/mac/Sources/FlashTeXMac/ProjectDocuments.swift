@@ -866,6 +866,7 @@ final class ProjectDocuments {
         origins[path] = origin
         baselines[path] = text
         diskBaselines[path] = diskSHA256
+        if let root = projectRoot { clearSaveConflict(for: root.appendingPathComponent(path)) } // a fresh disk baseline supersedes it
         detachedBuffers.removeValue(forKey: path)
         model.log("project: opened \(path) (\(text.utf8.count) bytes, \(origin)) — \(model.documents.count) documents")
         // Unsaved text kept for this member by an earlier session or detach is
@@ -1015,18 +1016,27 @@ final class ProjectDocuments {
         let text = doc.text
         let expectedDisk = diskBaselines[path] ?? nil
         if model.controllerAttached {
-            guard await flushToHelper(path, timeout: timeout), let durable = model.controllerState.durable[path],
+            // A reply resuming after File > Open replaced the project belongs to
+            // the old project: never record it on the new one's same-named member.
+            let generation = model.projectGeneration
+            func replaced() -> Bool { model.projectGeneration != generation || projectRoot != root }
+            let replacedFailure = SaveOutcome.failed("\(path) was closed while saving; nothing recorded for the open project")
+            let flushed = await flushToHelper(path, timeout: timeout)
+            if replaced() { return noteSave(replacedFailure) }
+            guard flushed, let durable = model.controllerState.durable[path],
                   model.controllerState.textByDurable[path]?[durable.revision]?.sameBytes(as: text) == true else {
                 return noteSave(.failed("\(path) did not become durable within \(Int(timeout)) s"))
             }
             let reply = await helperRequest("export", ["path": path, "expected_revision": durable.revision,
                                                        "expected_sha256": durable.sha256, "expected_disk_sha256": expectedDisk ?? NSNull()])
+            if replaced() { return noteSave(replacedFailure) }
             let verdict = await Self.exportVerdict(reply, path: path, text: text) { [weak self] in await self?.diskSHA256(of: path) }
+            if replaced() { return noteSave(replacedFailure) }
             switch verdict {
             case .saved(let sha, let afterError):
                 baselines[path] = text
                 diskBaselines[path] = sha
-                saveConflict = nil
+                clearSaveConflict(for: url)
                 model.snapshotSaved(url: url, text: text)
                 let how = afterError.map { " (the helper reported \"\($0)\" after the rename; the file holds exactly the exported text)" } ?? ""
                 return noteSave(.saved(path: path, sha256: sha), extra: " through the preview controller (durable r\(durable.revision))" + how)
@@ -1104,11 +1114,11 @@ final class ProjectDocuments {
         let text = doc.text
         let expectedDisk = diskBaselines[path] ?? nil
         let expected: ProjectFilesV1.Expected = expectedDisk.map { .hash($0) } ?? .newFile
-        switch model.files.save(url, text: text, expected: expected, force: false) {
+        switch model.files.save(url, text: text, expected: expected, force: false, recordsState: false) {
         case .saved(let sha):
             baselines[path] = text
             diskBaselines[path] = sha
-            saveConflict = nil
+            clearSaveConflict(for: url)
             model.snapshotSaved(url: url, text: text)
             return noteSave(.saved(path: path, sha256: sha))
         case .conflict(let c):
@@ -1118,6 +1128,13 @@ final class ProjectDocuments {
         case .failed(let why):
             return noteSave(.failed(why))
         }
+    }
+
+    /// A save resolves only its own document's recorded conflict: saving
+    /// `b.tex` must not erase the conflict still standing on `a.tex` (autosave
+    /// skips a conflicted member by this record, and the user resolves it).
+    private func clearSaveConflict(for url: URL) {
+        if saveConflict?.url.standardizedFileURL == url.standardizedFileURL { saveConflict = nil }
     }
 
     private func noteSave(_ outcome: SaveOutcome, extra: String = "") -> SaveOutcome {

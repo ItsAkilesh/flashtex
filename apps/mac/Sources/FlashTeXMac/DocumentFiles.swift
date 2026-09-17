@@ -273,12 +273,16 @@ final class DocumentFilesState {
 
     /// Compare-and-replace save. `expected` is what the editor last saw on disk;
     /// `force` overwrites regardless (only after an explicit user decision).
-    func save(_ url: URL, text: String, expected: ProjectFilesV1.Expected, force: Bool,
+    /// `conflict`/`lastDiskState` describe the *entry* document: a project
+    /// member's save passes `recordsState: false` and keeps its own record
+    /// (`ProjectDocuments.saveConflict`), so it can neither clear nor raise
+    /// the entry's conflict.
+    func save(_ url: URL, text: String, expected: ProjectFilesV1.Expected, force: Bool, recordsState: Bool = true,
               lateReceipt: @escaping @MainActor (String) -> Void = { _ in }) -> SaveResult {
         switch acquire(for: url) {
         case .direct(let reason):
             note(reason)
-            return saveDirect(url, text: text, expected: expected, force: force)
+            return saveDirect(url, text: text, expected: expected, force: force, recordsState: recordsState)
         case .unavailable(let reason):
             return .failed(reason)
         case .client(let client):
@@ -297,7 +301,7 @@ final class DocumentFilesState {
                 case .success(.saved(let receipt)):
                     note("late save receipt for \(name) reports hash \(receipt.sha256.prefix(12)), not the text sent; buffer kept unsaved")
                 case .success(.conflict(let c)):
-                    conflict = Self.conflict(url: url, c, viaHelper: true)
+                    if recordsState { conflict = Self.conflict(url: url, c, viaHelper: true) }
                     note("late reply for \(name): conflict; buffer kept unsaved")
                 case .failure(let f):
                     note("late reply for \(name): \(f.text); buffer kept unsaved")
@@ -309,14 +313,18 @@ final class DocumentFilesState {
                     note("helper receipt hash for \(name) does not match the text sent; treated as not saved")
                     return .failed("save receipt hash mismatch for \(name)")
                 }
-                conflict = nil
-                lastDiskState = .unchanged
+                if recordsState {
+                    conflict = nil
+                    lastDiskState = .unchanged
+                }
                 note("saved \(name) via rooted helper (\(receipt.bytes) bytes, sha256 \(receipt.sha256.prefix(12)))")
                 return .saved(sha256: receipt.sha256)
             case .reply(.conflict(let c)):
                 let conflict = Self.conflict(url: url, c, viaHelper: true)
-                self.conflict = conflict
-                lastDiskState = c.kind == .deletedExternally ? .deleted : .modified
+                if recordsState {
+                    self.conflict = conflict
+                    lastDiskState = c.kind == .deletedExternally ? .deleted : .modified
+                }
                 note(conflict.summary)
                 return .conflict(conflict)
             case .failed(let f):
@@ -381,8 +389,9 @@ final class DocumentFilesState {
         return .init(path: name, exists: true, state: state, sha256: sha, bytes: data.count, mtimeUnixMs: mtime)
     }
 
-    private func saveDirect(_ url: URL, text: String, expected: ProjectFilesV1.Expected, force: Bool) -> SaveResult {
-        if !force {
+    private func saveDirect(_ url: URL, text: String, expected: ProjectFilesV1.Expected, force: Bool, recordsState: Bool) -> SaveResult {
+        /// The conflict `expected` names against the file as it is right now.
+        func conflictNow() -> DocumentConflict? {
             let current = statusDirect(url, expectedSha256: nil)
             var kind: ProjectFilesV1.ConflictKind?
             var ours: String?
@@ -393,19 +402,70 @@ final class DocumentFilesState {
                 ours = h
                 if !current.exists { kind = .deletedExternally } else if current.sha256 != h { kind = .modifiedExternally }
             }
-            if let kind {
-                let conflict = DocumentConflict(url: url, kind: kind, ours: ours, theirs: current.sha256,
-                                                size: current.bytes, mtimeUnixMs: current.mtimeUnixMs, viaHelper: false)
-                self.conflict = conflict
-                lastDiskState = kind == .deletedExternally ? .deleted : .modified
-                note(conflict.summary)
-                return .conflict(conflict)
+            return kind.map {
+                DocumentConflict(url: url, kind: $0, ours: ours, theirs: current.sha256,
+                                 size: current.bytes, mtimeUnixMs: current.mtimeUnixMs, viaHelper: false)
             }
         }
+        func refuse(_ conflict: DocumentConflict) -> SaveResult {
+            if recordsState {
+                self.conflict = conflict
+                lastDiskState = conflict.kind == .deletedExternally ? .deleted : .modified
+            }
+            note(conflict.summary)
+            return .conflict(conflict)
+        }
+        if !force, let conflict = conflictNow() { return refuse(conflict) }
         do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
-            conflict = nil
-            lastDiskState = .unchanged
+            // Write a sibling temp file first, then check the expectation again
+            // immediately before the rename: an external change made while the
+            // bytes were written is refused instead of replaced (autosave runs
+            // this every quiet moment). Still unlocked — a change landing
+            // between that re-check and the rename is not caught — but a
+            // `.newFile` expectation is exact (`RENAME_EXCL`).
+            let temp = url.deletingLastPathComponent()
+                .appendingPathComponent(".\(url.lastPathComponent).flashtex-save-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: temp) } // also after a partial write; a no-op once renamed
+            func posixError(_ code: Int32) -> Error {
+                CocoaError(.fileWriteUnknown, userInfo: [NSUnderlyingErrorKey: POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)])
+            }
+            // Replacing a file: the temp starts private (0600) and then takes the
+            // file's own mode, ACL and extended attributes, so a 0600 file is never
+            // world-readable, not even in between. A new file keeps the umask mode.
+            var target = stat()
+            let replacing = stat(url.path, &target) == 0
+            if replacing, target.st_flags & UInt32(UF_IMMUTABLE | SF_IMMUTABLE) != 0 {
+                // A locked (Finder "Locked"/uchg) file cannot be replaced; say so
+                // before any temp file exists rather than failing the rename.
+                note("direct save of \(url.lastPathComponent) refused: the file is locked")
+                return .failed("\(url.lastPathComponent) is locked; unlock it in Finder (Get Info) to save")
+            }
+            let fd = open(temp.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, replacing ? 0o600 : 0o666)
+            guard fd >= 0 else { throw posixError(errno) }
+            let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+            try handle.write(contentsOf: Data(text.utf8))
+            try handle.close()
+            if replacing {
+                // ACL and extended attributes only: `COPYFILE_SECURITY` implies
+                // `COPYFILE_STAT`, which would also copy the OLD mtime/atime (make,
+                // latexmk and git then miss a same-size edit) and the lock flags.
+                // Some volumes (SMB, exFAT) refuse the copy; that is tolerated.
+                _ = copyfile(url.path, temp.path, nil, copyfile_flags_t(COPYFILE_ACL | COPYFILE_XATTR))
+                // The mode is required: a private file stays private.
+                guard chmod(temp.path, target.st_mode & 0o7777) == 0 else { throw posixError(errno) }
+            }
+            if !force, let conflict = conflictNow() { return refuse(conflict) }
+            let exclusive = !force && expected == .newFile
+            let renamed = exclusive ? renamex_np(temp.path, url.path, UInt32(RENAME_EXCL)) : rename(temp.path, url.path)
+            let renameErrno = errno // before any further I/O
+            if renamed != 0 {
+                if exclusive, renameErrno == EEXIST, let conflict = conflictNow() { return refuse(conflict) }
+                throw posixError(renameErrno)
+            }
+            if recordsState {
+                conflict = nil
+                lastDiskState = .unchanged
+            }
             note("saved \(url.lastPathComponent) directly (no helper: best-effort conflict check, not locked)")
             return .saved(sha256: SourceDigest.sha256Hex(text))
         } catch {
@@ -493,12 +553,19 @@ extension ShellModel {
                 captureNote = "\(documentURL?.lastPathComponent ?? "The unsaved buffer") has unsaved edits; save or discard before opening \(url.lastPathComponent)."
                 return .blockedByUnsavedEdits
             case .saveFirst:
-                guard documentURL != nil, saveTex() else {
+                guard documentURL != nil, !project.isDirty(project.entryPath) || saveTex() else {
                     captureNote = "Could not save the current buffer (\(files.status)); \(url.lastPathComponent) was not opened."
                     return .saveFailed
                 }
+                // The open replaces the whole project: dirty members are saved too.
+                for path in documents.map(\.path) where path != project.entryPath && project.isDirty(path) {
+                    guard case .saved = project.saveDocumentNow(path) else {
+                        captureNote = "Could not save \(path) (\(project.status)); \(url.lastPathComponent) was not opened."
+                        return .saveFailed
+                    }
+                }
             case .discard:
-                discarding = RecoverableBuffer(url: documentURL, text: activeText)
+                discarding = RecoverableBuffer(url: documentURL, text: entryText) // the entry's buffer, whichever tab is active
             }
         }
         switch files.read(url) {
@@ -590,7 +657,7 @@ extension ShellModel {
         return baselineSha256.map { .hash($0) } ?? .newFile
     }
 
-    /// Saves the open document. On a conflict returns false, sets
+    /// Saves the entry document (whichever tab is active). On a conflict returns false, sets
     /// `files.conflict`, keeps the buffer, and writes nothing.
     @discardableResult
     func saveTex() -> Bool {
@@ -605,11 +672,14 @@ extension ShellModel {
     /// items (DocumentTabBar.swift), which previously discarded the
     /// `ProjectDocuments.SaveOutcome`.
     func saveDocumentInteractive(_ path: String) async {
-        switch await project.saveDocument(path) {
-        case .saved(let p, _): captureNote = "Saved \(p)"
-        case .conflict(let c): captureNote = c.summary
-        case .failed(let why): captureNote = "Save of \(path) failed: \(why)"
-        }
+        await enqueueSave(path) { [weak self] in // after any autosave of `path` still in flight
+            guard let self else { return }
+            switch await project.saveDocument(path) {
+            case .saved(let p, _): captureNote = "Saved \(p)"
+            case .conflict(let c): captureNote = c.summary
+            case .failed(let why): captureNote = "Save of \(path) failed: \(why)"
+            }
+        }.value
     }
 
     /// `saveTex()` for the entry document whichever document is active
@@ -638,12 +708,15 @@ extension ShellModel {
         // the UI). A helper rooted elsewhere (a session copy of a buffer whose
         // file is not named `main.tex`) would export that copy, not the file.
         if controllerRoutesFiles {
-            Task { @MainActor [weak self] in
+            enqueueSave(project.entryPath) { [weak self] in // coalesced with an autosave still in flight
                 guard let self else { return }
-                switch await controllerSave() {
-                case .saved: break
-                case .conflict: resolveConflictPanel()
-                case .failed(let why): captureNote = "Save through the preview controller failed: \(why)"
+                switch await saveEntryRouted() {
+                case .saved?: break
+                // The panel only opens while the entry is still active; after a
+                // tab switch the conflict lands in the footer note instead.
+                case .conflict?: resolveConflictPanel()
+                case .failed(let why)?: captureNote = "Save through the preview controller failed: \(why)"
+                case nil: if files.conflict != nil { resolveConflictPanel() } // switched away meanwhile: saved directly
                 }
             }
             return
@@ -657,7 +730,45 @@ extension ShellModel {
         panel.allowedContentTypes = [Self.texType]
         panel.nameFieldStringValue = documentURL?.lastPathComponent ?? "main.tex"
         guard panel.runModal() == .OK, let url = panel.url else { return false }
+        return saveTexAs(to: url)
+    }
+
+    /// Save As to a chosen `url` (the panel's answer). Writes the entry buffer.
+    /// With other project documents open it is refused when the destination is
+    /// one of their files (the entry text would replace that member on disk) or
+    /// lies in another directory (the project root, which the open members'
+    /// paths resolve against, would move out from under them). The entry keeps
+    /// its tab path, as for any Save As (`controllerRoutesFiles` already treats
+    /// a file name that differs from the tab path as not helper-routed).
+    @discardableResult
+    func saveTexAs(to url: URL) -> Bool {
+        let members = documents.map(\.path).filter { $0 != project.entryPath }
+        if !members.isEmpty, let root = project.projectRoot {
+            if let member = members.first(where: { Self.sameFile(root.appendingPathComponent($0), url) }) {
+                captureNote = "Save As refused: \(member) is open in this project; saving the entry over it would replace that document on disk."
+                return false
+            }
+            if !Self.sameFile(url.deletingLastPathComponent(), root) {
+                captureNote = "Save As refused: \(members.count) other project document\(members.count == 1 ? " is" : "s are") open relative to \(root.lastPathComponent)/; close them or save into the same folder."
+                return false
+            }
+        }
         return write(to: url, expected: expectedOnDisk(for: url), force: false)
+    }
+
+    /// Whether two URLs name the same file or directory: the file system's
+    /// identity when both exist (a hard link, or different case on a
+    /// case-insensitive volume, is the same file), else the standardized,
+    /// symlink-resolved path compared case-insensitively (a conservative
+    /// refusal on a case-sensitive volume, never a missed match).
+    static func sameFile(_ a: URL, _ b: URL) -> Bool {
+        let key: Set<URLResourceKey> = [.fileResourceIdentifierKey]
+        if let ia = try? URL(fileURLWithPath: a.path).resourceValues(forKeys: key).fileResourceIdentifier,
+           let ib = try? URL(fileURLWithPath: b.path).resourceValues(forKeys: key).fileResourceIdentifier {
+            return ia.isEqual(ib)
+        }
+        func folded(_ u: URL) -> String { u.resolvingSymlinksInPath().standardizedFileURL.path.lowercased() }
+        return folded(a) == folded(b)
     }
 
     /// Resolves a conflict by writing the buffer over whatever is on disk.
@@ -665,6 +776,10 @@ extension ShellModel {
     @discardableResult
     func overwriteOnDisk() -> Bool {
         guard let url = files.conflict?.url ?? documentURL else { captureNote = "No file to overwrite."; return false }
+        guard activePath == project.entryPath else { // `write` sends `activeText`: never another document's text
+            captureNote = "Not overwritten: switch to \(project.entryPath) to resolve its on-disk conflict."
+            return false
+        }
         return write(to: url, expected: .any, force: true)
     }
 
@@ -767,7 +882,7 @@ extension ShellModel {
                 captureNote = "Cannot save over \(review.url.lastPathComponent) while reloading it; overwrite or discard instead."
                 return .saveFailed
             case .discard:
-                discarding = RecoverableBuffer(url: documentURL, text: activeText)
+                discarding = RecoverableBuffer(url: documentURL, text: entryText)
             }
         }
         if review.viaController { return await controllerReload(review, discarding: discarding) }
@@ -802,7 +917,7 @@ extension ShellModel {
             case .discard: break
             }
         }
-        return directReload(review, discarding: isDirty ? RecoverableBuffer(url: documentURL, text: activeText) : nil)
+        return directReload(review, discarding: isDirty ? RecoverableBuffer(url: documentURL, text: entryText) : nil)
     }
 
     private func directReload(_ review: ReloadReview, discarding: RecoverableBuffer?) -> OpenOutcome {
@@ -991,8 +1106,8 @@ extension ShellModel {
             captureNote = files.conflict?.summary
             // Both texts are now recoverable: the disk text through the reviewed
             // reload, the unsaved buffer durably (unless the ledger holds it).
-            if url == documentURL, isDirty, !controllerRoutesFiles(for: url) {
-                preserveDirtyText(activeText, at: url, reason: "file changed on disk while the buffer was unsaved")
+            if url == documentURL, project.isDirty(project.entryPath), !controllerRoutesFiles(for: url) {
+                preserveDirtyText(entryText, at: url, reason: "file changed on disk while the buffer was unsaved")
             }
         }
     }
@@ -1002,6 +1117,13 @@ extension ShellModel {
     /// change and the import is pinned to exactly that snapshot.
     func resolveConflictPanel() {
         guard let conflict = files.conflict else { return }
+        // Overwrite and Reload act on the active buffer (`activeText`): with
+        // another tab active (a queued save that answered after a switch, the
+        // menu item) they would write that document's text into the entry.
+        guard activePath == project.entryPath else {
+            captureNote = conflict.summary + " Switch to \(project.entryPath) to resolve it."
+            return
+        }
         let review = prepareReload()
         let alert = NSAlert()
         alert.messageText = "\(conflict.url.lastPathComponent) changed on disk"
@@ -1023,7 +1145,10 @@ extension ShellModel {
     }
 
     private func write(to url: URL, text: String? = nil, expected: ProjectFilesV1.Expected, force: Bool) -> Bool {
-        let text = text ?? activeText
+        // `url` is the entry's file (Save, Save As, Overwrite): write the entry
+        // buffer, never `activeText` — with a member tab active that would put
+        // the member's text into main.tex (open/fixture "save first" flows).
+        let text = text ?? entryText
         let lateReceipt: @MainActor (String) -> Void = { [weak self] sha in
             // The helper confirmed, after our wait expired, that exactly `text`
             // is on disk at `url`: that text is the new baseline. Edits made

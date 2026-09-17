@@ -178,7 +178,7 @@ extension ShellModel {
     /// The status line alone read as "export fails silently".
     func reportExportFailure(_ why: String) {
         captureNote = why
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard !Self.runningUnderXCTest else { return }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "PDF export failed"

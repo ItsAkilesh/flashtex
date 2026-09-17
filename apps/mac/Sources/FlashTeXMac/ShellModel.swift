@@ -21,7 +21,15 @@ final class ShellModel {
     var documents: [RuntimeV1.Document] = [] {
         didSet { refreshDocumentMirror() }
     }
-    var activePath: String = "main.tex"
+    var activePath: String = "main.tex" {
+        didSet { if activePath != oldValue { navigationToken &+= 1 } }
+    }
+    /// Bumped by every document switch and every `openAndSwitch` request, so a
+    /// slow open only switches if nothing navigated after it was requested.
+    @ObservationIgnored var navigationToken = 0
+    /// Bumped by every `replaceProject` (open, fixture): an asynchronous save
+    /// that resumes in a different generation must not touch the new project.
+    @ObservationIgnored private(set) var projectGeneration = 0
     var result: RuntimeV1.CompileResult? {
         didSet {
             refreshToolbarMirrors()
@@ -422,8 +430,10 @@ final class ShellModel {
         return 0
     }()
     @ObservationIgnored private var autosaveWork: DispatchWorkItem?
-    /// Documents whose asynchronous (helper-routed) autosave has not answered yet.
-    @ObservationIgnored private var autosaveInFlight: Set<String> = []
+    /// Asynchronous (helper-routed) saves per document path — autosave and
+    /// Command-S alike — that have not answered yet (`enqueueSave`).
+    @ObservationIgnored private var savesInFlight: [String: (id: Int, task: Task<Void, Never>)] = [:]
+    @ObservationIgnored private var saveSequence = 0
     /// Quiet time after the last edit before autosave writes to disk
     /// (`EditorPreferences.autosave`, owner: "autosave should be on by
     /// default"). `FLASHTEX_AUTOSAVE_MS` overrides; 0 makes it synchronous.
@@ -439,9 +449,12 @@ final class ShellModel {
     /// through `flushPendingAutosave()` instead of waiting out real time.
     static let autosaveSuppressedUnderTest: Bool = {
         guard ProcessInfo.processInfo.environment["FLASHTEX_AUTOSAVE_MS"] == nil else { return false }
-        return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-            || ProcessInfo.processInfo.environment["XCTestSessionIdentifier"] != nil
+        return runningUnderXCTest
     }()
+    /// True under XCTest, whichever of the two variables the runner sets
+    /// (shared with `PreviewHUD.lingerSuppressed` / `ThinSplitViewController`).
+    static let runningUnderXCTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        || ProcessInfo.processInfo.environment["XCTestSessionIdentifier"] != nil
     /// Revision of the compile request currently in flight (nil if idle).
     var inFlightRevision: Int?
     /// Revision the editor buffer corresponds to. Bumps on every edit so the
@@ -487,6 +500,10 @@ final class ShellModel {
     var activeText: String {
         get { documents.first { $0.path == activePath }?.text ?? "" }
     }
+
+    /// The entry document's buffer (the text of `documentURL`), whichever tab
+    /// is active: what saves, discards and snapshots of the entry file use.
+    var entryText: String { documents.first { $0.path == project.entryPath }?.text ?? activeText }
 
     /// Diagnostic underlines for the active document, rebased across edits or
     /// dropped (see `EditorDiagnostics`).
@@ -808,7 +825,7 @@ final class ShellModel {
             }
             load()
         case .alertSecondButtonReturn:
-            let discarding = RecoverableBuffer(url: documentURL, text: activeText)
+            let discarding = RecoverableBuffer(url: documentURL, text: entryText) // never another tab's text under the entry's URL
             recoverableBuffer = discarding
             if let from = discarding.url {
                 preserveDirtyText(discarding.text, at: from, reason: "discarded when a fixture was loaded")
@@ -826,6 +843,7 @@ final class ShellModel {
     /// project all key off it, so opening `paper.tex` must not read as
     /// `main.tex`. The default covers unsaved buffers with no file behind them.
     func replaceProject(entryText text: String, named entryName: String = "main.tex") {
+        projectGeneration &+= 1
         let entryName = entryName.isEmpty ? "main.tex" : entryName
         documents = [.init(path: entryName, text: text)]
         activePath = entryName
@@ -875,7 +893,7 @@ final class ShellModel {
     /// another document never drops a pending save. Never touches a buffer
     /// with no file yet (`documentURL == nil`) — `saveTex()` would otherwise
     /// fall back to `saveTexAs()` and pop a Save panel mid-typing.
-    private func scheduleAutosave() {
+    func scheduleAutosave() {
         autosaveWork?.cancel()
         autosaveWork = nil
         guard EditorPreferences.shared.autosave, documentURL != nil else { return }
@@ -889,35 +907,63 @@ final class ShellModel {
     /// Saves each dirty document through its normal conflict-checked save
     /// path (the same ones Command-S uses), minus any panel: a refused save
     /// keeps the buffer, records the conflict, and is not retried until the
-    /// conflict is resolved.
+    /// conflict is resolved. A document with a save still in flight is
+    /// skipped here; `enqueueSave` re-arms autosave if it was edited meanwhile.
     private func performAutosave() {
         autosaveWork = nil
         guard EditorPreferences.shared.autosave, documentURL != nil else { return }
         let entry = project.entryPath
-        if project.isDirty(entry), files.conflict == nil, !autosaveInFlight.contains(entry) {
+        if project.isDirty(entry), files.conflict == nil, savesInFlight[entry] == nil {
             if activePath == entry, controllerRoutesFiles {
-                autosaveInFlight.insert(entry)
-                Task { @MainActor [weak self] in
-                    _ = await self?.controllerSave()
-                    self?.autosaveInFlight.remove(entry)
-                }
+                enqueueSave(entry) { [weak self] in _ = await self?.saveEntryRouted() }
             } else {
                 saveEntryTex()
             }
         }
-        for path in documents.map(\.path) where path != entry && project.isDirty(path) && !autosaveInFlight.contains(path) {
+        for path in documents.map(\.path) where path != entry && project.isDirty(path) && savesInFlight[path] == nil {
             if let conflict = project.saveConflict, let root = project.projectRoot,
                conflict.url.standardizedFileURL == root.appendingPathComponent(path).standardizedFileURL { continue }
             if controllerAttached {
-                autosaveInFlight.insert(path)
-                Task { @MainActor [weak self] in
-                    _ = await self?.project.saveDocument(path)
-                    self?.autosaveInFlight.remove(path)
-                }
+                enqueueSave(path) { [weak self] in _ = await self?.project.saveDocument(path) }
             } else {
                 _ = project.saveDocumentNow(path)
             }
         }
+    }
+
+    /// Runs `save` for `path` only after any save of that path already in
+    /// flight has answered, so autosave and Command-S never race two exports
+    /// carrying the same (soon stale) disk expectation — the second would be
+    /// refused as a spurious conflict. If the buffer changed while the save
+    /// ran (autosave skipped it as in flight), autosave is re-armed so those
+    /// edits reach disk too; an unchanged buffer is not retried.
+    @discardableResult
+    func enqueueSave(_ path: String, _ save: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let previous = savesInFlight[path]?.task
+        saveSequence += 1
+        let id = saveSequence
+        let task = Task { @MainActor [weak self] in
+            await previous?.value
+            let before = self?.documents.first(where: { $0.path == path })?.text
+            await save()
+            guard let self else { return }
+            if savesInFlight[path]?.id == id { savesInFlight[path] = nil }
+            if let before, let now = documents.first(where: { $0.path == path })?.text,
+               !now.sameBytes(as: before), project.isDirty(path) {
+                scheduleAutosave()
+            }
+        }
+        savesInFlight[path] = (id, task)
+        return task
+    }
+
+    /// The entry's helper-routed save when it is still the active document
+    /// (`controllerSave` exports the *active* path), else the direct entry
+    /// save — a queued save may run after the user switched tabs.
+    func saveEntryRouted() async -> DocumentFilesState.SaveResult? {
+        if activePath == project.entryPath, controllerRoutesFiles { return await controllerSave() }
+        saveEntryTex()
+        return nil
     }
 
     /// Performs a pending autosave immediately instead of waiting out

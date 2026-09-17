@@ -299,6 +299,22 @@ final class ProjectDocumentsTests: XCTestCase {
         XCTAssertEqual(model.activePath, "chapter.tex")
     }
 
+    /// `openAndSwitch` switches to the member path the open normalized to
+    /// (`./chapter.tex` is the member `chapter.tex`), not the raw argument.
+    func testOpenAndSwitchUsesTheCanonicalPath() async throws {
+        let project = try TempProject(extra: ["ch/two.tex": "Two.\n"])
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        var note: String?
+        let ok = await model.openAndSwitch("./chapter.tex", role: .opened) { note = $0 }
+        XCTAssertTrue(ok)
+        XCTAssertNil(model.navigationNote)
+        XCTAssertNil(note)
+        XCTAssertEqual(model.activePath, "chapter.tex")
+    }
+
     func testNavigationSwitchRecordsTheOutgoingCaret() throws {
         // Navigation.swift switches `activePath` directly for a span in another
         // open document; the caret of the document being left is still recorded.

@@ -396,9 +396,22 @@ extension ShellModel {
     /// `ProjectDocuments.OpenOutcome`.
     @discardableResult
     func openAndSwitch(_ path: String, role: ProjectDocument.Role, onRefusal: (String) -> Void) async -> Bool {
-        switch await project.openDocument(path, role: role) {
-        case .opened, .alreadyOpen:
-            switchOrNote(path)
+        await openAndSwitch(path, role: role, open: { [project] in await project.openDocument($0, role: $1) }, onRefusal: onRefusal)
+    }
+
+    /// `open` is the membership step (a seam for tests that hold it in flight).
+    func openAndSwitch(_ path: String, role: ProjectDocument.Role,
+                       open: (String, ProjectDocument.Role) async -> ProjectDocuments.OpenOutcome,
+                       onRefusal: (String) -> Void) async -> Bool {
+        navigationToken &+= 1
+        let token = navigationToken
+        switch await open(path, role) {
+        case .opened(let canonical), .alreadyOpen(let canonical):
+            // Switch to the normalized member path (`./ch.tex` opens `ch.tex`),
+            // and only if this is still the latest navigation: a newer open
+            // request or any document switch meanwhile (even A→B→A, which
+            // lands back on the same path) supersedes it. The open still stands.
+            if navigationToken == token { switchOrNote(canonical) }
             return true
         case .refused(let why):
             onRefusal(why)
