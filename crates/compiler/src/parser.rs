@@ -2547,7 +2547,12 @@ impl P<'_> {
                     if !(self.in_body
                         && !self.document_ended
                         && self.tabbing_active()
-                        && is_tabbing_control(word, self.t[self.i].token.span))
+                        && is_tabbing_control(
+                            word,
+                            self.t[self.i].maps_to_invocation,
+                            self.t[self.i].definition,
+                            self.t[self.i].token.span,
+                        ))
                         && control_symbol_kern(
                             word,
                             self.t[self.i].maps_to_invocation,
@@ -2619,7 +2624,12 @@ impl P<'_> {
                 TokenKind::Word(word)
                     if render
                         && self.tabbing_active()
-                        && is_tabbing_control(&word, tok.span) =>
+                        && is_tabbing_control(
+                            &word,
+                            input.maps_to_invocation,
+                            input.definition,
+                            tok.span,
+                        ) =>
                 {
                     self.i += 1;
                     self.tabbing_control(&word, tok.span, para);
@@ -3157,8 +3167,10 @@ impl P<'_> {
             // ordinary body text, which is exactly the material LaTeX runs
             // into that paragraph, in the right place with the right spans.
             //
-            // `flush_paragraph` is deliberately NOT called for the same
-            // reason — a run-in head does not start a new paragraph.
+            // The head still ends whatever paragraph came before it (real
+            // `\@startsection` calls `\par` first) but does not start a
+            // block of its own — the run-in title falls through below as
+            // the first text of the new paragraph.
             //
             // The head's weight, indent, `\hskip 1em` and `\addvspace` come
             // from the render pipeline, which reads the command back from the
@@ -3166,7 +3178,7 @@ impl P<'_> {
             // arm only retires the `\paragraph is not supported by this
             // compiler version` error, which has been stale since the
             // pipeline started laying these heads out correctly.
-            "paragraph" | "subparagraph" => self.run_in_heading_command(),
+            "paragraph" | "subparagraph" => self.run_in_heading_command(blocks, para),
             "section" | "subsection" | "subsubsection" => self.section_command(name, span, blocks, para),
             "label" | "ref" | "pageref" | "eqref" | "thepage" => self.label_or_reference_command(name, span, para),
             "cref" | "Cref" | "crefrange" | "Crefrange" | "cpageref" | "Cpageref"
@@ -3401,10 +3413,15 @@ impl P<'_> {
     }
 
     /// Run-in `\paragraph`/`\subparagraph` (see the comment in [`P::command`]).
+    ///
+    /// A run-in heading ends whatever paragraph came before it but does not
+    /// start a block of its own, mirroring how real `\@startsection` calls
+    /// `\par` before laying out the run-in title.
     #[inline(never)]
-    fn run_in_heading_command(&mut self) {
+    fn run_in_heading_command(&mut self, blocks: &mut Vec<Block>, para: &mut Vec<Inline>) {
         let _ = self.take_optional_star();
         let _ = self.optional_bracket_argument();
+        self.flush_paragraph(blocks, para);
     }
 
     /// `\section`, `\subsection` and `\subsubsection`.
@@ -6243,7 +6260,10 @@ impl P<'_> {
             para.push(Inline::Text {
                 text: "∎".to_string(),
                 span,
-                style: TextStyle::default(),
+                // `\qed` is typeset in the current (body) font, whose
+                // em-based box scales with the ambient size; unscoped this
+                // is `TextStyle::default()`, exactly as before.
+                style: self.style,
                 space_before: false,
             });
             self.flush_paragraph(blocks, para);
@@ -6409,7 +6429,18 @@ impl P<'_> {
         para: &mut Vec<Inline>,
     ) {
         let note = self.optional_bracket_argument();
-        let head_style = def.style.head_style();
+        // An enclosing size group (`{\large\begin{theorem}...`) stays in
+        // effect for the head, the number, the note and the body: real
+        // pdflatex sets all of them at the ambient size, since neither
+        // `\thm@headfont` nor `\thm@notefont` resets it. `head_style()` /
+        // `body_style()` are context-free definitions (size `None`), so the
+        // ambient size is merged in here at the call site. `number_style`
+        // below derives from `head_style` via `..head_style` and inherits it.
+        let ambient_size = self.style.size;
+        let head_style = TextStyle {
+            size: ambient_size,
+            ..def.style.head_style()
+        };
         // `\thmnumber{...\@upn{#2}}`: the number is `\textup`, so a
         // `remark`-style head (`\thm@headfont{\itshape}`) numbers upright
         // inside its italic name. For the bold heads `\@upn` is a no-op.
@@ -6479,7 +6510,13 @@ impl P<'_> {
                 para.push(Inline::Text {
                     text: format!("({note_text})"),
                     span: note_span,
-                    style: TextStyle::default(),
+                    // `\thm@notefont` (`\fontseries\mddefault\upshape`)
+                    // changes series/shape only, so the note keeps the
+                    // ambient size like the head does.
+                    style: TextStyle {
+                        size: ambient_size,
+                        ..TextStyle::default()
+                    },
                     space_before: false,
                 });
             }
@@ -6494,7 +6531,10 @@ impl P<'_> {
             style: head_style,
             space_before: false,
         });
-        self.style = def.style.body_style();
+        self.style = TextStyle {
+            size: ambient_size,
+            ..def.style.body_style()
+        };
     }
 
     /// `proof`'s italic "Proof." head (or a custom `[...]` heading, still
@@ -6502,6 +6542,9 @@ impl P<'_> {
     /// `environment`'s `\end` handling, once the body's last paragraph is
     /// known.
     fn begin_proof(&mut self, span: Span, para: &mut Vec<Inline>) {
+        // Like `begin_theorem` above: an enclosing size group stays in
+        // effect for the heading and the body.
+        let ambient_size = self.style.size;
         let heading = self
             .optional_bracket_argument()
             .map(|(text, _)| text.trim().to_string())
@@ -6512,11 +6555,15 @@ impl P<'_> {
             span,
             style: TextStyle {
                 italic: true,
+                size: ambient_size,
                 ..TextStyle::default()
             },
             space_before: true,
         });
-        self.style = TextStyle::default();
+        self.style = TextStyle {
+            size: ambient_size,
+            ..TextStyle::default()
+        };
     }
 
     /// `\begin{frame} body \end{frame}`: a rule-bordered box around its body.
@@ -6984,6 +7031,10 @@ impl P<'_> {
                         row.0.last_mut().expect("at least one cell").push(Token {
                             kind: TokenKind::Word(piece.to_string()),
                             span,
+                            // Word pieces split out for `&`-alignment keep the
+                            // source token's escaped mark (a piece of an
+                            // ordinary word stays unmarked).
+                            control_symbol: token.control_symbol,
                         });
                     }
                 }
@@ -7265,6 +7316,12 @@ impl P<'_> {
                         raw.push(Token {
                             kind: TokenKind::Word(ch.to_string()),
                             span: input.token.span,
+                            // A macro-expanded control symbol (`\,` inside
+                            // `\newcommand{\dd}{…}`) is one character, so its
+                            // split piece keeps the escaped mark; without it
+                            // math would read the invocation span and
+                            // typeset a literal glyph (issue #756).
+                            control_symbol: input.token.control_symbol,
                         });
                     }
                     continue;
@@ -8125,6 +8182,7 @@ impl P<'_> {
             Some(Token {
                 kind: TokenKind::Word(word),
                 span: word_span,
+                ..
             }) => (word, word_span),
             _ => {
                 self.diags.push(Diagnostic::error(
@@ -8172,6 +8230,7 @@ impl P<'_> {
                 Some(Token {
                     kind: TokenKind::Word(word),
                     span: word_span,
+                    ..
                 }) => {
                     self.i += 1;
                     (word, word_span)
@@ -10316,7 +10375,30 @@ fn preamble_source(text: &str, has_document: bool, tokens: &[InputToken]) -> Str
 /// the backslash too (two bytes), exactly like [`control_symbol_kern`]'s
 /// own test. A literal `=` typed as text (`a = b`) is one byte wide and
 /// never matches.
-fn is_tabbing_control(word: &str, span: Span) -> bool {
+///
+/// The width is measured on the token's own source bytes, for the same
+/// reason [`control_symbol_kern`] measures them: text expanded from a
+/// macro body carries the invocation's span. Without that, `\=` inside
+/// `\newcommand{\ts}{\=}` looks three bytes wide and is typeset as a
+/// literal `=` that sets no tab stop, while a plain `=` inside a two-byte
+/// `\newcommand{\q}{=}` looks like `\=` and is swallowed as a tab stop —
+/// the character the user typed disappears, and only inside `tabbing`.
+/// Expanded text with no definition bytes (synthesised by the engine)
+/// cannot prove it spells a control symbol, so it is typeset instead.
+fn is_tabbing_control(
+    word: &str,
+    maps_to_invocation: bool,
+    definition: Option<Span>,
+    span: Span,
+) -> bool {
+    let span = if maps_to_invocation {
+        match definition {
+            Some(definition) => definition,
+            None => return false,
+        }
+    } else {
+        span
+    };
     matches!(word, "=" | ">" | "<" | "+" | "-") && span.end - span.start == 2
 }
 
@@ -10766,6 +10848,7 @@ fn document_begin_end(tokens: &[InputToken]) -> Option<usize> {
             }, Token {
                 kind: TokenKind::RBrace,
                 span,
+                ..
             }] if name == "document" => Some(span.end),
             _ => None,
         }
@@ -11009,6 +11092,46 @@ mod tests {
             // prose: neither may reach the page.
             assert!(!text.contains('*'), "{source}: the star is not set, got {text:?}");
             assert!(!text.contains("Short"), "{source}: the short title is not set, got {text:?}");
+        }
+    }
+
+    #[test]
+    fn run_in_heading_flushes_the_preceding_paragraph() {
+        // Real `\@startsection` calls `\par` before laying out a run-in
+        // head, so text that precedes `\paragraph`/`\subparagraph` must
+        // land in its own paragraph block, not be merged with the head and
+        // the text that runs into it. `adapter::apply_run_in_heading` only
+        // styles the leading items of the block it is given, so this
+        // boundary is load-bearing for the render pipeline, not cosmetic.
+        for source in [
+            r"Preceding text.\paragraph{Solution.} Body text.",
+            r"Preceding text.\subparagraph{Solution.} Body text.",
+        ] {
+            let parsed = parse(source);
+            assert!(parsed.diagnostics.is_empty(), "{source}: {:?}", parsed.diagnostics);
+            let paragraphs: Vec<&[Inline]> = parsed
+                .blocks
+                .iter()
+                .filter_map(|b| match b {
+                    Block::Paragraph(inlines) => Some(inlines.as_slice()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                paragraphs.len(),
+                2,
+                "{source}: expected 2 paragraph blocks, got {:?}",
+                parsed.blocks
+            );
+            let first = plain_inline_text(paragraphs[0]);
+            assert!(first.contains("Preceding"), "{source}: first block keeps the preceding text, got {first:?}");
+            assert!(
+                !first.contains("Solution."),
+                "{source}: the run-in title must not be merged into the preceding paragraph, got {first:?}"
+            );
+            let second = plain_inline_text(paragraphs[1]);
+            assert!(second.contains("Solution."), "{source}: title starts the new paragraph, got {second:?}");
+            assert!(second.contains("Body"), "{source}: body text runs into the same paragraph, got {second:?}");
         }
     }
 
@@ -12781,7 +12904,7 @@ mod tests {
             kinds
                 .into_iter()
                 .map(|kind| InputToken {
-                    token: Token { kind, span: Span::new(0, 0) },
+                    token: Token { kind, span: Span::new(0, 0), control_symbol: false },
                     definition: None,
                     maps_to_invocation: false,
                 })

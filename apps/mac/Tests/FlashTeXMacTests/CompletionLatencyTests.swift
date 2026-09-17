@@ -272,7 +272,10 @@ final class CompletionLatencyTests: XCTestCase {
         exec.runAll()
         spin("session B") { tv.session != nil }
         XCTAssertEqual(tv.session?.items.first?.label, "\\tableofcontents")
-        XCTAssertTrue(tv.session!.items.allSatisfy { $0.label.hasPrefix("\\t") }, "\(tv.session!.items.map(\.label))")
+        guard let sessionB = tv.session else {
+            return XCTFail("session B closed between the wait and the read")
+        }
+        XCTAssertTrue(sessionB.items.allSatisfy { $0.label.hasPrefix("\\t") }, "\(sessionB.items.map(\.label))")
         XCTAssertEqual(tv.session?.range, NSRange(location: caretA - 1, length: 2))
 
         // A session on B with an outcome pending; the caret moves to the same

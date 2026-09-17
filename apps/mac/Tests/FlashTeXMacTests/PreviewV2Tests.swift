@@ -519,6 +519,7 @@ final class PreviewV2ShellTests: XCTestCase {
     /// pages and the count was 0. The readout itself was additionally gated on
     /// `!model.previewV2` while `previewV2` defaults true — so on the shipped
     /// default there was no page number at all, from either half.
+    @MainActor
     func testPageReadoutCountsTheDisplayListNotTheElidedV1Pages() throws {
         let model = try model()
         XCTAssertTrue(model.previewV2)
