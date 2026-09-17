@@ -5864,9 +5864,13 @@ impl<'a> Context<'a> {
                 vec![src],
             ));
         }
-        // Rows: `\strut@` (.7/.3 `\normalbaselineskip`) minima.
+        // Rows: `\strut@` (.7/.3 `\normalbaselineskip`) minima -- amsmath's
+        // `\displ@y@` family only. The kernel `\@@eqncr` template for real
+        // `eqnarray` has no strut at all: each row is a plain `\halign` row
+        // with only its own material's natural height/depth.
+        let is_eqnarray = matches!(env, RowsEnv::EqnArray);
         let normal = self.style.baselineskip_pt;
-        let (strut_h, strut_d) = (0.7 * normal, 0.3 * normal);
+        let (strut_h, strut_d) = if is_eqnarray { (0.0, 0.0) } else { (0.7 * normal, 0.3 * normal) };
         let mut items = Vec::new();
         let mut recs = Vec::new();
         let mut lines: Vec<pl::Line> = Vec::with_capacity(rows.len());
@@ -5960,7 +5964,10 @@ impl<'a> Context<'a> {
                 hyphenated: false,
             });
             extents.push((h, d));
-            vskips.push(0.0);
+            // `\@@eqncr`'s `\noalign{\vskip\jot}`: between each pair of rows
+            // only, never after the last (nothing follows `\end{eqnarray}`'s
+            // last row but the display's own `\belowdisplayskip`).
+            vskips.push(if is_eqnarray && ri + 1 < cells.len() { JOT } else { 0.0 });
             total += h + d;
         }
         if lines.is_empty() {
@@ -5968,16 +5975,25 @@ impl<'a> Context<'a> {
         }
         let above = self.style.abovedisplayskip;
         let below = self.style.belowdisplayskip;
-        // `eqnarray` reaches the same `\jot` as the amsmath rows, by a
-        // different route: amsmath's `\displ@y@` says `\openup\jot`, while
-        // latex.ltx's `\@@eqncr` puts an explicit `\vskip\jot` in the
-        // `\noalign` between rows. pdfTeX baseline-to-baseline for a
-        // two-row `eqnarray` is 15.000/16.600/17.500 pt at 10/11/12 pt --
-        // `\baselineskip` (12/13.6/14.5) + `\jot` (3) -- and identical to
-        // `align`'s, as is the lead-in line to first row distance
-        // (21.917/24.508/26.401 bp). So no arm below is conditioned on
-        // `EqnArray`.
-        let first_adjust = if matches!(env, RowsEnv::Multline) { 0.0 } else { -JOT };
+        // `eqnarray` reaches `\jot` by a different route than amsmath's
+        // rows: amsmath's `\displ@y@` says `\openup\jot`, which advances
+        // `\baselineskip`, `\lineskip` AND `\lineskiplimit` for the whole
+        // display, while latex.ltx's `\@@eqncr` puts one explicit
+        // `\vskip\jot` in the `\noalign` between each pair of rows only --
+        // never before the first row or after the last, and never folded
+        // into the baselineskip/lineskip choice itself. For a short-row
+        // alignment (`a &= b \\ c &= d`, no strut on either side) that
+        // difference is invisible: both land in baselineskip mode at the
+        // same 15.000/16.600/17.500 pt (10/11/12pt) gap. It stops being
+        // invisible once a row is tall (a `\frac`, an integral): amsmath's
+        // `\openup`d `\lineskip`/`\lineskiplimit` push more rows into
+        // baselineskip mode and add `\jot` there too, while the kernel's
+        // plain `\lineskip`/`\lineskiplimit` fall into lineskip mode
+        // sooner and only ever add `\jot` from the explicit `\noalign`.
+        // Verified against pdflatex (10pt article): a `\frac` row followed
+        // by a short row gives 15.00pt baseline-to-baseline in `eqnarray`*
+        // but 19.26pt in `align`* for the identical two rows.
+        let first_adjust = if matches!(env, RowsEnv::Multline) || is_eqnarray { 0.0 } else { -JOT };
         let (an, ast, ash) = skip_tuple(above);
         let n = lines.len();
         let lines = pl::Lines {
@@ -6009,7 +6025,6 @@ impl<'a> Context<'a> {
             space_after: Some(skip_tuple(below)),
             no_interline_first: false,
             no_interline_after: false,
-            baselineskip: Some(normal + JOT),
             // `\openup\jot` (amsmath `\displ@y@`) advances `\lineskip` as
             // well as `\baselineskip` — `\openup` is `\advance` on all three
             // of `\lineskip`, `\baselineskip` and `\lineskiplimit`. Leaving
@@ -6023,8 +6038,12 @@ impl<'a> Context<'a> {
             // integral/fraction rows of a real problem set drifted 3pt per
             // row. pdfLaTeX's own `\showoutput` for
             // `fixtures/real-world/ps-calculus` prints `\glue(\lineskip) 4.0`
-            // between the rows of both of its alignments.
-            lineskip: Some(self.style.lineskip_pt + JOT),
+            // between the rows of both of its alignments. `eqnarray` does
+            // not `\openup`: its `\jot` is the explicit per-row `\vskip`
+            // added to `vskips` below, so its baselineskip/lineskip stay
+            // exactly the page's own.
+            baselineskip: Some(if is_eqnarray { normal } else { normal + JOT }),
+            lineskip: Some(self.style.lineskip_pt + if is_eqnarray { 0.0 } else { JOT }),
             vskip_after: vskips,
             broken_penalty: Vec::new(),
             pre_space_after: None,

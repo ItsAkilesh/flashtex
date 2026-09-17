@@ -42,25 +42,26 @@
 //! amsmath `align` measures 2.7696 bp there at 10 pt, 3.6x narrower. It is
 //! not `align` with different spacing.
 //!
-//! Second, the vertical is *not* special: the row baseline gaps are
-//! 15.000 / 16.600 / 17.500 pt, i.e. `\baselineskip` + `\jot`, exactly what
-//! `align` measures, because latex.ltx's `\@@eqncr` puts an explicit
-//! `\vskip\jot` between rows where amsmath's `\displ@y@` says `\openup\jot`.
-//! The lead-in line to first row distance is likewise identical
-//! (21.917 / 24.508 / 26.401 bp). So the pipeline's existing `\jot`
-//! handling is right for `eqnarray` and is deliberately left alone.
-//!
-//! ## Why these are `#[ignore]`d
-//!
-//! The `eqnarray` compiler support is on `main`
-//! (`crates/compiler/src/parser.rs`), but `crates/render-pipeline` builds
-//! against the frozen `vendor/compiler` mirror (`vendor/VENDORING.md`),
-//! pinned at `c95977d6`, which predates it: that compiler still reports
-//! `environment 'eqnarray' is not implemented; its body is typeset as
-//! plain text` and emits no `MathRows` at all, so these can only fail here.
-//! Re-pinning `vendor/` is integrator-owned. Un-ignore both at re-pin time.
-//! The layout arithmetic they exercise is covered *now*, against the same
-//! measurements, by `typeset::eqnarray_tests` in the library.
+//! Second, for this *short-row* fixture the vertical looks unremarkable:
+//! the row baseline gaps are 15.000 / 16.600 / 17.500 pt, i.e.
+//! `\baselineskip` + `\jot`, matching what `align` measures for the same
+//! rows, and the lead-in line to first row distance is likewise identical
+//! (21.917 / 24.508 / 26.401 bp). Both environments reach `\jot` here, but
+//! by different routes: latex.ltx's `\@@eqncr` puts one explicit
+//! `\vskip\jot` in a `\noalign` between each pair of rows, while amsmath's
+//! `\displ@y@` says `\openup\jot`, which advances `\baselineskip`,
+//! `\lineskip` *and* `\lineskiplimit` for the whole display. Short,
+//! strutless rows never notice the difference: both land in baselineskip
+//! mode at the same gap. **A row containing a `\frac`, integral or other
+//! tall construct does notice** -- amsmath's `\openup`d `\lineskip`/
+//! `\lineskiplimit` keep more row pairs in baselineskip mode (and add
+//! `\jot` there too), while the kernel's plain `\lineskip`/`\lineskiplimit`
+//! fall into lineskip mode sooner and only ever add `\jot` from the
+//! explicit `\noalign`. Measured against pdflatex (10pt article): a
+//! `\frac` row followed by a short row gives 15.00pt baseline-to-baseline
+//! in `eqnarray*` but 19.26pt in `align*` for the identical two rows --
+//! `typeset::eqnarray_tests` in the library covers both the short-row case
+//! this file's fixtures use and that tall-row divergence.
 
 mod common;
 
@@ -122,7 +123,6 @@ const SIZES: &[(&str, f64, f64, f64, f64, f64, f64, f64)] = &[
 ];
 
 #[test]
-#[ignore = "needs a vendor/compiler re-pin carrying the #520 compiler change"]
 fn eqnarray_columns_and_numbers_match_pdflatex_at_ten_eleven_twelve_point() {
     if !lm_available() {
         eprintln!("SKIP eqnarray columns: Latin Modern not installed");
@@ -216,7 +216,6 @@ fn eqnarray_columns_and_numbers_match_pdflatex_at_ten_eleven_twelve_point() {
 /// the second row carries `(1)`, because latex.ltx's `\@@eqncr` prints the
 /// number *before* it steps the counter, so a skipped row consumes nothing.
 #[test]
-#[ignore = "needs a vendor/compiler re-pin carrying the #520 compiler change"]
 fn eqnarray_star_and_nonumber_suppress_numbers() {
     if !lm_available() {
         eprintln!("SKIP eqnarray numbering: Latin Modern not installed");
@@ -260,7 +259,6 @@ fn eqnarray_star_and_nonumber_suppress_numbers() {
 /// centre 306.0803 bp, with the relation still at 221.4729 bp and the same
 /// 9.9626 bp gaps.
 #[test]
-#[ignore = "needs a vendor/compiler re-pin carrying the #520 compiler change"]
 fn long_right_hand_side_keeps_the_block_centred() {
     if !lm_available() {
         eprintln!("SKIP eqnarray long rhs: Latin Modern not installed");
@@ -288,4 +286,28 @@ fn long_right_hand_side_keeps_the_block_centred() {
     assert!((centre - 306.0803).abs() <= TOL, "block centre {centre:.4} bp");
     let tag = number.expect("numbered");
     assert!((tag.x + tag.width - RIGHT).abs() <= TOL, "number right {:.4} bp", tag.x + tag.width);
+}
+
+/// A `\frac` row followed by a short row: the row-to-row baseline gap is
+/// `\baselineskip` (15.00 bp at 10pt), not `align`'s lineskip-mode gap
+/// (19.26 bp for the identical rows) -- `eqnarray` has no amsmath strut and
+/// does not `\openup`. Measured against pdflatex (`\showoutput`, 10pt
+/// article): row 1 depth 6.8595, `\glue 3.0`, `\glue(\baselineskip)
+/// 0.83495`, row 2 height 4.30554, independently confirmed by rendering the
+/// same fixture to a real PDF and reading glyph baselines back out with
+/// `pdftotext -bbox` (the `=` glyphs' gap agrees to within a few hundredths
+/// of a bp). Round-2 review finding: the pipeline set this exactly like
+/// `align*`, a 4.26 bp error per such row gap.
+#[test]
+fn a_tall_row_still_gets_the_kernel_baselineskip_gap_not_aligns_lineskip_gap() {
+    if !lm_available() {
+        eprintln!("SKIP eqnarray tall row: Latin Modern not installed");
+        return;
+    }
+    let r = render_one(&doc("10pt", "\\begin{eqnarray*}\na &=& \\frac{a}{b} \\\\\nx &=& y\n\\end{eqnarray*}"));
+    assert_supported(&r);
+    let ys = math_baselines(&words_of(&r));
+    assert_eq!(ys.len(), 2, "{ys:?}");
+    let gap = ys[1] - ys[0];
+    assert!((gap - 15.00).abs() <= TOL, "row baseline gap {gap:.4} bp, pdflatex 15.00 bp (align's would be 19.26 bp)");
 }
