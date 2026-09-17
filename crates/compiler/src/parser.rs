@@ -6900,7 +6900,8 @@ impl P<'_> {
                 ),
             ));
         }
-        let list = math::parse_tokens(&raw, self.math_packages, &mut self.diags);
+        // `equation`/`equation*` are always display math.
+        let list = math::parse_tokens_display(&raw, self.math_packages, &mut self.diags, true);
         let tag = Self::custom_tag_text(&list, self.documents[open.document.0].text, open.document);
         let color_ranges = self.math_color_ranges(&raw);
         para.push(Inline::Math {
@@ -7177,9 +7178,11 @@ impl P<'_> {
                 .then(|| Self::take_row_shove(&mut cells))
                 .flatten();
             let packages = self.math_packages;
+            // gather/align/multline/eqnarray and their variants are always
+            // display math.
             let cells = cells
                 .iter()
-                .map(|cell| math::parse_tokens(cell, packages, &mut self.diags))
+                .map(|cell| math::parse_tokens_display(cell, packages, &mut self.diags, true))
                 .collect();
             math_rows.push(MathRow {
                 cells,
@@ -7371,6 +7374,7 @@ impl P<'_> {
             self.math_packages,
             &mut self.diags,
             !found,
+            display,
         );
         // The span covers the opener through the close (or the last content
         // token). Expanded content can carry spans from before the opener or
