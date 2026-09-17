@@ -10,12 +10,12 @@ This audit was originally written at commit `06007472` (2026-09-14T08:39:56Z) an
 
 **Every row was re-checked against `dbe3cac8` (current `main` as of this revision)** using the same method (Section "Method" above), not just the four rows an independent review had already caught. Net changes:
 
-| | original | current (`dbe3cac8`) | resolved | moved | still valid |
-| --- | --- | --- | --- | --- | --- |
-| Table 1A (unimplemented) | 153 | 125 | 22 | 6 → Table 2 | 125 |
-| Table 1B (falsely-flagged) | 61 | 44 | 16 | 1 → Table 2 | 44 |
-| Table 2 (untested) | 41 | 7 | 41 | — | 0 carried over; 7 new |
-| **unimplemented total (1A+1B)** | **214** | **169** | | | |
+| | original | current (`dbe3cac8`) | current (this revision) | resolved | moved | still valid |
+| --- | --- | --- | --- | --- | --- | --- |
+| Table 1A (unimplemented) | 153 | 125 | 103 | 22 | 6 → Table 2 | 125 |
+| Table 1B (falsely-flagged) | 61 | 44 | 68 | 16 | 1 → Table 2 | 44 |
+| Table 2 (untested) | 41 | 7 | 6 | 41 | — | 0 carried over; 7 new |
+| **unimplemented total (1A+1B)** | **214** | **169** | **171** | | | |
 
 86 of the original 255 rows (about a third) changed status in roughly 24 hours. The four rows the independent review flagged (`\hrulefill`, `\dotfill`, `\includeonly` — all Table 1A → resolved; `\displaystyle` — Table 2 → resolved) are among the 79 fully resolved rows, not the whole story: 7 more Table 1A/1B rows are now implemented but still untested (moved into the new Table 2), and dozens of others besides the four named ones flipped.
 
@@ -29,11 +29,22 @@ The prior revision's own Method (engine primitive/prelude macro in `flashtex-tex
 - **`tabbing` removed from Table 1B**: it is genuinely implemented (`IMPLEMENTED_ENVIRONMENTS`, `vocabulary.rs:109`, and a real row/column-stop dispatch arm at `parser.rs:6056`/`6239`), not merely name-listed. The cited "explicit not-implemented" tests (`tests/recovery.rs:68-69`, `tests/diagnostic_codes.rs:65-66`) test `picture`, not `tabbing` — misattributed evidence, not a real finding.
 - **`marginpar` removed from Table 2**: `parser.rs` already has a dedicated inline test, `marginpar_parses_to_a_margin_note_without_diagnostics` (`parser.rs:14277`), covering exactly this at the audited commit; the claim that both test greps came back empty was wrong.
 - **`part`, `vbox`, `linespread` added to Table 1B**: all three are canonical `kernel` rows (`part`/`vbox` commands, confirmed in `canonical-latex.tsv`) that were checked during this revision but never entered into any table. All three have real `crates/compiler/src/` matches (so Table 1A's "zero matches" doesn't apply) that are not genuine implementation — see the rows below for the discriminating evidence.
-- **`minipage` needs no row**: it has a real dispatch check (`environment == "minipage"`, `parser.rs:10796`) with genuine footnote-numbering behavior, and a real test exercising it (`tests/footnote_counters.rs:134`) — implemented and tested, like `\day`/`\month`/`\year`/`\space`. (It is also stale-listed in `vocabulary.rs`'s `KNOWN_UNIMPLEMENTED_ENVIRONMENTS`, which is a pre-existing inconsistency in that list, not an audit gap — the same shape as the `hss`/hard-coded-list staleness the original revision already noted for other names.)
+- **`minipage` needs no row** [REVISED by Revision 3 below — the `environment == "minipage"` check turned out to be footnote-routing only, so `minipage` now has a Table 1B row]: it has a real dispatch check (`environment == "minipage"`, `parser.rs:10796`) with genuine footnote-numbering behavior, and a real test exercising it (`tests/footnote_counters.rs:134`) — implemented and tested, like `\day`/`\month`/`\year`/`\space`. (It is also stale-listed in `vocabulary.rs`'s `KNOWN_UNIMPLEMENTED_ENVIRONMENTS`, which is a pre-existing inconsistency in that list, not an audit gap — the same shape as the `hss`/hard-coded-list staleness the original revision already noted for other names.)
 
 Net effect on the counts below: Table 1A 125 → 116 (-9), Table 1B 44 → 46 (-1 `tabbing`, +3 `part`/`vbox`/`linespread`), Table 2 7 → 6 (-1 `marginpar`). Unimplemented total (1A+1B): 169 → 162.
 
-## Table 1A — kernel names with ZERO matches in `crates/compiler/src/` (116)
+## Revision 3 (independent review round 2, 2026-09-17)
+
+A second independent review (real `parser::parse` probes, checked against the audited tree) found nine canonical `kernel` rows missing from every table, and thirteen Table 1A rows sitting under a "ZERO matches" header they do not satisfy. Every row below was re-verified with this document's own Method (fixed-string, whole-word grep from the repo root, matches read in context) plus a probe of the compiler's actual diagnostic before entry:
+
+- **8 commands added to Table 1B** (`\newline`, `\strut`, `\slash`, `\addvspace`, `\twocolumn`, `\stretch`, `\stop`, `\accent`): every `crates/compiler/src/` hit is spurious — `KNOWN_UNIMPLEMENTED_COMMANDS` list entries (`vocabulary.rs:46,48,56`), comments, the `twocolumn` *class option* (`parser.rs:4353`, not a command dispatch arm), or unrelated Rust identifiers and English prose (`stretch` glue fields, `stop` locals, the accent machinery; the engine's only lookalikes are a `verbatim` comment for `newline` and the internal `flashtex@stop` token for `stop`). Probes emit "`\NAME` is not supported by this compiler version" for all eight (`UnsupportedFeature` for the four list members, `UnknownCommand` for the other four).
+- **`minipage` added to Table 1B as an environment**: this revises Revision 2's "needs no row" call above. `\begin{minipage}{3cm}b\end{minipage}` probes as "environment 'minipage' is not implemented; its body is typeset as plain text"; the only real behavior is `mpfootnote` `\alph` footnote numbering (`parser.rs:8958-8981`, routed via `environment == "minipage"`, `parser.rs:10796`) — the same "recognised, partial side behaviour, not fully implemented" shape that already places `linespread` in Table 1B, so the two are now consistent under one criterion.
+- **13 rows moved Table 1A → Table 1B** (`DeclareOption`, `ExecuteOptions`, `ProcessOptions`, `arraycolsep`, and all nine `capital*` accents): each has only spurious matches — `natbib.rs`/`parser.rs` comments, `supported.rs` description strings, and the `text_builtins.rs:161-166` doc comment that lists the `capital*` names as deliberately absent (`TEXT_ACCENTS` holds only the eight lowercase names; `capitaltie`/`capitalnewtie` alias `\t`, itself unimplemented). None is genuinely implemented (no dispatch arm, no engine entry, no name-specific test), so this is a move, not a resolution.
+- **Two citation fixes**: `\day`'s register entry is at `expand.rs:5819`, not `expand.rs:4998` (triage note corrected); `linespread`'s row now cites both `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:45`) and `KNOWN_ARITY_UNIMPLEMENTED` (`parser.rs:9863-9865`).
+
+Net effect on the counts below: Table 1A 116 → 103 (-13 moved), Table 1B 46 → 68 (+8 new commands, +1 `minipage`, +13 moved), Table 2 unchanged at 6. Unimplemented total (1A+1B): 162 → 171.
+
+## Table 1A — kernel names with ZERO matches in `crates/compiler/src/` (103)
 
 | kind | name | reproducing grep (run from repo root) | result |
 | ---- | ---- | ------------------------------------- | ------ |
@@ -48,7 +59,6 @@ Net effect on the counts below: Table 1A 125 → 116 (-9), Table 1B 44 → 46 (-
 | command | ClassWarningNoLine | `grep -rnwF -e 'ClassWarningNoLine' crates/compiler/src/` | (no output) |
 | command | CurrentOption | `grep -rnwF -e 'CurrentOption' crates/compiler/src/` | (no output) |
 | command | DeclareFontEncoding | `grep -rnwF -e 'DeclareFontEncoding' crates/compiler/src/` | (no output) |
-| command | DeclareOption | `grep -rnwF -e 'DeclareOption' crates/compiler/src/` | (no output) |
 | command | DeclareTextAccent | `grep -rnwF -e 'DeclareTextAccent' crates/compiler/src/` | (no output) |
 | command | DeclareTextAccentDefault | `grep -rnwF -e 'DeclareTextAccentDefault' crates/compiler/src/` | (no output) |
 | command | DeclareTextCommand | `grep -rnwF -e 'DeclareTextCommand' crates/compiler/src/` | (no output) |
@@ -56,7 +66,6 @@ Net effect on the counts below: Table 1A 125 → 116 (-9), Table 1B 44 → 46 (-
 | command | DeclareTextCompositeCommand | `grep -rnwF -e 'DeclareTextCompositeCommand' crates/compiler/src/` | (no output) |
 | command | DeclareTextSymbol | `grep -rnwF -e 'DeclareTextSymbol' crates/compiler/src/` | (no output) |
 | command | DeclareTextSymbolDefault | `grep -rnwF -e 'DeclareTextSymbolDefault' crates/compiler/src/` | (no output) |
-| command | ExecuteOptions | `grep -rnwF -e 'ExecuteOptions' crates/compiler/src/` | (no output) |
 | command | IfFileExists | `grep -rnwF -e 'IfFileExists' crates/compiler/src/` | (no output) |
 | command | InputIfFileExists | `grep -rnwF -e 'InputIfFileExists' crates/compiler/src/` | (no output) |
 | command | LastDeclaredEncoding | `grep -rnwF -e 'LastDeclaredEncoding' crates/compiler/src/` | (no output) |
@@ -68,26 +77,15 @@ Net effect on the counts below: Table 1A 125 → 116 (-9), Table 1B 44 → 46 (-
 | command | PackageWarning | `grep -rnwF -e 'PackageWarning' crates/compiler/src/` | (no output) |
 | command | PackageWarningNoLine | `grep -rnwF -e 'PackageWarningNoLine' crates/compiler/src/` | (no output) |
 | command | PassOptionsToClass | `grep -rnwF -e 'PassOptionsToClass' crates/compiler/src/` | (no output) |
-| command | ProcessOptions | `grep -rnwF -e 'ProcessOptions' crates/compiler/src/` | (no output) |
 | command | ProvideTextCommand | `grep -rnwF -e 'ProvideTextCommand' crates/compiler/src/` | (no output) |
 | command | ProvideTextCommandDefault | `grep -rnwF -e 'ProvideTextCommandDefault' crates/compiler/src/` | (no output) |
 | command | RequirePackageWithOptions | `grep -rnwF -e 'RequirePackageWithOptions' crates/compiler/src/` | (no output) |
 | command | UseTextAccent | `grep -rnwF -e 'UseTextAccent' crates/compiler/src/` | (no output) |
 | command | UseTextSymbol | `grep -rnwF -e 'UseTextSymbol' crates/compiler/src/` | (no output) |
 | command | addtocontents | `grep -rnwF -e 'addtocontents' crates/compiler/src/` | (no output) |
-| command | arraycolsep | `grep -rnwF -e 'arraycolsep' crates/compiler/src/` | (no output) |
 | command | baselinestretch | `grep -rnwF -e 'baselinestretch' crates/compiler/src/` | (no output) |
 | command | bigbreak | `grep -rnwF -e 'bigbreak' crates/compiler/src/` | (no output) |
 | command | bottomfraction | `grep -rnwF -e 'bottomfraction' crates/compiler/src/` | (no output) |
-| command | capitalacute | `grep -rnwF -e 'capitalacute' crates/compiler/src/` | (no output) |
-| command | capitalcircumflex | `grep -rnwF -e 'capitalcircumflex' crates/compiler/src/` | (no output) |
-| command | capitaldieresis | `grep -rnwF -e 'capitaldieresis' crates/compiler/src/` | (no output) |
-| command | capitaldotaccent | `grep -rnwF -e 'capitaldotaccent' crates/compiler/src/` | (no output) |
-| command | capitalgrave | `grep -rnwF -e 'capitalgrave' crates/compiler/src/` | (no output) |
-| command | capitalmacron | `grep -rnwF -e 'capitalmacron' crates/compiler/src/` | (no output) |
-| command | capitalnewtie | `grep -rnwF -e 'capitalnewtie' crates/compiler/src/` | (no output) |
-| command | capitaltie | `grep -rnwF -e 'capitaltie' crates/compiler/src/` | (no output) |
-| command | capitaltilde | `grep -rnwF -e 'capitaltilde' crates/compiler/src/` | (no output) |
 | command | circle | `grep -rnwF -e 'circle' crates/compiler/src/` | (no output) |
 | command | columnseprule | `grep -rnwF -e 'columnseprule' crates/compiler/src/` | (no output) |
 | command | contentsline | `grep -rnwF -e 'contentsline' crates/compiler/src/` | (no output) |
@@ -154,7 +152,7 @@ Net effect on the counts below: Table 1A 125 → 116 (-9), Table 1B 44 → 46 (-
 | environment | filecontents* | `grep -rnwF -e 'filecontents*' crates/compiler/src/` | (no output) |
 | environment | theindex | `grep -rnwF -e 'theindex' crates/compiler/src/` | (no output) |
 
-## Table 1B — names with matches but NO genuine implementation (46)
+## Table 1B — names with matches but NO genuine implementation (68)
 
 The word grep below returns hits, but every hit was read in context and is spurious: `//` comments, `vocabulary.rs` `KNOWN_UNIMPLEMENTED_*` entries (the compiler's own not-implemented list — itself stale in places, see the revision note above: several names it lists are dispatched *before* the fallback that would ever consult it), SI-unit symbol tables (`siunitx.rs`), the `roman()` numeral table (`parser.rs:5775`), tabular column-alignment words, or unrelated Rust identifiers. The "genuine-impl check" column gives the discriminating grep (empty output) proving no dispatch arm, builtin-table entry, or inventory claim exists.
 
@@ -205,7 +203,29 @@ The word grep below returns hits, but every hit was read in context and is spuri
 | environment | picture | `grep -rnwF -e 'picture' crates/compiler/src/` | only hit is `KNOWN_UNIMPLEMENTED_ENVIRONMENTS` (`vocabulary.rs:111`); no dispatch, no engine entry |
 | command | part | `grep -rnwF -e 'part' crates/compiler/src/` | hits are `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:40`), `xref.rs:61,153`'s counter-name-formatting table (applies to any counter named "part", not a `\part` dispatch arm), and unrelated uses of the English word "part" (`tabular.rs`, `parser/lists.rs`); no sectioning dispatch arm exists |
 | command | vbox | `grep -rnwF -e 'vbox' crates/compiler/src/` | hits are `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:45`) and `//`/`///` comments describing other constructs (`tabular.rs`, `text_builtins.rs`, `math.rs`) in terms of what real `\vbox` would do; no dispatch arm |
-| command | linespread | `grep -rnwF -e 'linespread' crates/compiler/src/` | only hit is the `KNOWN_ARITY_UNIMPLEMENTED` table (`parser.rs:9863-9865`): the argument is deliberately skipped and a diagnostic is emitted (tested, `parser.rs:13121-13132`), but line spacing itself never changes — recognised-and-diagnosed, not implemented |
+| command | linespread | `grep -rnwF -e 'linespread' crates/compiler/src/` | hits are `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:45`) and the `KNOWN_ARITY_UNIMPLEMENTED` table (`parser.rs:9863-9865`): the argument is deliberately skipped and a diagnostic is emitted (tested, `parser.rs:13121-13132`), but line spacing itself never changes — recognised-and-diagnosed, not implemented |
+| command | newline | `grep -rnwF -e 'newline' crates/compiler/src/` | hits are the unrelated `LayoutCursor::newline` line-breaking method (`layout.rs:863` and call sites), `//`/`///` comments about source newlines (`lexer.rs:527`, `parser.rs:2330-2934,6627-6639`, `supported.rs:343`), and `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:46`); `grep -rn -e '"newline"' crates/compiler/src/parser.rs` empty — no dispatch, no engine entry (the engine's only hit is a `verbatim` comment, `expand.rs:3262`) |
+| command | strut | `grep -rnwF -e 'strut' crates/compiler/src/` | hits are `//` comments using the English word for other constructs' spacing (`tabular.rs:33,71,346,1087`, `layout/footnotes.rs:7,100`, `parser.rs:5697,5751,9960`) and `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:48`); no dispatch, no engine entry |
+| command | slash | `grep -rnwF -e 'slash' crates/compiler/src/` | hits are `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:56`) and `//` comments about the math negation slash, a zero-width overprint unrelated to the `\slash` command (`math.rs:4124,4131,4374,7598,7628`, `lm_math.rs:138`); no dispatch, no engine entry |
+| command | addvspace | `grep -rnwF -e 'addvspace' crates/compiler/src/` | hits are `///`/`//` comments describing the layout engine's own skip-merging in `\addvspace`-style terms (`layout.rs:93,700,1541,1893`, `parser.rs:640,2679,3163`) and `KNOWN_UNIMPLEMENTED_COMMANDS` (`vocabulary.rs:48`); no dispatch, no engine entry |
+| command | twocolumn | `grep -rnwF -e 'twocolumn' crates/compiler/src/` | every hit is the *class option*, not the command: the `twocolumn_option` flag and its doc comment (`parser.rs:2384,4353`) and the multicol incompatibility warning (`parser.rs:5090-5094`); no `\twocolumn` command dispatch arm, no engine entry |
+| command | stretch | `grep -rnwF -e 'stretch' crates/compiler/src/` | hits are unrelated Rust identifiers and English prose: the `stretch` glue field (`expansion.rs:469`), glue stretch/shrink locals (`parser.rs:7921-8223`), and layout/math comments; `grep -rn -e '"stretch"' crates/compiler/src/` empty — no list entry, no dispatch; the engine's `stretch` hits are the same glue-struct field (`registers.rs:17`), not a `\stretch` command |
+| command | stop | `grep -rnwF -e 'stop' crates/compiler/src/` | hits are unrelated Rust locals (`let (stop, recovery)`, `parser.rs:7417-7432`), tab-stop logic, and English prose; `grep -rn -e '"stop"' crates/compiler/src/` empty — no list entry, no dispatch; the engine's `flashtex@stop` (`expand.rs:368`) is an internal synthetic token, not a `\stop` command |
+| command | accent | `grep -rnwF -e 'accent' crates/compiler/src/` | hits are the accent *machinery* (the `Accent` enum, `text_accent()`, `TEXT_ACCENTS`) and comments about accent glyphs — none is a `\accent` primitive dispatch; `grep -rn -e '"accent"' crates/compiler/src/` empty, no engine entry; `parser.rs:8733` itself notes `\accent` is not implemented |
+| environment | minipage | `grep -rnwF -e 'minipage' crates/compiler/src/` | recognised but not implemented: `environment == "minipage"` (`parser.rs:10796`, "the environment itself is not implemented: its body is set as running text") exists only to route `\footnote`/`\footnotetext` to `mpfootnote` `\alph` numbering (`parser.rs:8958-8981`); also stale-listed in `KNOWN_UNIMPLEMENTED_ENVIRONMENTS` (`vocabulary.rs:116`); the only test exercises footnote numbering (`tests/footnote_counters.rs:133-134`) — same recognised-partial shape as `linespread` above |
+| command | DeclareOption | `grep -rnwF -e 'DeclareOption' crates/compiler/src/` | non-comment grep empty; sole hit is a `///` doc comment (`natbib.rs:81`) — moved from Table 1A (Revision 3) |
+| command | ExecuteOptions | `grep -rnwF -e 'ExecuteOptions' crates/compiler/src/` | non-comment grep empty; hits are `//` comments (`natbib.rs:153,166`) and a `///` doc comment (`parser.rs:1750`) — moved from Table 1A (Revision 3) |
+| command | ProcessOptions | `grep -rnwF -e 'ProcessOptions' crates/compiler/src/` | non-comment grep empty; sole hit is a `///` doc comment (`natbib.rs:82`) — moved from Table 1A (Revision 3) |
+| command | arraycolsep | `grep -rnwF -e 'arraycolsep' crates/compiler/src/` | non-comment code grep empty; hits are description strings in the inventory data itself (`supported.rs:882,886`), not implementation — moved from Table 1A (Revision 3) |
+| command | capitalacute | `grep -rnwF -e 'capitalacute' crates/compiler/src/` | sole hit is the `text_builtins.rs:161` doc comment listing the punctuation-named accents as deliberately absent; `TEXT_ACCENTS` holds only the eight lowercase names — moved from Table 1A (Revision 3) |
+| command | capitalcircumflex | `grep -rnwF -e 'capitalcircumflex' crates/compiler/src/` | sole hit is the `text_builtins.rs:162` doc comment listing it as deliberately absent (see `capitalacute` above) — moved from Table 1A (Revision 3) |
+| command | capitaldieresis | `grep -rnwF -e 'capitaldieresis' crates/compiler/src/` | sole hit is the `text_builtins.rs:162` doc comment listing it as deliberately absent (see `capitalacute` above) — moved from Table 1A (Revision 3) |
+| command | capitaldotaccent | `grep -rnwF -e 'capitaldotaccent' crates/compiler/src/` | sole hit is the `text_builtins.rs:163` doc comment listing it as deliberately absent (see `capitalacute` above) — moved from Table 1A (Revision 3) |
+| command | capitalgrave | `grep -rnwF -e 'capitalgrave' crates/compiler/src/` | sole hit is the `text_builtins.rs:161` doc comment listing it as deliberately absent (see `capitalacute` above) — moved from Table 1A (Revision 3) |
+| command | capitalmacron | `grep -rnwF -e 'capitalmacron' crates/compiler/src/` | sole hit is the `text_builtins.rs:163` doc comment listing it as deliberately absent (see `capitalacute` above) — moved from Table 1A (Revision 3) |
+| command | capitalnewtie | `grep -rnwF -e 'capitalnewtie' crates/compiler/src/` | sole hit is the `text_builtins.rs:166` doc comment: it aliases `\t`, itself unimplemented (see `t` above) — moved from Table 1A (Revision 3) |
+| command | capitaltie | `grep -rnwF -e 'capitaltie' crates/compiler/src/` | sole hit is the `text_builtins.rs:166` doc comment: it aliases `\t`, itself unimplemented (see `t` above) — moved from Table 1A (Revision 3) |
+| command | capitaltilde | `grep -rnwF -e 'capitaltilde' crates/compiler/src/` | sole hit is the `text_builtins.rs:162` doc comment listing it as deliberately absent (see `capitalacute` above) — moved from Table 1A (Revision 3) |
 
 ## Table 2 — implemented but with ZERO name matches in tests/ or inline test modules (6)
 
@@ -222,5 +242,5 @@ The word grep below returns hits, but every hit was read in context and is spuri
 
 ## Triage notes for the supervisor
 
-- `\day`, `\month`, `\year`, `\space` (kernel rows with `src/` matches) are engine-implemented (`\day` etc. are `Count` registers at `expand.rs:4998`, `\space` is prelude-defined), so they appear in neither table — same treatment as `closein`/`closeout`/`openin`/`openout`/`lineskip`/`lineskiplimit`/`topskip`/`pdfpageheight`/`pdfpagewidth` now get (Revision 2 above): confirmed engine-side, so excluded from Table 1A rather than left in it with a caveat.
+- `\day`, `\month`, `\year`, `\space` (kernel rows with `src/` matches) are engine-implemented (`\day` etc. are `Count` registers at `expand.rs:5819`, `\space` is prelude-defined), so they appear in neither table — same treatment as `closein`/`closeout`/`openin`/`openout`/`lineskip`/`lineskiplimit`/`topskip`/`pdfpageheight`/`pdfpagewidth` now get (Revision 2 above): confirmed engine-side, so excluded from Table 1A rather than left in it with a caveat.
 - Highest-value follow-ups as of this revision: 8 of the original 9 Table 1B text accents (`\b \c \d \H \k \r \u \v`) are now implemented and tested (`TEXT_ACCENTS`, `crates/compiler/tests/text_accents.rs`); `\t` (the two-letter tie accent) is still unimplemented and is the last of the nine. `\RequirePackage` and `\PassOptionsToPackage` are still unimplemented (real documents use `\RequirePackage`; both still fall to `unsupported()`). The 6 Table 2 preamble-length registers above are the new highest-value test gap.
