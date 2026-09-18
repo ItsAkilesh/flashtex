@@ -21,7 +21,15 @@ final class ShellModel {
     var documents: [RuntimeV1.Document] = [] {
         didSet { refreshDocumentMirror() }
     }
-    var activePath: String = "main.tex"
+    var activePath: String = "main.tex" {
+        didSet { if activePath != oldValue { navigationToken &+= 1 } }
+    }
+    /// Bumped by every document switch and every `openAndSwitch` request, so a
+    /// slow open only switches if nothing navigated after it was requested.
+    @ObservationIgnored var navigationToken = 0
+    /// Bumped by every `replaceProject` (open, fixture): an asynchronous save
+    /// that resumes in a different generation must not touch the new project.
+    @ObservationIgnored private(set) var projectGeneration = 0
     var result: RuntimeV1.CompileResult? {
         didSet {
             refreshToolbarMirrors()
@@ -29,6 +37,11 @@ final class ShellModel {
         }
     }
     var resultID: String?
+    /// Test-only: fires synchronously, once per applied result, with the id
+    /// `resultID` was just set to. Not `@Observable`-tracked and never read by
+    /// the app; exists because reconstructing `resultID`'s full history from
+    /// observation alone is racy (see the call site in `handle(_:)`, GH-680).
+    @ObservationIgnored var onResultApplied: ((String) -> Void)?
     var fixtureURL: URL?
     var loadError: String?
     var selection: Selection?
@@ -49,7 +62,7 @@ final class ShellModel {
     var narrowPreviewShown = false
     var problemsSeverityFilter: RuntimeV1.Severity?
     var commandPaletteShown = false
-    /// Rename Symbol / Wrap in Environment / Go to Symbol sheets (ShellModel+EditorNavigation.swift).
+    /// Rename Symbol / Wrap in Environment / Go to Symbol / Go to Line sheets (ShellModel+EditorNavigation.swift).
     var editorNavigation = EditorNavigationState()
     let problemsPanel = DiagnosticsPanelState()
     /// Debounced, background word/document-statistics scan (GH68), read by
@@ -102,6 +115,10 @@ final class ShellModel {
         var revision: Int? = nil
         /// What to give back when a capture insertion is refused.
         var captureRefund: CaptureRefund? = nil
+        /// When non-empty, these replacements (original-text coordinates) are
+        /// applied last-first as one undo group instead of `nsRange`/`text`.
+        /// Change Environment uses the two name spans so the body is not rewritten.
+        var groupedEdits: [EditorKeyHandling.LineEdit] = []
     }
     struct CaptureRefund: Equatable { var proposal: RuntimeV1.CaptureProposal; var anchorBefore: InsertionAnchor }
     var caretUTF16: Int = 0 {
@@ -156,10 +173,21 @@ final class ShellModel {
     // fires for the toolbar exactly when something it shows changes.
     private(set) var toolbarHasResult = false
     private(set) var toolbarHasV2Frame = false
+    /// A complete (non-windowed) v2 display list with at least one page: what
+    /// `File > Export PDF…` and `File > Print…` both need, change-only so the
+    /// File menu and the toolbar do not re-evaluate on every frame. The strict
+    /// refusal (historical preview, missing `flashtex-pdf-exact`) is
+    /// `exportPDFRefusal()`; this only decides whether the item is enabled.
+    private(set) var toolbarExportable = false
     private(set) var toolbarProblemCount = 0
     /// `result?.pages.count`, change-only, so File > Print… can refuse a failed
     /// or empty-page result without the App scene reading `result` per reply.
     private(set) var toolbarPageCount = 0
+    /// Page under the top of the preview viewport, reported by whichever pane
+    /// is on screen (`PreviewAnchorKeeper`). The page readout in the preview
+    /// HUD reads this; before it existed the readout was wired only to the v1
+    /// pane's callback and so showed nothing on the default v2 route.
+    var previewVisiblePage = 1
     /// `!documents.isEmpty`, change-only: File > Print Source… must not read
     /// `documents` from the App scene (a keystroke reassigns the array).
     private(set) var toolbarHasDocument = false
@@ -216,10 +244,22 @@ final class ShellModel {
     private func refreshToolbarMirrors() {
         let hasResult = result != nil
         if toolbarHasResult != hasResult { toolbarHasResult = hasResult }
-        let pages = result?.pages.count ?? 0
+        let retained = displayListV2?.retained?.frame
+        // Pages the preview is SHOWING, which is not `result.pages`: the v2
+        // route asks for `display-list-v2-only`, so a live reply carries no v1
+        // pages at all and this read zero. A windowed frame still lists every
+        // page of the document (the non-resident ones carry no items), so the
+        // count is the document's real length either way.
+        let pages = retained.map { $0.list.pages.count } ?? (result?.pages.count ?? 0)
         if toolbarPageCount != pages { toolbarPageCount = pages }
         let hasFrame = displayListV2?.frame != nil
         if toolbarHasV2Frame != hasFrame { toolbarHasV2Frame = hasFrame }
+        // A windowed frame stays exportable: Export re-renders the whole
+        // document (WholeDocumentList.swift). Whether that route is actually
+        // available is a filesystem question, so it is answered when the
+        // command runs (`exportPDFRefusal`), not on every frame here.
+        let exportable = retained.map { !$0.list.pages.isEmpty } ?? false
+        if toolbarExportable != exportable { toolbarExportable = exportable }
         let diagnostics = displayedDiagnostics
         if toolbarProblemCount != diagnostics.count { toolbarProblemCount = diagnostics.count }
         if problemsList != diagnostics { problemsList = diagnostics }
@@ -236,6 +276,9 @@ final class ShellModel {
     var captureInboxVisible = ProcessInfo.processInfo.environment["FLASHTEX_SHOW_CAPTURES"] == "1" // View > Captures (⌘⇧I)
     var workerLog: [String] = []
     @ObservationIgnored private var worker: WorkerClient?
+    /// The running worker's executable, for tools that need to run the same
+    /// producer one-shot (`WholeDocumentList.swift`).
+    var attachedWorkerExecutable: URL? { worker?.isRunning == true ? worker?.executable : nil }
     /// How the current worker was launched, so an abnormal exit can relaunch
     /// the same executable (bounded: `maxWorkerRelaunches` per minute).
     @ObservationIgnored private var workerLaunch: (url: URL, arguments: [String])?
@@ -278,6 +321,9 @@ final class ShellModel {
         var projectId: String; var revision: Int; var documents: [RuntimeV1.Document]; var sentAt: Date
         /// `layout_capabilities` this request carried; the reply is checked against it.
         var layoutCapabilities: [String] = []
+        /// `display_list_window` this request carried (display-list-v2-window
+        /// consumer, V2PageWindow.swift); nil for an unwindowed request.
+        var window: RuntimeV1.CompileRequest.DisplayListWindow?
     }
     private(set) var inFlightRequests: [String: InFlight] = [:]
     /// `display-list-v2-delta`: the live v2 frame currently published, as the
@@ -285,6 +331,11 @@ final class ShellModel {
     /// frame is published after full validation; cleared by any refusal,
     /// worker exit or relaunch, or a result that did not accept `display-list-v2`.
     @ObservationIgnored var deltaInstalled: DisplayListDelta.Installed?
+    /// `display-list-v2-window` consumer state (V2PageWindow.swift): engaged
+    /// on demand after an over-limit failure/decline, anchored by the pane's
+    /// scroll position. Never engaged by default — an unwindowed reply stays
+    /// byte-for-byte what it is today.
+    @ObservationIgnored var v2Window = V2Window.Controller()
     /// Id of the most recently sent compile request. A reply to any older
     /// request is valid but stale (`scripts/check_runtime.py`: `stale_ignore`):
     /// it is checked, logged and dropped, and never changes the preview or the
@@ -383,6 +434,32 @@ final class ShellModel {
         if let s = ProcessInfo.processInfo.environment["FLASHTEX_DEBOUNCE_MS"], let ms = Double(s) { return max(0, ms) / 1000 }
         return 0
     }()
+    @ObservationIgnored private var autosaveWork: DispatchWorkItem?
+    /// Asynchronous (helper-routed) saves per document path — autosave and
+    /// Command-S alike — that have not answered yet (`enqueueSave`).
+    @ObservationIgnored private var savesInFlight: [String: (id: Int, task: Task<Void, Never>)] = [:]
+    @ObservationIgnored private var saveSequence = 0
+    /// Quiet time after the last edit before autosave writes to disk
+    /// (`EditorPreferences.autosave`, owner: "autosave should be on by
+    /// default"). `FLASHTEX_AUTOSAVE_MS` overrides; 0 makes it synchronous.
+    static let autosaveInterval: TimeInterval = {
+        if let s = ProcessInfo.processInfo.environment["FLASHTEX_AUTOSAVE_MS"], let ms = Double(s) { return max(0, ms) / 1000 }
+        return 2
+    }()
+    /// True under XCTest with no explicit override: a live several-second
+    /// background timer could fire mid-test and write a file a *different*
+    /// test is asserting about (same reasoning as `PreviewHUD.lingerSuppressed`
+    /// and `ThinSplitViewController.autosaveEnabled`). `scheduleAutosave`
+    /// still records the pending save; a test exercises it deterministically
+    /// through `flushPendingAutosave()` instead of waiting out real time.
+    static let autosaveSuppressedUnderTest: Bool = {
+        guard ProcessInfo.processInfo.environment["FLASHTEX_AUTOSAVE_MS"] == nil else { return false }
+        return runningUnderXCTest
+    }()
+    /// True under XCTest, whichever of the two variables the runner sets
+    /// (shared with `PreviewHUD.lingerSuppressed` / `ThinSplitViewController`).
+    static let runningUnderXCTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        || ProcessInfo.processInfo.environment["XCTestSessionIdentifier"] != nil
     /// Revision of the compile request currently in flight (nil if idle).
     var inFlightRevision: Int?
     /// Revision the editor buffer corresponds to. Bumps on every edit so the
@@ -428,6 +505,10 @@ final class ShellModel {
     var activeText: String {
         get { documents.first { $0.path == activePath }?.text ?? "" }
     }
+
+    /// The entry document's buffer (the text of `documentURL`), whichever tab
+    /// is active: what saves, discards and snapshots of the entry file use.
+    var entryText: String { documents.first { $0.path == project.entryPath }?.text ?? activeText }
 
     /// Diagnostic underlines for the active document, rebased across edits or
     /// dropped (see `EditorDiagnostics`).
@@ -612,7 +693,7 @@ final class ShellModel {
             // built compiler at launch when FLASHTEX_AUTOATTACH=1 (opt-in so tests
             // that construct ShellModel stay fixture-backed).
             if let seed = env["FLASHTEX_SEED_FILE"], let text = try? String(contentsOfFile: seed, encoding: .utf8) {
-                replaceProject(entryText: text)
+                replaceProject(entryText: text, named: URL(fileURLWithPath: seed).lastPathComponent)
                 documentURL = URL(fileURLWithPath: seed)
                 savedText = text
             }
@@ -653,7 +734,9 @@ final class ShellModel {
 
     // MARK: loading
 
-    func loadFixtures(request: URL?, result: URL) {
+    /// `beforeReplacing` runs once the fixture is valid, just before the
+    /// project is replaced; returning false replaces nothing (#806).
+    func loadFixtures(request: URL?, result: URL, beforeReplacing: () -> Bool = { true }) {
         loadError = nil
         do {
             let res = try RuntimeV1.decodeCompileResult(Data(contentsOf: result))
@@ -673,6 +756,7 @@ final class ShellModel {
                 loadError = "Rejected \(result.lastPathComponent): \(violation)"
                 return
             }
+            guard beforeReplacing() else { return }
             // Fixtures replace the whole project: detach any real file identity
             // first so Save can never write fixture content over the user's
             // document, and stop watching the file that's no longer open (#72).
@@ -715,7 +799,7 @@ final class ShellModel {
     func reloadFixture() {
         guard let url = fixtureURL else { return }
         let request = url.deletingLastPathComponent().appendingPathComponent("compile-request.json")
-        confirmLoadFixtures { self.loadFixtures(request: request, result: url) }
+        confirmLoadFixtures { self.loadFixturesReplacingProject(request: request, result: url, dirty: $0) }
     }
 
     func openFixturePanel() {
@@ -724,47 +808,68 @@ final class ShellModel {
         panel.message = "Choose a runtime v1 compile_result JSON file"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let request = url.deletingLastPathComponent().appendingPathComponent("compile-request.json")
-        confirmLoadFixtures { self.loadFixtures(request: request, result: url) }
+        confirmLoadFixtures { self.loadFixturesReplacingProject(request: request, result: url, dirty: $0) }
     }
 
     /// Loading a fixture replaces the whole project, so when a real document is
-    /// open or has unsaved edits, confirm first — same Save/Discard/Cancel flow
-    /// `openTexPanel` uses before opening another file (#72).
-    private func confirmLoadFixtures(_ load: () -> Void) {
-        guard documentURL != nil || isDirty else { load(); return }
+    /// open or any document has unsaved edits, confirm first — same
+    /// Save/Discard/Cancel flow `openTexPanel` uses before opening another file
+    /// (#72, #786).
+    private func confirmLoadFixtures(_ load: (DirtyDisposition) -> Void) {
+        guard documentURL != nil || hasUnsavedDocuments else { load(.none); return }
         let alert = NSAlert()
-        alert.messageText = "Save changes to \(documentURL?.lastPathComponent ?? "the unsaved buffer") before loading the fixture?"
-        alert.informativeText = "Loading a fixture replaces the whole project. Discarded text stays recoverable this session via Edit > Restore Discarded Buffer."
+        alert.messageText = "Save changes to \(unsavedDocumentsDescription) before loading the fixture?"
+        alert.informativeText = "Loading a fixture replaces the whole project." + (hasUnsavedDocuments ? " Discarded text stays recoverable: \(discardRecoveryRoutes)" : "")
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Cancel")
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            if documentURL == nil {
+            if documentURL == nil, hasUnsavedDocuments {
                 guard saveTexAs() else { return }
-            } else if !saveTex() {
-                captureNote = "Could not save the current buffer (\(files.status)); fixture was not loaded."
-                if files.conflict != nil { resolveConflictPanel() }
-                return
             }
-            load()
+            load(.saveFirst)
+            if files.conflict != nil { resolveConflictPanel() }
         case .alertSecondButtonReturn:
-            let discarding = RecoverableBuffer(url: documentURL, text: activeText)
-            recoverableBuffer = discarding
-            if let from = discarding.url {
-                preserveDirtyText(discarding.text, at: from, reason: "discarded when a fixture was loaded")
-            }
-            load()
+            load(.discard)
         default: break
+        }
+    }
+
+    /// Loads a fixture in place of the project once every dirty document is
+    /// saved or explicitly discarded (`authorizeProjectReplacement`): a failed
+    /// or conflicted save of any document — entry or member, active or not —
+    /// loads nothing. A discard is recorded only once the fixture is valid, and
+    /// a discard whose text cannot be kept loads nothing (#806).
+    @discardableResult
+    func loadFixturesReplacingProject(request: URL?, result: URL, dirty: DirtyDisposition) -> OpenOutcome {
+        switch authorizeProjectReplacement(dirty, before: "loading the fixture") {
+        case .refused(let outcome):
+            return outcome
+        case .proceed(let discarding):
+            var kept = true
+            loadFixtures(request: request, result: result) {
+                guard let discarding else { return true }
+                kept = keepDiscarded(discarding, reason: "discarded when a fixture was loaded", before: "loading the fixture")
+                return kept
+            }
+            guard kept else { return .saveFailed }
+            return loadError == nil ? .opened : .readFailed
         }
     }
 
     // MARK: editing
 
     /// Replaces the whole project with one entry document (File > Open).
-    func replaceProject(entryText text: String) {
-        documents = [.init(path: "main.tex", text: text)]
-        activePath = "main.tex"
+    /// `entryName` is the opened file's actual name: the compile request's
+    /// `entry_path`, every tab/diagnostic/caret path, and the helper's rooted
+    /// project all key off it, so opening `paper.tex` must not read as
+    /// `main.tex`. The default covers unsaved buffers with no file behind them.
+    func replaceProject(entryText text: String, named entryName: String = "main.tex") {
+        projectGeneration &+= 1
+        let entryName = entryName.isEmpty ? "main.tex" : entryName
+        documents = [.init(path: entryName, text: text)]
+        activePath = entryName
         compiledDocuments = [:]
         result = nil
         resultID = nil
@@ -777,6 +882,7 @@ final class ShellModel {
         selection = nil
         anchor = nil
         editorRevision += 1
+        project.clearSaveConflicts() // a new project inherits no member conflicts
         bridgeDocumentReplaced()
     }
 
@@ -788,6 +894,7 @@ final class ShellModel {
         editorRevision += 1
         TypingBench.shared.noteRevision(editorRevision) // keystroke -> paint instrumentation
         scheduleAutoCompile()
+        scheduleAutosave()
         caretFollow.note(.edit) // CaretFollow.swift: an edit also re-arms following after a manual scroll
         bridgeTextChanged(path: activePath, old: old, new: text, base: base, revision: editorRevision)
     }
@@ -800,6 +907,97 @@ final class ShellModel {
         let item = DispatchWorkItem { [weak self] in self?.compile() }
         debounce = item
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounceInterval, execute: item)
+    }
+
+    /// Writes every dirty, file-backed document to disk a quiet moment after
+    /// the last edit (`EditorPreferences.autosave`, default on — owner:
+    /// "autosave should be on by default"). The timer is shared: any edit
+    /// re-arms it, and when it fires it saves *all* dirty documents (entry
+    /// and project members, active or not), so switching tabs or typing in
+    /// another document never drops a pending save. Never touches a buffer
+    /// with no file yet (`documentURL == nil`) — `saveTex()` would otherwise
+    /// fall back to `saveTexAs()` and pop a Save panel mid-typing.
+    func scheduleAutosave() {
+        autosaveWork?.cancel()
+        autosaveWork = nil
+        guard EditorPreferences.shared.autosave, documentURL != nil else { return }
+        let item = DispatchWorkItem { [weak self] in self?.performAutosave() }
+        autosaveWork = item
+        guard !Self.autosaveSuppressedUnderTest else { return } // flushPendingAutosave() performs it, on demand
+        if Self.autosaveInterval == 0 { flushPendingAutosave(); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.autosaveInterval, execute: item)
+    }
+
+    /// Saves each dirty document through its normal conflict-checked save
+    /// path (the same ones Command-S uses), minus any panel: a refused save
+    /// keeps the buffer, records the conflict, and is not retried until the
+    /// conflict is resolved. A document with a save still in flight is
+    /// skipped here; `enqueueSave` re-arms autosave if it was edited meanwhile.
+    private func performAutosave() {
+        autosaveWork = nil
+        guard EditorPreferences.shared.autosave, documentURL != nil else { return }
+        let entry = project.entryPath
+        if project.isDirty(entry), files.conflict == nil, savesInFlight[entry] == nil {
+            if activePath == entry, controllerRoutesFiles {
+                enqueueSave(entry) { [weak self] in _ = await self?.saveEntryRouted() }
+            } else {
+                saveEntryTex()
+            }
+        }
+        for path in documents.map(\.path) where path != entry && project.isDirty(path) && savesInFlight[path] == nil {
+            if project.saveConflict(for: path) != nil { continue } // not retried until that member's conflict is resolved (#789)
+            if controllerAttached {
+                enqueueSave(path) { [weak self] in _ = await self?.project.saveDocument(path) }
+            } else {
+                _ = project.saveDocumentNow(path)
+            }
+        }
+    }
+
+    /// Runs `save` for `path` only after any save of that path already in
+    /// flight has answered, so autosave and Command-S never race two exports
+    /// carrying the same (soon stale) disk expectation — the second would be
+    /// refused as a spurious conflict. If the buffer changed while the save
+    /// ran (autosave skipped it as in flight), autosave is re-armed so those
+    /// edits reach disk too; an unchanged buffer is not retried.
+    @discardableResult
+    func enqueueSave(_ path: String, _ save: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let previous = savesInFlight[path]?.task
+        saveSequence += 1
+        let id = saveSequence
+        let task = Task { @MainActor [weak self] in
+            await previous?.value
+            let before = self?.documents.first(where: { $0.path == path })?.text
+            await save()
+            guard let self else { return }
+            if savesInFlight[path]?.id == id { savesInFlight[path] = nil }
+            if let before, let now = documents.first(where: { $0.path == path })?.text,
+               !now.sameBytes(as: before), project.isDirty(path) {
+                scheduleAutosave()
+            }
+        }
+        savesInFlight[path] = (id, task)
+        return task
+    }
+
+    /// The entry's helper-routed save when it is still the active document
+    /// (`controllerSave` exports the *active* path), else the direct entry
+    /// save — a queued save may run after the user switched tabs.
+    func saveEntryRouted() async -> DocumentFilesState.SaveResult? {
+        if activePath == project.entryPath, controllerRoutesFiles { return await controllerSave() }
+        saveEntryTex()
+        return nil
+    }
+
+    /// Performs a pending autosave immediately instead of waiting out
+    /// `autosaveInterval` (real time is suppressed under XCTest, see
+    /// `autosaveSuppressedUnderTest`, so tests exercise the write through
+    /// here rather than a live timer that could race the test). A no-op when
+    /// no edit scheduled one.
+    func flushPendingAutosave() {
+        guard let pending = autosaveWork else { return }
+        pending.cancel()
+        performAutosave()
     }
 
     // MARK: navigation (preview -> source)
@@ -956,8 +1154,9 @@ final class ShellModel {
             }
             log("layout capability switch while \(latestID) is in flight: re-requesting revision \(editorRevision) under \(LayoutNegotiation.describe(capabilities))")
         } else if let current = result, previewSource != .fixture, current.revision == editorRevision,
-                  negotiation.requested == capabilities, previewV2 || !v1PagesElided {
-            return // buffers and capability set unchanged since the applied result
+                  negotiation.requested == capabilities, previewV2 || !v1PagesElided,
+                  !v2WindowResendNeeded {
+            return // buffers, capability set and window unchanged since the applied result
         }
         let id = "mac-\(nextRequestID)"
         nextRequestID += 1
@@ -972,9 +1171,17 @@ final class ShellModel {
         // v2 frame is acknowledged so the producer may answer with a delta.
         var sent = capabilities
         var displayListBase: RuntimeV1.CompileRequest.DisplayListBase?
+        var displayListWindow: RuntimeV1.CompileRequest.DisplayListWindow?
         if previewV2, capabilities.contains(V2Live.capability) {
             if DisplayListDelta.v2OnlyEnabled { sent.append(DisplayListDelta.v2OnlyCapability) }
-            if DisplayListDelta.enabled, let installed = deltaInstalled, installed.list.projectId == projectId {
+            if let window = v2WindowDesired(capabilities: capabilities) {
+                // display-list-v2-window (§7): mutually exclusive with -delta
+                // in r1 — a windowed producer cannot digest pages it has not
+                // materialised — so an engaged window suppresses the delta
+                // acknowledgement; it composes with -only above.
+                sent.append(V2Window.capability)
+                displayListWindow = window
+            } else if DisplayListDelta.enabled, let installed = deltaInstalled, installed.list.projectId == projectId {
                 sent.append(DisplayListDelta.capability)
                 displayListBase = installed.acknowledgement
             }
@@ -987,6 +1194,7 @@ final class ShellModel {
             documents: sendDocuments,
             layoutCapabilities: sent.isEmpty ? nil : sent,
             displayListBase: displayListBase,
+            displayListWindow: displayListWindow,
             // display-list-v2-images: the producer sizes `\includegraphics`
             // files under the open project's directory (V2ImageStore.swift).
             projectRoot: capabilities.contains(RenderingV2.imagesCapability) ? project.projectRoot?.path : nil,
@@ -1001,7 +1209,8 @@ final class ShellModel {
             if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             try worker.send(request, id: id)
             inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
-                                            documents: sendDocuments, sentAt: Date(), layoutCapabilities: sent)
+                                            documents: sendDocuments, sentAt: Date(), layoutCapabilities: sent,
+                                            window: displayListWindow)
             latestRequestID = id
             inFlightRevision = editorRevision
             workerStatus = "compiling revision \(editorRevision) (\(id))…"
@@ -1074,6 +1283,14 @@ final class ShellModel {
             }
             result = incoming
             resultID = env.id
+            // Test-only, synchronous, in order: an `@Observable` willChange
+            // notification fires before the new value lands, so a test that
+            // wants every id `resultID` ever took (not just the latest) cannot
+            // reconstruct that history by deferring its read to a later
+            // main-actor turn -- two applies close enough together in
+            // wall-clock time can otherwise coalesce before the deferred read
+            // runs, silently dropping the earlier one under load (GH-680).
+            onResultApplied?(env.id)
             // Change-only: `@Observable` fires for every assignment, equal or not,
             // and each of these re-evaluated the header/status views per reply.
             let source = PreviewSource.worker(worker?.executable.lastPathComponent ?? "worker")
@@ -1092,9 +1309,15 @@ final class ShellModel {
             let latencyText = String(format: " in %.0f ms", ms)
             workerStatus = "revision \(incoming.revision): \(incoming.status.rawValue), \(incoming.diagnostics.count) diagnostics\(latencyText)"
             if selection != nil { selection = nil } // the editor observes `selection`; a nil-to-nil write still invalidates it
+            // display-list-v2-window (V2PageWindow.swift): bind the applied
+            // request's window, engage after an over-limit failure/decline,
+            // and re-request the same buffers under the now-desired window.
+            let windowRetry = v2WindowNote(applied: incoming, sentWindow: sent.window)
             if compileQueued {
                 compileQueued = false
                 compile() // no-op when buffers and capability set are unchanged
+            } else if windowRetry {
+                compile() // same buffers, new window: a new id at the same revision
             }
         case .displayList(let id, let line):
             receiveDisplayListV2(id: id, line: line) // negotiated live v2 frame (PreviewV2View.swift)
@@ -1122,6 +1345,7 @@ final class ShellModel {
         case .exited(let code):
             inFlightRequests.removeAll()
             deltaInstalled = nil // a restarted producer holds no snapshot
+            v2Window.applied = nil // the next request states its window afresh
             latestRequestID = nil
             inFlightRevision = nil
             compileQueued = false

@@ -13,7 +13,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use flashtex_compiler::math::MathList;
-use flashtex_compiler::parser::{Block as CBlock, FillLeader, Inline, Parsed, UnderlineGeom};
+use flashtex_compiler::parser::{Block as CBlock, FillLeader, Inline, ItemLabel, Parsed, UnderlineGeom};
 use flashtex_compiler::text_builtins::{TextDimen, TextLogo, TextRule};
 use flashtex_compiler::{DocumentId, Span};
 
@@ -156,8 +156,10 @@ pub enum Item {
     /// paragraph under `\@centercr`).
     LineBreak { skip_pt: f64 },
     /// Fixed horizontal glue of `em` ems of the current font (`\quad`
-    /// after a section number).
-    Quad { em: f64 },
+    /// after a section number). `style` is the font in force where the glue
+    /// is read (its size and series pick the quad, `\fontdimen6`); the
+    /// default keeps the block's.
+    Quad { em: f64, style: TextStyle },
     /// `\label{key}`: no material; records where the key's page is.
     Label { key: String },
     /// `\/` after a `\textit`/`\emph`/`\textbf` argument (LaTeX's
@@ -171,8 +173,11 @@ pub enum Item {
     /// glue; a legal break point that is discarded at a line break. `fill`
     /// is the `\hfill` order (it beats `\parfillskip`'s `fil`); the
     /// compiler does not distinguish the two, so the order is re-read from
-    /// the source bytes (`\hfill` when they are not `\hfil`).
-    HFill { fill: bool, leader: FillLeader },
+    /// the source bytes (`\hfill` when they are not `\hfil`). `style` is
+    /// the font in force at the fill, which `\dotfill` sets its dots in
+    /// (like `Kern`'s); a rule leader paints a fixed 0.4pt rule and plain
+    /// `\hfill` paints nothing, so neither reads it.
+    HFill { fill: bool, leader: FillLeader, style: TextStyle },
     /// Explicit horizontal glue in points: `\hspace{<dimen>}` (compiler
     /// `Inline::HSpace`, rigid) or an amsthm theorem head's own separator
     /// (`\hskip\thm@headsep`, `5pt plus 1pt minus 1pt`; `crate::amsthm`).
@@ -185,6 +190,24 @@ pub enum Item {
     Logo { logo: TextLogo, style: TextStyle, span: Span },
     /// `\rule[<raise>]{<width>}{<height>}` (compiler `Inline::Rule`).
     Rule { rule: TextRule, style: TextStyle, span: Span },
+    /// amsthm's `\qedsymbol`, i.e. `\openbox`: the proof-end marker
+    /// `\end{proof}` appends after an `\hfill`.
+    ///
+    /// It is not a character. amsthm.sty defines it as four rules in an
+    /// `\hbox`,
+    ///
+    /// ```text
+    /// \hbox to.77778em{\hfil\vrule\vbox to.675em{\hrule width.6em\vfil\hrule}\vrule\hfil}
+    /// ```
+    ///
+    /// — an *open* square 0.6 em wide and 0.675 em tall drawn with 0.4 pt
+    /// rules. The compiler has no inline for it yet and emits the code point
+    /// U+220E (END OF PROOF) instead, which is a *filled* square and which
+    /// Latin Modern has no glyph for at all, so the marker came out blank
+    /// (`missing_glyph`, GH#443). `typeset::Context::qed_items` sets the real
+    /// box; `style` is the font in force at the marker (its quad is the `em`)
+    /// and `span` is `\end{proof}`.
+    QedBox { style: TextStyle, span: Span },
     /// A text-mode kern (`\,`, `\thinspace`, `\enspace`, ...; compiler
     /// `Inline::Kern`), in ems of the current face.
     Kern { amount: TextDimen, style: TextStyle },
@@ -195,6 +218,11 @@ pub enum Item {
     /// `typeset::footnotes` (`None` for `\footnotemark`). `span` is the
     /// command token.
     Footnote { number: String, mark: bool, span: Span, text: Option<Vec<Item>> },
+    /// `\marginpar` (compiler `Inline::Marginpar`). `text` is the note's
+    /// items, set in `\normalsize` in the outer margin by
+    /// `typeset::marginpar`; the running text carries no mark. `span` is
+    /// the command token.
+    Marginpar { text: Vec<Item>, span: Span },
     /// `\colorbox`/`\fcolorbox` (compiler `Inline::ColorBox`).
     ColorBox(Box<ColorBoxItem>),
     /// LaTeX's `\llap{...}`: `items` set at their natural width and then
@@ -209,6 +237,8 @@ pub enum Item {
     /// ulem `\uline`/`\sout` or kernel text `\underline` (compiler
     /// `Inline::Underline`).
     Underline(Box<UnderlineItem>),
+    /// `\textsuperscript`/`\textsubscript` (compiler `Inline::TextScript`).
+    TextScript(Box<TextScriptItem>),
     /// LaTeX's `\leavevmode`: an empty zero-width `\hbox`.
     ///
     /// Emitted only in front of a verbatim blank that would otherwise open
@@ -249,9 +279,24 @@ pub struct UnderlineItem {
     pub span: Span,
 }
 
+/// latex.ltx `\@textsuperscript`/`\@textsubscript`:
+/// `{\m@th\ensuremath{^{\mbox{\fontsize\sf@size\z@\selectfont #1}}}}` (or
+/// `_{...}`). `items` are set at the `\sf@size` of the text size in effect
+/// at the command (`size_cpt`, 0 for the paragraph's), then shifted as a
+/// text-style script of an empty nucleus (`typeset::text_script_box`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextScriptItem {
+    pub superscript: bool,
+    pub size_cpt: u16,
+    pub items: Vec<Item>,
+    pub span: Span,
+}
+
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
 /// environment name at the display's first byte; the compiler keeps only
-/// whether cells alternate right/left).
+/// whether cells share tab stops). amsmath's `align`/`gather`/`multline`
+/// family plus LaTeX's own `eqnarray`, which the compiler lowers through
+/// the same multi-row path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RowsEnv {
     /// `align`/`align*`: column pairs spread evenly (`\xatlevel@` 1).
@@ -264,6 +309,10 @@ pub enum RowsEnv {
     Gather,
     /// `multline`/`multline*`: first row left, last row right, others centred.
     Multline,
+    /// `eqnarray`/`eqnarray*` (latex.ltx, not amsmath): three columns —
+    /// right, centred, left — separated by a fixed `\tw@\arraycolsep`, the
+    /// block centred by the `\@centering` tabskips at its two ends.
+    EqnArray,
 }
 
 impl RowsEnv {
@@ -275,6 +324,7 @@ impl RowsEnv {
             "flalign" => RowsEnv::FlAlign,
             "gather" => RowsEnv::Gather,
             "multline" => RowsEnv::Multline,
+            "eqnarray" => RowsEnv::EqnArray,
             _ => RowsEnv::Align,
         }
     }
@@ -459,6 +509,13 @@ pub enum Block {
     /// book.cls `\frontmatter`/`\mainmatter`/`\backmatter` (lines 284-298):
     /// the next material starts a new page (an odd one when two-sided).
     ClearPage { double: bool, span: Span },
+    /// `\@starttoc`'s `\@nobreakfalse` (latex.ltx), at the end of every
+    /// `\tableofcontents`/`\listoffigures`/`\listoftables`: the heading
+    /// the list opened with no longer governs what follows. A sectioning
+    /// command right after an empty list therefore takes `\@startsection`'s
+    /// `\addpenalty`/`\addvspace` branch, not the `\if@nobreak` one that
+    /// drops its before-skip under another heading. It sets nothing.
+    NoBreakFalse { span: Span },
     /// A page-style or mark command in the body, attached to the material
     /// that follows it.
     Chrome { event: ChromeEvent, span: Span },
@@ -565,6 +622,29 @@ pub struct ListGeom {
     /// is zero, and `\descriptionlabel` sets it as `\hspace\labelsep
     /// \normalfont\bfseries <label>`.
     pub description: bool,
+    /// The innermost list's effective enumitem `style` is `nextline`
+    /// (`enumitem.sty` `\enit@style@nextline` sets `\enit@nextline` and
+    /// `\labelwidth` from the narrowest fit, so `\enit@postlabel@i` breaks
+    /// after every label in practice): the typesetter forces a break after
+    /// the label, like `\\`, so the body starts on its own line at the
+    /// hanging indent. `sameline`/`standard`/`normal` are the default and
+    /// need nothing; `multiline`/`unboxed` are a follow-up (label alignment
+    /// and `\itemindent` nuances, not a plain break).
+    pub nextline: bool,
+    /// Whether the compiler produced a default itemize symbol.
+    pub label_symbol: bool,
+    /// Whether the label's declaration applies bold text.
+    pub label_bold: bool,
+    /// Whether the list uses the kernel's left-extending label box.
+    pub llap: bool,
+    /// The innermost itemize/enumerate's enumitem `labelsep=`, in points;
+    /// `None` keeps the class's `\labelsep`. `\@item` ends the label box
+    /// `\labelsep` before the first line's text.
+    pub labelsep_pt: Option<f64>,
+    /// The innermost itemize/enumerate's enumitem `itemindent=`, in points
+    /// (added to [`Self::itemindent_em`]): the item's first line, and its
+    /// label, start this much further in.
+    pub itemindent_pt: f64,
 }
 
 /// One list level's `\leftmargin`.
@@ -585,6 +665,15 @@ pub enum ListMargin {
     /// `\fontdimen6` at typeset time (cmr10 at 11 pt: 10.95003 pt), which is
     /// what `\setlength{\bibhang}{1em}` measured.
     Em(f64),
+    /// enumitem `leftmargin=*` together with a `labelsep=` or `itemindent=`
+    /// key on the same level: `\enit@calcleft` gives `\leftmargin =
+    /// \labelwidth + \labelsep - \itemindent` (`\labelindent` 0), with
+    /// `\labelwidth` the width of `label` and `\labelsep` the class's when
+    /// `labelsep_pt` is `None`. Points.
+    WidestSep { label: String, labelsep_pt: Option<f64>, itemindent_pt: f64 },
+    /// A `leftmargin=\len` whose register was set by `\settowidth{\len}
+    /// {<text>}`: the width of `<text>` in the body font.
+    TextWidth(String),
 }
 
 /// Body commands that decide the header and footer (latex.ltx
@@ -643,12 +732,69 @@ pub struct SizedPara {
 /// builds against a `vendor/compiler` that predates the name.
 pub type ParLeading = Option<flashtex_compiler::parser::FontSizeLevel>;
 
+/// One [`ParLeading`] per block, from the compiler's `block_par_leading`.
+///
+/// The compiler's contract is one entry per pushed block, in `blocks` order,
+/// and while it holds the two lists are paired positionally. A pinned
+/// `vendor/compiler` can break it: before the compiler's `P::box_inlines`
+/// learned to truncate `block_par_leading` the way `P::argument_inlines`
+/// always did (crates/compiler, #517), every `\colorbox`/`\fcolorbox` box
+/// argument left one stray entry behind — the leading of a paragraph that
+/// never reached `blocks`.
+///
+/// A stray entry cannot be located after the fact, and it is pushed *before*
+/// the block whose paragraph contains the box, so from the first box onwards
+/// entry *i* no longer names block *i*. Pairing them anyway hands a paragraph
+/// the `\baselineskip` of some box's interior: `\colorbox{white}{\small x}`
+/// in a body paragraph shrinks the whole paragraph's line pitch.
+///
+/// So a length disagreement discards the list: every block falls back to the
+/// body leading, exactly as a `--no-default-features` build does, and the
+/// feature resumes by itself once `vendor/` is re-pinned past #517.
+///
+/// This decision must not depend on the build profile. It used to be a
+/// `debug_assert_eq!`, which made a debug build panic inside `\fcolorbox`
+/// rendering while a release build silently mis-paired — the same input
+/// producing two different outcomes depending on the optimisation level
+/// (#667).
+#[cfg(feature = "par-leading")]
+fn block_leadings(from_compiler: &[ParLeading], blocks: usize) -> Vec<ParLeading> {
+    if from_compiler.len() == blocks {
+        from_compiler.to_vec()
+    } else {
+        vec![None; blocks]
+    }
+}
+
 /// How a paragraph-shape environment began (see [`Block::Paragraph`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EnvOpen {
     /// `\begin{...}` was read in vertical mode (after a blank line, a
     /// heading, a rule or at the document start): `\partopsep` is added.
     pub vmode: bool,
+    /// The environment's own `\@topsep`/`\@topsepadd`, when the package
+    /// assigns them outright instead of letting `\@trivlist` derive them
+    /// from `\topsep`, `\partopsep` and `\parskip` (see [`EnvSkips`]).
+    /// `None` keeps the `\@trivlist` derivation, which is what `center`,
+    /// `quote` and `abstract` get.
+    pub skips: Option<EnvSkips>,
+}
+
+/// An environment that sets `\@topsep` (the opening `\addvspace` in
+/// `\@item`) and `\@topsepadd` (the closing one in `\@endparenv`) itself,
+/// so neither is the `\@trivlist` computation.
+///
+/// amsthm does this for every theorem-like environment: `\@thm` assigns
+/// `\@topsep\thm@preskip` and `\@topsepadd\thm@postskip`, and
+/// `\thm@space@setup` sets both of those to `\topsep`. That is why a
+/// theorem never picks up `\partopsep` or `\parskip`, however it was
+/// entered.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EnvSkips {
+    /// `\@topsep`: the skip before the environment's first line.
+    pub open: crate::style::Skip,
+    /// `\@topsepadd`: the skip after its last.
+    pub close: crate::style::Skip,
 }
 
 #[derive(Debug)]
@@ -671,10 +817,20 @@ pub struct Doc {
     /// Indices of the blocks after a `\clearpage`/`\cleardoublepage` (see
     /// `clear_page_blocks`).
     pub page_starts: Vec<usize>,
+    /// Inclusive block index ranges of every `titlepage` `abstract`
+    /// (`abstractenv::page_ranges`): a page of its own, `\vfil`-centred,
+    /// with a page break on each side. Empty for every other document.
+    pub abstract_pages: Vec<(usize, usize)>,
     /// `\begin` commands the compiler reported as unimplemented that the
     /// pipeline sets itself (`abstract`): its diagnostic is dropped, the
     /// way `toc::superseded_commands` drops the contents-list ones.
     pub superseded: Vec<Span>,
+    /// `\twocolumn[<material>]`'s optional argument and the span of the
+    /// whole `[..]`: the blocks `\@topnewpage` sets in a `\textwidth` box
+    /// above both columns of the page the command starts. They are not in
+    /// `blocks`; `typeset::build_with_floats` sets them itself. `Some` with
+    /// an empty vector is `\twocolumn[]`, which is a box of no height.
+    pub top_material: Option<(Vec<Block>, Span)>,
 }
 
 /// Label values (`\ref`) and the pages they fell on in a previous layout
@@ -688,6 +844,9 @@ pub struct Labels {
     pub toc_pages: BTreeMap<String, String>,
     /// Captioned floats: the `\listoffigures`/`\listoftables` entries.
     pub floats: Vec<crate::toc::FloatEntry>,
+    /// The body in reading order ([`reading_order`]), which the lists
+    /// merge their float and `\addcontentsline` entries in.
+    pub reading_order: Vec<Span>,
     /// Entry titles taken from source bytes, set as body text.
     pub entry_items: crate::toc::EntryItems,
     /// cleveref's label type per key (`section`, `equation`, `figure`, ...),
@@ -706,7 +865,17 @@ fn inlines_of(block: &CBlock) -> &[Inline] {
         // `\maketitle`'s parts are lowered to `Styled` paragraphs before
         // the block walk (`lower_blocks`); only the title is visible here.
         CBlock::TitleBlock { title, .. } => title,
-        CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak | CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::VFill => &[],
+        // `LetterBlock` holds `Vec<Vec<Inline>>`, not one flat slice, and
+        // `lower_blocks` turns it into ordinary paragraphs before the block
+        // walk reaches here.
+        CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak | CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::VFill | CBlock::LetterBlock { .. } => &[],
+        // Nodes a re-pinned compiler can produce that this crate has no
+        // layout for yet. `Penalty` carries no content at all; `Tabbing`'s
+        // rows are reached through `lower_blocks`, not this slice, exactly
+        // as `LetterBlock`'s lines are. PR #569 (penalties) and the pipeline
+        // half of GH-TABBING (compiler #551) replace these with real arms.
+        #[cfg(feature = "compiler-node-surface")]
+        CBlock::Penalty { .. } | CBlock::Tabbing { .. } => &[],
     }
 }
 
@@ -726,11 +895,16 @@ fn inlines_of(block: &CBlock) -> &[Inline] {
 ///   exact `\vskip`s and `\thanks` are not.
 /// - `\vfill`: dropped (the page builder has no stretchable vertical
 ///   glue), reported on the next block.
-fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: bool) -> (Vec<(CBlock, ParLeading)>, Vec<(&'static str, Span, String)>, Vec<StashedTitle>) {
-    use flashtex_compiler::parser::{FontSizeLevel, ParagraphStyle, TextFamily, TextStyle as CStyle};
+fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: bool, parskip_pt: f64) -> (Vec<(CBlock, ParLeading)>, Vec<(&'static str, Span, String)>, Vec<StashedTitle>, Vec<Span>) {
+    use flashtex_compiler::parser::{FontSizeLevel, LetterPart, ParagraphStyle, TextFamily, TextStyle as CStyle};
     let mut out: Vec<(CBlock, ParLeading)> = Vec::with_capacity(blocks.len());
     let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
     let mut titles: Vec<StashedTitle> = Vec::new();
+    // The source spans of the `\opening`/`\closing` blocks lowered below.
+    // Their `\raggedleft`/`\raggedright` is a *declaration*, not a
+    // `flushright`/`flushleft` environment, so the `env_close` pass must not
+    // give them `\@endparenv`'s `\@topsepadd` glue.
+    let mut letter_spans: Vec<Span> = Vec::new();
     let mut pending_vfill = 0usize;
     let sized = |inlines: &[Inline], size: FontSizeLevel| -> Vec<Inline> {
         inlines
@@ -767,6 +941,42 @@ fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: b
             }
         }
         match block {
+            // `tabbing` (GH-TABBING, compiler #551), lowered here the way
+            // `LetterBlock` is: every row becomes one flush-left paragraph
+            // broken exactly where the source's `\\` put it, so no line of a
+            // `tabbing` body is dropped by the re-pin. What is *not* applied
+            // is the horizontal part -- `\=` stops, `\>` jumps and `\kill`
+            // rows -- which the pipeline half of GH-TABBING adds; the
+            // limitation says so at the block's own span.
+            #[cfg(feature = "compiler-node-surface")]
+            CBlock::Tabbing { lines, span } => {
+                if lines.iter().any(|l| !l.content.is_empty()) {
+                    limitations.push((
+                        "unsupported_block",
+                        *span,
+                        "tabbing rows set as plain flush-left lines: \\= tab stops and \\> jumps are not applied".to_string(),
+                    ));
+                }
+                let mut content: Vec<Inline> = Vec::new();
+                for line in lines.iter().filter(|l| !l.killed) {
+                    let Some(at) = line.content.iter().map(inline_span).next() else { continue };
+                    if !content.is_empty() {
+                        content.push(line_break_inline(Span { document: at.document, start: at.start, end: at.start }));
+                    }
+                    content.extend(line.content.iter().cloned());
+                }
+                if !content.is_empty() {
+                    out.push((
+                        CBlock::Styled {
+                            style: ParagraphStyle::FlushLeft,
+                            content,
+                            lists: Vec::new(),
+                            line_break_before: None,
+                        },
+                        par_leading,
+                    ));
+                }
+            }
             CBlock::Verbatim { lines, span: _ } => {
                 let mut content: Vec<Inline> = Vec::with_capacity(lines.len() * 2);
                 for (i, line) in lines.iter().enumerate() {
@@ -774,13 +984,11 @@ fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: b
                         // The break owns the bytes between the lines so no
                         // interword space is read across it.
                         let prev = lines[i - 1].span;
-                        content.push(Inline::LineBreak {
-                            span: Span {
-                                document: line.span.document,
-                                start: prev.end.min(line.span.start),
-                                end: line.span.start,
-                            },
-                        });
+                        content.push(line_break_inline(Span {
+                            document: line.span.document,
+                            start: prev.end.min(line.span.start),
+                            end: line.span.start,
+                        }));
                     }
                     content.push(Inline::Text {
                         text: line.text.clone(),
@@ -854,6 +1062,134 @@ fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: b
                     ));
                 }
             }
+            // letter.cls's three positioned blocks. The pipeline has no
+            // layout for any of them yet (`\raggedleft` boxes, a fixed
+            // `\longindentation` offset and the class's own inter-block
+            // skips), so each line is set as an ordinary paragraph in the
+            // nearest alignment the pipeline does have and the geometry that
+            // is lost is named once per block. Nothing is dropped: every
+            // line of every part reaches the page in source order.
+            // letter.cls's three positioned blocks (`\opening`'s return
+            // address + date and recipient, `\closing`'s closing +
+            // signature). The compiler resolved the class's own skips into
+            // `gap_before_pt`/`gap_after_pt`/`extra_gap_after_pt`, all of
+            // them multiples of letter.cls's `\parskip` (line 91,
+            // `0.7em` = 7.66498pt at 11pt), so the pipeline's job here is to
+            // spend them, not to recompute them.
+            //
+            // Each run of lines with no extra gap between them becomes **one**
+            // paragraph whose lines are joined by `Inline::LineBreak` -- not
+            // one paragraph per line. That distinction is the whole vertical
+            // structure: a `\\` inside a paragraph costs `\baselineskip`,
+            // while a new paragraph costs `\baselineskip` *plus* `\parskip`,
+            // and letter.cls sets the address and the recipient as single
+            // `\\`-separated paragraphs (a `tabular{l@{}}` and a
+            // `{\raggedright ...\par}` group).
+            //
+            // `extra_gap_after_pt` (the `\\*[2\parskip]` between
+            // `\fromaddress` and `\@date`) does split the paragraph, so the
+            // `\vspace` that carries it has the following paragraph's own
+            // `\parskip` taken out of it: the two together must add up to the
+            // gap the class asked for, once.
+            CBlock::LetterBlock { part, lines, extra_gap_after_pt, gap_before_pt, gap_after_pt, indent_pt, span } => {
+                let para_style = match part {
+                    // `\opening`'s `{\raggedleft ...}`. See the limitation
+                    // below: this is the *nearest* style, not the class's.
+                    LetterPart::ReturnAddress => Some(ParagraphStyle::FlushRight),
+                    // `{\raggedright ...}` and `\parbox{...}{\raggedright ...}`
+                    // are *declarations*, not `flushleft`/`flushright`
+                    // environments, so they carry none of `\trivlist`'s
+                    // `\topsep`/`\partopsep` glue. A `Styled` block here does
+                    // carry it (9pt + 3pt at 11pt), which put the recipient
+                    // and the closing 12pt too low. These blocks are short,
+                    // unwrapped lines, where `\raggedright` and justification
+                    // set identical text, so a plain paragraph is both the
+                    // right vertical answer and the same horizontal one.
+                    LetterPart::Recipient | LetterPart::Closing => None,
+                };
+                if *gap_before_pt != 0.0 {
+                    out.push((vspace_block(*gap_before_pt), None));
+                }
+                let mut group: Vec<Inline> = Vec::new();
+                let mut prev_end: Option<Span> = None;
+                for (i, line) in lines.iter().enumerate() {
+                    let first = line.iter().map(inline_span).next();
+                    if !group.is_empty() {
+                        // The break owns the bytes between the two lines, so
+                        // no interword space is read across it (as the
+                        // `verbatim` lowering above does).
+                        if let (Some(prev), Some(at)) = (prev_end, first) {
+                            group.push(line_break_inline(Span {
+                                document: at.document,
+                                start: prev.end.min(at.start),
+                                end: at.start,
+                            }));
+                        }
+                    }
+                    group.extend(line.iter().cloned());
+                    prev_end = line.iter().map(inline_span).last().or(prev_end);
+                    let extra = extra_gap_after_pt.get(i).copied().unwrap_or(0.0);
+                    if extra == 0.0 && i + 1 != lines.len() {
+                        continue;
+                    }
+                    if !group.is_empty() {
+                        let content = std::mem::take(&mut group);
+                        // Keyed by the first inline's span, not the block's:
+                        // `\address`'s text comes from the *preamble*, so it
+                        // lies outside `\opening`'s own span entirely.
+                        if let Some(at) = content.iter().map(inline_span).next() {
+                            letter_spans.push(at);
+                        }
+                        out.push((
+                            match para_style {
+                                Some(style) => CBlock::Styled { style, content, lists: Vec::new(), line_break_before: None },
+                                None => CBlock::Paragraph(content),
+                            },
+                            par_leading,
+                        ));
+                    }
+                    if extra != 0.0 {
+                        out.push((vspace_block(extra - parskip_pt), None));
+                    }
+                }
+                if *gap_after_pt != 0.0 {
+                    out.push((vspace_block(*gap_after_pt), None));
+                }
+                // What is still approximate is horizontal, and only
+                // horizontal: the pipeline has no per-paragraph left offset
+                // or measure, so neither `\longindentation` nor the
+                // `\raggedleft` *box* can be expressed yet. Reported once per
+                // block rather than silently produced.
+                let mut lost: Vec<String> = Vec::new();
+                if *indent_pt != 0.0 {
+                    lost.push(format!(
+                        "its {indent_pt} pt \\longindentation offset (it is set at the left margin instead)"
+                    ));
+                }
+                if para_style.is_some() {
+                    lost.push(
+                        "the \\raggedleft box, whose lines share a *left* edge at the right margin \
+                         (flushright aligns their right edges instead, so lines of unequal length differ)"
+                            .to_string(),
+                    );
+                }
+                if !lost.is_empty() {
+                    limitations.push((
+                        "unsupported_block",
+                        *span,
+                        format!(
+                            "{}: the class's vertical skips are applied exactly; {} {} not",
+                            match part {
+                                LetterPart::ReturnAddress => "\\opening's return address and date",
+                                LetterPart::Recipient => "\\opening's recipient",
+                                LetterPart::Closing => "\\closing and signature",
+                            },
+                            lost.join(" and "),
+                            if lost.len() == 1 { "is" } else { "are" },
+                        ),
+                    ));
+                }
+            }
             CBlock::VFill => pending_vfill += 1,
             other => out.push((other.clone(), par_leading)),
         }
@@ -871,7 +1207,7 @@ fn lower_blocks(texts: &[&str], blocks: &[(CBlock, ParLeading)], stash_titles: b
             format!("\\vfill ({pending_vfill} at the end of the document) dropped: the page builder has no stretchable vertical glue"),
         ));
     }
-    (out, limitations, titles)
+    (out, limitations, titles, letter_spans)
 }
 
 /// A compiler `TitleBlock`'s title, authors and date, set aside for the
@@ -885,7 +1221,7 @@ type StashedTitle = (Vec<Inline>, Vec<Inline>, Option<Vec<Inline>>);
 fn author_groups(texts: &[&str], authors: &[Inline]) -> Vec<Vec<Inline>> {
     let mut groups: Vec<Vec<Inline>> = vec![Vec::new()];
     for inline in authors {
-        if let Inline::LineBreak { span } = inline {
+        if let Inline::LineBreak { span, .. } = inline {
             let at = texts.get(span.document.0).and_then(|t| t.get(span.start..)).unwrap_or("");
             if at.starts_with("\\author") {
                 groups.push(Vec::new());
@@ -989,8 +1325,23 @@ pub fn adapt_cached(
         &class_options,
     );
     let mut resolved = flashtex_class_geometry::resolve(&setup);
+    // `\twocolumn`/`\onecolumn` are commands, not class options: two-column
+    // mode is state the document sets, and the class option is only its
+    // starting value ([`crate::columns`]). The starting value itself is
+    // `resolved.flags.twocolumn`, not `resolved.options.twocolumn`: the
+    // latter is `\documentclass`'s own option only, while `flags` is what
+    // `resolve` already folded the `geometry` package's own `twocolumn` key
+    // into (`apply_geometry`, [`flashtex_class_geometry::resolve`]). Seeding
+    // from `options` instead left `\documentclass{article}
+    // \usepackage[twocolumn]{geometry}` starting one-column, since
+    // `options.twocolumn` never saw geometry's override.
+    // `set_twocolumn` runs before `apply_preamble_lengths`, which rebuilds
+    // the frame from `doc.flags`.
+    let columns = crate::columns::ColumnMode::scan(source, entry, resolved.flags.twocolumn);
+    resolved.set_twocolumn(columns.start());
     let assigned = apply_preamble_lengths(source, &mut resolved, size, family, setup.geometry.is_some());
     let mut style = Stylesheet::from_resolved(&resolved, family);
+    style.columns = columns;
     // apply_preamble_lengths is the source of truth for `\parindent` /
     // `\parskip` (source order, including `\addtolength` and body
     // assignments). The older `setlength_in` scan only saw `\setlength`
@@ -1023,6 +1374,7 @@ pub fn adapt_cached(
         amsmath_cmex10 = package.split(',').any(|o| o.trim() == "cmex10");
     }
     style.cmex_designs = crate::style::cmex_designs(&parsed.packages, amsmath_cmex10);
+    style.math_roman_lm = crate::style::math_roman_lm(&parsed.packages);
     #[cfg(feature = "amsmath-inline")]
     let mathtools = parsed.packages.iter().any(|p| p == "mathtools");
     // `\parskip` from apply_preamble_lengths: `\addtolength` keeps class
@@ -1056,6 +1408,7 @@ pub fn adapt_cached(
         }
     });
     style.nfss = crate::nfss::Scheme::for_document(&parsed.packages, t1_encoding(source));
+    style.input = crate::inputenc::InputSetup::for_project(texts, entry);
     let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(t, style_intervals(t), style.nfss)).collect();
     let labels_fp = {
         use std::hash::{Hash, Hasher};
@@ -1091,22 +1444,18 @@ pub fn adapt_cached(
     let title_blocks = parsed.blocks.iter().filter(|b| matches!(b, CBlock::TitleBlock { .. })).count();
     let stash_titles = style.class_geometry.is_some() && maketitles == title_blocks && maketitles > 0;
     // `Parsed::block_par_leading` is one entry per block, in `blocks` order
-    // (the compiler pushes both from the same place). Without the
+    // (the compiler pushes both from the same place) whenever the pinned
+    // `vendor/compiler` keeps that contract; `block_leadings` is what decides
+    // whether it did, in both build profiles alike. Without the
     // `par-leading` feature the pinned `vendor/compiler` has no such field
     // and every paragraph keeps the body's `\baselineskip`, which is what
     // the pipeline did before this existed.
     #[cfg(feature = "par-leading")]
-    let leadings: Vec<ParLeading> = parsed.block_par_leading.clone();
+    let leadings: Vec<ParLeading> = block_leadings(&parsed.block_par_leading, parsed.blocks.len());
     #[cfg(not(feature = "par-leading"))]
     let leadings: Vec<ParLeading> = vec![None; parsed.blocks.len()];
-    debug_assert_eq!(leadings.len(), parsed.blocks.len());
-    let paired: Vec<(CBlock, ParLeading)> = parsed
-        .blocks
-        .iter()
-        .cloned()
-        .zip(leadings.into_iter().chain(std::iter::repeat(None)))
-        .collect();
-    let (mut lowered, mut limitations, stashed) = lower_blocks(texts, &paired, stash_titles);
+    let paired: Vec<(CBlock, ParLeading)> = parsed.blocks.iter().cloned().zip(leadings).collect();
+    let (mut lowered, mut limitations, stashed, letter_spans) = lower_blocks(texts, &paired, stash_titles, style.parskip.natural);
     let mut stashed = stashed.into_iter();
     let title_of = |(title, authors, date): StashedTitle, span: Span| Block::Title {
         title: items_for(&title, false),
@@ -1117,10 +1466,36 @@ pub fn adapt_cached(
     // book.cls `\if@mainmatter` (true until `\frontmatter`).
     let mut mainmatter = true;
     strip_command_text(&mut lowered, entry_doc, &commands);
+    // The same structural commands in `\input`/`\include`d documents (one
+    // list per document, empty for the entry): a `\chapter` in
+    // `chapters/one.tex` is as much a chapter as one in the entry file.
+    // `\maketitle`, `\noindent`, contents lists and nested `\input`s stay
+    // entry-only, as before.
+    let included_commands: Vec<Vec<BodyCommand>> = texts
+        .iter()
+        .enumerate()
+        .map(|(d, text)| {
+            if d == entry {
+                return Vec::new();
+            }
+            body_commands(text, has_chapters, book)
+                .into_iter()
+                .filter(|c| matches!(c.kind, BodyKind::Event(_) | BodyKind::Chapter { .. } | BodyKind::Part { .. } | BodyKind::Appendix | BodyKind::Matter(_) | BodyKind::AddContentsLine { .. }))
+                .collect()
+        })
+        .collect();
+    for (d, cmds) in included_commands.iter().enumerate() {
+        strip_command_text(&mut lowered, DocumentId(d), cmds);
+    }
+    let mut next_included = vec![0usize; texts.len()];
+    let mut seen_included = vec![false; texts.len()];
     let mut next_command = 0usize;
     let mut noindent_at: Option<usize> = None;
     // The `\input`/`\include`d document whose units are being laid out.
     let mut input_doc: Option<DocumentId> = None;
+    // The `\include` whose file is being read: its closing `\clearpage`
+    // comes when the entry document resumes.
+    let mut open_include: Option<&BodyCommand> = None;
     // report/book: `\thesection` is `\thechapter.\arabic{section}`.
     let (mut chapter_no, mut section_nos) = (0u32, [0u32; 3]);
     // `\appendix`: `\thesection` (article) or `\thechapter` (report/book)
@@ -1140,20 +1515,62 @@ pub fn adapt_cached(
     let mut toc_lists: Vec<(usize, crate::toc::ListKind, Span, bool)> = Vec::new();
     let mut toc_pending: Vec<String> = Vec::new();
     let mut chapter_starts: Vec<(usize, String)> = Vec::new();
+    let mut chapter_gaps: Vec<usize> = Vec::new();
     let mut after_heading = false;
+    // The block that is, so far, the last one inside an open theorem-like
+    // environment. `\endtrivlist`'s `\@endparenv` puts `\@topsepadd` after
+    // the *last* paragraph of the environment, and only the next unit says
+    // whether there is one: a block still inside the same environment
+    // continues the run, anything else closes it. The flag is set on the
+    // block itself, so the `toc_lists` splice below cannot shift it.
+    let mut open_theorem: Option<usize> = None;
     // Last source span of the previous paragraph block (None after a
     // heading or rule), for rejoining a display with its paragraph.
     let mut prev_para_end: Option<Span> = None;
-    for unit in split_at_page_breaks(texts, &lowered, size, &style) {
-        let mut eject_before = unit.eject_before;
-        let vspace_before = unit.vspace_before;
-        limitations.extend(unit.limitations);
-        let unit_start = match &unit.kind {
+    // The documents an entry `\input`/`\include` command reads (nested reads
+    // included), from the reading order: a file whose body is only floats
+    // has no unit to lay its `\chapter` out before.
+    let read_by = |cmd: &BodyCommand| -> Vec<usize> {
+        let order = &labels.reading_order;
+        let Some(i) = order.iter().position(|s| s.document == entry_doc && s.end == cmd.start) else {
+            return Vec::new();
+        };
+        let mut docs: Vec<usize> = Vec::new();
+        for s in order[i + 1..].iter().take_while(|s| s.document != entry_doc) {
+            if !docs.contains(&s.document.0) {
+                docs.push(s.document.0);
+            }
+        }
+        docs
+    };
+    // One pass per unit, then one (`None`) for the commands after the last.
+    for mut next in split_at_page_breaks(texts, &lowered, size, &style).into_iter().map(Some).chain([None]) {
+        // Does this unit continue the theorem-like environment that the
+        // previous block left open? Only a paragraph inside it that is not
+        // itself a fresh `\item` does.
+        let continues_theorem = next.as_ref().is_some_and(|unit| matches!(
+            unit.kind,
+            UnitKind::Paragraph { in_theorem: true, theorem_item: false, .. }
+        ));
+        if !continues_theorem {
+            if let Some(at) = open_theorem.take() {
+                if let Some(Block::Paragraph { env_close, .. }) = blocks.get_mut(at) {
+                    *env_close = true;
+                }
+            }
+        }
+        let mut eject_before = next.as_ref().is_some_and(|unit| unit.eject_before);
+        let vspace_before = next.as_ref().map_or(0.0, |unit| unit.vspace_before);
+        if let Some(unit) = &mut next {
+            limitations.append(&mut unit.limitations);
+        }
+        let unit_start = next.as_ref().and_then(|unit| match &unit.kind {
             UnitKind::Heading { number_span, .. } => Some(*number_span),
             UnitKind::Paragraph { inlines, .. } => inlines.iter().map(inline_span).next(),
             UnitKind::Rule { span } => Some(*span),
             UnitKind::Picture { document, picture, .. } => Some(Span::in_document(*document, picture.start, picture.end)),
-        };
+        });
+        let at_end = next.is_none();
         // Entry-document commands are laid out before the first unit that
         // follows them in the entry source. A unit of an `\input`/`\include`d
         // document follows the `\input` command that read it, so everything
@@ -1167,21 +1584,96 @@ pub fn adapt_cached(
             }
             Some(at) if input_doc != Some(at.document) => {
                 input_doc = Some(at.document);
-                commands[next_command..].iter().find(|c| matches!(c.kind, BodyKind::Input)).map(|c| c.start)
+                // The command that reads this document, not merely the next
+                // one: an earlier `\include` may read a file with no units. A
+                // file read by a command already spent (nested) flushes none.
+                let mut inputs = commands[next_command..].iter().filter(|c| matches!(c.kind, BodyKind::Input));
+                if labels.reading_order.iter().any(|s| s.document == at.document) {
+                    inputs.find(|c| read_by(c).contains(&at.document.0)).map(|c| c.start)
+                } else {
+                    inputs.next().map(|c| c.start)
+                }
             }
+            None if at_end => Some(usize::MAX),
             _ => None,
         };
+        // `(document, command)` to lay out before this unit, in order.
+        let mut pending: Vec<(DocumentId, &BodyCommand)> = Vec::new();
+        // The entry document resumes, or the next file is read: the included
+        // documents read so far are finished, so their commands after their
+        // last unit come first.
         if let Some(at) = flush_before {
+            for (d, cmds) in included_commands.iter().enumerate() {
+                if seen_included[d] {
+                    pending.extend(cmds[next_included[d]..].iter().map(|c| (DocumentId(d), c)));
+                    next_included[d] = cmds.len();
+                }
+            }
+            pending.extend(open_include.take().map(|cmd| (entry_doc, cmd)));
             while let Some(cmd) = commands.get(next_command).filter(|c| c.start < at) {
                 next_command += 1;
+                pending.push((entry_doc, cmd));
+                if !matches!(cmd.kind, BodyKind::Input) {
+                    continue;
+                }
+                // A file read here without a unit of its own (its body is
+                // floats only): its commands, then `\include`'s closing
+                // `\clearpage`, in place.
+                for d in read_by(cmd) {
+                    if let Some(cmds) = included_commands.get(d).filter(|_| !seen_included[d]) {
+                        seen_included[d] = true;
+                        pending.extend(cmds[next_included[d]..].iter().map(|c| (DocumentId(d), c)));
+                        next_included[d] = cmds.len();
+                    }
+                }
+                if is_include(source, cmd) {
+                    pending.push((entry_doc, cmd));
+                }
+            }
+            // The `\input` command that read this unit's document is spent.
+            if let Some(cmd) = commands.get(next_command).filter(|c| input_doc.is_some() && c.start == at && matches!(c.kind, BodyKind::Input)) {
+                next_command += 1;
+                // `\include`'s opening `\clearpage`; the closing one waits.
+                if is_include(texts.get(entry).copied().unwrap_or(""), cmd) {
+                    pending.push((entry_doc, cmd));
+                    open_include = Some(cmd);
+                }
+            }
+        }
+        // An included document's own commands precede its next unit.
+        if let Some(at) = unit_start.filter(|at| at.document != entry_doc) {
+            if let Some(cmds) = included_commands.get(at.document.0) {
+                seen_included[at.document.0] = true;
+                while let Some(cmd) = cmds.get(next_included[at.document.0]).filter(|c| c.start < at.start) {
+                    next_included[at.document.0] += 1;
+                    pending.push((at.document, cmd));
+                }
+            }
+        }
+        if !pending.is_empty() {
+            for (cmd_doc, cmd) in pending {
+                let source = texts.get(cmd_doc.0).copied().unwrap_or("");
                 match &cmd.kind {
-                    BodyKind::Input => {}
+                    // latex.ltx `\@include`: `\clearpage` before the file is
+                    // read (or skipped by `\includeonly`) and after it.
+                    BodyKind::Input => {
+                        if cmd_doc == entry_doc && is_include(source, cmd) {
+                            blocks.push(Block::ClearPage { double: false, span: Span::in_document(cmd_doc, cmd.start, cmd.end) });
+                            prev_para_end = None;
+                        }
+                    }
                     BodyKind::Event(event) => blocks.push(Block::Chrome {
                         event: event.clone(),
-                        span: Span::in_document(entry_doc, cmd.start, cmd.end),
+                        span: Span::in_document(cmd_doc, cmd.start, cmd.end),
                     }),
                     BodyKind::NoIndent => noindent_at = Some(cmd.end),
                     BodyKind::Chapter { starred, title } => {
+                        if !*starred {
+                            // In the reading-order space `list_blocks` sorts
+                            // entries by, so an `\include`d chapter's gap
+                            // lands between the right floats.
+                            chapter_gaps.push(reading_position(&labels.reading_order, cmd_doc, cmd.start).unwrap_or(cmd.start));
+                        }
                         // `\@chapter`: `\refstepcounter{chapter}` only
                         // `\if@mainmatter` (book.cls line 356).
                         let number = (!*starred && mainmatter).then(|| {
@@ -1192,11 +1684,18 @@ pub fn adapt_cached(
                             } else {
                                 chapter_no.to_string()
                             };
-                            chapter_starts.push((cmd.start, chapter_label.clone()));
+                            // `\thelstlisting` (#543): listings are still
+                            // numbered from the entry document's chapter
+                            // starts (`toc::chapter_numbers`); figures and
+                            // tables carry `floats::number`'s reading-order
+                            // numbers instead.
+                            if cmd_doc == entry_doc {
+                                chapter_starts.push((cmd.start, chapter_label.clone()));
+                            }
                             chapter_label.clone()
                         });
-                        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
-                        let mut items = words_from_source(source, entry_doc, title.0, title.1);
+                        let span = Span::in_document(cmd_doc, cmd.start, cmd.end);
+                        let mut items = words_from_source(source, cmd_doc, title.0, title.1);
                         if toc_active {
                             if let Some(n) = &number {
                                 // report.cls `\@chapter`: `\addcontentsline{toc}{chapter}{\protect\numberline{\thechapter}#1}`.
@@ -1205,7 +1704,7 @@ pub fn adapt_cached(
                                     list: crate::toc::ListKind::Toc,
                                     level: 0,
                                     number: Some((n.clone(), span)),
-                                    title: labels.entry_items.get(entry_doc, title.0, title.1).unwrap_or_else(|| items.clone()),
+                                    title: labels.entry_items.get(cmd_doc, title.0, title.1).unwrap_or_else(|| items.clone()),
                                     key: key.clone(),
                                 });
                                 toc_pending.push(key);
@@ -1225,7 +1724,7 @@ pub fn adapt_cached(
                     }
                     BodyKind::MakeTitle => {
                         if let Some(t) = stashed.next() {
-                            let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+                            let span = Span::in_document(cmd_doc, cmd.start, cmd.end);
                             // `\@maketitle` is followed by `\thispagestyle{plain}`;
                             // the `titlepage` form sets `empty` on its own page.
                             if maketitle_plain {
@@ -1240,12 +1739,12 @@ pub fn adapt_cached(
                         } else if maketitle_plain {
                             blocks.push(Block::Chrome {
                                 event: ChromeEvent::ThisPageStyle(PageStyle::Plain),
-                                span: Span::in_document(entry_doc, cmd.start, cmd.end),
+                                span: Span::in_document(cmd_doc, cmd.start, cmd.end),
                             });
                         }
                     }
                     BodyKind::Matter(matter) => {
-                        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+                        let span = Span::in_document(cmd_doc, cmd.start, cmd.end);
                         let openright = style.class_geometry.as_ref().is_some_and(|d| d.options.openright);
                         let (double, numbering, main) = match matter {
                             Matter::Front => (true, Some(flashtex_class_geometry::Numbering::Roman), false),
@@ -1267,11 +1766,11 @@ pub fn adapt_cached(
                         // before the list's heading.
                         let before = source[..cmd.start].trim_end();
                         let eject = ["\\newpage", "\\clearpage", "\\cleardoublepage", "\\pagebreak"].iter().any(|c| before.ends_with(c));
-                        toc_lists.push((blocks.len(), *kind, Span::in_document(entry_doc, cmd.start, cmd.end), eject));
+                        toc_lists.push((blocks.len(), *kind, Span::in_document(cmd_doc, cmd.start, cmd.end), eject));
                     }
                     BodyKind::AddContentsLine { list, level, text } => {
                         if let (true, Some(level)) = (toc_active, crate::toc::level_of(level)) {
-                            let (number, title) = crate::toc::contentsline_text(source, entry_doc, text.0, text.1, &labels.entry_items);
+                            let (number, title) = crate::toc::contentsline_text(source, cmd_doc, text.0, text.1, &labels.entry_items);
                             let key = crate::toc::key(toc_records.len());
                             toc_records.push(crate::toc::Record {
                                 list: *list,
@@ -1303,8 +1802,8 @@ pub fn adapt_cached(
                             part_no += 1;
                             flashtex_class_geometry::Numbering::UpperRoman.format(i64::from(part_no))
                         });
-                        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
-                        let mut items = words_from_source(source, entry_doc, title.0, title.1);
+                        let span = Span::in_document(cmd_doc, cmd.start, cmd.end);
+                        let mut items = words_from_source(source, cmd_doc, title.0, title.1);
                         if toc_active {
                             if let Some(n) = &number {
                                 let (s, e) = short.unwrap_or(*title);
@@ -1313,7 +1812,7 @@ pub fn adapt_cached(
                                     list: crate::toc::ListKind::Toc,
                                     level: -1,
                                     number: Some((n.clone(), span)),
-                                    title: labels.entry_items.get(entry_doc, s, e).unwrap_or_else(|| words_from_source(source, entry_doc, s, e)),
+                                    title: labels.entry_items.get(cmd_doc, s, e).unwrap_or_else(|| words_from_source(source, cmd_doc, s, e)),
                                     key: key.clone(),
                                 });
                                 toc_pending.push(key);
@@ -1340,11 +1839,8 @@ pub fn adapt_cached(
                     }
                 }
             }
-            // The `\input` command that read this unit's document is spent.
-            if input_doc.is_some() && commands.get(next_command).is_some_and(|c| c.start == at && matches!(c.kind, BodyKind::Input)) {
-                next_command += 1;
-            }
         }
+        let Some(unit) = next else { break };
         match unit.kind {
             UnitKind::Heading {
                 level,
@@ -1389,7 +1885,7 @@ pub fn adapt_cached(
                         })
                         .collect();
                     push_segment(&mut items, number.to_string(), chars, TextStyle::default());
-                    items.push(Item::Quad { em: 1.0 });
+                    items.push(Item::Quad { em: 1.0, style: TextStyle::default() });
                 }
                 let content_items = items_for(content, true);
                 if toc_active {
@@ -1482,6 +1978,9 @@ pub fn adapt_cached(
             } => {
                 for inline in inlines {
                     unsupported_inlines(inline, &mut limitations);
+                    if let Inline::Tabular(t) = inline {
+                        table_length_limitations(texts, t.span, size, &mut limitations);
+                    }
                 }
                 // amsthm sets the head bold (italic for `remark`/`proof`)
                 // and, for the `plain` style, the body italic. None of that
@@ -1512,7 +2011,7 @@ pub fn adapt_cached(
                             if let Some((rows_span, row)) = math_row_of(inlines, span) {
                                 let rows_rest = texts.get(rows_span.document.0).and_then(|t| t.get(rows_span.start..)).unwrap_or("");
                                 let mut tag = None;
-                                let cells: Vec<MathList> = row.cells.iter().map(|c| strip_tag(texts, c, &mut tag)).collect();
+                                let cells: Vec<MathList> = row.cells.iter().map(|c| strip_tag(texts, c, &mut tag, &mut limitations)).collect();
                                 let number = match tag {
                                     Some(t) => Some((t, row.span)),
                                     None => row.number.clone().map(|n| (format!("({n})"), row.span)),
@@ -1547,7 +2046,7 @@ pub fn adapt_cached(
                             // `\tag` in any display).
                             let rest = texts.get(span.document.0).and_then(|t| t.get(span.start..)).unwrap_or("");
                             let mut tag = None;
-                            let list = strip_tag(texts, &list, &mut tag);
+                            let list = strip_tag(texts, &list, &mut tag, &mut limitations);
                             let (list, eqno) = strip_eqno(texts, list, span);
                             let number = match (tag, eqno) {
                                 (Some(t), _) => Some((t, span)),
@@ -1570,6 +2069,43 @@ pub fn adapt_cached(
                 if !current.is_empty() {
                     parts.push(ParaPart::Lines(current));
                 }
+                // amsmath's `multline` carries a single tag/number on its
+                // LAST row wherever `\tag` was typed (TeX Live 2026
+                // pdflatex sets `b+b \tag{B}` over `c+c   (B)`, the tag
+                // sharing the last row's baseline). Each row above
+                // extracts its own number from its own cells, so a tag on
+                // any row but the last lands on that row's line instead —
+                // and a compiler predating the per-environment tag
+                // suppression additionally numbers the last row, printing
+                // both. The tag's row is the one whose source carries
+                // `\tag`; its number moves to the last row and every other
+                // row's number is dropped. With no `\tag` anywhere (the
+                // untagged and tagged-last-row shapes) nothing moves.
+                for part in &mut parts {
+                    if let ParaPart::Rows { env: RowsEnv::Multline, rows, .. } = part {
+                        if rows.len() < 2 {
+                            continue;
+                        }
+                        let tagged = rows.iter().position(|row| {
+                            texts
+                                .get(row.span.document.0)
+                                .and_then(|text| text.get(row.span.start..row.span.end))
+                                .is_some_and(|source| find_command(source, "tag").is_some())
+                        });
+                        if let Some(found) = tagged {
+                            if rows[found].number.is_none() {
+                                continue;
+                            }
+                            let number = rows[found].number.take();
+                            for row in rows.iter_mut() {
+                                row.number = None;
+                            }
+                            if let Some(last) = rows.last_mut() {
+                                last.number = number;
+                            }
+                        }
+                    }
+                }
                 let only_labels = parts
                     .iter()
                     .all(|p| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. }))));
@@ -1583,7 +2119,7 @@ pub fn adapt_cached(
                 if let Some(table) = lone_longtable(&mut parts) {
                     let src = texts.get(table.span.document.0).copied().unwrap_or("");
                     blocks.push(Block::LongTable {
-                        lengths: LongtableLengths::read(|name| setlength(src, name, size)),
+                        lengths: LongtableLengths::read(|name| length_at(src, name, size, table.span.start, 0.0)),
                         labels: Vec::new(),
                         table,
                         eject_before,
@@ -1703,15 +2239,34 @@ pub fn adapt_cached(
                     endlist_adjust: unit.endlist_adjust,
                     list,
                     sized: None,
-                    leading_pt: par_leading_pt(par_leading, style.base),
+                    leading_pt: par_leading_pt(par_leading.or_else(|| size_env_par_leading(texts, &styles, inlines)), style.base),
                 });
+                if in_theorem {
+                    open_theorem = Some(blocks.len() - 1);
+                }
                 after_heading = false;
             }
         }
     }
+    // A theorem-like environment that runs to the end of the document still
+    // closes: `\end{document}` is not what ended it.
+    if let Some(at) = open_theorem.take() {
+        if let Some(Block::Paragraph { env_close, .. }) = blocks.get_mut(at) {
+            *env_close = true;
+        }
+    }
+    // A list after the last material (a document that is nothing but its
+    // lists, or `\listoffigures` at the very end) is set there too.
+    for cmd in &commands[next_command..] {
+        if let BodyKind::ContentsList(kind) = cmd.kind {
+            let before = source[..cmd.start].trim_end();
+            let eject = ["\\newpage", "\\clearpage", "\\cleardoublepage", "\\pagebreak"].iter().any(|c| before.ends_with(c));
+            toc_lists.push((blocks.len(), kind, Span::in_document(entry_doc, cmd.start, cmd.end), eject));
+        }
+    }
     // The contents lists, now that every record is known.
     for (at, kind, span, eject) in toc_lists.into_iter().rev() {
-        let list = crate::toc::list_blocks(kind, span, eject, &toc_settings, &toc_records, labels, &chapter_starts);
+        let list = crate::toc::list_blocks(kind, span, eject, &toc_settings, &toc_records, labels, &chapter_starts, &chapter_gaps);
         blocks.splice(at..at, list);
     }
     // `abstract`: the compiler sets its body as plain text, so the class's
@@ -1719,6 +2274,42 @@ pub fn adapt_cached(
     // `quotation`) is read from the source bytes here, before the
     // `env_close` pass below derives the closing skips from the styles.
     let mut superseded = crate::abstractenv::apply(texts, &mut blocks, &style);
+    // `\twocolumn`/`\onecolumn` are set here, from the source, the same way:
+    // the pinned `vendor/compiler` reports them as unknown commands.
+    superseded.extend(
+        style
+            .columns
+            .spans()
+            .iter()
+            .map(|&(s, e)| Span::in_document(flashtex_compiler::DocumentId(entry), s, e)),
+    );
+    // The page frame is still one frame for the whole document, so a switch
+    // after the first material sets every `\if@twocolumn` test (and its own
+    // page break) but not the column count of the pages it opens.
+    for &(at, on) in &style.columns.unmodelled() {
+        limitations.push((
+            "twocolumn_mid_document",
+            Span::in_document(flashtex_compiler::DocumentId(entry), at, at + if on { "\\twocolumn".len() } else { "\\onecolumn".len() }),
+            format!(
+                "\\{} after the first material starts a new page, but changing the number of \
+                 page columns during a document is not implemented: the rest of the document \
+                 keeps {} column(s)",
+                if on { "twocolumn" } else { "onecolumn" },
+                if style.columns.start() { 2 } else { 1 },
+            ),
+        ));
+    }
+    // `\twocolumn[<material>]` sets its argument at the full `\textwidth`
+    // above both columns (`\@topnewpage`, latex.ltx 20466-20505). The
+    // material is cut out of the block stream here, brackets and all, and
+    // carried on `Doc::top_material` for `typeset::build_with_floats` to
+    // set in the box; what it cannot cut exactly stays where it is and is
+    // reported, as before.
+    // Size environments are set here (`apply_size_environments`); the
+    // compiler's "environment is not implemented" for them is superseded.
+    for (d, st) in styles.iter().enumerate() {
+        superseded.extend(st.size_envs.iter().map(|e| Span::in_document(flashtex_compiler::DocumentId(d), e.begin, e.begin)));
+    }
     // `\end{...}`: the last paragraph of a run of same-style paragraphs
     // closes the environment (two adjacent environments of one style are
     // read as one; the compiler does not mark the boundary).
@@ -1729,9 +2320,39 @@ pub fn adapt_cached(
             _ => ParaStyle::Plain,
         })
         .collect();
+    let from_letter = |parts: &[ParaPart]| {
+        parts
+            .iter()
+            .find_map(|p| match p {
+                ParaPart::Lines(items) => items.iter().find_map(|i| match i {
+                    Item::Word(w) => Some(w.span()),
+                    Item::Math { span, .. } => Some(*span),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .is_some_and(|at| {
+                letter_spans
+                    .iter()
+                    .any(|s| s.document == at.document && s.start == at.start)
+            })
+    };
     for (i, block) in blocks.iter_mut().enumerate() {
-        if let Block::Paragraph { style, env_close, .. } = block {
-            if *style != ParaStyle::Plain {
+        if let Block::Paragraph { style, env_close, parts, .. } = block {
+            // `ParaStyle::Plain` includes every theorem-like environment,
+            // whose `env_close` the unit loop above has already set from the
+            // `\end{<theorem>}` that actually closed it.
+            //
+            // `letter.cls` positions `\opening`'s address with a
+            // `{\raggedleft ...\par}` *group*. That is a declaration, not a
+            // `flushright` environment, so it closes no `\trivlist` and adds
+            // no `\@topsepadd` after itself -- 9pt at 11pt, which is exactly
+            // how much too far down the recipient block used to start.
+            //
+            // Both guards are independent and both are needed: the first keeps
+            // a theorem's own closing skip, the second keeps a letter's
+            // declaration group from claiming one it never opened.
+            if *style != ParaStyle::Plain && !from_letter(parts) {
                 *env_close = styles.get(i + 1).is_none_or(|next| *next != *style);
             }
         }
@@ -1744,31 +2365,71 @@ pub fn adapt_cached(
     // paragraph under a `\parshape` — so the listing paragraph must keep
     // neither the opening nor the closing `\topsep`, and that pass would
     // otherwise put the closing one back.
-    let (listing_superseded, listing_limitations) = crate::listings::apply(texts, &mut blocks, &style, labels);
+    let (listing_superseded, listing_limitations) = crate::listings::apply(texts, &mut blocks, &style, labels, &chapter_starts);
     superseded.extend(listing_superseded);
     superseded.extend(crate::listings::lstset_spans(texts));
     limitations.extend(listing_limitations);
-    // Page-style and mark commands (and a `\maketitle`) after the last
-    // material.
-    for cmd in &commands[next_command..] {
-        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
-        match &cmd.kind {
-            BodyKind::Event(event) => blocks.push(Block::Chrome { event: event.clone(), span }),
-            BodyKind::MakeTitle => {
-                if maketitle_plain {
-                    blocks.push(Block::Chrome {
-                        event: ChromeEvent::ThisPageStyle(PageStyle::Plain),
-                        span,
-                    });
-                }
-                if let Some(t) = stashed.next() {
-                    blocks.push(title_of(t, span));
-                }
-            }
-            _ => {}
+    let mut top_material = None;
+    // `\twocolumn[<material>]` sets its argument in a `\textwidth` box
+    // above both columns (`\@topnewpage`, latex.ltx 20466-20505). The
+    // material is cut out of the block stream here, brackets and all, and
+    // carried on `Doc::top_material` for `typeset::build_with_floats`;
+    // `\@topnewpage`'s own geometry is that page builder's business.
+    //
+    // Only when the frame really has two columns: the box belongs to the
+    // two-column output routine, and a one-column page has nowhere for it.
+    let two_column = style.class_geometry.as_deref().is_some_and(|g| g.frame.columns.len() > 1);
+    let mut boxed = None;
+    if let Some((open, close)) = style.columns.top_material().filter(|_| two_column) {
+        let document = flashtex_compiler::DocumentId(entry);
+        if let Some(m) = split_top_material(&mut blocks, document, open, close) {
+            boxed = Some(open);
+            top_material = Some((m, Span::in_document(document, open, close + 1)));
+            // The compiler warns on the `[` that its own IR has no
+            // `\@topnewpage` model ("the material is typeset as ordinary
+            // text instead, brackets included") and deliberately leaves the
+            // tokens where they stand so a renderer that *does* have the box
+            // can cut them back out. This is that renderer, and it just did:
+            // the warning describes an output this pipeline does not
+            // produce, so it is superseded the way `abstract`'s is. The
+            // unboxed case below supersedes it too, replacing it with the
+            // typed `twocolumn_top_material` limitation.
+            superseded.push(Span::in_document(document, open, open));
+        }
+    }
+    // Every optional argument that did *not* become a box: one on a
+    // `\twocolumn` that is not the document's first material (a preamble
+    // one is `\@nodocument`'s error, a later one would have to change the
+    // column count of the pages), and one whose material cannot be cut out
+    // of the column text exactly. The compiler leaves those where they
+    // stand, brackets and all, which is what #746 reported.
+    for &(_, end) in style.columns.spans() {
+        // The same rule `columns::optional_bracket` uses: `\@ifnextchar [`
+        // skips space tokens, and a blank line is a `\par`, not a space —
+        // so a `[` after a blank line is ordinary text, not the argument.
+        let Some(open) = crate::columns::optional_bracket(source, end) else {
+            continue;
+        };
+        if source[..end].ends_with("\\twocolumn") && boxed != Some(open) {
+            limitations.push((
+                "twocolumn_top_material",
+                Span::in_document(flashtex_compiler::DocumentId(entry), end, end),
+                "the optional argument of \\twocolumn sets material at the full \\textwidth \
+                 above both columns (\\@topnewpage); that is not done here, so the material \
+                 is set in the first column instead, brackets included"
+                    .to_string(),
+            ));
+            // The compiler's own warning on the same `[` says the same fact
+            // less precisely (it cannot know whether this pipeline boxed the
+            // material); this typed limitation replaces it, so the reader
+            // sees one diagnostic per `\twocolumn[`, not two.
+            superseded.push(Span::in_document(flashtex_compiler::DocumentId(entry), open, open));
         }
     }
     let page_starts = clear_page_blocks(texts, &blocks);
+    // After `listings::apply`, which can insert blocks: the ranges are
+    // block indices, so they are taken once the block list is final.
+    let abstract_pages = crate::abstractenv::page_ranges(texts, &blocks, &style);
     Doc {
         style,
         blocks,
@@ -1779,8 +2440,291 @@ pub fn adapt_cached(
         default_color: parsed.default_color,
         math_colors: math_colors(&parsed.blocks),
         page_starts,
+        abstract_pages,
         superseded,
+        top_material,
     }
+}
+
+/// The characters of `w` whose source lies in `lo..hi` of `document`, as a
+/// word of their own; `None` when none do. A word's `chars` are one per
+/// `char` of its `text`, in order, so the two are cut together.
+fn trim_word(w: &Word, document: flashtex_compiler::DocumentId, lo: usize, hi: usize) -> Option<Word> {
+    let mut segments: Vec<Segment> = Vec::new();
+    for s in &w.segments {
+        let mut text = String::new();
+        let mut chars: Vec<CharSrc> = Vec::new();
+        for (c, ch) in s.chars.iter().zip(s.text.chars()) {
+            if c.document == document && c.start >= lo && c.start < hi {
+                text.push(ch);
+                chars.push(c.clone());
+            }
+        }
+        if !text.is_empty() {
+            segments.push(Segment {
+                text,
+                chars,
+                style: s.style,
+            });
+        }
+    }
+    (!segments.is_empty()).then_some(Word { segments })
+}
+
+/// The source range an item covers in `document`, for the items that carry
+/// one. `None` is "no position of its own" (interword glue, `\hfill`, a
+/// `\label`), which belongs with whatever stands before it.
+fn item_range(it: &Item, document: flashtex_compiler::DocumentId) -> Option<(usize, usize)> {
+    let of = |s: Span| (s.document == document).then_some((s.start, s.end));
+    match it {
+        Item::Word(w) => of(w.span()),
+        Item::Math { span, .. } | Item::Logo { span, .. } | Item::Rule { span, .. } | Item::Footnote { span, .. } => of(*span),
+        _ => None,
+    }
+}
+
+/// The source range a block's material covers in `document`. `None` means
+/// the block carries no position there, which `split_top_material` reads as
+/// "cannot be placed relative to the box" and refuses.
+fn block_range(b: &Block, document: flashtex_compiler::DocumentId) -> Option<(usize, usize)> {
+    let of = |s: &Span| (s.document == document).then_some((s.start, s.end));
+    match b {
+        Block::Paragraph { parts, .. } => {
+            let mut range: Option<(usize, usize)> = None;
+            for part in parts {
+                let r = match part {
+                    ParaPart::Lines(items) => items.iter().filter_map(|i| item_range(i, document)).fold(None, |a: Option<(usize, usize)>, r| {
+                        Some(a.map_or(r, |a| (a.0.min(r.0), a.1.max(r.1))))
+                    }),
+                    ParaPart::Display { span, .. } | ParaPart::Rows { span, .. } => of(span),
+                };
+                if let Some(r) = r {
+                    range = Some(range.map_or(r, |a| (a.0.min(r.0), a.1.max(r.1))));
+                }
+            }
+            range
+        }
+        Block::Heading { span, .. }
+        | Block::Chapter { span, .. }
+        | Block::Part { span, .. }
+        | Block::Title { span, .. }
+        | Block::ClearPage { span, .. }
+        | Block::NoBreakFalse { span }
+        | Block::Chrome { span, .. }
+        | Block::Rule { span, .. } => of(span),
+        _ => None,
+    }
+}
+
+/// Whether a block contributes to the page's vertical list. The ones that
+/// do not (a page-style command, `\clearpage`) may stand on either side of
+/// `\twocolumn`'s box without saying anything about where the box is.
+fn is_material(b: &Block) -> bool {
+    !matches!(b, Block::Chrome { .. } | Block::ClearPage { .. } | Block::NoBreakFalse { .. })
+}
+
+/// Splits `\twocolumn`'s optional argument out of `blocks`. `open` and
+/// `close` are the byte offsets of its `[` and `]`, which are dropped.
+///
+/// `\@topnewpage` sets the argument in a box of its own, so the text after
+/// the `]` starts a fresh paragraph in vertical mode — hence the `indent`
+/// on the remainder of a paragraph the `]` fell inside.
+///
+/// Returns `None`, leaving `blocks` untouched, when the material cannot be
+/// cut exactly: anything the box's page would already have set before it,
+/// a block other than a paragraph straddling a bracket, or material from
+/// another document (`\input` inside the argument).
+fn split_top_material(blocks: &mut Vec<Block>, document: flashtex_compiler::DocumentId, open: usize, close: usize) -> Option<Vec<Block>> {
+    let mut top: Vec<Block> = Vec::new();
+    let mut keep: Vec<Block> = Vec::new();
+    // Blocks are in document order: once a material block starts past the
+    // `]`, every block after it does too, so they join `keep` without
+    // needing a source range of their own. Only blocks up to and including
+    // the one containing the `]` must place relative to the box — a later
+    // `tikzpicture`, `longtable`, `\tableofcontents` or `\input` block
+    // carries no entry-document range, and requiring one of it refused the
+    // whole split and lost the banner.
+    let mut past_close = false;
+    for block in blocks.iter() {
+        if !is_material(block) {
+            keep.push(block.clone());
+            continue;
+        }
+        if past_close {
+            keep.push(block.clone());
+            continue;
+        }
+        let (lo, hi) = block_range(block, document)?;
+        if hi <= open {
+            // Material before the `[`: the command is not this page's
+            // first material after all, and `\@topnewpage` never ran here.
+            return None;
+        }
+        if lo > close {
+            past_close = true;
+            keep.push(block.clone());
+            continue;
+        }
+        if lo > open && hi <= close {
+            top.push(block.clone());
+            continue;
+        }
+        // The block straddles a bracket. Only a paragraph can be cut.
+        let Block::Paragraph { parts, indent, .. } = block else {
+            return None;
+        };
+        if hi > close {
+            // This block already reaches past the `]`: everything after it
+            // in document order does too.
+            past_close = true;
+        }
+        let (inside, after) = split_parts(parts, document, open, close)?;
+        if !inside.is_empty() {
+            let mut b = block.clone();
+            if let Block::Paragraph { parts, indent, .. } = &mut b {
+                *parts = inside;
+                // `\@parboxrestore` zeroes `\parindent` in the box.
+                *indent = false;
+            }
+            top.push(b);
+        }
+        if !after.is_empty() {
+            let mut b = block.clone();
+            if let Block::Paragraph {
+                parts,
+                indent: ind,
+                env_open,
+                eject_before,
+                vspace_before,
+                addvspace_before,
+                addvspace_flex,
+                vspace_flex,
+                endlist_adjust,
+                ..
+            } = &mut b
+            {
+                *parts = after;
+                if !top.is_empty() {
+                    // A fresh paragraph in vertical mode after the box.
+                    *ind = true;
+                    *env_open = None;
+                    *eject_before = false;
+                    *vspace_before = 0.0;
+                    *addvspace_before = 0.0;
+                    *addvspace_flex = (0.0, 0.0);
+                    *vspace_flex = (0.0, 0.0);
+                    *endlist_adjust = 0.0;
+                } else {
+                    *ind = *indent;
+                }
+            }
+            keep.push(b);
+        }
+    }
+    // `Context::box_blocks` sets a box's body, and drops page-level
+    // material (a sectioning command, `longtable`) with a warning of its
+    // own. Rather than lose it, refuse the whole split and leave the
+    // argument where it was.
+    if top.iter().any(|b| !matches!(b, Block::Paragraph { .. } | Block::Rule { .. } | Block::Picture { .. })) {
+        return None;
+    }
+    // The box's vertical list starts in vertical mode, so an environment
+    // that opens the material is a `\begin` read in vertical mode and
+    // `\@topsepadd` keeps `\partopsep` -- at both ends, since the closing
+    // `\@endparenv` reads the same flag. The source scan cannot see this:
+    // what precedes the `\begin` there is `\twocolumn[`.
+    if let Some(Block::Paragraph { env_open: Some(e), .. }) = top.first_mut() {
+        e.vmode = true;
+    }
+    if top.is_empty() {
+        // `\twocolumn[]`: the box is empty and `\@colht` loses nothing
+        // (its height is `-\dbltextfloatsep`, which the `\vskip
+        // \dbltextfloatsep` below it gives straight back). Measured:
+        // identical to `\twocolumn` with no argument.
+        *blocks = keep;
+        return Some(Vec::new());
+    }
+    *blocks = keep;
+    Some(top)
+}
+
+/// [`split_top_material`] for one paragraph's parts: `(what is inside the
+/// brackets, what follows the `]`)`.
+fn split_parts(parts: &[ParaPart], document: flashtex_compiler::DocumentId, open: usize, close: usize) -> Option<(Vec<ParaPart>, Vec<ParaPart>)> {
+    let mut inside: Vec<ParaPart> = Vec::new();
+    let mut after: Vec<ParaPart> = Vec::new();
+    for part in parts {
+        match part {
+            ParaPart::Display { span, .. } | ParaPart::Rows { span, .. } => {
+                if span.document != document {
+                    return None;
+                }
+                if span.start > close {
+                    after.push(part.clone());
+                } else if span.start > open && span.end <= close {
+                    inside.push(part.clone());
+                } else {
+                    return None;
+                }
+            }
+            ParaPart::Lines(items) => {
+                let (a, b) = split_items(items, document, open, close)?;
+                if !a.is_empty() {
+                    inside.push(ParaPart::Lines(a));
+                }
+                if !b.is_empty() {
+                    after.push(ParaPart::Lines(b));
+                }
+            }
+        }
+    }
+    Some((inside, after))
+}
+
+/// [`split_parts`] for one run of items. Words are cut character by
+/// character, which is how the `[` and the `]` are dropped: the compiler
+/// glues them to the words they touch (`[Short` .. `Line]`).
+fn split_items(items: &[Item], document: flashtex_compiler::DocumentId, open: usize, close: usize) -> Option<(Vec<Item>, Vec<Item>)> {
+    let mut inside: Vec<Item> = Vec::new();
+    let mut after: Vec<Item> = Vec::new();
+    for it in items {
+        match it {
+            Item::Word(w) => {
+                let chars = || w.segments.iter().flat_map(|s| s.chars.iter());
+                if w.segments.iter().any(|s| s.chars.len() != s.text.chars().count()) || chars().any(|c| c.document != document) {
+                    return None;
+                }
+                if chars().any(|c| c.start < open) {
+                    return None;
+                }
+                if let Some(a) = trim_word(w, document, open + 1, close) {
+                    inside.push(Item::Word(a));
+                }
+                if let Some(b) = trim_word(w, document, close + 1, usize::MAX) {
+                    after.push(Item::Word(b));
+                }
+            }
+            other => match item_range(other, document) {
+                Some((lo, _)) if lo > close => after.push(other.clone()),
+                Some((_, hi)) if hi <= open => return None,
+                Some(_) => inside.push(other.clone()),
+                // No position of its own: interword glue, `\hfill`, a
+                // `\label`. It belongs with what stands before it.
+                None if after.is_empty() => inside.push(other.clone()),
+                None => after.push(other.clone()),
+            },
+        }
+    }
+    // A paragraph neither ends nor starts with interword glue: the `\par`
+    // that closes the box discards the one, `\@parboxrestore`'s new
+    // paragraph the other.
+    while matches!(inside.last(), Some(Item::Space { .. })) {
+        inside.pop();
+    }
+    while matches!(after.first(), Some(Item::Space { .. })) {
+        after.remove(0);
+    }
+    Some((inside, after))
 }
 
 /// `(document, start, end)` of every formula with a colour of its own
@@ -1795,6 +2739,7 @@ fn math_colors(blocks: &[flashtex_compiler::parser::Block]) -> std::collections:
                     out.insert((span.document.0, span.start, span.end), *c);
                 }
                 Inline::Footnote { text: Some(text), .. } => walk(text, out),
+                Inline::Marginpar { text, .. } => walk(text, out),
                 Inline::Tabular(t) => {
                     for list in t.inline_lists() {
                         walk(list, out);
@@ -1802,6 +2747,7 @@ fn math_colors(blocks: &[flashtex_compiler::parser::Block]) -> std::collections:
                 }
                 Inline::ColorBox(b) => walk(&b.content, out),
                 Inline::Underline(u) => walk(&u.content, out),
+                Inline::TextScript(t) => walk(&t.content, out),
                 _ => {}
             }
         }
@@ -1852,7 +2798,15 @@ fn clear_page_blocks(texts: &[&str], blocks: &[Block]) -> Vec<usize> {
                 _ => None,
             }?;
             let text = texts.get(at.document.0)?.get(..at.start)?;
-            let clear = text.rfind("\\clearpage").max(text.rfind("\\cleardoublepage"));
+            // `\twocolumn`/`\onecolumn` open with `\clearpage`, not
+            // `\newpage`: in a two-column document they end the *page*, not
+            // the column (measured — pdflatex puts the material after an
+            // `\onecolumn` in a `[twocolumn]` article on a new page).
+            let clear = text
+                .rfind("\\clearpage")
+                .max(text.rfind("\\cleardoublepage"))
+                .max(text.rfind("\\twocolumn"))
+                .max(text.rfind("\\onecolumn"));
             let column = text.rfind("\\newpage").max(text.rfind("\\pagebreak"));
             (clear.is_some() && clear > column).then_some(i)
         })
@@ -1862,7 +2816,7 @@ fn clear_page_blocks(texts: &[&str], blocks: &[Block]) -> Vec<usize> {
 fn inline_span(i: &Inline) -> Span {
     match i {
         Inline::Text { span, .. }
-        | Inline::LineBreak { span }
+        | Inline::LineBreak { span, .. }
         | Inline::Math { span, .. }
         | Inline::MathRows { span, .. }
         | Inline::Label { span, .. }
@@ -1871,6 +2825,7 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::HFill { span, .. }
         | Inline::HSpace { span, .. }
         | Inline::Footnote { span, .. }
+        | Inline::Marginpar { span, .. }
         | Inline::Verbatim { span, .. }
         | Inline::TextGlue { span, .. }
         | Inline::Logo { span, .. }
@@ -1879,8 +2834,21 @@ fn inline_span(i: &Inline) -> Span {
         Inline::Tabular(t) => t.span,
         Inline::ColorBox(b) => b.span,
         Inline::Underline(u) => u.span,
+        Inline::TextScript(t) => t.span,
         Inline::Graphic(g) => g.span,
         Inline::Transform(t) => t.span,
+        // Nodes only a re-pinned compiler emits; all of them carry the
+        // command's own span, so the generic answer is already right and
+        // the stacked PRs need not revisit this function.
+        #[cfg(feature = "compiler-node-surface")]
+        Inline::ThePage { span, .. }
+        | Inline::PageNumbering { span, .. }
+        | Inline::TabStop { span, .. }
+        | Inline::TabJump { span, .. }
+        | Inline::Marginpar { span, .. }
+        | Inline::Penalty { span, .. }
+        | Inline::PagePenalty { span, .. }
+        | Inline::Discretionary { span, .. } => *span,
     }
 }
 
@@ -1894,6 +2862,13 @@ fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, Strin
             // Set by `typeset::footnotes`; contexts it does not reach
             // (headings, captions, floats) are diagnosed there.
             for i in text.iter().flatten() {
+                unsupported_inlines(i, out);
+            }
+        }
+        Inline::Marginpar { text, .. } => {
+            // Set by `typeset::marginpar`; contexts it does not reach
+            // are diagnosed there.
+            for i in text {
                 unsupported_inlines(i, out);
             }
         }
@@ -2260,7 +3235,11 @@ enum UnitKind<'p> {
     },
 }
 
-const PAGE_BREAKS: [&str; 3] = ["newpage", "clearpage", "pagebreak"];
+/// `\twocolumn` and `\onecolumn` both open with `\clearpage` (latex.ltx
+/// 20256-20275), so both end the page: measured against pdflatex, a
+/// `\twocolumn` after a paragraph puts the following text on a new page,
+/// and so does an `\onecolumn` in a `[twocolumn]` document.
+const PAGE_BREAKS: [&str; 5] = ["newpage", "clearpage", "pagebreak", "twocolumn", "onecolumn"];
 
 /// The character the tie occupies in a compiler text run.
 ///
@@ -2279,7 +3258,12 @@ fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
     PAGE_BREAKS.iter().any(|c| find_command(gap, c).is_some())
 }
 
-fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], size: u32, style: &Stylesheet) -> Vec<Unit<'p>> {
+fn split_at_page_breaks<'p>(
+    texts: &[&str],
+    blocks: &'p [(CBlock, ParLeading)],
+    size: u32,
+    style: &Stylesheet,
+) -> Vec<Unit<'p>> {
     let theorem_envs = theorem_environments(texts);
     let mut units = Vec::new();
     let mut prev_end: Option<Span> = None;
@@ -2296,9 +3280,14 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
     // for the closing skip too).
     let mut prev_list = false;
     let mut list_vmode = false;
+    // The same, per nesting level (index = depth - 1), for the closing
+    // skips of several lists that end together.
+    let mut list_vmode_by_depth: Vec<bool> = Vec::new();
     // `tikzpicture` environments per document, and those already emitted.
     let pictures: Vec<Vec<flashtex_vector_graphics::tikz::PictureSource>> = texts.iter().map(|t| flashtex_vector_graphics::tikz::find_pictures(t)).collect();
     let mut emitted_pictures: std::collections::BTreeSet<(usize, usize)> = std::collections::BTreeSet::new();
+    // List and theorem nesting per document, read at each block's offset.
+    let indexes = SourceIndexes::new(texts, &theorem_envs);
     for (block, par_leading) in blocks {
         let par_leading = *par_leading;
         match block {
@@ -2306,7 +3295,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
                 pending_eject = true;
                 continue;
             }
-            CBlock::VSpace { pt } => {
+            CBlock::VSpace { pt, .. } => {
                 pending_vspace += pt;
                 continue;
             }
@@ -2379,6 +3368,11 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
         // The hanging indent and the label box are the pipeline's too
         // (`list_margins`): the compiler reports `leftmargin` as
         // unimplemented.
+        // The gap's own byte offset travels with it: `gap_has_trivlist_end`
+        // asks `\if@twocolumn` *at* the `\end{abstract}` it finds there.
+        let gap_base = |f: Span| -> usize {
+            prev_end.filter(|p| p.document == f.document && p.end <= f.start).map_or(0, |p| p.end)
+        };
         let gap_before = |f: Span| -> Option<&str> {
             match prev_end {
                 Some(p) if p.document == f.document && p.end <= f.start => texts.get(f.document.0).and_then(|t| t.get(p.end..f.start)),
@@ -2391,39 +3385,64 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
         let mut addvspace_flex = (0.0f64, 0.0f64);
         let mut vspace_flex = (0.0f64, 0.0f64);
         let mut endlist_adjust = 0.0;
+        // `\endtrivlist` of the lists closed in the gap: each is
+        // `\addvspace\@topsepadd` with its own level's `\topsep` (plus
+        // `\partopsep` when that list opened in vertical mode), and
+        // successive `\addvspace`s keep the larger natural skip — so does a
+        // following `\item`'s `\addvspace\itemsep`. (natural, stretch, shrink)
+        let mut list_end_skip: Option<(f64, f64, f64)> = None;
         if prev_list && !is_heading {
             if let Some(gap) = first.and_then(gap_before) {
                 if let Some(env) = gap_has_list_end(gap) {
-                    let src = texts.get(prev_end.map_or(0, |p| p.document.0)).copied().unwrap_or("");
-                    let stack = prev_end.map(|p| list_stack_at(src, p.end)).unwrap_or_default();
-                    let begin_keys = stack.last().map_or("", |(e, keys)| if *e == env && *e != "thebibliography" { keys } else { "" });
-                    let seps = list_seps_with(src, env, 1, size, style, begin_keys);
-                    addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
-                    addvspace_flex.0 += seps.topsep_skip.stretch + if list_vmode { seps.partopsep_skip.stretch } else { 0.0 };
-                    addvspace_flex.1 += seps.topsep_skip.shrink + if list_vmode { seps.partopsep_skip.shrink } else { 0.0 };
+                    let index = indexes.get(prev_end.map_or(0, |p| p.document.0));
+                    let stack = prev_end.map_or(&[][..], |p| index.list_stack(p.end));
+                    let topsepadd = |seps: &ListSeps, vmode: bool| {
+                        let p = if vmode { seps.partopsep_skip } else { crate::style::Skip::default() };
+                        (seps.topsep + p.natural, seps.topsep_skip.stretch + p.stretch, seps.topsep_skip.shrink + p.shrink)
+                    };
+                    for (k, closed) in list_env_ends(gap).enumerate() {
+                        let Some(depth) = stack.len().checked_sub(k).filter(|d| *d > 0) else { break };
+                        let (open, keys) = stack[depth - 1];
+                        if open != closed {
+                            break;
+                        }
+                        let keys = if open == "thebibliography" { "" } else { keys };
+                        let seps = list_seps_from(&index.setlist, open, depth, size, style, keys);
+                        let skip = topsepadd(&seps, list_vmode_by_depth.get(depth - 1).copied().unwrap_or(list_vmode));
+                        list_end_skip = Some(match list_end_skip {
+                            Some(kept) if kept.0 >= skip.0 => kept,
+                            _ => skip,
+                        });
+                    }
+                    if list_end_skip.is_none() {
+                        // No open list to match (a list closed in another
+                        // document): the outermost level's skip.
+                        let begin_keys = stack.last().map_or("", |(e, keys)| if *e == env && *e != "thebibliography" { keys } else { "" });
+                        list_end_skip = Some(topsepadd(&list_seps_from(&index.setlist, env, 1, size, style, begin_keys), list_vmode));
+                    }
                     if let Some(p) = prev_end {
-                        endlist_adjust = list_end_adjust(src, p.end, gap, size, style);
+                        endlist_adjust = list_end_adjust(index, p.end, gap, size, style);
                     }
                 }
             }
         }
         let mut list = None;
-        if let CBlock::ListItem { level, label, .. } = block {
+        if let CBlock::ListItem { level, label, item, .. } = block {
             let anchor = label.as_ref().map(|(_, span)| *span).or(first);
             if let Some(at) = anchor {
-                let src = texts.get(at.document.0).copied().unwrap_or("");
-                let stack = list_stack_at(src, at.start);
+                let index = indexes.get(at.document.0);
+                let stack = index.list_stack(at.start);
                 let (env, begin_keys) = stack.last().map_or(("enumerate", ""), |(env, keys)| (env, if *env == "thebibliography" { "" } else { keys }));
-                let seps = list_seps_with(src, env, stack.len().max(1), size, style, begin_keys);
+                let seps = list_seps_from(&index.setlist, env, stack.len().max(1), size, style, begin_keys);
                 // `\@outerparskip`: the `\parskip` in force when `\begin`
                 // was read — the enclosing list's `\parsep` when nested.
                 let outer_parskip_skip = match stack.len() {
-                    n if n > 1 => list_seps(src, stack[n - 2].0, n - 1, size, style).parsep_skip,
+                    n if n > 1 => list_seps_from(&index.setlist, stack[n - 2].0, n - 1, size, style, "").parsep_skip,
                     _ => style.parskip,
                 };
                 let outer_parskip = outer_parskip_skip.natural;
                 if label.is_some() {
-                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b))).or_else(|| {
+                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b, at.document.0, gap_base(at)))).or_else(|| {
                         // `\begin{thebibliography}{<widest>}` is the span of
                         // the compiler's own `References` heading, so the
                         // gap after that heading holds no `\begin`: look
@@ -2431,12 +3450,30 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
                         let p = prev_end.filter(|p| prev_vmode && p.document == at.document && p.start < at.start)?;
                         let g = texts.get(p.document.0)?.get(p.start..at.start)?;
                         let b = rfind_command(g, "begin")?;
-                        g[b..].strip_prefix("\\begin").is_some_and(|r| r.trim_start().starts_with("{thebibliography}")).then_some((g, b))
+                        g[b..].strip_prefix("\\begin").is_some_and(|r| r.trim_start().starts_with("{thebibliography}")).then_some((g, b, p.document.0, p.start))
                     });
                     match opens {
-                        Some((g, b)) if list_env_after_begin(&g[b..]) => {
+                        Some((g, b, gap_doc, gap_base)) if list_env_after_begin(&g[b..]) => {
                             let before = &g[..b];
-                            list_vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
+                            // `\endtrivlist`'s `\@endparenv` leaves TeX in
+                            // vertical mode, so a `\begin{<list>}` that
+                            // directly follows another `\trivlist`'s `\end`
+                            // is read in vertical mode too and takes
+                            // `\partopsep` — no blank line or `\par` needed.
+                            // That is every list, but also `center`,
+                            // `quote`, `quotation`, `verse` and a theorem
+                            // ([`gap_has_trivlist_end`]).
+                            list_vmode = prev_vmode
+                                || prev_end.is_none()
+                                || has_blank_line(before)
+                                || find_command(before, "par").is_some()
+                                || gap_has_trivlist_end(before, &theorem_envs, style, gap_doc, gap_base);
+                            if let Some(i) = stack.len().checked_sub(1) {
+                                if list_vmode_by_depth.len() <= i {
+                                    list_vmode_by_depth.resize(i + 1, false);
+                                }
+                                list_vmode_by_depth[i] = list_vmode;
+                            }
                             if prev_vmode {
                                 // `\@nbitem`: `\addvspace{\@outerparskip - \parskip}`.
                                 // A negative `\addvspace` is never absorbed:
@@ -2457,18 +3494,37 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
                                     addvspace_flex.1 += flex.1;
                                 }
                             } else {
-                                addvspace_before += seps.topsep + outer_parskip + if list_vmode { seps.partopsep } else { 0.0 };
-                                addvspace_flex.0 += seps.topsep_skip.stretch + outer_parskip_skip.stretch + if list_vmode { seps.partopsep_skip.stretch } else { 0.0 };
-                                addvspace_flex.1 += seps.topsep_skip.shrink + outer_parskip_skip.shrink + if list_vmode { seps.partopsep_skip.shrink } else { 0.0 };
+                                let p = if list_vmode { seps.partopsep_skip } else { crate::style::Skip::default() };
+                                let open = (
+                                    seps.topsep + outer_parskip + p.natural,
+                                    seps.topsep_skip.stretch + outer_parskip_skip.stretch + p.stretch,
+                                    seps.topsep_skip.shrink + outer_parskip_skip.shrink + p.shrink,
+                                );
+                                // Both are `\addvspace`: the `\@topsepadd` the
+                                // closing list left behind and this `\list`'s
+                                // own `\addvspace\@topsep` keep the larger
+                                // natural skip, they are not summed.
+                                let skip = match list_end_skip.take() {
+                                    Some(end) if end.0 >= open.0 => end,
+                                    _ => open,
+                                };
+                                addvspace_before += skip.0;
+                                addvspace_flex.0 += skip.1;
+                                addvspace_flex.1 += skip.2;
                                 vspace_before -= seps.parsep;
                                 vspace_flex.0 -= seps.parsep_skip.stretch;
                                 vspace_flex.1 -= seps.parsep_skip.shrink;
                             }
                         }
                         _ => {
-                            addvspace_before += seps.itemsep;
-                            addvspace_flex.0 += seps.itemsep_skip.stretch;
-                            addvspace_flex.1 += seps.itemsep_skip.shrink;
+                            let itemsep = (seps.itemsep, seps.itemsep_skip.stretch, seps.itemsep_skip.shrink);
+                            let skip = match list_end_skip.take() {
+                                Some(end) if end.0 >= itemsep.0 => end,
+                                _ => itemsep,
+                            };
+                            addvspace_before += skip.0;
+                            addvspace_flex.0 += skip.1;
+                            addvspace_flex.1 += skip.2;
                         }
                     }
                 }
@@ -2478,21 +3534,34 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
                 // entries keeps the class's label-width geometry, so this
                 // never draws a `[1]` on top of the hanging indent.
                 let natbib_bib = env == "thebibliography"
-                    && natbib_author_year(src)
+                    && index.natbib_author_year
                     && label.as_ref().is_none_or(|(text, _)| text.is_empty());
+                let (margins, labelsep_pt, itemindent_pt) = list_margins(index, texts.get(at.document.0).copied().unwrap_or(""), at.start, size, natbib_bib, style.family);
                 list = Some(ListGeom {
                     level: *level,
-                    margins: list_margins(src, at.start, size, natbib_bib),
+                    margins,
                     label: label.clone(),
                     description: env == "description",
+                    nextline: list_style_nextline(&index.setlist, env, begin_keys),
+                    label_symbol: matches!(item, Some(ItemLabel::Symbol { .. })),
+                    label_bold: matches!(item, Some(ItemLabel::Symbol { bold: true, .. })),
+                    llap: matches!(env, "itemize" | "enumerate"),
                     parsep: seps.parsep_skip,
                     // `\NAT@bibsetup`: `\itemindent-\leftmargin`, so the
                     // entry's first line is flush at the margin and the rest
                     // of the entry hangs `\bibhang` in.
                     itemindent_em: if natbib_bib { -1.0 } else { 0.0 },
+                    labelsep_pt,
+                    itemindent_pt,
                 });
             }
         }
+        if let Some(skip) = list_end_skip {
+            addvspace_before += skip.0;
+            addvspace_flex.0 += skip.1;
+            addvspace_flex.1 += skip.2;
+        }
+        let closed_list = prev_list;
         prev_list = list.is_some();
         let limitations = std::mem::take(&mut pending_limitations);
         let styled = match block {
@@ -2512,18 +3581,26 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
             };
             let begin = rfind_command(gap, "begin")?;
             let before = &gap[..begin];
-            let vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
-            Some(EnvOpen { vmode })
+            // A preceding `\end{<trivlist>}` is `\@endparenv`, whose `\par`
+            // leaves vertical mode just as a blank line would, so this
+            // `\begin` takes `\partopsep` too ([`gap_has_trivlist_end`]).
+            let vmode = prev_vmode
+                || prev_end.is_none()
+                || has_blank_line(before)
+                || find_command(before, "par").is_some()
+                || gap_has_trivlist_end(before, &theorem_envs, style, f.document.0, gap_base(f));
+            Some(EnvOpen { vmode, skips: None })
         });
         // `\@endpe`: a plain paragraph right after `\end{...}` (no blank line
-        // or `\par` between them) is not indented.
+        // or `\par` between them) is not indented. A list's `\endtrivlist`
+        // is `\@endparenv` too.
         let after_env = styled.is_none()
-            && prev_styled
+            && (prev_styled || closed_list)
             && first.zip(prev_end).is_some_and(|(f, p)| {
                 p.document == f.document
                     && p.end <= f.start
                     && texts.get(f.document.0).and_then(|t| t.get(p.end..f.start)).is_some_and(|gap| {
-                        rfind_command(gap, "end").is_some_and(|end| {
+                        (prev_styled || gap_has_list_end(gap).is_some()) && rfind_command(gap, "end").is_some_and(|end| {
                             let after = gap[end..].split_once('}').map_or("", |(_, rest)| rest);
                             !has_blank_line(after) && find_command(after, "par").is_none()
                         })
@@ -2532,21 +3609,33 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
         // The `\item` of an amsthm theorem-like environment: the gap before
         // this block holds its `\begin{...}` (only the environment's first
         // paragraph, so later ones keep the ambient `\parindent`).
-        let theorem_item = list.is_none()
-            && styled.is_none()
-            && first.is_some_and(|f| {
+        // `Some(is_proof)` when this block is the `\item` that opens a
+        // theorem-like environment; `proof` is told apart because its closing
+        // `\@topsepadd` is not `\topsep` (see [`theorem_skips`]).
+        let theorem_open: Option<bool> = (list.is_none() && styled.is_none())
+            .then(|| {
+                let f = first?;
                 let gap_start = match prev_end {
                     Some(p) if p.document == f.document && p.end <= f.start => Some(p.end),
                     Some(_) => None,
                     None => Some(0),
                 };
-                match (texts.get(f.document.0), gap_start) {
-                    (Some(t), Some(g)) => opens_theorem_item(t, g, f.start, &theorem_envs),
-                    _ => false,
-                }
-            });
+                let t = texts.get(f.document.0)?;
+                opens_theorem_item(t, gap_start?, f.start, &theorem_envs).map(|name| name == "proof")
+            })
+            .flatten();
+        let theorem_item = theorem_open.is_some();
+        // amsthm's `\@item` opens the `\trivlist` with `\addvspace\@topsep`
+        // exactly as `center`/`quote` do, so the theorem reuses the
+        // environment machinery rather than a second one beside it.
+        let env_open = env_open.or_else(|| {
+            theorem_open.map(|proof| EnvOpen {
+                vmode: false,
+                skips: Some(theorem_skips(style, proof)),
+            })
+        });
         let in_theorem = theorem_item
-            || first.is_some_and(|f| texts.get(f.document.0).is_some_and(|t| in_theorem_environment(t, f.start, &theorem_envs)));
+            || first.is_some_and(|f| texts.get(f.document.0).is_some_and(|t| indexes.get(f.document.0).in_theorem(t.is_char_boundary(f.start), f.start)));
         // `\paragraph{...}`/`\subparagraph{...}`: the compiler set the title
         // as body text at the front of this very paragraph, so the head is
         // recognised from the bytes immediately before its first word.
@@ -2678,7 +3767,16 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [(CBlock, ParLeading)], 
                 }
             }
             CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => unreachable!("handled above"),
-            CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::TitleBlock { .. } | CBlock::VFill => unreachable!("lowered by lower_blocks"),
+            CBlock::Verbatim { .. } | CBlock::TableOfContents { .. } | CBlock::TitleBlock { .. } | CBlock::VFill | CBlock::LetterBlock { .. } => unreachable!("lowered by lower_blocks"),
+            // Blocks only a re-pinned compiler emits. Skipping a `Penalty`
+            // is exactly what the old pin did (it had no such node), so page
+            // breaking is unchanged until PR #569's pipeline half reads it;
+            // `Tabbing` is lowered to flush-left paragraphs by `lower_blocks`
+            // above, as `LetterBlock` is, so it never reaches this walk.
+            #[cfg(feature = "compiler-node-surface")]
+            CBlock::Penalty { .. } => continue,
+            #[cfg(feature = "compiler-node-surface")]
+            CBlock::Tabbing { .. } => unreachable!("lowered by lower_blocks"),
         }
         if let Some(last) = inlines_of(block).iter().map(inline_span).last() {
             prev_end = Some(last);
@@ -2709,14 +3807,60 @@ fn math_row_of(inlines: &[Inline], span: Span) -> Option<(Span, &flashtex_compil
 /// label text and the `2\quad` glue it inserts, both spanning the command);
 /// the label as set goes to `tag`: `\tagform@`'s parentheses for `\tag`,
 /// none for `\tag*`.
-fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>) -> MathList {
+///
+/// A label the compiler could not flatten to one upright string --
+/// `\tag{hi $x^2$}`, `\tag{\textbf{A}}` (#441) -- arrives as
+/// `Nucleus::TextRun`, a run of text and nested math pieces. It still becomes
+/// a tag here, set as the run's text with a `math_limitation` at the `\tag`
+/// saying the nested math is not set as math; PR #585 replaces that with
+/// amsmath's `\maketag@@@` hbox. **It must never be left as `None`:** the
+/// caller's `None` arm is the *automatic* equation number, so a dropped rich
+/// tag does not look dropped -- `\tag{hi $x^2$}` silently becomes a
+/// plausible `(1)`, and a reader cross-referencing the source cannot tell.
+fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>, notes: &mut Vec<(&'static str, Span, String)>) -> MathList {
     use flashtex_compiler::math::Nucleus;
     let is_tag = |span: Span| texts.get(span.document.0).and_then(|t| t.get(span.start..)).is_some_and(|r| r.starts_with("\\tag"));
     let mut atoms = Vec::with_capacity(list.atoms.len());
     for a in &list.atoms {
         if is_tag(a.span) {
-            if let Nucleus::Text(s) | Nucleus::Symbol(s) = &a.nucleus {
-                *tag = Some(s.clone());
+            match &a.nucleus {
+                Nucleus::Text(s) | Nucleus::Symbol(s) => *tag = Some(s.clone()),
+                // The compiler's interim `2\quad` gap (`INTERIM_TAG_GAP_EM`),
+                // which spans the command too. It is not a label; the
+                // pipeline places the tag itself.
+                Nucleus::Space { .. } => {}
+                // A rich label. `text_run_reference_text_with_source` is the
+                // flattening the compiler itself uses for `\eqref` to this
+                // tag, so the set label and the reference to it read
+                // alike; composite atoms with no single glyph (e.g.
+                // `\frac`) fall back to their source text there, and must
+                // do the same here.
+                #[cfg(feature = "compiler-node-surface")]
+                Nucleus::TextRun(pieces) => {
+                    let source = texts.get(a.span.document.0).copied().unwrap_or("");
+                    let text = flashtex_compiler::math::text_run_reference_text_with_source(pieces, source);
+                    notes.push((
+                        "math_limitation",
+                        a.span,
+                        format!(
+                            "\\tag label set as the upright text {text:?}: math and font switches inside a tag are not set as math yet (#441). \
+                             The automatic equation number does not replace it."
+                        ),
+                    ));
+                    *tag = Some(text);
+                }
+                // Anything else: the label cannot be set, so the display is
+                // left unnumbered and the reason is reported. Taking the
+                // automatic number here would print a plausible `(1)` for a
+                // source that says `\tag{..}`, which no reader could catch.
+                _ => {
+                    notes.push((
+                        "math_limitation",
+                        a.span,
+                        "\\tag label could not be set; the display is left unnumbered rather than taking the automatic equation number (#441)".to_string(),
+                    ));
+                    *tag = Some(String::new());
+                }
             }
             continue;
         }
@@ -3319,7 +4463,12 @@ fn skip_macro_definition(source: &str, name: &str, mut i: usize) -> usize {
     i
 }
 
-fn setlength_args(source: &str, mut i: usize) -> Option<(String, String)> {
+fn setlength_args(source: &str, i: usize) -> Option<(String, String)> {
+    setlength_args_end(source, i).map(|(target, value, _)| (target, value))
+}
+
+/// [`setlength_args`] and the byte after the value's closing brace.
+fn setlength_args_end(source: &str, mut i: usize) -> Option<(String, String, usize)> {
     i = skip_ws(source, i);
     let b = source.as_bytes();
     let target = if b.get(i) == Some(&b'{') {
@@ -3338,7 +4487,7 @@ fn setlength_args(source: &str, mut i: usize) -> Option<(String, String)> {
         return None;
     };
     let value = read_group(source, &mut i)?;
-    Some((target, value))
+    Some((target, value, i))
 }
 
 fn usepackage_arg(source: &str, mut i: usize) -> Option<(String, String)> {
@@ -3362,7 +4511,12 @@ fn usepackage_arg(source: &str, mut i: usize) -> Option<(String, String)> {
     Some((opts, arg))
 }
 
-fn read_assignment_dimen(source: &str, mut i: usize) -> Option<String> {
+fn read_assignment_dimen(source: &str, i: usize) -> Option<String> {
+    read_assignment_dimen_end(source, i).map(|(raw, _)| raw)
+}
+
+/// [`read_assignment_dimen`] and the byte after the dimension.
+fn read_assignment_dimen_end(source: &str, mut i: usize) -> Option<(String, usize)> {
     i = skip_ws(source, i);
     let b = source.as_bytes();
     let start = i;
@@ -3379,7 +4533,7 @@ fn read_assignment_dimen(source: &str, mut i: usize) -> Option<String> {
             break;
         }
     }
-    Some(source[start..i].to_string())
+    Some((source[start..i].to_string(), i))
 }
 
 fn read_one_dimen(source: &str, mut i: usize) -> Option<usize> {
@@ -3644,7 +4798,24 @@ fn lone_longtable(parts: &mut Vec<ParaPart>) -> Option<Box<crate::table::TableIt
 }
 
 fn setlength(source: &str, name: &str, size: u32) -> Option<f64> {
-    setlength_in(source, name, size, None)
+    // Within an adapt call each answer is read once per document: every
+    // `tabular` asks for four lengths, and a scan of the whole source per
+    // table made a warm 450-section request spend 0.8 s here (#613).
+    let key = (source.as_ptr() as usize, source.len());
+    let memo = |scope: &mut Vec<MacroDefsEntry>| scope.iter_mut().find(|e| (e.ptr, e.len) == key).map(|e| e.setlengths.get(&(name.to_string(), size)).copied());
+    match MACRO_DEFS.with(|scope| memo(&mut scope.borrow_mut())) {
+        Some(Some(found)) => found,
+        Some(None) => {
+            let found = setlength_in(source, name, size, None);
+            MACRO_DEFS.with(|scope| {
+                if let Some(entry) = scope.borrow_mut().iter_mut().find(|e| (e.ptr, e.len) == key) {
+                    entry.setlengths.insert((name.to_string(), size), found);
+                }
+            });
+            found
+        }
+        None => setlength_in(source, name, size, None),
+    }
 }
 
 /// [`setlength`] with the document's own `em`/`ex` ([`ec_em_ex`]).
@@ -3665,6 +4836,488 @@ fn setlength_in(source: &str, name: &str, size: u32, em_ex: Option<(f64, f64)>) 
         from = abs + 1;
     }
     found
+}
+
+/// The length register `\<name>` as seen at byte `at`, when the source
+/// assigns it before then: `\setlength{\<name>}{v}`, `\setlength\<name>{v}`,
+/// `\addtolength` (added to `base`, the value before any assignment, or to
+/// the assignment before it) and TeX's `\<name>=v` / `\<name> v`. Every
+/// assignment is local, so one made inside `{...}`,
+/// `\begingroup...\endgroup` or an environment that has ended by `at` is
+/// undone -- a `\tabcolsep` set for one table does not reach the next.
+/// The definitions of macros are skipped, and an invocation of one makes
+/// the assignments its replacement text makes outside its own groups
+/// ([`macro_length_assignments`]), at the invocation.
+fn length_at(source: &str, name: &str, size: u32, at: usize, base: f64) -> Option<f64> {
+    length_at_checked(source, name, size, at, base).0
+}
+
+/// A `table_limitation` for each table length a macro invoked before the
+/// table at `span` assigns in a way [`length_at_checked`] cannot read: the
+/// table is set with the value before that assignment instead.
+fn table_length_limitations(texts: &[&str], span: Span, size: u32, out: &mut Vec<(&'static str, Span, String)>) {
+    let Some(src) = texts.get(span.document.0) else { return };
+    let mut unread = Vec::new();
+    crate::table::TableLengths::read(|name, base| {
+        let (value, unresolved) = length_at_checked(src, name, size, span.start, base);
+        if unresolved {
+            unread.push(name.to_string());
+        }
+        value
+    });
+    for name in unread {
+        {
+            out.push((
+                "table_limitation",
+                span,
+                format!("a macro assigns \\{name} before this table with an argument FlashTeX cannot read; the table uses \\{name} without that assignment"),
+            ));
+        }
+    }
+}
+
+/// [`length_at`], and whether a macro invoked before `at` assigns `\<name>`
+/// in a way that could not be read (an argument that is not a braced
+/// group, an optional argument, or a value that does not parse): the value
+/// then ignores that assignment, and the caller reports it.
+fn length_at_checked(source: &str, name: &str, size: u32, at: usize, base: f64) -> (Option<f64>, bool) {
+    let at = at.min(source.len());
+    // Within an adapt call each length is indexed once per document and
+    // every table looks its value up (#623): a scan of the source before
+    // each table made a document of 800 tables spend 1.6 s here.
+    if !source.is_char_boundary(at) || splits_a_control_word(source, at) {
+        return length_at_scan(source, name, size, at, base);
+    }
+    let key = (source.as_ptr() as usize, source.len());
+    let index_key = (name.to_string(), size, base.to_bits());
+    let lookup = |index_key: &(String, u32, u64)| {
+        MACRO_DEFS.with(|scope| {
+            let scope = scope.borrow();
+            let entry = scope.iter().find(|e| (e.ptr, e.len) == key)?;
+            Some(entry.lengths.by_name.get(index_key).map(|index| index.as_ref().map(|index| index.at(at))))
+        })
+    };
+    let found = match lookup(&index_key) {
+        // Not in an adapt call: nothing is indexed.
+        None => return length_at_scan(source, name, size, at, base),
+        Some(Some(found)) => found,
+        Some(None) => {
+            // `macro_length_assignments` reads the definition index, so the
+            // assignments are collected before the scope is borrowed.
+            let assignments = length_assignments(source, name, source.len());
+            MACRO_DEFS.with(|scope| {
+                let mut scope = scope.borrow_mut();
+                let entry = scope.iter_mut().find(|e| (e.ptr, e.len) == key)?;
+                let lengths = &mut entry.lengths;
+                let groups = lengths.groups.get_or_insert_with(|| GroupTokens::new(source));
+                let index = LengthIndex::new(assignments, groups, size, base);
+                let found = index.as_ref().map(|index| index.at(at));
+                lengths.by_name.insert(index_key, index);
+                Some(found)
+            })
+            .flatten()
+        }
+    };
+    found.unwrap_or_else(|| length_at_scan(source, name, size, at, base))
+}
+
+/// [`length_at_checked`] by scanning the source before `at`: the reference
+/// [`LengthIndex`] reproduces, and what is used outside an adapt call.
+fn length_at_scan(source: &str, name: &str, size: u32, at: usize, base: f64) -> (Option<f64>, bool) {
+    let mut value = None;
+    let mut unresolved = false;
+    for (assignments, end) in length_assignments(source, name, at) {
+        if end > at || !group_open_between(source, end, at) {
+            continue;
+        }
+        apply_length_assignments(assignments, size, base, &mut value, &mut unresolved);
+    }
+    (value, unresolved)
+}
+
+/// The assignments to `\<name>` made by the control words of
+/// `source[..until]`, in source order, each with the byte after its
+/// arguments: a `\setlength`/`\addtolength` of it, TeX's `\<name>=v`, or an
+/// invocation of a macro that assigns it ([`macro_length_assignments`]).
+/// The definitions of macros are skipped.
+#[allow(clippy::type_complexity)]
+fn length_assignments(source: &str, name: &str, until: usize) -> Vec<(Vec<Option<(String, bool)>>, usize)> {
+    let mut out = Vec::new();
+    let mut scan = CmdScan::new(&source[..until]);
+    while let Some((cmd_at, cmd, _)) = scan.next() {
+        let after_name = cmd_at + 1 + cmd.len();
+        if matches!(cmd, "newcommand" | "renewcommand" | "providecommand" | "def" | "gdef" | "edef" | "xdef") {
+            scan.skip_to(skip_macro_definition(source, cmd, after_name));
+            continue;
+        }
+        if cmd == "setlength" || cmd == "addtolength" {
+            let Some((target, raw, end)) = setlength_args_end(source, after_name) else { continue };
+            if target == name {
+                out.push((vec![Some((raw, cmd == "addtolength"))], end));
+            }
+        } else if cmd == name {
+            if let Some((raw, end)) = read_assignment_dimen_end(source, after_name) {
+                out.push((vec![Some((raw, false))], end));
+            }
+        } else if let Some(found) = macro_length_assignments(source, cmd, cmd_at, after_name, name, 0) {
+            out.push(found);
+        }
+    }
+    out
+}
+
+/// Applies one command's assignments ([`length_assignments`]) to the value
+/// before it; one that does not parse leaves the value and is reported.
+fn apply_length_assignments(assignments: Vec<Option<(String, bool)>>, size: u32, base: f64, value: &mut Option<f64>, unresolved: &mut bool) {
+    for assignment in assignments {
+        match assignment.and_then(|(raw, add)| Some((parse_dimen_in(raw.trim().trim_start_matches('='), size, None)?, add))) {
+            Some((v, add)) => *value = Some(if add { value.unwrap_or(base) + v } else { v }),
+            None => *unresolved = true,
+        }
+    }
+}
+
+/// Whether byte `at` falls inside a control word or right after a `\`,
+/// where [`length_at_scan`] lexes the command cut short at `at` and the
+/// index, which lexes whole commands, could differ. A table's offset is the
+/// `\` of its `\begin`, never one of these.
+fn splits_a_control_word(source: &str, at: usize) -> bool {
+    let b = source.as_bytes();
+    if at == 0 || at >= b.len() {
+        return false;
+    }
+    if b[at - 1] == b'\\' {
+        return true;
+    }
+    b[at].is_ascii_alphabetic() && b[..at].iter().rposition(|c| !c.is_ascii_alphabetic()).is_some_and(|s| b[s] == b'\\')
+}
+
+/// The tokens [`group_open_between`] counts, lexed once from byte 0: where
+/// each `{`, `}`, `\begin`, `\begingroup`, `\end` and `\endgroup` is and the
+/// depth around it. Lexing from any byte the lexer from 0 also reaches
+/// yields the same tokens after it, so `group_open_between(from, to)` is
+/// whether no token from `from` on and before `to` takes the depth below
+/// the depth at `from`.
+struct GroupTokens {
+    /// The byte of each token, in order.
+    at: Vec<usize>,
+    /// `closes[k]`: the byte of the first token from the `k`-th on that
+    /// leaves the depth below the depth before the `k`-th (`usize::MAX` for
+    /// none); `k` runs to `at.len()` inclusive.
+    closes: Vec<usize>,
+    /// Bytes the lexer from 0 steps over inside a token and a lexer started
+    /// there would read differently, as sorted ranges: comment bodies and
+    /// the byte an escaping `\` takes.
+    unsynced: Vec<(usize, usize)>,
+}
+
+impl GroupTokens {
+    fn new(source: &str) -> GroupTokens {
+        // `group_open_between(source, 0, source.len())`'s lexing.
+        let b = source.as_bytes();
+        let (mut at, mut deltas, mut unsynced) = (Vec::new(), Vec::new(), Vec::new());
+        let mut i = 0;
+        while i < b.len() {
+            match b[i] {
+                b'%' => {
+                    let start = i;
+                    while i < b.len() && b[i] != b'\n' {
+                        i += 1;
+                    }
+                    if i > start + 1 {
+                        unsynced.push((start + 1, i));
+                    }
+                }
+                b'{' => {
+                    at.push(i);
+                    deltas.push(1);
+                }
+                b'}' => {
+                    at.push(i);
+                    deltas.push(-1);
+                }
+                b'\\' => {
+                    let name_end = source[i + 1..].find(|c: char| !c.is_ascii_alphabetic()).map_or(b.len(), |n| i + 1 + n);
+                    match &source[i + 1..name_end] {
+                        "begin" | "begingroup" => {
+                            at.push(i);
+                            deltas.push(1);
+                        }
+                        "end" | "endgroup" => {
+                            at.push(i);
+                            deltas.push(-1);
+                        }
+                        "" => {
+                            unsynced.push((i + 1, i + 2));
+                            i += 1;
+                        }
+                        _ => {}
+                    }
+                    i = name_end.max(i + 1);
+                    continue;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        // `depth[k]`: the depth before the `k`-th token. The first later
+        // depth below it, by a stack of indexes of non-decreasing depth.
+        let mut depth = Vec::with_capacity(deltas.len() + 1);
+        depth.push(0i64);
+        for d in &deltas {
+            depth.push(depth[depth.len() - 1] + d);
+        }
+        let mut closes = vec![usize::MAX; depth.len()];
+        let mut stack: Vec<usize> = Vec::new();
+        for (k, &d) in depth.iter().enumerate() {
+            while stack.last().is_some_and(|&top| depth[top] > d) {
+                // `depth[k]` is the depth after token `k - 1`.
+                closes[stack.pop().unwrap_or_default()] = at[k - 1];
+            }
+            stack.push(k);
+        }
+        GroupTokens { at, closes, unsynced }
+    }
+
+    /// Whether a lexer started at `byte` reads what the lexer from 0 reads.
+    fn synced(&self, byte: usize) -> bool {
+        let k = self.unsynced.partition_point(|r| r.0 <= byte);
+        k == 0 || byte >= self.unsynced[k - 1].1
+    }
+
+    /// The byte of the first token from `from` on that closes the group
+    /// open at `from` (`usize::MAX` for none): `group_open_between(from, to)`
+    /// is `to <= group_close(from)` for a synced `from`.
+    fn group_close(&self, from: usize) -> usize {
+        self.closes[self.at.partition_point(|&p| p < from)]
+    }
+}
+
+/// The value [`length_at_scan`] gives one length at every byte, from its
+/// assignments read once ([`length_assignments`] of the whole source).
+///
+/// The assignments still in force at a byte are a chain: an assignment is
+/// in force where no group closes between its end and the byte, so when one
+/// is, every earlier one in force at the byte is also in force at its end.
+/// Each assignment keeps the latest earlier one in force at its end
+/// (`parent`) and the value and `unresolved` flag of the chain up to it; a
+/// lookup takes the last assignment ending by the byte and walks the chain
+/// back past those whose group has closed.
+struct LengthIndex {
+    /// The byte after each assignment's arguments, never decreasing.
+    ends: Vec<usize>,
+    /// Where each assignment's group closes ([`GroupTokens::group_close`]).
+    closes: Vec<usize>,
+    parent: Vec<Option<usize>>,
+    value: Vec<Option<f64>>,
+    unresolved: Vec<bool>,
+}
+
+impl LengthIndex {
+    /// `None` when the assignments cannot be read as a chain: one ends before
+    /// an earlier one (an assigning macro in another's argument) or ends where
+    /// lexing from its end differs from lexing from 0. The table then scans.
+    #[allow(clippy::type_complexity)]
+    fn new(assignments: Vec<(Vec<Option<(String, bool)>>, usize)>, groups: &GroupTokens, size: u32, base: f64) -> Option<LengthIndex> {
+        let n = assignments.len();
+        let mut index = LengthIndex {
+            ends: Vec::with_capacity(n),
+            closes: Vec::with_capacity(n),
+            parent: Vec::with_capacity(n),
+            value: Vec::with_capacity(n),
+            unresolved: Vec::with_capacity(n),
+        };
+        for (assigned, end) in assignments {
+            if index.ends.last().is_some_and(|&last| end < last) || !groups.synced(end) {
+                return None;
+            }
+            let parent = index.in_force(index.ends.len().checked_sub(1), end);
+            let (mut value, mut unresolved) = parent.map_or((None, false), |p| (index.value[p], index.unresolved[p]));
+            apply_length_assignments(assigned, size, base, &mut value, &mut unresolved);
+            index.ends.push(end);
+            index.closes.push(groups.group_close(end));
+            index.parent.push(parent);
+            index.value.push(value);
+            index.unresolved.push(unresolved);
+        }
+        Some(index)
+    }
+
+    /// The last assignment from `from` back along the chain still in force
+    /// at byte `at`.
+    fn in_force(&self, mut from: Option<usize>, at: usize) -> Option<usize> {
+        while let Some(k) = from {
+            if self.closes[k] >= at {
+                break;
+            }
+            from = self.parent[k];
+        }
+        from
+    }
+
+    /// [`length_at_scan`] at byte `at`.
+    fn at(&self, at: usize) -> (Option<f64>, bool) {
+        let last = self.ends.partition_point(|&end| end <= at).checked_sub(1);
+        self.in_force(last, at).map_or((None, false), |k| (self.value[k], self.unresolved[k]))
+    }
+}
+
+/// [`length_at_checked`]'s indexes of one document within an adapt call.
+#[derive(Default)]
+struct LengthIndexes {
+    groups: Option<GroupTokens>,
+    /// By length name, class size and the bits of the value before any
+    /// assignment; `None` for a document the index cannot read.
+    by_name: HashMap<(String, u32, u64), Option<LengthIndex>>,
+}
+
+/// The assignments to `\<name>` the user macro `\<cmd>` makes when invoked
+/// at `cmd_at` (its name ends at `after_name`): each `\setlength`/
+/// `\addtolength`/`\<name>=` at the top level of its replacement text, and
+/// those of the macros it invokes there, in order, as `(value, add)` with
+/// `#k` replaced by the invocation's braced arguments; `None` for one that
+/// cannot be read that way. Also the byte where the invocation's arguments
+/// end. `None` when `\<cmd>` is not a macro or assigns nothing to `\<name>`.
+/// Assignments inside the replacement text's own groups are undone by
+/// them, as in TeX.
+fn macro_length_assignments(source: &str, cmd: &str, cmd_at: usize, after_name: usize, name: &str, depth: u8) -> Option<(Vec<Option<(String, bool)>>, usize)> {
+    if depth > 4 {
+        return None;
+    }
+    let body = macro_body(source, cmd, cmd_at)?;
+    if !body.contains('\\') {
+        return None;
+    }
+    let body_start = body.as_ptr() as usize - source.as_ptr() as usize;
+    // `#k` of the body; `[n][default]` makes `#1` optional.
+    let params = body.as_bytes().windows(2).filter(|w| w[0] == b'#' && w[1].is_ascii_digit()).map(|w| usize::from(w[1] - b'0')).max().unwrap_or(0);
+    let optional = {
+        let head = source[..body_start].trim_end();
+        head.strip_suffix('{').map(str::trim_end).is_some_and(|h| h.ends_with(']') && h[..h.len() - 1].rfind('[').is_some_and(|o| h[..o].trim_end().ends_with(']')))
+    };
+    let mut end = after_name;
+    let mut args: Vec<String> = Vec::new();
+    let mut args_ok = !optional;
+    if args_ok {
+        for _ in 0..params {
+            match read_group(source, &mut end) {
+                Some(arg) => args.push(arg),
+                None => {
+                    args_ok = false;
+                    break;
+                }
+            }
+        }
+    }
+    let substitute = |raw: &str| -> Option<String> {
+        if !raw.contains('#') {
+            return Some(raw.to_string());
+        }
+        if !args_ok {
+            return None;
+        }
+        let mut out = String::new();
+        let mut chars = raw.chars().peekable();
+        while let Some(c) = chars.next() {
+            match (c, chars.peek().and_then(|d| d.to_digit(10))) {
+                ('#', Some(k)) => {
+                    chars.next();
+                    out.push_str(args.get(k as usize - 1)?);
+                }
+                _ => out.push(c),
+            }
+        }
+        Some(out)
+    };
+    let mut found = Vec::new();
+    let mut scan = CmdScan::new(body);
+    while let Some((off, inner, level)) = scan.next() {
+        let after = off + 1 + inner.len();
+        if matches!(inner, "newcommand" | "renewcommand" | "providecommand" | "def" | "gdef" | "edef" | "xdef") {
+            scan.skip_to(skip_macro_definition(body, inner, after));
+            continue;
+        }
+        if level != 0 {
+            continue;
+        }
+        if inner == "setlength" || inner == "addtolength" {
+            let Some((target, raw, _)) = setlength_args_end(body, after) else { continue };
+            // `\setlength{#1}{..}`: the target is an argument.
+            let target = if target.starts_with('#') { substitute(&target).map(|t| t.trim().trim_start_matches('\\').to_string()) } else { Some(target) };
+            match target {
+                Some(t) if t == name => found.push(substitute(&raw).map(|r| (r, inner == "addtolength"))),
+                Some(_) => {}
+                None => found.push(None),
+            }
+        } else if inner == name {
+            if let Some((raw, _)) = read_assignment_dimen_end(body, after) {
+                found.push(substitute(&raw).map(|r| (r, false)));
+            } else if body[after..].trim_start().starts_with(['=', '#']) {
+                found.push(None);
+            }
+        } else if inner != cmd {
+            let nested_at = body_start + off;
+            if let Some((nested, _)) = macro_length_assignments(source, inner, nested_at, body_start + after, name, depth + 1) {
+                found.extend(nested);
+            }
+        }
+    }
+    (!found.is_empty()).then_some((found, end))
+}
+
+/// Whether the group open at byte `from` is still open at `to`: no `}`,
+/// `\endgroup` or `\end` in between closes more than was opened after
+/// `from`. Comments and escaped braces are skipped.
+fn group_open_between(source: &str, from: usize, to: usize) -> bool {
+    let b = source.as_bytes();
+    let mut depth = 0i64;
+    let mut i = from;
+    while i < to {
+        match b[i] {
+            b'%' => {
+                while i < to && b[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            b'\\' => {
+                let name_end = source[i + 1..to].find(|c: char| !c.is_ascii_alphabetic()).map_or(to, |n| i + 1 + n);
+                match &source[i + 1..name_end] {
+                    "begin" | "begingroup" => depth += 1,
+                    "end" | "endgroup" => depth -= 1,
+                    // `\{`, `\}`, `\%`, `\\`: one escaped character.
+                    "" => i += 1,
+                    _ => {}
+                }
+                i = name_end.max(i + 1);
+                if depth < 0 {
+                    return false;
+                }
+                continue;
+            }
+            _ => {}
+        }
+        if depth < 0 {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// `<n>` when the bytes of `span` are exactly `\hspace{<n>em}` or
+/// `\hspace*{<n>em}` (a rigid length in ems, no `plus`/`minus`).
+fn hspace_ems(source: &str, span: Span) -> Option<f64> {
+    let text = source.get(span.start..span.end)?;
+    let rest = text.strip_prefix("\\hspace")?.trim_start();
+    let rest = rest.strip_prefix('*').unwrap_or(rest).trim_start();
+    let arg = rest.strip_prefix('{')?.strip_suffix('}')?.trim();
+    let number = arg.strip_suffix("em")?.trim();
+    if number.is_empty() || !number.bytes().all(|c| c.is_ascii_digit() || matches!(c, b'.' | b'-' | b'+')) {
+        return None;
+    }
+    number.parse().ok()
 }
 
 /// The class size (`10`/`11`/`12`) whose `\normalsize` is `body_pt`.
@@ -3766,6 +5419,11 @@ fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Styleshee
 /// zeroes `topsep`/`partopsep`/`itemsep`/`parsep`, `noitemsep` zeroes
 /// `itemsep`/`parsep`).
 fn list_seps_with(source: &str, env: &str, depth: usize, size: u32, style: &Stylesheet, begin_keys: &str) -> ListSeps {
+    list_seps_from(&setlist_calls(source), env, depth, size, style, begin_keys)
+}
+
+/// [`list_seps_with`] given the source's [`setlist_calls`].
+fn list_seps_from(calls: &[(&str, &str)], env: &str, depth: usize, size: u32, style: &Stylesheet, begin_keys: &str) -> ListSeps {
     let base = match size {
         12 => flashtex_document_style::BaseSize::Pt12,
         11 => flashtex_document_style::BaseSize::Pt11,
@@ -3795,7 +5453,6 @@ fn list_seps_with(source: &str, env: &str, depth: usize, size: u32, style: &Styl
         seps.itemsep_skip = style.parsep;
         seps.itemsep = style.parsep.natural;
     }
-    let calls = setlist_calls(source);
     let all_keys = calls.iter().filter(|(envs, _)| setlist_names(envs, env)).map(|(_, keys)| *keys).chain(std::iter::once(begin_keys));
     for keys in all_keys {
         for (key, value) in list_keys(keys) {
@@ -3844,6 +5501,39 @@ fn list_seps_with(source: &str, env: &str, depth: usize, size: u32, style: &Styl
     seps
 }
 
+/// Whether the innermost list's effective enumitem `style` is `nextline`:
+/// the last `style=` key among the `\setlist`s naming `env` (document
+/// order) and the list's own `\begin{<env>}[<keys>]` wins, exactly like
+/// [`list_seps_with`]; `sameline`/`standard`/`normal` (and no key at all)
+/// keep the default same-line label, so only `nextline` returns true.
+/// Read from the source rather than the compiler's `ListFrame` because this
+/// pipeline builds against a `vendor/compiler` pin that predates
+/// `ListOption::Style` (see [`ListGeom::nextline`]).
+/// Takes the index's precomputed `\setlist` calls rather than the source.
+/// Re-scanning here would undo #623: `setlist_calls` walks the whole document,
+/// and this runs once per list, which is exactly the quadratic shape that made
+/// a 450-section warm edit take 16 s.
+fn list_style_nextline(calls: &[(&str, &str)], env: &str, begin_keys: &str) -> bool {
+    let all_keys = calls
+        .iter()
+        .filter(|(envs, _)| setlist_names(envs, env))
+        .map(|(_, keys)| *keys)
+        .chain(std::iter::once(begin_keys));
+    let mut style: Option<&str> = None;
+    for keys in all_keys {
+        for (key, value) in list_keys(keys) {
+            if key == "style" {
+                style = Some(value);
+            }
+        }
+    }
+    style.is_some_and(|v| {
+        let v = v.trim();
+        let v = v.strip_prefix('{').and_then(|v| v.strip_suffix('}')).map_or(v, str::trim);
+        v == "nextline"
+    })
+}
+
 /// The `\list`/`\trivlist` environments whose `\item`s the compiler reports
 /// as `CBlock::ListItem` and whose `\@trivlist` glue this module derives.
 /// `description` is one of them: article.cls builds it with `\list{}{...}`
@@ -3865,7 +5555,7 @@ fn list_env_after_begin(rest: &str) -> bool {
 /// \parskip - \@outerparskip` — the closing list's `\parsep` less the
 /// `\parskip` outside it (the enclosing list's `\parsep`, or the
 /// document's). The summed change, in points.
-fn list_end_adjust(source: &str, gap_start: usize, gap: &str, size: u32, style: &Stylesheet) -> f64 {
+fn list_end_adjust(index: &SourceIndex, gap_start: usize, gap: &str, size: u32, style: &Stylesheet) -> f64 {
     let mut adjust = 0.0;
     let mut from = 0;
     while let Some(at) = find_command(&gap[from..], "end") {
@@ -3875,11 +5565,11 @@ fn list_end_adjust(source: &str, gap_start: usize, gap: &str, size: u32, style: 
         if !LIST_ENVS.iter().any(|env| rest.starts_with(&format!("{{{env}}}"))) {
             continue;
         }
-        let stack = list_stack_at(source, gap_start + abs);
+        let stack = index.list_stack(gap_start + abs);
         let Some(&(env, _)) = stack.last() else { continue };
         let depth = stack.len();
-        let parsep = list_seps(source, env, depth, size, style).parsep;
-        let outer = if depth > 1 { list_seps(source, stack[depth - 2].0, depth - 1, size, style).parsep } else { style.parskip.natural };
+        let parsep = list_seps_from(&index.setlist, env, depth, size, style, "").parsep;
+        let outer = if depth > 1 { list_seps_from(&index.setlist, stack[depth - 2].0, depth - 1, size, style, "").parsep } else { style.parskip.natural };
         adjust += parsep - outer;
     }
     adjust
@@ -3930,10 +5620,134 @@ pub(crate) fn list_end_skip(source: &str, run: &std::ops::Range<usize>, body_siz
     seps.topsep + if vmode { seps.partopsep } else { 0.0 }
 }
 
+/// The list environments `\end`ed in `gap`, in source order.
+fn list_env_ends(gap: &str) -> impl Iterator<Item = &'static str> + '_ {
+    let mut from = 0;
+    std::iter::from_fn(move || {
+        while let Some(at) = find_command(&gap[from..], "end") {
+            let abs = from + at;
+            from = abs + 1;
+            let rest = gap[abs + "\\end".len()..].trim_start();
+            if let Some(env) = LIST_ENVS.into_iter().find(|env| rest.strip_prefix('{').is_some_and(|r| r.starts_with(&format!("{env}}}")))) {
+                return Some(env);
+            }
+        }
+        None
+    })
+}
+
 fn gap_has_list_end(gap: &str) -> Option<&'static str> {
     let end = rfind_command(gap, "end")?;
     let rest = gap[end + "\\end".len()..].trim_start();
     LIST_ENVS.into_iter().find(|env| rest.strip_prefix('{').is_some_and(|r| r.starts_with(&format!("{env}}}"))))
+}
+
+/// The paragraph-shape environments that are a `\trivlist` or a `\list` but
+/// whose `\item`s the compiler does *not* report as `CBlock::ListItem`:
+/// article.cls builds `center`/`flushleft`/`flushright` with `\trivlist
+/// \centering \item\relax` and `quote`/`quotation`/`verse` with
+/// `\list{}{...}\item\relax`.
+///
+/// They matter here only for what their `\end` leaves behind, which is the
+/// same `\endtrivlist` -> `\@endparenv` every list ends with.
+///
+/// `verbatim`/`verbatim*` are here for the same reason: `\@verbatim` is
+/// `\trivlist \item\relax ...` and `\endverbatim` is `\endtrivlist`
+/// (latex.ltx). `abstract` is here for its `\end`: article.cls sets its
+/// one-column form as `\small`, a centred head and a `\quotation`, so
+/// `\end{abstract}` is `\endquotation` -> `\endlist` -> `\endtrivlist`.
+const TRIVLIST_ENVS: [&str; 9] =
+    ["center", "flushleft", "flushright", "quote", "quotation", "verse", "verbatim", "verbatim*", "abstract"];
+
+/// Whether the material immediately before `at` ends with the `\end` of a
+/// `\trivlist`-derived environment, so `\@endparenv` has just put that
+/// environment's `\addvspace\@topsepadd` on the vertical list.
+///
+/// [`crate::listings`] asks this because a `lstlisting` opens with a
+/// `\vspace`, not an `\addvspace`, so the skip the previous `\end` left is
+/// *added to* rather than shared with it and has to survive the pass that
+/// undoes the `flushleft` lowering.
+///
+/// Theorem-like environments are deliberately not counted: `\@thm` assigns
+/// `\@topsepadd` outright from `\thm@postskip`, which is not the
+/// `\@trivlist` value this answer stands for, and
+/// `\end{thm}\begin{lstlisting}` measures correct without it. `abstract` is
+/// not counted either, for a sharper reason: its `\end` is an
+/// `\endtrivlist` only in one column, and its `\@topsepadd` is then
+/// `\small`'s (6/9/12 pt, not the body's 10/12/13) — both branches are
+/// already exact without this, one because the body block closes the
+/// environment itself and one because there is no list to close.
+pub(crate) fn ends_trivlist_env_before(text: &str, at: usize) -> bool {
+    let before = text.get(..at).unwrap_or("").trim_end();
+    let Some(end) = before.rfind("\\end") else { return false };
+    let rest = before[end + "\\end".len()..].trim_start();
+    let Some(rest) = rest.strip_prefix('{') else { return false };
+    let Some((name, after)) = rest.split_once('}') else { return false };
+    let name = name.trim();
+    after.trim().is_empty() && name != "abstract" && (LIST_ENVS.contains(&name) || TRIVLIST_ENVS.contains(&name))
+}
+
+/// The environments that are *not* a `\trivlist` but whose `\end` still
+/// ends with a `\par`, so TeX is in vertical mode after it all the same.
+///
+/// `lstlisting` is the measured one. It is emphatically not a `\trivlist` —
+/// `\lst@Init` opens no list, it sets the body as an ordinary paragraph
+/// under `\parshape` (which is why [`crate::listings`] clears the
+/// `flushleft` lowering's `env_open`) — so it must never join
+/// [`TRIVLIST_ENVS`]. But `\lst@DeInit` runs `\par\removelastskip` and then,
+/// for a display listing, `\par\penalty-50\vspace\lst@belowskip`
+/// (listings.sty 1802-1826), and that `\par` leaves vertical mode exactly as
+/// `\@endparenv`'s does. Measured: `\end{lstlisting}\begin{center}` (and
+/// `flushleft`, `flushright`, `quote`, `quotation`, `verse`, `itemize`,
+/// `enumerate`, `description`) was 1.993 bp short at 10 pt and 2.989 bp at
+/// 11 and 12 pt — one `\partopsep` — while `\end{lstlisting}\begin{thm}`,
+/// which takes no `\partopsep` at all, was already right.
+const VMODE_END_ENVS: [&str; 2] = ["lstlisting", "lstlisting*"];
+
+/// Whether `gap` closes an environment whose `\end` leaves TeX in vertical
+/// mode, so the `\begin` beside it takes `\partopsep` with no blank line
+/// between them.
+///
+/// `\@endparenv` ends `\par \addvspace\@topsepadd \@endpetrue`: the `\par`
+/// is what leaves vertical mode, and it does so for *every* `\trivlist`,
+/// not only the four [`LIST_ENVS`] the compiler reports as list items.
+/// `center`, `quote`, `quotation`, `verse` and an amsthm theorem are all
+/// `\trivlist`s too, so a `\begin` that directly follows one of their
+/// `\end`s is read in vertical mode and takes `\partopsep` — with no blank
+/// line and no explicit `\par` between them.
+///
+/// [`VMODE_END_ENVS`] reaches the same state by another route and is kept
+/// apart from [`TRIVLIST_ENVS`] for that reason: what this predicate is
+/// really asking is "is the next `\begin` read in vertical mode", and
+/// `\endtrivlist` is only the commonest way to get there.
+///
+/// Measured against pdflatex in `tests/vmode_boundary_skips.rs`: every one
+/// of these boundaries steps by `\baselineskip` + `\topsep` + `\partopsep`,
+/// never by `\topsep` alone.
+///
+/// `gap` starts at byte `base` of document `document`, which `abstract`
+/// needs: whether *that* `\end{abstract}` is an `\endtrivlist` depends on
+/// `\if@twocolumn` where it stands, and `\twocolumn`/`\onecolumn` can
+/// change that between two of them.
+fn gap_has_trivlist_end(
+    gap: &str,
+    theorem_envs: &std::collections::HashSet<String>,
+    style: &Stylesheet,
+    document: usize,
+    base: usize,
+) -> bool {
+    let Some(end) = rfind_command(gap, "end") else { return false };
+    let rest = gap[end + "\\end".len()..].trim_start();
+    let Some(rest) = rest.strip_prefix('{') else { return false };
+    let Some((name, _)) = rest.split_once('}') else { return false };
+    let name = name.trim();
+    if name == "abstract" {
+        // Whether this `\end` is an `\endtrivlist` depends on two-column
+        // mode where it stands, not on the name
+        // ([`crate::abstractenv::end_is_endtrivlist`]).
+        return crate::abstractenv::end_is_endtrivlist(style, document, base + end);
+    }
+    LIST_ENVS.contains(&name) || TRIVLIST_ENVS.contains(&name) || VMODE_END_ENVS.contains(&name) || theorem_envs.contains(name)
 }
 
 /// The `\setlist[<envs>]{<keys>}` calls of `source`, in order:
@@ -4015,6 +5829,167 @@ fn list_stack_at(source: &str, at: usize) -> Vec<(&str, &str)> {
         }
     }
     stack
+}
+
+/// Every `\begin` and `\end` control word of `source` outside comments, in
+/// order: `(byte offset, is_begin)`. The lexing is [`find_command`]'s, so
+/// this is exactly what repeated `find_command` calls restarted one byte
+/// past each match report.
+fn begin_end_commands(source: &str) -> Vec<(usize, bool)> {
+    let bytes = source.as_bytes();
+    let word = |i: usize, needle: &str| bytes[i..].starts_with(needle.as_bytes()) && bytes.get(i + needle.len()).is_none_or(|b| !b.is_ascii_alphabetic());
+    let mut out = Vec::new();
+    let (mut i, mut in_comment) = (0, false);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' if in_comment => in_comment = false,
+            _ if in_comment => {}
+            b'%' => in_comment = true,
+            b'\\' => {
+                if word(i, "\\begin") {
+                    out.push((i, true));
+                } else if word(i, "\\end") {
+                    out.push((i, false));
+                }
+                i += 2;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    out
+}
+
+/// What [`split_at_page_breaks`] reads from one source document for every
+/// block, computed in one forward pass per call.
+///
+/// [`list_stack_at`] and `in_theorem_environment` rescan the source from
+/// byte 0 each time, and [`setlist_calls`] and [`natbib_author_year`] scan
+/// all of it, so asking them once per block made the split quadratic in the
+/// document's length (#613: 16 s of adapt time at 450 sections). The index
+/// answers the same questions from prefix snapshots with a binary search,
+/// and returns what those functions return at every byte offset
+/// (`source_index_matches_prefix_scans` checks this).
+struct SourceIndex<'t> {
+    /// [`setlist_calls`] of the source.
+    setlist: Vec<(&'t str, &'t str)>,
+    /// [`natbib_author_year`] of the source.
+    natbib_author_year: bool,
+    /// For each `\begin`/`\end` of a [`LIST_ENVS`] environment, in source
+    /// order, the byte just past its control word: [`list_stack_at`] reads
+    /// the command at offset `at` when this is `<= at`.
+    list_marks: Vec<usize>,
+    /// `list_stacks[k]`: the list stack after the first `k` list marks.
+    list_stacks: Vec<Vec<(&'t str, &'t str)>>,
+    /// For each named `\begin{..}`/`\end{..}`, in source order, the byte of
+    /// the `}` closing its name: `in_theorem_environment` matches the
+    /// command at offset `at` only when the name is complete before `at`.
+    /// The marks never decrease.
+    theorem_marks: Vec<usize>,
+    /// `in_theorem[k]`: a theorem-like environment is open after the first
+    /// `k` named commands.
+    in_theorem: Vec<bool>,
+}
+
+impl<'t> SourceIndex<'t> {
+    fn new(source: &'t str, theorem_envs: &std::collections::HashSet<String>) -> Self {
+        let commands = begin_end_commands(source);
+        // `list_stack_at`: the environment name must follow the command
+        // directly (after blanks), and the `\begin` options come after it.
+        let mut stack: Vec<(&str, &str)> = Vec::new();
+        let (mut list_marks, mut list_stacks) = (Vec::new(), vec![Vec::new()]);
+        for &(pos, is_begin) in &commands {
+            let len = if is_begin { "\\begin".len() } else { "\\end".len() };
+            let rest = source[pos + len..].trim_start();
+            let Some(inner) = rest.strip_prefix('{') else { continue };
+            let Some(close) = inner.find('}') else { continue };
+            let env = inner[..close].trim();
+            if !LIST_ENVS.contains(&env) {
+                continue;
+            }
+            if is_begin {
+                let after = inner[close + 1..].trim_start();
+                let options = match (env, after.strip_prefix('['), after.strip_prefix('{')) {
+                    ("thebibliography", _, Some(o)) => o.find('}').map_or("", |c| &o[..c]),
+                    ("thebibliography", _, None) => "",
+                    (_, Some(o), _) => o.find(']').map_or("", |c| &o[..c]),
+                    _ => "",
+                };
+                stack.push((env, options));
+            } else if stack.last().is_some_and(|(open, _)| *open == env) {
+                stack.pop();
+            }
+            list_marks.push(pos + len);
+            list_stacks.push(stack.clone());
+        }
+        // `in_theorem_environment`: the name is between the first `{` after
+        // the command and the first `}` after that, wherever they are.
+        let mut open: Vec<&str> = Vec::new();
+        let mut theorems_open = 0usize;
+        let (mut theorem_marks, mut in_theorem) = (Vec::new(), vec![false]);
+        for &(pos, is_begin) in &commands {
+            let Some(brace) = source[pos..].find('{').map(|b| pos + b) else { break };
+            let Some(close) = source[brace + 1..].find('}').map(|c| brace + 1 + c) else { break };
+            let name = source[brace + 1..close].trim();
+            if is_begin {
+                open.push(name);
+                theorems_open += usize::from(theorem_envs.contains(name));
+            } else if open.last() == Some(&name) {
+                open.pop();
+                theorems_open -= usize::from(theorem_envs.contains(name));
+            }
+            theorem_marks.push(close);
+            in_theorem.push(theorems_open > 0);
+        }
+        SourceIndex {
+            setlist: setlist_calls(source),
+            natbib_author_year: natbib_author_year(source),
+            list_marks,
+            list_stacks,
+            theorem_marks,
+            in_theorem,
+        }
+    }
+
+    /// [`list_stack_at`]`(source, at)`.
+    fn list_stack(&self, at: usize) -> &[(&'t str, &'t str)] {
+        &self.list_stacks[self.list_marks.partition_point(|&mark| mark <= at)]
+    }
+
+    /// `in_theorem_environment(source, at, theorem_envs)`, given
+    /// whether `at` is a char boundary within the source.
+    fn in_theorem(&self, at_in_bounds: bool, at: usize) -> bool {
+        at_in_bounds && self.in_theorem[self.theorem_marks.partition_point(|&mark| mark < at)]
+    }
+}
+
+/// One lazily built [`SourceIndex`] per document of a `split_at_page_breaks`
+/// call; a document index past `texts` reads as the empty source, as the
+/// per-block code did.
+struct SourceIndexes<'a, 't> {
+    texts: &'a [&'t str],
+    theorem_envs: &'a std::collections::HashSet<String>,
+    cells: Vec<std::cell::OnceCell<SourceIndex<'t>>>,
+    empty: std::cell::OnceCell<SourceIndex<'t>>,
+}
+
+impl<'a, 't> SourceIndexes<'a, 't> {
+    fn new(texts: &'a [&'t str], theorem_envs: &'a std::collections::HashSet<String>) -> Self {
+        SourceIndexes {
+            texts,
+            theorem_envs,
+            cells: texts.iter().map(|_| std::cell::OnceCell::new()).collect(),
+            empty: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn get(&self, document: usize) -> &SourceIndex<'t> {
+        match self.texts.get(document) {
+            Some(text) => self.cells[document].get_or_init(|| SourceIndex::new(text, self.theorem_envs)),
+            None => self.empty.get_or_init(|| SourceIndex::new("", self.theorem_envs)),
+        }
+    }
 }
 
 /// Whether the text at `span` was generated by a `\cite`-family command
@@ -4121,55 +6096,133 @@ fn article_leftmargin_em(depth: usize) -> f64 {
 /// a `label=` key (its `\alph*`-style counter replaced by `m`/`M`/
 /// `viii`/`VIII`/`0`), a shortlabels template (`(a)` -> `(m)`), or the
 /// class's own label for this depth.
-fn widest_label(env: &str, depth: usize, label_key: Option<&str>, template: Option<&str>) -> String {
+///
+/// A `widest=<text>` key replaces that assumption (`\enit@calcwidth`): an
+/// enumerate's counter is set as `<text>` itself inside the label
+/// (`widest=iii` with `label=\roman*.` measures `iii.`), and an itemize
+/// measures `<text>` alone.
+fn widest_label(env: &str, depth: usize, label_key: Option<&str>, template: Option<&str>, widest: Option<&str>) -> String {
+    if let (Some(text), "itemize") = (widest, env) {
+        return text.to_string();
+    }
+    let counter = |default: &'static str| widest.unwrap_or(default).to_string();
     if let Some(label) = label_key {
         return [("\\alph*", "m"), ("\\Alph*", "M"), ("\\roman*", "viii"), ("\\Roman*", "VIII"), ("\\arabic*", "0")]
             .iter()
-            .fold(label.to_string(), |text, (command, widest)| text.replace(command, widest));
+            .fold(label.to_string(), |text, (command, default)| text.replace(command, &counter(default)));
     }
     if env == "itemize" {
+        // Named, not spelled: the typesetter measures `\labelitemii`'s en
+        // dash bold and, without `lmodern`, the TS1 symbols in `tcrm`.
         return match depth {
-            1 => "•",
-            2 => "–",
-            3 => "∗",
-            _ => "·",
+            1 => "\\labelitemi",
+            2 => "\\labelitemii",
+            3 => "\\labelitemiii",
+            _ => "\\labelitemiv",
         }
         .to_string();
     }
     if let Some(template) = template {
         if let Some((index, style)) = template.char_indices().find(|(_, c)| "aAiI1".contains(*c)) {
-            let widest = match style {
+            let widest = counter(match style {
                 'a' => "m",
                 'A' => "M",
                 'i' => "viii",
                 'I' => "VIII",
                 _ => "0",
-            };
+            });
             return format!("{}{}{}", &template[..index], widest, &template[index + 1..]);
         }
         return template.to_string();
     }
     match depth {
-        1 => "0.",
-        2 => "(m)",
-        3 => "viii.",
-        _ => "M.",
+        1 => format!("{}.", counter("0")),
+        2 => format!("({})", counter("m")),
+        3 => format!("{}.", counter("viii")),
+        _ => format!("{}.", counter("M")),
     }
-    .to_string()
+}
+
+/// The value of a length register the preamble set before byte `at`, for
+/// an enumitem key given as `\name`: the last `\setlength{\name}{<dimen>}`
+/// (as a [`ListMargin::Fixed`]) or `\settowidth{\name}{<text>}` (as a
+/// [`ListMargin::TextWidth`], measured by the typesetter; plain text only).
+fn length_register(source: &str, at: usize, name: &str, size: u32, em_ex: Option<(f64, f64)>) -> Option<ListMargin> {
+    let mut found: Option<(usize, ListMargin)> = None;
+    let head = source.get(..at).unwrap_or(source);
+    for (command, width) in [("setlength", false), ("settowidth", true)] {
+        let mut from = 0;
+        while let Some(pos) = find_command(&head[from..], command).map(|i| from + i) {
+            from = pos + command.len() + 1;
+            let rest = head[from..].trim_start();
+            let (register, rest) = match rest.strip_prefix('{') {
+                Some(inner) => match inner.find('}') {
+                    Some(close) => (inner[..close].trim(), &inner[close + 1..]),
+                    None => continue,
+                },
+                None if rest.starts_with('\\') => {
+                    let end = rest[1..].find(|c: char| !c.is_ascii_alphabetic()).map_or(rest.len(), |e| e + 1);
+                    (&rest[..end], &rest[end..])
+                }
+                None => continue,
+            };
+            if register != name {
+                continue;
+            }
+            let rest = rest.trim_start();
+            if !rest.starts_with('{') {
+                continue;
+            }
+            let Some(close) = matching_brace(rest.as_bytes(), 0) else { continue };
+            let arg = rest[1..close].trim();
+            let value = if width {
+                (!arg.contains('\\')).then(|| ListMargin::TextWidth(arg.to_string()))
+            } else {
+                parse_dimen_in(arg, size, em_ex).map(ListMargin::Fixed)
+            };
+            if let Some(value) = value.filter(|_| found.as_ref().is_none_or(|(at, _)| *at < pos)) {
+                found = Some((pos, value));
+            }
+        }
+    }
+    found.map(|(_, value)| value)
 }
 
 /// `\leftmargin` of every list open at byte `at` (outermost first): the
 /// class's `\leftmargin<i>` unless a `\setlist` naming the environment or
 /// the `\begin` options set enumitem's `leftmargin` (`*` = the widest
-/// label's width plus `\labelsep`; a `<dimen>` as given).
-fn list_margins(source: &str, at: usize, size: u32, natbib_bib: bool) -> Vec<ListMargin> {
-    let calls = setlist_calls(source);
-    let class_margin = |depth: usize| ListMargin::Fixed(parse_dimen(&format!("{}em", article_leftmargin_em(depth)), size).unwrap_or(0.0));
-    list_stack_at(source, at)
+/// label's width plus `\labelsep`; a `<dimen>` or a `\settowidth`/
+/// `\setlength` register as given).
+///
+/// Also returns the innermost itemize/enumerate's enumitem `labelsep=` (if
+/// set) and `itemindent=` (points, zero if unset). With `leftmargin=*`
+/// enumitem's `\enit@calcleft` solves `\leftmargin + \itemindent =
+/// \labelindent + \labelwidth + \labelsep` for `\leftmargin`, so both keys
+/// move the item text of that level ([`ListMargin::WidestSep`]); with any
+/// other `leftmargin` it solves for `\labelindent`, and `labelsep` only moves
+/// the label while `itemindent` moves the first line and its label.
+///
+/// `source` is read only by the `leftmargin=\<register>` arm
+/// ([`length_register`], a prefix scan guarded by that rare key); everything
+/// per-block comes from the precomputed [`SourceIndex`].
+fn list_margins(index: &SourceIndex, source: &str, at: usize, size: u32, natbib_bib: bool, family: crate::fonts::Family) -> (Vec<ListMargin>, Option<f64>, f64) {
+    let calls = &index.setlist;
+    let em_ex = list_em_ex(size, family);
+    // The class sets `\leftmargin<i>` while it loads, before `fontenc`, so
+    // its `em` is OT1 `cmr`'s quad (Latin Modern's), not the EC font's
+    // (`ecrm1095`'s quad is 0.06 pt smaller at 11 pt).
+    let class_em_ex = if family == crate::fonts::Family::ComputerModern { list_em_ex(size, crate::fonts::Family::LatinModern) } else { em_ex };
+    let class_margin = |depth: usize| ListMargin::Fixed(parse_dimen_in(&format!("{}em", article_leftmargin_em(depth)), size, class_em_ex).unwrap_or(0.0));
+    let (mut labelsep_pt, mut itemindent_pt) = (None, 0.0);
+    let margins = index
+        .list_stack(at)
         .iter()
         .enumerate()
         .map(|(i, (env, options))| {
             let depth = i + 1;
+            // `\list` resets `\itemindent` but not `\labelsep`, so a
+            // `labelsep=` stays in force in the lists nested inside.
+            itemindent_pt = 0.0;
             if *env == "thebibliography" {
                 // natbib's author-year `\@bibsetup` (`\NAT@bibsetup`,
                 // natbib.sty line 642) replaces the class's label-width
@@ -4186,29 +6239,59 @@ fn list_margins(source: &str, at: usize, size: u32, natbib_bib: bool) -> Vec<Lis
             }
             let mut leftmargin: Option<&str> = None;
             let mut label_key: Option<&str> = None;
+            let mut widest: Option<&str> = None;
             let begin_keys = options.contains('=');
             let all_keys = calls
                 .iter()
                 .filter(|(envs, _)| setlist_names(envs, env))
                 .map(|(_, keys)| *keys)
                 .chain(begin_keys.then_some(*options));
+            let item_list = matches!(*env, "itemize" | "enumerate");
             for keys in all_keys {
                 for (key, value) in list_keys(keys) {
                     match key {
                         "leftmargin" => leftmargin = Some(value),
                         "label" => label_key = Some(value),
+                        "widest" => widest = (!value.is_empty()).then_some(value),
+                        "labelsep" if item_list => labelsep_pt = parse_dimen_in(value, size, em_ex).or(labelsep_pt),
+                        "itemindent" if item_list => itemindent_pt = parse_dimen_in(value, size, em_ex).unwrap_or(itemindent_pt),
                         _ => {}
                     }
                 }
             }
             let template = (!begin_keys && !options.is_empty()).then_some(*options);
             match leftmargin {
-                Some("*") => ListMargin::Widest(widest_label(env, depth, label_key, template)),
-                Some(dimen) => parse_dimen(dimen, size).map_or_else(|| class_margin(depth), ListMargin::Fixed),
+                Some("*") => {
+                    let label = widest_label(env, depth, label_key, template, widest);
+                    if labelsep_pt.is_none() && itemindent_pt == 0.0 {
+                        ListMargin::Widest(label)
+                    } else {
+                        ListMargin::WidestSep { label, labelsep_pt, itemindent_pt }
+                    }
+                }
+                Some(register) if register.starts_with('\\') => length_register(source, at, register, size, em_ex).unwrap_or_else(|| class_margin(depth)),
+                Some(dimen) => parse_dimen_in(dimen, size, em_ex).map_or_else(|| class_margin(depth), ListMargin::Fixed),
                 None => class_margin(depth),
             }
         })
-        .collect()
+        .collect();
+    (margins, labelsep_pt, itemindent_pt)
+}
+
+fn list_em_ex(size: u32, family: crate::fonts::Family) -> Option<(f64, f64)> {
+    match family {
+        crate::fonts::Family::LatinModern => {
+            let base = match size {
+                12 => flashtex_document_style::BaseSize::Pt12,
+                11 => flashtex_document_style::BaseSize::Pt11,
+                _ => flashtex_document_style::BaseSize::Pt10,
+            };
+            let font = flashtex_document_style::size_params(base).normal;
+            Some((font.quad.0, font.x_height.0))
+        }
+        crate::fonts::Family::ComputerModern => ec_em_ex(size, family),
+        crate::fonts::Family::Times => None,
+    }
 }
 
 /// Byte offset of `\name` (as a whole control word, outside comments).
@@ -4280,6 +6363,39 @@ fn brace_depth(prefix: &str) -> i64 {
     depth
 }
 
+/// The `\@topsep`/`\@topsepadd` of a theorem-like environment, read off
+/// pdfTeX's own vertical list (TeX Live 2025; oracle only, never in the
+/// product path — the quoted `\showoutput` glue is in
+/// `tests/amsthm_topsep.rs`).
+///
+/// * a `\newtheorem` environment gets `\topsep` on both sides, because
+///   `\@thm` assigns `\@topsep`/`\@topsepadd` from `\thm@preskip`/
+///   `\thm@postskip` and `\thm@space@setup` sets both to `\topsep`. The
+///   trace is `\glue 8.0 plus 2.0 minus 4.0` / `9.0 plus 3.0 minus 5.0` /
+///   `10.0 plus 4.0 minus 6.0` at a 10/11/12pt base: `\topsep` exactly, with
+///   no `\partopsep` and no `\parskip`.
+/// * `proof` is not a `\@thm`. It is an ordinary `\trivlist` opened after
+///   an explicit `\par` (so in vertical mode) under amsthm's own
+///   `\topsep6\p@\@plus6\p@`, so its closing `\@topsepadd` is that 6pt
+///   plus `\partopsep`: the trace is `8.0 plus 7.0 minus 1.0`,
+///   `9.0 plus 7.0 minus 1.0`, `9.0 plus 8.0 minus 2.0` — equal to `\topsep`
+///   at a 10pt and 11pt base and 1pt short of it at 12pt.
+///
+/// Its *opening* skip is left at `\topsep`: `\addvspace` keeps the larger of
+/// the new skip and `\lastskip`, and the closing skip of whatever precedes a
+/// `proof` is at least that in every arrangement measured here.
+fn theorem_skips(style: &Stylesheet, proof: bool) -> EnvSkips {
+    let topsep = style.topsep;
+    if !proof {
+        return EnvSkips { open: topsep, close: topsep };
+    }
+    let p = style.partopsep;
+    EnvSkips {
+        open: topsep,
+        close: crate::style::Skip::new(6.0 + p.natural, 6.0 + p.stretch, p.shrink),
+    }
+}
+
 /// The environments amsthm sets as a `\trivlist` holding a single `\item`:
 /// every `\newtheorem`/`\newtheorem*` declaration in the sources plus the
 /// fixed `proof`. See [`opens_theorem_item`] for what that costs the first
@@ -4315,9 +6431,9 @@ fn theorem_environments(texts: &[&str]) -> std::collections::HashSet<String> {
 /// the `\hskip\labelsep` the head box starts with. So the head sits flush on
 /// the left margin and the first line is *not* indented; only the following
 /// paragraphs of the same environment take the ambient `\parindent`.
-fn opens_theorem_item(text: &str, gap_start: usize, at: usize, envs: &std::collections::HashSet<String>) -> bool {
+fn opens_theorem_item<'t>(text: &'t str, gap_start: usize, at: usize, envs: &std::collections::HashSet<String>) -> Option<&'t str> {
     if gap_start > at || at > text.len() || !text.is_char_boundary(gap_start) || !text.is_char_boundary(at) {
-        return false;
+        return None;
     }
     // The compiler gives the theorem head inline the `\begin` command's own
     // span, so the opener is usually *at* the paragraph's first span rather
@@ -4327,13 +6443,12 @@ fn opens_theorem_item(text: &str, gap_start: usize, at: usize, envs: &std::colle
     } else {
         rfind_command(&text[gap_start..at], "begin").map(|r| gap_start + r)
     };
-    let Some(begin) = begin else {
-        return false;
-    };
+    let begin = begin?;
     text[begin..]
         .split_once('{')
         .and_then(|(_, rest)| rest.split_once('}'))
-        .is_some_and(|(name, _)| envs.contains(name.trim()))
+        .map(|(name, _)| name.trim())
+        .filter(|name| envs.contains(*name))
 }
 
 /// Whether byte `at` lies inside a theorem-like environment: the `\begin`/
@@ -4343,6 +6458,8 @@ fn opens_theorem_item(text: &str, gap_start: usize, at: usize, envs: &std::colle
 /// not written in the source at the head's span, so the weights of a
 /// theorem's words come from the compiler's scoping instead of the source's
 /// own brace groups.
+// The per-offset reference that [`SourceIndex::in_theorem`] reproduces.
+#[cfg_attr(not(test), allow(dead_code))]
 fn in_theorem_environment(text: &str, at: usize, envs: &std::collections::HashSet<String>) -> bool {
     if at > text.len() || !text.is_char_boundary(at) {
         return false;
@@ -4615,32 +6732,52 @@ fn text_font_command(name: &str) -> Option<&'static [crate::nfss::Command]> {
     })
 }
 
-/// The NFSS commands of a font declaration, and whether the end of its
-/// group is recorded for italic correction (the declarations the pipeline
-/// read before NFSS selection existed keep that behaviour). The LaTeX
+/// Whether byte `at` of `source` opens the braced argument of a text font
+/// command (`\textbf{`, `\emph {`): the byte before it is `{` and the
+/// control word before that is one of [`text_font_command`].
+fn text_command_argument_at(source: &str, at: usize) -> bool {
+    let bytes = source.as_bytes();
+    if at == 0 || bytes.get(at - 1) != Some(&b'{') {
+        return false;
+    }
+    let mut end = at - 1;
+    while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    let mut start = end;
+    while start > 0 && bytes[start - 1].is_ascii_alphabetic() {
+        start -= 1;
+    }
+    start > 0 && start < end && bytes[start - 1] == b'\\' && text_font_command(&source[start..end]).is_some()
+}
+
+/// The NFSS commands of a font declaration. Its group's end never takes an
+/// italic correction: LaTeX adds `\/` only through `\text@command`'s
+/// `\maybe@ic` (`\textit`, `\emph`, ...), and `{\itshape leaf} then` sets
+/// no kern after `leaf` (pdfLaTeX). The LaTeX
 /// 2.09 forms reset first: `\bf` is `\normalfont\bfseries` (latex.ltx
 /// `\DeclareOldFontCommand`).
-fn font_declaration(name: &str) -> Option<(&'static [crate::nfss::Command], bool)> {
+fn font_declaration(name: &str) -> Option<&'static [crate::nfss::Command]> {
     use crate::nfss::{Command as C, FamilyKind as F, Series as S, ShapeRequest as R};
     Some(match name {
-        "bfseries" => (&[C::Series(S::Bx)], true),
-        "itshape" => (&[C::Shape(R::It)], true),
-        "slshape" => (&[C::Shape(R::Sl)], true),
-        "em" => (&[C::Emph], true),
-        "mdseries" => (&[C::Series(S::M)], false),
-        "scshape" => (&[C::Shape(R::Sc)], false),
-        "upshape" => (&[C::Shape(R::Up)], false),
-        "rmfamily" => (&[C::Family(F::Rm)], false),
-        "sffamily" => (&[C::Family(F::Sf)], false),
-        "ttfamily" => (&[C::Family(F::Tt)], false),
-        "normalfont" => (&[C::Normal], false),
-        "bf" => (&[C::Normal, C::Series(S::Bx)], false),
-        "it" => (&[C::Normal, C::Shape(R::It)], false),
-        "sl" => (&[C::Normal, C::Shape(R::Sl)], false),
-        "sc" => (&[C::Normal, C::Shape(R::Sc)], false),
-        "rm" => (&[C::Normal, C::Family(F::Rm)], false),
-        "sf" => (&[C::Normal, C::Family(F::Sf)], false),
-        "tt" => (&[C::Normal, C::Family(F::Tt)], false),
+        "bfseries" => &[C::Series(S::Bx)],
+        "itshape" => &[C::Shape(R::It)],
+        "slshape" => &[C::Shape(R::Sl)],
+        "em" => &[C::Emph],
+        "mdseries" => &[C::Series(S::M)],
+        "scshape" => &[C::Shape(R::Sc)],
+        "upshape" => &[C::Shape(R::Up)],
+        "rmfamily" => &[C::Family(F::Rm)],
+        "sffamily" => &[C::Family(F::Sf)],
+        "ttfamily" => &[C::Family(F::Tt)],
+        "normalfont" => &[C::Normal],
+        "bf" => &[C::Normal, C::Series(S::Bx)],
+        "it" => &[C::Normal, C::Shape(R::It)],
+        "sl" => &[C::Normal, C::Shape(R::Sl)],
+        "sc" => &[C::Normal, C::Shape(R::Sc)],
+        "rm" => &[C::Normal, C::Family(F::Rm)],
+        "sf" => &[C::Normal, C::Family(F::Sf)],
+        "tt" => &[C::Normal, C::Family(F::Tt)],
         _ => return None,
     })
 }
@@ -4731,6 +6868,22 @@ fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: 
 /// character, and reading it as LaTeX silently drops the style of everything
 /// after it.
 fn literal_spans(source: &str) -> Vec<VerbatimSpan> {
+    literal_spans_of(source, verbatim_environment)
+}
+
+/// The byte ranges a scan for LaTeX markup must not look inside: every
+/// [`literal_spans`] construct plus the environments whose body pdflatex
+/// never reads as markup though the compiler does not set them literally —
+/// `minted` (a listing) and `comment` (verbatim.sty's discarded body).
+/// `%` comments are not included; callers skip those line by line.
+pub(crate) fn opaque_regions(source: &str) -> Vec<(usize, usize)> {
+    literal_spans_of(source, |name| verbatim_environment(name) || matches!(name, "minted" | "comment"))
+        .into_iter()
+        .map(|s| s.whole)
+        .collect()
+}
+
+fn literal_spans_of(source: &str, environment: fn(&str) -> bool) -> Vec<VerbatimSpan> {
     let bytes = source.as_bytes();
     let mut out: Vec<VerbatimSpan> = Vec::new();
     let mut i = 0;
@@ -4764,7 +6917,7 @@ fn literal_spans(source: &str) -> Vec<VerbatimSpan> {
             }
         } else if name == "begin" {
             if let Some((env, after)) = environment_name(source, word_end) {
-                if verbatim_environment(env) {
+                if environment(env) {
                     if let Some(span) = verbatim_environment_span(source, i, env, after) {
                         i = span.whole.1;
                         out.push(span);
@@ -4793,7 +6946,127 @@ fn environment_name(source: &str, at: usize) -> Option<(&str, usize)> {
     Some((&source[i + 1..close], close + 1))
 }
 
+/// The font intervals of `source`: its own brace groups and font commands
+/// ([`source_style_intervals`]) plus the declarations user macros wrap
+/// around their arguments ([`macro_argument_intervals`]).
 fn style_intervals(source: &str) -> Vec<StyleInterval> {
+    let mut out = source_style_intervals(source);
+    out.extend(macro_argument_intervals(source));
+    // Stable: at one start byte the invocation site's intervals stay before
+    // the ones the definition adds, and those before an argument's own.
+    out.sort_by_key(|(start, _, _, _)| *start);
+    out
+}
+
+/// The font declarations a user macro's definition wraps around each of its
+/// parameters, laid over that argument's bytes at every invocation.
+///
+/// The compiler gives an argument's tokens their own source span, so the
+/// style lookup (`Styles::at`) reads the argument's bytes — which sit outside
+/// every group the *definition* opened. For
+/// `\newcommand{\note}[1]{{\small\bfseries #1}}`, `\note{words}` set `words`
+/// medium where pdfLaTeX sets them in `SFBX0900`: the size came through (the
+/// compiler scopes sizes) and the series did not. Here the definition body's
+/// own intervals that contain `#k` are re-applied to argument `k`, in body
+/// order, between the invocation site's style and the argument's own
+/// commands — the order TeX applies them in.
+///
+/// Definitions with a default optional argument (`[n][default]`) are skipped,
+/// because their `#1` is the bracketed argument and not a brace group; so is
+/// an undelimited (unbraced) argument.
+fn macro_argument_intervals(source: &str) -> Vec<StyleInterval> {
+    let bytes = source.as_bytes();
+    let defs = macro_definitions(source);
+    let mut out = Vec::new();
+    for (index, def) in defs.iter().enumerate() {
+        let name = &source[def.name.clone()];
+        // A later definition of the same name takes over from its position.
+        let until = defs[index + 1..].iter().find(|d| source[d.name.clone()] == *name).map_or(bytes.len(), |d| d.at);
+        let header = &source[def.name.end..def.body.start - 1];
+        if header.matches('[').count() > 1 {
+            continue;
+        }
+        let body = &source[def.body.clone()];
+        let body_intervals = source_style_intervals(body);
+        // For each parameter the body uses, the body intervals around it:
+        // the command, whether its group closes right after `#k` (italic
+        // correction), and whether it is outside every group of the body,
+        // so that it stays in force after the invocation too.
+        let mut params: Vec<(usize, Vec<(crate::nfss::Command, bool, bool)>)> = Vec::new();
+        for k in 1..=9usize {
+            let Some(p) = body.find(&format!("#{k}")) else { continue };
+            let chain: Vec<_> = body_intervals.iter().filter(|(s, e, _, _)| *s <= p && p < *e).map(|(_, e, c, ic)| (*c, *ic && *e == p + 2, *e >= body.len())).collect();
+            if !chain.is_empty() {
+                params.push((k, chain));
+            }
+        }
+        let Some(arity) = params.iter().map(|(k, _)| *k).max() else { continue };
+        let mut from = def.body.end;
+        // (A redefinition nested inside this body ends the range before it
+        // starts.)
+        while from < until {
+            let Some(at) = find_command(&source[from..until], name) else { break };
+            let inv = from + at;
+            from = inv + 1 + name.len();
+            // The argument bytes of this invocation, brace groups only.
+            let mut i = from;
+            let mut args = Vec::new();
+            while args.len() < arity {
+                while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+                    i += 1;
+                }
+                if bytes.get(i) != Some(&b'{') {
+                    break;
+                }
+                let Some(close) = matching_brace(bytes, i) else { break };
+                args.push((i + 1, close));
+                i = close + 1;
+            }
+            for (k, chain) in &params {
+                if let Some(&(start, end)) = args.get(k - 1) {
+                    for &(c, correction, leaks) in chain {
+                        if leaks {
+                            // As an ungrouped declaration written at the call
+                            // site: to the end of the enclosing group, or to
+                            // the next `\end` outside any.
+                            let to = enclosing_group_end(source, inv).unwrap_or_else(|| find_command(&source[i..], "end").map_or(bytes.len(), |e| i + e));
+                            out.push((start, to, c, false));
+                        } else {
+                            out.push((start, end, c, correction));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The closing brace of the innermost brace group containing byte `at`
+/// (escaped `\{`/`\}` are not groups), or `None` at the top level.
+fn enclosing_group_end(source: &str, at: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let escaped = |j: usize| j > 0 && bytes[j - 1] == b'\\';
+    let mut depth = 0usize;
+    let mut j = at;
+    while j > 0 {
+        j -= 1;
+        match bytes[j] {
+            b'}' if !escaped(j) => depth += 1,
+            b'{' if !escaped(j) => {
+                if depth == 0 {
+                    return matching_brace(bytes, j);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The font intervals spelled in `source` itself (see [`style_intervals`]).
+fn source_style_intervals(source: &str) -> Vec<StyleInterval> {
     let mut out = Vec::new();
     let bytes = source.as_bytes();
     let literal = literal_spans(source);
@@ -4880,12 +7153,12 @@ fn style_intervals(source: &str) -> Vec<StyleInterval> {
                     i = word_end;
                     continue;
                 }
-                if let Some((commands, correction)) = font_declaration(name) {
+                if let Some(commands) = font_declaration(name) {
                     let end = match groups.last() {
                         Some(&open) => matching_brace(bytes, open).unwrap_or(bytes.len()),
                         None => find_command(&source[word_end..], "end").map_or(bytes.len(), |e| word_end + e),
                     };
-                    out.extend(commands.iter().map(|c| (word_end, end, *c, correction)));
+                    out.extend(commands.iter().map(|c| (word_end, end, *c, false)));
                 }
                 i = word_end.max(i + 2);
             }
@@ -4972,7 +7245,11 @@ struct MacroDef {
 struct MacroDefsEntry {
     ptr: usize,
     len: usize,
+    /// [`length_at_checked`]'s table-length indexes.
+    lengths: LengthIndexes,
     index: Option<HashMap<String, Vec<MacroDef>>>,
+    /// [`setlength`] answers already read, by length name and class size.
+    setlengths: HashMap<(String, u32), Option<f64>>,
 }
 
 thread_local! {
@@ -4991,7 +7268,9 @@ impl MacroDefsScope {
             .map(|t| MacroDefsEntry {
                 ptr: t.as_ptr() as usize,
                 len: t.len(),
+                lengths: LengthIndexes::default(),
                 index: None,
+                setlengths: HashMap::new(),
             })
             .collect();
         MacroDefsScope {
@@ -5110,6 +7389,20 @@ fn macro_arg_index(source: &str, inv: Span, at: usize) -> Option<(&str, usize)> 
 struct BodyCursor {
     inv: Span,
     at: usize,
+    /// Where the last token was found in the body (`None` when its place is
+    /// not known), for the font the body's own commands put it in
+    /// ([`Styles::in_body`]).
+    word: Option<usize>,
+    /// The first blank of the gap read before the last token, when that gap
+    /// lies wholly inside the body: the interword space is set in the font in
+    /// force there.
+    blank: Option<usize>,
+}
+
+impl BodyCursor {
+    fn new(inv: Span, at: usize) -> BodyCursor {
+        BodyCursor { inv, at, word: None, blank: None }
+    }
 }
 
 /// The bytes TeX read between the previous token and this one, in the
@@ -5145,7 +7438,7 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
             let Some(text) = text else {
                 // Glue or math of a replacement: its place is not searched;
                 // separate tokens of one replacement are taken as spaced.
-                *cursor = Some(BodyCursor { inv: span, at: start });
+                *cursor = Some(BodyCursor::new(span, start));
                 return prev_end.map(|_| " ".to_string());
             };
             // A control word (the glue arms pass `\hfill`/`\quad`/...) is
@@ -5157,8 +7450,9 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
             match body.get(start..).and_then(find_text) {
                 Some(p) => {
                     let pos = start + p;
-                    *cursor = Some(BodyCursor { inv: span, at: pos + text.len() });
                     let gap = &body[start..pos];
+                    let blank = gap.find(|c: char| c.is_whitespace()).filter(|_| prefix.is_none()).map(|off| start + off);
+                    *cursor = Some(BodyCursor { inv: span, at: pos + text.len(), word: Some(pos), blank });
                     return Some(match prefix {
                         Some(before) => format!("{before}{gap}"),
                         None => gap.to_string(),
@@ -5166,7 +7460,7 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
                 }
                 None => {
                     // Not found verbatim (ligatures rewrote it).
-                    *cursor = Some(BodyCursor { inv: span, at: start });
+                    *cursor = Some(BodyCursor::new(span, start));
                     return prev_end.map(|_| " ".to_string());
                 }
             }
@@ -5179,11 +7473,13 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
                 if let Some(p) = body.get(c.at..).and_then(|rest| rest.find(&format!("#{k}"))) {
                     let pos = c.at + p;
                     let gap = body[c.at..pos].to_string();
-                    *cursor = Some(BodyCursor { inv: c.inv, at: pos + digits(k) });
+                    let blank = gap.find(|c: char| c.is_whitespace()).map(|off| c.at + off);
+                    *cursor = Some(BodyCursor { blank, ..BodyCursor::new(c.inv, pos + digits(k)) });
                     return Some(gap);
                 }
                 // Further tokens of the same argument: the source between
                 // them (the cursor stays after `#k`).
+                *cursor = Some(BodyCursor::new(c.inv, c.at));
                 return prev_end.zip(prev_span).and_then(|(pe, ps)| source_gap(pe, ps));
             }
         }
@@ -5224,11 +7520,10 @@ fn kern_amount_matches(spelling: &str, amount: &TextDimen) -> bool {
     })
 }
 
-/// Against a `vendor/compiler` pinned before the package context reached
-/// `text_kern`, there is only the kernel definition to match.
+/// Without package gating, match only the kernel definition.
 #[cfg(not(feature = "compiler-package-gating"))]
 fn kern_amount_matches(spelling: &str, amount: &TextDimen) -> bool {
-    flashtex_compiler::text_builtins::text_kern(spelling).as_ref() == Some(amount)
+    flashtex_compiler::text_builtins::text_kern(spelling, false).as_ref() == Some(amount)
 }
 
 /// [`gap_has_space`] for the bytes after a control word: the whitespace
@@ -5242,7 +7537,11 @@ fn gap_has_space_after_control_word(rest: &str) -> bool {
 
 /// The sum of every `\vspace{<dimen>}`/`\vspace*{<dimen>}` in `gap`, in
 /// points; `None` when there is none or one does not parse.
-fn vspace_in_gap(gap: &str, size: u32) -> Option<f64> {
+///
+/// `pub(crate)` so [`crate::abstractenv`] can re-derive how much of a
+/// paragraph's leading skip came from inside a `\begin{abstract}` rather
+/// than before it.
+pub(crate) fn vspace_in_gap(gap: &str, size: u32) -> Option<f64> {
     let mut from = 0;
     let mut total = 0.0;
     let mut any = false;
@@ -5268,6 +7567,56 @@ fn line_break_skip(source: &str, after: usize, size: u32) -> Option<f64> {
     let inner = rest.strip_prefix('[')?;
     let close = inner.find(']')?;
     parse_dimen(&inner[..close], size)
+}
+
+/// An `Inline::LineBreak` the pipeline makes up itself (a `verbatim` line
+/// ending), written through one constructor so the crate builds against a
+/// pinned compiler with or without the `skip_pt` field.
+fn line_break_inline(span: Span) -> Inline {
+    #[cfg(feature = "linebreak-skip")]
+    {
+        Inline::LineBreak { span, skip_pt: None }
+    }
+    #[cfg(not(feature = "linebreak-skip"))]
+    {
+        Inline::LineBreak { span }
+    }
+}
+
+/// A rigid `\vspace` block, written through one constructor so the crate
+/// builds against a pinned compiler with or without `VSpace`'s glue
+/// components (`stretch_pt`/`shrink_pt`, compiler PR #606). Every caller
+/// here lowers a gap the pipeline computed itself (`\opening`'s skips), so
+/// the glue is zero either way and the two arms are the same block.
+fn vspace_block(pt: f64) -> CBlock {
+    #[cfg(feature = "compiler-node-surface")]
+    {
+        CBlock::VSpace { pt, stretch_pt: 0.0, shrink_pt: 0.0 }
+    }
+    #[cfg(not(feature = "compiler-node-surface"))]
+    {
+        CBlock::VSpace { pt }
+    }
+}
+
+/// The `\\[<dimen>]` skip the compiler itself parsed, when the pinned
+/// compiler reports one (`parser::Inline::LineBreak::skip_pt`).
+///
+/// [`line_break_skip`] below re-reads the `[...]` out of the source bytes
+/// after the node's span, which is right only for a `\\` written literally in
+/// the document. A `\\` that came out of a macro body carries the *invocation*
+/// as its span (`expansion::Converter::place`), so those bytes are the call's
+/// own arguments -- `{Education}` of `\\cvsection{Education}` -- and the skip
+/// is unreachable from the source. The compiler reads it off the expanded
+/// token stream, like TeX, so its value is preferred and the byte scan stays
+/// as the fallback for a vendor pin that predates the field.
+#[allow(unused_variables)]
+fn reported_line_break_skip(inline: &Inline) -> Option<f64> {
+    #[cfg(feature = "linebreak-skip")]
+    if let Inline::LineBreak { skip_pt, .. } = inline {
+        return *skip_pt;
+    }
+    None
 }
 
 fn matching_brace(bytes: &[u8], open: usize) -> Option<usize> {
@@ -5309,7 +7658,8 @@ pub enum BodyKind {
     MakeTitle,
     /// book.cls `\frontmatter`/`\mainmatter`/`\backmatter`.
     Matter(Matter),
-    /// `\tableofcontents`, `\listoffigures`, `\listoftables`.
+    /// `\tableofcontents`, `\listoffigures`, `\listoftables`,
+    /// `\lstlistoflistings`.
     ContentsList(crate::toc::ListKind),
     /// `\addcontentsline{<ext>}{<level>}{<entry>}`: `text` is the entry
     /// argument's inner range.
@@ -5421,6 +7771,9 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
             "tableofcontents" => Some((BodyKind::ContentsList(crate::toc::ListKind::Toc), j)),
             "listoffigures" => Some((BodyKind::ContentsList(crate::toc::ListKind::Lof), j)),
             "listoftables" => Some((BodyKind::ContentsList(crate::toc::ListKind::Lot), j)),
+            // listings.sty: `\tableofcontents` with `\contentsname` as
+            // `\lstlistlistingname`, reading the `.lol`.
+            "lstlistoflistings" => Some((BodyKind::ContentsList(crate::toc::ListKind::Lol), j)),
             "appendix" => Some((BodyKind::Appendix, j)),
             "addcontentsline" => group(j).and_then(|(s1, e1, a1)| {
                 let list = crate::toc::ListKind::from_ext(source[s1..e1].trim())?;
@@ -5469,6 +7822,91 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
         }
     }
     out
+}
+
+/// Whether an [`BodyKind::Input`] command is `\include` (not `\input`).
+fn is_include(source: &str, cmd: &BodyCommand) -> bool {
+    source.get(cmd.start..cmd.end).is_some_and(|c| c.starts_with("\\include"))
+}
+
+/// `\include`/`\input` nesting the reading order follows (the compiler's
+/// own limit is far above anything a real project needs).
+const READING_DEPTH_LIMIT: usize = 32;
+
+/// The document body in the order pdfLaTeX reads it: byte ranges of the
+/// documents (`paths`, parallel to `texts`), the entry one split at every
+/// `\input{..}`/`\include{..}` of [`body_commands`] with the read file's
+/// own ranges in between, recursively. A file is found as the compiler's
+/// `include` finds it (the path as written, then with `.tex`); an unknown
+/// file, a cycle, and an `\include` the preamble's last `\includeonly`
+/// does not name read nothing. A document never read has no range: a
+/// fresh run has no `.aux` of an excluded file to restore its counters
+/// from, so it steps none.
+pub fn reading_order(texts: &[&str], paths: &[&str], entry: usize) -> Vec<Span> {
+    let only = texts.get(entry).and_then(|t| includeonly(t));
+    let mut out = Vec::new();
+    let mut stack = Vec::new();
+    read_document(entry, texts, paths, only.as_deref(), &mut stack, &mut out);
+    out
+}
+
+fn read_document(d: usize, texts: &[&str], paths: &[&str], only: Option<&[String]>, stack: &mut Vec<usize>, out: &mut Vec<Span>) {
+    let Some(text) = texts.get(d).copied() else { return };
+    stack.push(d);
+    let mut from = 0;
+    for cmd in body_commands(text, false, false).iter().filter(|c| matches!(c.kind, BodyKind::Input)) {
+        let written = &text[cmd.start..cmd.end];
+        let include = is_include(text, cmd);
+        let requested = written.find('{').map_or("", |open| written[open + 1..written.len() - 1].trim());
+        let listed = |name: &str| name == requested || name.strip_suffix(".tex") == Some(requested) || requested.strip_suffix(".tex") == Some(name);
+        if include && only.is_some_and(|names| !names.iter().any(|n| listed(n))) {
+            continue;
+        }
+        let with_tex = format!("{requested}.tex");
+        let Some(target) = paths.iter().position(|p| *p == requested).or_else(|| paths.iter().position(|p| *p == with_tex)) else {
+            continue;
+        };
+        if stack.contains(&target) || stack.len() > READING_DEPTH_LIMIT {
+            continue;
+        }
+        out.push(Span::in_document(DocumentId(d), from, cmd.start));
+        read_document(target, texts, paths, only, stack, out);
+        from = cmd.end;
+    }
+    out.push(Span::in_document(DocumentId(d), from, text.len()));
+    stack.pop();
+}
+
+/// The names of the last preamble `\includeonly{a,b}` (`None` without
+/// one; an empty list reads no `\include` at all).
+fn includeonly(entry: &str) -> Option<Vec<String>> {
+    let preamble = &entry[..entry.find("\\begin{document}").unwrap_or(entry.len())];
+    let mut found = None;
+    for line in preamble.lines() {
+        let code = line.char_indices().find(|&(i, c)| c == '%' && !line[..i].ends_with('\\')).map_or(line, |(i, _)| &line[..i]);
+        let mut rest = code;
+        while let Some(at) = rest.find("\\includeonly") {
+            rest = &rest[at + "\\includeonly".len()..];
+            let arg = rest.trim_start();
+            if let Some(close) = arg.strip_prefix('{').and_then(|a| a.find('}')) {
+                found = Some(arg[1..close + 1].split(',').map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).collect());
+            }
+        }
+    }
+    found
+}
+
+/// Where `(document, offset)` falls in `order` ([`reading_order`]): the
+/// bytes read before it. `None` for bytes never read.
+pub fn reading_position(order: &[Span], document: DocumentId, offset: usize) -> Option<usize> {
+    let mut before = 0;
+    for s in order {
+        if s.document == document && (s.start..s.end).contains(&offset) {
+            return Some(before + offset - s.start);
+        }
+        before += s.end - s.start;
+    }
+    None
 }
 
 /// Drops the compiler's text for the arguments of `\markboth`,
@@ -5640,7 +8078,7 @@ fn apply_run_in_heading(items: &mut [Item], run_in: &RunIn, em: f64, bold: bool)
     }
     // The interword space right after the title is `\@xsect`'s `\hskip -#5`.
     if let Some(Item::Space { .. }) = items.get(title) {
-        items[title] = Item::Quad { em };
+        items[title] = Item::Quad { em, style: TextStyle::default() };
     }
 }
 
@@ -5759,6 +8197,70 @@ struct Styles {
     /// Verbatim bodies, in order (`literal_spans`), for [`Styles::literal_at`].
     literal: Vec<VerbatimSpan>,
     scheme: crate::nfss::Scheme,
+    /// Size environments (`\begin{small}...\end{small}`), in order of their
+    /// `\begin`: the byte of the `\begin`, the body's bytes and the size.
+    size_envs: Vec<SizeEnv>,
+}
+
+/// One `\begin{<size>}...\end{<size>}` (`size_environments`).
+#[derive(Debug, Clone, Copy)]
+struct SizeEnv {
+    begin: usize,
+    body: (usize, usize),
+    level: Option<flashtex_compiler::parser::FontSizeLevel>,
+}
+
+/// The size a size-declaration control word selects: `Some(None)` for
+/// `\normalsize`, `None` for any other word.
+fn size_command_level(name: &str) -> Option<Option<flashtex_compiler::parser::FontSizeLevel>> {
+    use flashtex_compiler::parser::FontSizeLevel as L;
+    Some(match name {
+        "tiny" => Some(L::Tiny),
+        "scriptsize" => Some(L::ScriptSize),
+        "footnotesize" => Some(L::FootnoteSize),
+        "small" => Some(L::Small),
+        "normalsize" => None,
+        "large" => Some(L::Large1),
+        "Large" => Some(L::Large2),
+        "LARGE" => Some(L::Large3),
+        "huge" => Some(L::Huge1),
+        "Huge" => Some(L::Huge2),
+        _ => return None,
+    })
+}
+
+/// Every `\begin{<size>}...\end{<size>}` in `source`. LaTeX lets any
+/// declaration be used as an environment (`\begin{small}` runs `\small`
+/// in the environment's group); the compiler reports these as unknown
+/// environments and sets their bodies at the surrounding size.
+fn size_environments(source: &str) -> Vec<SizeEnv> {
+    let mut out = Vec::new();
+    if !source.contains("\\begin{") {
+        return out;
+    }
+    let mut open: Vec<(usize, usize, &str)> = Vec::new();
+    let mut scan = CmdScan::new(source);
+    while let Some((at, cmd, _)) = scan.next() {
+        if cmd != "begin" && cmd != "end" {
+            continue;
+        }
+        let after = at + 1 + cmd.len();
+        let rest = &source[after..];
+        let trimmed = rest.trim_start();
+        let Some(inner) = trimmed.strip_prefix('{') else { continue };
+        let Some(close) = inner.find('}') else { continue };
+        let name = inner[..close].trim();
+        let Some(level) = size_command_level(name) else { continue };
+        let end = after + (rest.len() - trimmed.len()) + 1 + close + 1;
+        if cmd == "begin" {
+            open.push((at, end, name));
+        } else if let Some(k) = open.iter().rposition(|(_, _, n)| *n == name) {
+            let (begin, body_start, _) = open.remove(k);
+            out.push(SizeEnv { begin, body: (body_start, at), level });
+        }
+    }
+    out.sort_by_key(|e| e.begin);
+    out
 }
 
 impl Styles {
@@ -5772,7 +8274,23 @@ impl Styles {
         let mut ends: Vec<usize> = intervals.iter().filter(|i| i.3).map(|i| i.1).collect();
         ends.sort_unstable();
         let intervals = intervals.into_iter().map(|(s, e, c, _)| (s, e, c)).collect();
-        Styles { intervals, max_end, ends, literal: literal_spans(source), scheme }
+        Styles { intervals, max_end, ends, literal: literal_spans(source), scheme, size_envs: size_environments(source) }
+    }
+
+    /// The size a size environment gives the text at byte `at` when the
+    /// compiler has no size declaration there (it does not know the
+    /// environments): the innermost one whose body holds `at`, unless a size
+    /// declaration made inside that body is still in force at `at` -- then
+    /// the compiler's own scoping already has the size.
+    fn size_env_at(&self, source: &str, at: usize) -> Option<flashtex_compiler::parser::FontSizeLevel> {
+        let env = self.size_envs.iter().rev().find(|e| e.body.0 <= at && at < e.body.1)?;
+        let mut scan = CmdScan::new(source.get(env.body.0..at)?);
+        while let Some((off, cmd, _)) = scan.next() {
+            if size_command_level(cmd).is_some() && group_open_between(source, env.body.0 + off + 1 + cmd.len(), at) {
+                return None;
+            }
+        }
+        env.level
     }
 
     /// Whether the text an inline spanning from `at` typesets is verbatim.
@@ -5803,6 +8321,23 @@ impl Styles {
     /// selection (`crate::nfss::apply`), so order matters exactly as in
     /// LaTeX (`\textsc{\emph{x}}` is not `\emph{\textsc{x}}`).
     fn at(&self, at: usize) -> TextStyle {
+        self.at_then(at, std::iter::empty())
+    }
+
+    /// The style of a token of a user macro's replacement text, invoked at
+    /// byte `at`, that sits at byte `offset` of the definition `body`: the
+    /// call site's font, then the body's own groups and commands around the
+    /// token (`\newcommand{\x}{\textbf{Note:}}` sets `Note:` bold — the
+    /// compiler spans the token at the invocation, whose bytes are not in
+    /// the `\textbf` group).
+    fn in_body(&self, at: usize, body: &str, offset: usize) -> TextStyle {
+        let inner = source_style_intervals(body);
+        self.at_then(at, inner.into_iter().filter(|(s, e, _, _)| *s <= offset && offset < *e).map(|(_, _, c, _)| c))
+    }
+
+    /// [`Styles::at`] with `extra` commands applied after the chain in force
+    /// at `at`.
+    fn at_then(&self, at: usize, extra: impl Iterator<Item = crate::nfss::Command>) -> TextStyle {
         let p = self.intervals.partition_point(|(start, _, _)| *start <= at);
         let mut chain = Vec::new();
         let mut i = p;
@@ -5816,9 +8351,11 @@ impl Styles {
                 chain.push(command);
             }
         }
+        chain.reverse();
+        chain.extend(extra);
         let mut key = crate::nfss::FontKey::default();
         let mut undefined = None;
-        for command in chain.into_iter().rev() {
+        for command in chain {
             let s = crate::nfss::apply(self.scheme, key, command);
             key = s.key;
             undefined = s.undefined.or(undefined);
@@ -5829,8 +8366,12 @@ impl Styles {
     /// Whether the font in force at byte `at` is slanted (`\fontdimen1 >
     /// 0`): the loaded shape after `sub*`/`ssub*`.
     fn slanted_at(&self, at: usize) -> bool {
-        let key = self.at(at).key();
-        crate::nfss::terminal(self.scheme, crate::nfss::select(self.scheme, key).key).0.slanted()
+        self.slanted(self.at(at))
+    }
+
+    /// Whether `style`'s loaded font is slanted (see [`Styles::slanted_at`]).
+    fn slanted(&self, style: TextStyle) -> bool {
+        crate::nfss::terminal(self.scheme, crate::nfss::select(self.scheme, style.key()).key).0.slanted()
     }
 
     /// Whether a style group's content ends exactly at `at`.
@@ -6003,30 +8544,35 @@ fn items_cached(
     at.bold.hash(&mut h);
     at.italic.hash(&mut h);
     (at.slanted, at.caps, at.family, at.undefined, st.scheme).hash(&mut h);
+    inlines.len().hash(&mut h);
     for i in inlines {
         let s = inline_span(i);
         (s.start.wrapping_sub(start), s.end.wrapping_sub(start)).hash(&mut h);
+        // The kind tag comes from the variant itself, never a hand-written
+        // number: see `incremental::tag`.
+        crate::incremental::tag(i, &mut h);
         match i {
             Inline::Text { text, style, .. } => {
-                0u8.hash(&mut h);
                 text.hash(&mut h);
                 style.color.hash(&mut h);
+                // A macro argument's font comes from the definition, which
+                // may sit outside the hashed slice (`macro_argument_intervals`).
+                let here = st.at(s.start);
+                (here.bold, here.italic, here.slanted, here.caps, here.family, here.undefined).hash(&mut h);
             }
-            Inline::LineBreak { .. } => 1u8.hash(&mut h),
+            // The tag is the whole payload.
+            Inline::LineBreak { .. } => {}
             Inline::Math { list, display, number, color, .. } => {
-                2u8.hash(&mut h);
                 color.hash(&mut h);
                 display.hash(&mut h);
                 number.hash(&mut h);
                 crate::incremental::hash_math(list, &mut h);
             }
             Inline::Label { key, value, .. } => {
-                3u8.hash(&mut h);
                 key.hash(&mut h);
                 value.hash(&mut h);
             }
             Inline::Reference { key, page, equation, .. } => {
-                4u8.hash(&mut h);
                 key.hash(&mut h);
                 page.hash(&mut h);
                 equation.hash(&mut h);
@@ -6034,40 +8580,38 @@ fn items_cached(
             // Lowered constructs (pin `d416472a`): their text is in the
             // source slice already hashed; the structure is hashed here.
             Inline::Footnote { number, mark, text, .. } => {
-                9u8.hash(&mut h);
                 number.hash(&mut h);
                 mark.hash(&mut h);
                 text.as_ref().map_or(0, Vec::len).hash(&mut h);
             }
+            Inline::Marginpar { text, .. } => {
+                text.len().hash(&mut h);
+            }
             Inline::Tabular(t) => {
-                10u8.hash(&mut h);
                 t.entries.len().hash(&mut h);
                 t.inline_lists().iter().map(|l| l.len()).sum::<usize>().hash(&mut h);
             }
             Inline::Verbatim { text, .. } => {
-                11u8.hash(&mut h);
                 text.hash(&mut h);
             }
             Inline::ColorBox(b) => {
-                15u8.hash(&mut h);
                 format!("{b:?}").hash(&mut h);
             }
             Inline::Underline(u) => {
-                18u8.hash(&mut h);
                 format!("{u:?}").hash(&mut h);
             }
+            Inline::TextScript(t) => {
+                format!("{t:?}").hash(&mut h);
+            }
             Inline::Logo { logo, style, .. } => {
-                12u8.hash(&mut h);
                 logo.hash(&mut h);
                 style.hash(&mut h);
             }
             Inline::Rule { rule, style, .. } => {
-                13u8.hash(&mut h);
                 rule.hash(&mut h);
                 style.hash(&mut h);
             }
             Inline::Kern { amount, style, .. } => {
-                14u8.hash(&mut h);
                 amount.hash(&mut h);
                 style.hash(&mut h);
             }
@@ -6075,7 +8619,6 @@ fn items_cached(
             // it, and they carry different diagnostics, so an edit between
             // them must not reuse the cached block.
             Inline::HFill { leader, .. } => {
-                6u8.hash(&mut h);
                 match leader {
                     FillLeader::None => 0u8,
                     FillLeader::Rule => 1u8,
@@ -6084,15 +8627,12 @@ fn items_cached(
                 .hash(&mut h);
             }
             Inline::HSpace { pt, .. } => {
-                7u8.hash(&mut h);
                 pt.to_bits().hash(&mut h);
             }
             Inline::TextGlue { em, .. } => {
-                8u8.hash(&mut h);
                 em.to_bits().hash(&mut h);
             }
             Inline::MathRows { rows, aligned, .. } => {
-                5u8.hash(&mut h);
                 aligned.hash(&mut h);
                 rows.len().hash(&mut h);
                 for row in rows {
@@ -6105,19 +8645,34 @@ fn items_cached(
                 }
             }
             Inline::Graphic(g) => {
-                16u8.hash(&mut h);
                 format!("{g:?}").hash(&mut h);
             }
             Inline::Transform(t) => {
-                17u8.hash(&mut h);
                 format!("{t:?}").hash(&mut h);
             }
             // Lowered by `lower_inline` like `Reference`, so every field
             // that selects its text is part of the key.
             Inline::CleverReference { keys, page, range, label_only, capitalise, linked, .. } => {
-                19u8.hash(&mut h);
                 keys.hash(&mut h);
                 (page, range, label_only, capitalise, linked).hash(&mut h);
+            }
+            // Nodes only a re-pinned compiler emits. The cache key must
+            // still change when any of their fields does, so -- exactly as
+            // the `Graphic`/`Transform` arms above do -- the whole node is
+            // hashed through its `Debug` form rather than field by field.
+            // That is conservative (it can only over-invalidate) and cannot
+            // return a stale adaptation once the stacked PRs give these
+            // nodes real layout.
+            #[cfg(feature = "compiler-node-surface")]
+            other @ (Inline::ThePage { .. }
+            | Inline::PageNumbering { .. }
+            | Inline::TabStop { .. }
+            | Inline::TabJump { .. }
+            | Inline::Marginpar { .. }
+            | Inline::Penalty { .. }
+            | Inline::PagePenalty { .. }
+            | Inline::Discretionary { .. }) => {
+                format!("{other:?}").hash(&mut h);
             }
         }
     }
@@ -6150,6 +8705,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
     for inline in inlines {
         lower_inline(inline, labels, &mut reference_spans, &mut resolved);
     }
+    apply_size_environments(texts, styles, &mut resolved);
     let mut items: Vec<Item> = Vec::new();
     let mut prev_end: Option<usize> = None;
     let mut prev_span: Option<Span> = None;
@@ -6163,7 +8719,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
     let styles_of = |d: DocumentId| -> &Styles { styles.get(d.0).unwrap_or(&no_styles) };
 
     // Where the reader stands in a macro's replacement text (`token_gap`).
-    let mut cursor: Option<BodyCursor> = None;
+    let cursor: std::cell::Cell<Option<BodyCursor>> = std::cell::Cell::new(None);
     // Whether the previous token was a glue control word (`\hfill`,
     // `\quad`, `\hspace`): TeX eats the whitespace right after it, and
     // the gap read next starts at that whitespace.
@@ -6175,7 +8731,10 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
     // bodies), so the gap is never scanned for fills here.
     let mut space_between = |prev_end: Option<usize>, prev_span: Option<Span>, span: Span, text: Option<&str>, after_control_word: bool| -> bool {
         let src = text_of(span.document);
-        match token_gap(src, prev_end, prev_span, span, text, &mut cursor) {
+        let mut c = cursor.get();
+        let gap = token_gap(src, prev_end, prev_span, span, text, &mut c);
+        cursor.set(c);
+        match gap {
             None => false,
             Some(gap) if after_control_word => gap_has_space_after_control_word(&gap),
             Some(gap) => gap_has_space(&gap),
@@ -6207,7 +8766,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
         }
     };
 
-    for inline in resolved.iter() {
+    for (k, inline) in resolved.iter().enumerate() {
         if let Some(sep) = head_sep {
             if sep.opens_the_body(inline_span(inline)) {
                 pending_head_sep.set(Some((sep.pt, sep.stretch_pt, sep.shrink_pt)));
@@ -6230,7 +8789,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 push_gap(&mut items, gap, gap_style, factor);
                 let note = text.as_ref().map(|t| {
                     let mut note = Vec::new();
-                    for (k, part) in t.split(|i| matches!(i, Inline::LineBreak { span: at } if at == span)).enumerate() {
+                    for (k, part) in t.split(|i| matches!(i, Inline::LineBreak { span: at, .. } if at == span)).enumerate() {
                         if k > 0 {
                             note.push(Item::NoteParBreak);
                         }
@@ -6239,6 +8798,31 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     note
                 });
                 items.push(Item::Footnote { number: number.clone(), mark: *mark, span: *span, text: note });
+                after_control_word = end == span.end;
+                prev_end = Some(end);
+                prev_span = Some(Span::in_document(span.document, span.start, end));
+                pending_accent = None;
+            }
+            Inline::Marginpar { text, span, .. } => {
+                // `\marginpar` sets no mark: the note is placed in the
+                // margin by `typeset::marginpar`. Gap handling matches
+                // `Footnote` (`footnote_command_end` reads the same
+                // `[<left>]{<right>}` bracket-plus-group shape).
+                let src = text_of(span.document);
+                let end = footnote_command_end(src, span.end);
+                let word = src.get(span.start..span.end).unwrap_or("\\marginpar");
+                let gap = space_between(prev_end, prev_span, *span, Some(word), after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                let mut note = Vec::new();
+                for (k, part) in text.split(|i| matches!(i, Inline::LineBreak { span: at, .. } if at == span)).enumerate() {
+                    if k > 0 {
+                        note.push(Item::NoteParBreak);
+                    }
+                    note.extend(items_from_inlines_styled(texts, part, styles, labels, size, false, compiler_weight));
+                }
+                items.push(Item::Marginpar { text: note, span: *span });
                 after_control_word = end == span.end;
                 prev_end = Some(end);
                 prev_span = Some(Span::in_document(span.document, span.start, end));
@@ -6254,7 +8838,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 push_gap(&mut items, gap, gap_style, factor);
                 after_control_word = false;
                 let src = text_of(span.document);
-                let lengths = crate::table::TableLengths::read(|name| setlength(src, name, size));
+                let lengths = crate::table::TableLengths::read(|name, base| length_at(src, name, size, span.start, base));
                 let mut items_of = |inlines: &[Inline], declared: bool| items_from_inlines_styled(texts, inlines, styles, labels, size, false, declared);
                 let table = crate::table::from_compiler(t, lengths, declared_size(t.style.size, size), &mut items_of);
                 items.push(Item::Table(Box::new(table)));
@@ -6301,8 +8885,43 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_span = Some(span);
                 factor = 1000;
             }
-            Inline::LineBreak { span } => {
-                let skip_pt = line_break_skip(text_of(span.document), span.end, size).unwrap_or(0.0);
+            Inline::TextScript(t) => {
+                // A formula (`\ensuremath`): the space before it is read
+                // like one, and the space factor after it is 1000.
+                let span = t.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                let size_cpt = declared_size(t.style.size, size);
+                let mut content = items_from_inlines_styled(texts, &t.content, styles, labels, size, heading, compiler_weight);
+                // `\fontsize\sf@size` replaces the declared size the
+                // argument inherited from the command's context.
+                if size_cpt != 0 {
+                    for item in &mut content {
+                        match item {
+                            Item::Word(w) => {
+                                for seg in &mut w.segments {
+                                    if seg.style.size_cpt == size_cpt {
+                                        seg.style.size_cpt = 0;
+                                    }
+                                }
+                            }
+                            Item::Space { style, .. } if style.size_cpt == size_cpt => style.size_cpt = 0,
+                            _ => {}
+                        }
+                    }
+                }
+                items.push(Item::TextScript(Box::new(TextScriptItem { superscript: t.superscript, size_cpt, items: content, span })));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
+            }
+            Inline::LineBreak { span, .. } => {
+                let skip_pt = reported_line_break_skip(inline)
+                    .or_else(|| line_break_skip(text_of(span.document), span.end, size))
+                    .unwrap_or(0.0);
                 items.push(Item::LineBreak { skip_pt });
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
@@ -6346,9 +8965,40 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 // \normalfont[#2 points]`): the compiler gives the glue the
                 // invocation's span, and the next token's gap must start
                 // after the word, not before it.
+                // The font the fill's leader is set in: the family, series
+                // and shape at the fill's own bytes (like `Kern`), with the
+                // size declaration in force at the fill's own span. Like
+                // every other gap-style site here, that size goes through
+                // `space_size`, not the raw previous-text size: a size group
+                // that already closed before the fill (`{\Large A}\dotfill`)
+                // leaves the fill at the ambient size.
+                // `Inline::HFill` carries no compiler style of its own, and
+                // the source scan is family/series/shape only, so there is
+                // no per-position size to resolve with `declared_size`; the
+                // `next_cpt` is 0 (no declared size: ambient), and the size
+                // is only the previous text's when no group closed in
+                // between -- never a size established after the fill.
+                let mut fill_style = style_at(styles_of(span.document), span.start);
+                fill_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
+                // The font the glue's `em` is read in: the series/family
+                // from the source's declarations at the command, the size
+                // from the compiler's scoping of the text around it.
+                let quad_style = || {
+                    let mut style = style_at(styles_of(span.document), span.start);
+                    let next_cpt = resolved[k + 1..].iter().find_map(|i| inline_declared_size(i, size)).unwrap_or(prev_size_cpt);
+                    style.size_cpt = glue_size(texts, prev_end, *span, prev_size_cpt, next_cpt);
+                    style
+                };
                 let (item, word) = match &**inline {
-                    Inline::HSpace { pt, .. } => (Item::HSpace { pt: *pt, stretch_pt: 0.0, shrink_pt: 0.0 }, "\\hspace"),
-                    Inline::TextGlue { em, .. } => (Item::Quad { em: *em }, if *em >= 2.0 { "\\qquad" } else { "\\quad" }),
+                    // `em` is the current font's quad (`\fontdimen6`), which
+                    // the compiler's `pt` cannot know: it converts at a fixed
+                    // size. An `\hspace{<n>em}` read from the source is set
+                    // as `<n>` quads of the font in force, like `\quad`.
+                    Inline::HSpace { pt, span, .. } => match hspace_ems(text_of(span.document), *span) {
+                        Some(em) => (Item::Quad { em, style: quad_style() }, "\\hspace"),
+                        None => (Item::HSpace { pt: *pt, stretch_pt: 0.0, shrink_pt: 0.0 }, "\\hspace"),
+                    },
+                    Inline::TextGlue { em, .. } => (Item::Quad { em: *em, style: quad_style() }, if *em >= 2.0 { "\\qquad" } else { "\\quad" }),
                     // `\hrulefill` and `\dotfill` (compiler `FillLeader`, #320)
                     // are `\leavevmode\leaders<box>\hfill\kern\z@`: the glue is
                     // exactly `\hfill`, so it is set here like any other, and
@@ -6369,14 +9019,14 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     // vanishes the same way; that is a separate pre-existing
                     // defect, reproducible on the previous pin, not this one.)
                     Inline::HFill { leader: FillLeader::Rule, .. } => {
-                        (Item::HFill { fill: true, leader: FillLeader::Rule }, "\\hrulefill")
+                        (Item::HFill { fill: true, leader: FillLeader::Rule, style: fill_style }, "\\hrulefill")
                     }
                     Inline::HFill { leader: FillLeader::Dots, .. } => {
-                        (Item::HFill { fill: true, leader: FillLeader::Dots }, "\\dotfill")
+                        (Item::HFill { fill: true, leader: FillLeader::Dots, style: fill_style }, "\\dotfill")
                     }
                     Inline::HFill { leader: FillLeader::None, .. } => {
                         let fill = !is_control_word(text_of(span.document), span.start, "hfil");
-                        (Item::HFill { fill, leader: FillLeader::None }, if fill { "\\hfill" } else { "\\hfil" })
+                        (Item::HFill { fill, leader: FillLeader::None, style: fill_style }, if fill { "\\hfill" } else { "\\hfil" })
                     }
                     _ => unreachable!(),
                 };
@@ -6410,9 +9060,19 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 }
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
-                factor = 1000;
+                // The space factor survives: glue (`\hskip`, `\hfill`, the
+                // leaders), `\kern` and the `\leavevmode`'s `\unhbox` of a
+                // void box leave it alone (tex.web §1041 sets it only for
+                // characters, boxes appended in horizontal mode, rules and
+                // math). So `Name: \hrulefill{} Date:` keeps the colon's 2000
+                // and the blank after `{}` gets `\fontdimen7` too.
                 pending_accent = None;
-                after_control_word = true;
+                // `\hspace{..}` ends with its argument's `}`: the blank after
+                // it is an ordinary space token (`a\hspace{1em} b`), not one
+                // skipped after a control word. From a macro the span is the
+                // invocation's `\name`, whose blanks are skipped.
+                let src = text_of(span.document);
+                after_control_word = !(matches!(&**inline, Inline::HSpace { .. }) && span.end > span.start && src.as_bytes().get(span.end - 1) == Some(&b'}'));
             }
             Inline::MathRows { rows, span, .. } => {
                 // Each row becomes its own display item (`is_display`
@@ -6508,6 +9168,31 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_span = Some(*span);
                 after_control_word = word.as_deref().is_some_and(|w| w.len() > 2);
             }
+            // amsthm's automatic `\qedsymbol` (GH#443). `\end{proof}` appends
+            // exactly two inlines, an `Inline::HFill` with no leader and an
+            // `Inline::Text` holding U+220E, and gives both the *same* span —
+            // the `\end{proof}` bytes. That pair is the compiler's marker (it
+            // emits U+220E nowhere else); a U+220E typed in the source is a
+            // lone text inline with its own span and still sets whatever the
+            // font has. Latin Modern has no U+220E glyph, so the text arm
+            // below would warn `missing_glyph` and draw nothing; amsthm never
+            // wanted a character here in the first place.
+            Inline::Text { text, span, .. }
+                if text == "\u{220E}"
+                    && prev_span == Some(*span)
+                    && matches!(items.last(), Some(Item::HFill { leader: FillLeader::None, .. })) =>
+            {
+                let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
+                let mut style = style_at(styles_of(span.document), span.start);
+                style.size_cpt = declared_size(compiler_style.size, size);
+                prev_size_cpt = style.size_cpt;
+                items.push(Item::QedBox { style, span: *span });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = false;
+            }
             Inline::Text { text, span, .. } if text == " " && text_of(span.document).get(span.start..span.end) == Some("\\ ") => {
                 // `\ ` (control space, lexed as the word " "): interword glue at
                 // space factor 1000 (§1041-1044), after which TeX skips blanks.
@@ -6547,7 +9232,15 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 } else {
                     None
                 };
-                let mut style = style_at(styles_of(span.document), span.start);
+                let has_space = space_between(prev_end, prev_span, *span, Some(text), after_control_word);
+                after_control_word = false;
+                // A word of a user macro's replacement text, found in the
+                // definition body: the body's own font commands apply to it.
+                let in_body = cursor.get().filter(|c| c.inv == *span).and_then(|c| Some((macro_body(source, control_word_at(source, span.start, span.end)?, span.start)?, c.word?)));
+                let mut style = match in_body {
+                    Some((body, offset)) => styles_of(span.document).in_body(span.start, body, offset),
+                    None => style_at(styles_of(span.document), span.start),
+                };
                 // Verbatim text: no ligatures, no kerns, rigid blanks. The
                 // span of a `\verb|...|` starts at the backslash, so the
                 // body byte is what decides — `span.start` is the `\`.
@@ -6568,21 +9261,59 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     style.bold = compiler_style.bold;
                     style.italic = compiler_style.italic;
                 }
-                let has_space = space_between(prev_end, prev_span, *span, Some(text), after_control_word);
-                after_control_word = false;
                 if has_space || pending_head_sep.get().is_some() {
                     // TeX sizes an interword space with the font current
                     // where the space token is read ("Plain, \textbf{bold}"
                     // gets a regular space, "\textbf{bold words}" a bold one,
-                    // "\textbf{\emph{x}} y" a regular one).
-                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    // "\textbf{\emph{x}} y" a regular one). A blank of a
+                    // macro body is read in the body's font there.
+                    let body_blank = cursor.get().and_then(|c| {
+                        let blank = c.blank?;
+                        let body = macro_body(source, control_word_at(source, c.inv.start, c.inv.end)?, c.inv.start)?;
+                        Some(styles_of(span.document).in_body(c.inv.start, body, blank))
+                    });
+                    let mut gap_style = match body_blank {
+                        // A heading's weight comes from the compiler at the
+                        // word (`medium`), as for the word itself.
+                        Some(blank_style) => TextStyle { size_cpt: style.size_cpt, color: style.color, medium: style.medium, ..blank_style },
+                        None => space_style(texts, styles, prev_end, *span, style),
+                    };
                     if compiler_weight {
                         gap_style.bold = style.bold;
                         gap_style.italic = style.italic;
                     }
+                    // `\subsection*{Bonus \hfill \normalfont[1 bonus point]}`:
+                    // a space with `\normalfont` words on both sides was read
+                    // after the declaration, so it is `ecrm1200`'s 3.90bp and
+                    // not the head's `ecbx1200` 4.48bp. The source intervals
+                    // do not carry the head's weight, so the neighbours'
+                    // compiler weight decides; a space next to a bold word
+                    // keeps the head font (`A {\normalfont B} C`).
+                    if heading && style.medium && matches!(items.last(), Some(Item::Word(w)) if w.segments.last().is_some_and(|s| s.style.medium)) {
+                        gap_style.medium = true;
+                    }
                     gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
                     push_gap(&mut items, has_space, gap_style, factor);
                     pending_accent = None;
+                }
+                // LaTeX's `\check@icl`: a text font command whose font is
+                // upright (`\fontdimen1 = 0`) runs `\maybe@ic` before its
+                // argument, and `\sw@slant` puts the italic correction of
+                // the character before it *under* the interword space
+                // (`of \textbf{x}`: `f`, kern 0.7922 pt, space). amsmath's
+                // `\eqref` is `\textup{\tagform@{..}}`, so it always does.
+                // Not when the argument opens with a `\nocorrlist` token.
+                let styles_here = styles_of(span.document);
+                let check_icl = if reference_spans.contains(span) {
+                    source.get(span.start..).is_some_and(|r| r.starts_with("\\eqref"))
+                } else {
+                    text_command_argument_at(source, span.start) && !styles_here.slanted_at(span.start) && !text.starts_with(['.', ','])
+                };
+                if check_icl && !style.literal {
+                    let at = items.len() - usize::from(matches!(items.last(), Some(Item::Space { .. })));
+                    if at > 0 && matches!(items[at - 1], Item::Word(_)) {
+                        items.insert(at, Item::ItalicCorrection);
+                    }
                 }
                 prev_size_cpt = style.size_cpt;
                 if let Some(mark) = accent_char {
@@ -6731,7 +9462,21 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 // \text@command appends \/ (`\maybe@ic`) unless the next
                 // token is in \nocorrlist (`,` and `.`) or the enclosing
                 // font is itself slanted (`\fontdimen1 > 0`).
-                if styles_of(span.document).closes_at(span.end)
+                if let Some((body, offset)) = in_body {
+                    // The same inside a macro body (`\newcommand{\x}{\textit{Note}}`):
+                    // the group closes in the body, and the next token is the
+                    // body's next byte, or what follows the invocation.
+                    let end = offset + text.len();
+                    let next = body.as_bytes().get(end + 1).or(source.as_bytes().get(span.end));
+                    if source_style_intervals(body).iter().any(|i| i.3 && i.1 == end)
+                        && body.as_bytes().get(end) == Some(&b'}')
+                        && !matches!(next, Some(b'.') | Some(b','))
+                        && !styles_of(span.document).slanted(styles_of(span.document).in_body(span.start, body, end + 1))
+                        && matches!(items.last(), Some(Item::Word(_)))
+                    {
+                        items.push(Item::ItalicCorrection);
+                    }
+                } else if styles_of(span.document).closes_at(span.end)
                     && source.as_bytes().get(span.end) == Some(&b'}')
                     && !matches!(source.as_bytes().get(span.end + 1), Some(b'.') | Some(b','))
                     && !styles_of(span.document).slanted_at(span.end + 1)
@@ -6746,6 +9491,24 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
             }
+            // Inlines only a re-pinned compiler emits. Every one of them is
+            // a zero-width marker in the horizontal list -- a penalty, a
+            // discretionary, a tab stop or jump, a page-number marker -- so
+            // producing no item is what the old pin already did for the same
+            // source, and the line breaker sees exactly the same sequence.
+            // `Marginpar` is the one that carries text; the pipeline has no
+            // margin column yet (GH-505), so its note is not set here either
+            // way. PRs #569 (penalties/discretionaries), GH-TABBING and
+            // GH-505 (marginpar) replace this arm.
+            #[cfg(feature = "compiler-node-surface")]
+            Inline::ThePage { .. }
+            | Inline::PageNumbering { .. }
+            | Inline::TabStop { .. }
+            | Inline::TabJump { .. }
+            | Inline::Marginpar { .. }
+            | Inline::Penalty { .. }
+            | Inline::PagePenalty { .. }
+            | Inline::Discretionary { .. } => {}
         }
     }
     items
@@ -6803,6 +9566,95 @@ fn space_size(texts: &[&str], prev_end: Option<usize>, span: Span, prev_cpt: u16
     }
 }
 
+/// The size environment in force where a paragraph's `\par` is read (the
+/// blank line or `\par` after its last inline), for its `\baselineskip`:
+/// the compiler's `block_par_leading` does not know size environments.
+fn size_env_par_leading(texts: &[&str], styles: &[Styles], inlines: &[Inline]) -> ParLeading {
+    let span = inline_span(inlines.last()?);
+    let st = styles.get(span.document.0).filter(|s| !s.size_envs.is_empty())?;
+    let src = texts.get(span.document.0)?;
+    let rest = src.get(span.end..)?;
+    let mut par = rest.len();
+    let mut blank_from = None;
+    for (off, c) in rest.char_indices() {
+        match c {
+            '\n' if blank_from.is_some() => {
+                par = off;
+                break;
+            }
+            '\n' => blank_from = Some(off),
+            ' ' | '\t' | '\r' => {}
+            _ => blank_from = None,
+        }
+    }
+    if let Some(p) = find_command(&rest[..par], "par") {
+        par = par.min(p);
+    }
+    st.size_env_at(src, span.end + par)
+}
+
+/// Gives the text, rules, kerns and tables inside a size environment the
+/// environment's size where the compiler left them at the surrounding size
+/// ([`Styles::size_env_at`]).
+fn apply_size_environments(texts: &[&str], styles: &[Styles], resolved: &mut [std::borrow::Cow<Inline>]) {
+    if styles.iter().all(|s| s.size_envs.is_empty()) {
+        return;
+    }
+    for inline in resolved.iter_mut() {
+        let span = inline_span(inline);
+        let (Some(st), Some(src)) = (styles.get(span.document.0), texts.get(span.document.0)) else { continue };
+        let no_size = match &**inline {
+            Inline::Text { style, .. } | Inline::Logo { style, .. } | Inline::Rule { style, .. } | Inline::Kern { style, .. } => style.size.is_none(),
+            Inline::Tabular(t) => t.style.size.is_none(),
+            _ => false,
+        };
+        if !no_size {
+            continue;
+        }
+        let Some(level) = st.size_env_at(src, span.start) else { continue };
+        match inline.to_mut() {
+            Inline::Text { style, .. } | Inline::Logo { style, .. } | Inline::Rule { style, .. } | Inline::Kern { style, .. } => style.size = Some(level),
+            Inline::Tabular(t) => t.style.size = Some(level),
+            _ => {}
+        }
+    }
+}
+
+/// The size declaration in force at an explicit glue command (`\quad`,
+/// `\hspace{<n>em}`) that carries no compiler style of its own, from the
+/// sizes of the text before (`prev_cpt`) and after (`next_cpt`) it: the
+/// previous text's, unless the bytes between that text and the command
+/// close a group or declare a size (`{\Large a}\quad b`, `a \Large\quad b`),
+/// in which case the size is the one the following text is read in.
+fn glue_size(texts: &[&str], prev_end: Option<usize>, span: Span, prev_cpt: u16, next_cpt: u16) -> u16 {
+    if prev_cpt == next_cpt {
+        return prev_cpt;
+    }
+    let Some(pe) = prev_end else { return next_cpt };
+    let Some(gap) = texts.get(span.document.0).and_then(|t| t.get(pe..span.start)) else { return prev_cpt };
+    let mut scan = CmdScan::new(gap);
+    let mut declares_size = false;
+    while let Some((_, cmd, _)) = scan.next() {
+        declares_size |= matches!(cmd, "tiny" | "scriptsize" | "footnotesize" | "small" | "normalsize" | "large" | "Large" | "LARGE" | "huge" | "Huge");
+    }
+    if declares_size || gap.contains('}') {
+        next_cpt
+    } else {
+        prev_cpt
+    }
+}
+
+/// The size declaration (`declared_size`) of an inline that carries the
+/// compiler's text style; `None` for one that does not.
+fn inline_declared_size(inline: &Inline, base: u32) -> Option<u16> {
+    match inline {
+        Inline::Text { style, .. } | Inline::Logo { style, .. } | Inline::Rule { style, .. } | Inline::Kern { style, .. } => {
+            Some(declared_size(style.size, base))
+        }
+        _ => None,
+    }
+}
+
 /// The style in force where TeX reads the space token between the previous
 /// inline (ending at `prev_end`) and `span`: the first whitespace byte of
 /// the gap, which sits inside or outside the closing braces around it.
@@ -6819,6 +9671,15 @@ fn space_style(
     let no_styles = Styles::default();
     let intervals = styles.get(span.document.0).unwrap_or(&no_styles);
     let Some(gap) = src.get(pe..span.start) else { return fallback };
+    // After a replacement token of a user macro (whose span is the `\name`
+    // of the invocation) the bytes up to an argument are the call's earlier
+    // arguments, not what TeX read: `\pair{\textit{a b}}{c}`'s body space
+    // before `#2` is not in `a b`'s italic. Read the call site's font.
+    if let Some(bs) = src[..pe].rfind('\\') {
+        if is_invocation_span(src, Span { document: span.document, start: bs, end: pe }) {
+            return style_at(intervals, bs);
+        }
+    }
     match gap.find(|c: char| c.is_whitespace()) {
         Some(off) => style_at(intervals, pe + off),
         None => style_at(intervals, pe),
@@ -6897,6 +9758,18 @@ fn tex_ligatures(chars: Vec<(char, CharSrc)>) -> Vec<(char, CharSrc)> {
 mod tests {
     use super::*;
 
+    /// Issue #520: the environment name at the display's first byte picks
+    /// the alignment, so `eqnarray` reaches the kernel `\halign` arm rather
+    /// than falling through to `align`, starred or not.
+    #[test]
+    fn rows_env_reads_eqnarray_from_source() {
+        assert_eq!(RowsEnv::at("\\begin{eqnarray} a &=& b \\end{eqnarray}"), RowsEnv::EqnArray);
+        assert_eq!(RowsEnv::at("\\begin{eqnarray*} a &=& b \\end{eqnarray*}"), RowsEnv::EqnArray);
+        assert_eq!(RowsEnv::at("\\begin{align} a &= b \\end{align}"), RowsEnv::Align);
+        assert_eq!(RowsEnv::at("\\begin{gather} a \\\\ b \\end{gather}"), RowsEnv::Gather);
+        assert_eq!(RowsEnv::at("\\begin{multline} a \\\\ b \\end{multline}"), RowsEnv::Multline);
+    }
+
     fn items(src: &str) -> Vec<Item> {
         let parsed = flashtex_compiler::parser::parse(src);
         let doc = adapt(&[src], 0, &parsed, &RenderOptions::default(), &Labels::default());
@@ -6907,6 +9780,81 @@ mod tests {
             },
             Block::Heading { items, .. } => items.clone(),
             _ => panic!("a rule, picture, chapter or page-style block holds no items"),
+        }
+    }
+
+    /// [`block_leadings`] pairs positionally only when the compiler's list is
+    /// exactly one entry per block, and otherwise discards it — with no
+    /// dependence on `debug_assertions`, so a debug and a release build lay
+    /// the same document out the same way (#667).
+    ///
+    /// The predecessor of this function was a `debug_assert_eq!` followed by a
+    /// `zip`: a debug build panicked and a release build paired block *i* with
+    /// a stray entry, which is how `\colorbox{white}{\small x}` came to set a
+    /// whole body paragraph's `\baselineskip` in release only.
+    #[cfg(feature = "par-leading")]
+    #[test]
+    fn block_leadings_are_profile_independent() {
+        use flashtex_compiler::parser::FontSizeLevel;
+        let small = Some(FontSizeLevel::Small);
+        let large = Some(FontSizeLevel::Large1);
+
+        // One entry per block: used as it stands, in order.
+        assert_eq!(block_leadings(&[small, None, large], 3), vec![small, None, large]);
+        assert_eq!(block_leadings(&[], 0), Vec::<ParLeading>::new());
+
+        // Any other length is unpairable: every block takes the body leading.
+        // A stray entry is pushed before the block it belongs to, so a longer
+        // list must not simply be truncated to `blocks` (that is the release
+        // mis-pairing this replaced) and a shorter one must not be padded.
+        assert_eq!(block_leadings(&[small, None], 1), vec![None]);
+        assert_eq!(block_leadings(&[small, small, None], 2), vec![None, None]);
+        assert_eq!(block_leadings(&[small], 3), vec![None, None, None]);
+        assert_eq!(block_leadings(&[small], 0), Vec::<ParLeading>::new());
+
+        // The property the old `debug_assert!` broke: the result depends on
+        // the inputs alone, never on how the crate was compiled.
+        for compiler_len in 0..6usize {
+            for blocks in 0..6usize {
+                let list = vec![small; compiler_len];
+                let got = block_leadings(&list, blocks);
+                assert_eq!(got.len(), blocks, "{compiler_len} entries, {blocks} blocks");
+                assert!(
+                    got.iter().all(|l| *l == small) || got.iter().all(|l| l.is_none()),
+                    "{compiler_len} entries, {blocks} blocks: {got:?}"
+                );
+                assert_eq!(got, block_leadings(&list, blocks), "not deterministic");
+            }
+        }
+    }
+
+    /// [`SourceIndex`] answers exactly what the prefix scans it replaces
+    /// (`list_stack_at`, `in_theorem_environment`) answer, at every byte
+    /// offset, including offsets inside control words and names, comments,
+    /// escaped `\%`, unclosed braces and mismatched `\end`s.
+    #[test]
+    fn source_index_matches_prefix_scans() {
+        let envs: std::collections::HashSet<String> = ["proof", "theorem", "lemma"].iter().map(|s| s.to_string()).collect();
+        let sources = [
+            "",
+            "\\begin{itemize}\\item a\\end{itemize}",
+            "\\newtheorem{theorem}{Theorem}\n\\begin{document}\n\\begin{theorem}[Name] text \\begin{itemize}[nosep, leftmargin=*]\n\\item x\n\\begin{enumerate}[(a)]\\item y\\end{enumerate}\\end{itemize}\n\\end{theorem}\n\\begin{proof}p\\end{proof}\\end{document}",
+            "% \\begin{theorem}\n\\begin {lemma} a \\% \\begin{proof} b\\end{lemma}\\beginning{x}\\endgroup \\begin{description}\\item[k] v\\end{itemize}\\end{description}",
+            "\\begin{thebibliography}{99}\\bibitem{a} A\\end{thebibliography}\\begin{theorem} \\end{lemma} \\end{theorem}",
+            "\\begin{theorem} unclosed \\begin{itemize \\item \\end{itemize",
+            "\\begin[x]{theorem} é \\\\begin{proof} \\begin{enumerate}\\item ü\\end{enumerate} \\begin",
+        ];
+        for source in sources {
+            let index = SourceIndex::new(source, &envs);
+            for at in 0..=source.len() {
+                let boundary = source.is_char_boundary(at);
+                assert_eq!(index.in_theorem(boundary, at), in_theorem_environment(source, at, &envs), "in_theorem at {at} of {source:?}");
+                if boundary {
+                    assert_eq!(index.list_stack(at), &list_stack_at(source, at)[..], "list stack at {at} of {source:?}");
+                }
+            }
+            assert_eq!(index.setlist, setlist_calls(source));
+            assert_eq!(index.natbib_author_year, natbib_author_year(source));
         }
     }
 
@@ -7219,6 +10167,238 @@ mod tests {
     }
 
     #[test]
+    fn table_lengths_are_read_with_their_group_scope() {
+        let src = "\\documentclass{article}\\setlength{\\tabcolsep}{3pt}\\begin{document}\
+                   {\\setlength{\\tabcolsep}{4pt}A}B\\begin{center}\\setlength{\\tabcolsep}{5pt}C\\end{center}D\
+                   \\begingroup\\setlength{\\tabcolsep}{7pt}\\{E\\endgroup F % \\setlength{\\tabcolsep}{9pt}\nG\\end{document}";
+        let at = |marker: &str| src.find(marker).unwrap();
+        let sep = |marker: &str| length_at(src, "tabcolsep", 10, at(marker), 6.0);
+        assert_eq!(sep("\\begin{document}"), Some(3.0));
+        assert_eq!(sep("A}"), Some(4.0));
+        assert_eq!(sep("B\\begin"), Some(3.0));
+        assert_eq!(sep("C\\end"), Some(5.0));
+        assert_eq!(sep("D\\begingroup"), Some(3.0));
+        // `\{` is an escaped brace, not a group.
+        assert_eq!(sep("E\\endgroup"), Some(7.0));
+        assert_eq!(sep("F %"), Some(3.0));
+        // A commented-out assignment is not one.
+        assert_eq!(sep("G\\end"), Some(3.0));
+        assert_eq!(length_at(src, "arrayrulewidth", 10, src.len(), 0.4), None);
+    }
+
+    #[test]
+    fn table_lengths_are_read_in_every_assignment_form() {
+        let src = "\\begin{document}\\setlength\\tabcolsep{2pt}A\\addtolength{\\tabcolsep}{3pt}B{\\tabcolsep=1pt C}{\\tabcolsep 1.5pt D}\\newcommand{\\tight}{\\setlength{\\tabcolsep}{0pt}}E\\end{document}";
+        let at = |marker: &str| src.find(marker).unwrap();
+        let sep = |marker: &str| length_at(src, "tabcolsep", 10, at(marker), 6.0);
+        assert_eq!(sep("A"), Some(2.0));
+        assert_eq!(sep("B"), Some(5.0));
+        assert_eq!(sep("C"), Some(1.0));
+        assert_eq!(sep("D"), Some(1.5));
+        // A definition's body is not an assignment until the macro is used.
+        assert_eq!(sep("E"), Some(5.0));
+        // `\addtolength` with nothing before it adds to the default.
+        assert_eq!(length_at("\\addtolength{\\tabcolsep}{3pt}X", "tabcolsep", 10, 30, 6.0), Some(9.0));
+    }
+
+    #[test]
+    fn table_lengths_follow_macro_invocations() {
+        // pdflatex (fixture 128): `\tight` before a table narrows it exactly
+        // as the `\setlength` in its body would.
+        let src = concat!(
+            "\\newcommand{\\tight}{\\setlength{\\tabcolsep}{0pt}}",
+            "\\newcommand{\\widen}[1]{\\addtolength{\\tabcolsep}{#1}}",
+            "\\newcommand{\\nested}{\\tight\\widen{2pt}}",
+            "\\newcommand{\\scoped}{{\\setlength{\\tabcolsep}{20pt}}}",
+            "\\newcommand{\\opt}[1][3pt]{\\setlength{\\tabcolsep}{#1}}",
+            "\\begin{document}",
+            "{\\tight @1}",
+            "{\\widen{4pt}@2}",
+            "{\\nested @3}",
+            "{\\scoped @4}",
+            "{\\tight\\opt[1pt]@5}",
+            "\\end{document}"
+        );
+        let at = |marker: &str| src.find(marker).unwrap();
+        let sep = |marker: &str| length_at_checked(src, "tabcolsep", 10, at(marker), 6.0);
+        assert_eq!(sep("@1"), (Some(0.0), false));
+        assert_eq!(sep("@2"), (Some(10.0), false));
+        assert_eq!(sep("@3"), (Some(2.0), false));
+        // The body's own group undoes its assignment.
+        assert_eq!(sep("@4"), (None, false));
+        // An optional argument is not read: the value is the one before the
+        // invocation, and the caller is told so (`table_length_limitations`).
+        assert_eq!(sep("@5"), (Some(0.0), true));
+        let mut out = Vec::new();
+        table_length_limitations(&[src], Span::new(at("@5"), at("@5") + 2), 10, &mut out);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].2.contains("\\tabcolsep"), "{}", out[0].2);
+    }
+
+    /// The indexed lookup of an adapt call answers exactly what the scan of
+    /// the source before the byte answers, at every byte: grouped, escaped
+    /// and commented braces, environments, macros with and without
+    /// arguments, an assigning macro inside another's argument, unclosed
+    /// groups and non-ASCII text.
+    #[test]
+    fn table_length_index_matches_the_prefix_scan() {
+        let sources = [
+            "",
+            "\\tabcolsep",
+            "\\documentclass{article}\\setlength{\\tabcolsep}{3pt}\\begin{document}{\\setlength{\\tabcolsep}{4pt}A}B\\begin{center}\\setlength{\\tabcolsep}{5pt}C\\end{center}D\\begingroup\\setlength{\\tabcolsep}{7pt}\\{E\\endgroup F % \\setlength{\\tabcolsep}{9pt}\nG\\end{document}",
+            "\\begin{document}\\setlength\\tabcolsep{2pt}A\\addtolength{\\tabcolsep}{3pt}B{\\tabcolsep=1pt C}{\\tabcolsep 1.5pt D}\\newcommand{\\tight}{\\setlength{\\tabcolsep}{0pt}}E\\addtolength\\tabcolsep{1pt}\\end{document}",
+            concat!(
+                "\\newcommand{\\tight}{\\setlength{\\tabcolsep}{0pt}}",
+                "\\newcommand{\\widen}[1]{\\addtolength{\\tabcolsep}{#1}}",
+                "\\newcommand{\\nested}{\\tight\\widen{2pt}}",
+                "\\newcommand{\\scoped}{{\\setlength{\\tabcolsep}{20pt}}}",
+                "\\newcommand{\\opt}[1][3pt]{\\setlength{\\tabcolsep}{#1}}",
+                "\\begin{document}{\\tight @1}{\\widen{4pt}@2}{\\nested @3}{\\scoped @4}{\\tight\\opt[1pt]@5}",
+                "\\widen{bad}z\\end{document}"
+            ),
+            "\\newcommand{\\tight}{\\setlength{\\tabcolsep}{0pt}}\\newcommand{\\widen}[1]{\\addtolength{\\tabcolsep}{#1}}\\widen{\\tight}x\\setlength{\\tabcolsep}{\\tight}y{\\widen{1pt}}z",
+            "\\addtolength{\\tabcolsep}{3pt}X{\\addtolength{\\tabcolsep}{1pt}{\\addtolength{\\tabcolsep}{1pt}}\\addtolength{\\tabcolsep}{-1pt}}}}\\tabcolsep=2pt{{{\\tabcolsep 1pt",
+            "é\\setlength{\\tabcolsep}{2pt}% } ü {\n\\{\\setlength{\\tabcolsep}{3pt}\\}}\\\\{\\setlength{\\arrayrulewidth}{1pt}\\end{x}\\setlength{\\tabcolsep}{4pt}\\beginx{\\endgroupx}\\%{\\tabcolsep=5pt%\n}",
+        ];
+        // And documents strung together from the same pieces at random.
+        let pieces = [
+            "{", "}", "\\{", "\\}", "\\\\", "%", "\n", " ", "x", "é", "\\begin{center}", "\\end{center}", "\\begingroup", "\\endgroup",
+            "\\setlength{\\tabcolsep}{2pt}", "\\addtolength\\tabcolsep{1pt}", "\\tabcolsep=3pt", "\\tabcolsep", "\\tight", "\\widen{1pt}", "\\widen{",
+            "\\newcommand{\\tight}{\\setlength{\\tabcolsep}{0pt}}", "\\newcommand{\\widen}[1]{{\\addtolength{\\tabcolsep}{#1}}\\addtolength{\\tabcolsep}{#1}}",
+        ];
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        let generated: Vec<String> = (0..300)
+            .map(|_| {
+                (0..24)
+                    .map(|_| {
+                        state ^= state << 13;
+                        state ^= state >> 7;
+                        state ^= state << 17;
+                        pieces[(state % pieces.len() as u64) as usize]
+                    })
+                    .collect()
+            })
+            .collect();
+        for source in sources.iter().copied().chain(generated.iter().map(String::as_str)) {
+            let _scope = MacroDefsScope::enter(&[source]);
+            for (name, base) in [("tabcolsep", 6.0), ("arrayrulewidth", 0.4), ("LTpre", 0.0)] {
+                for at in (0..=source.len()).filter(|&at| source.is_char_boundary(at)) {
+                    assert_eq!(length_at_checked(source, name, 10, at, base), length_at_scan(source, name, 10, at, base), "{name} at {at} of {source:?}");
+                }
+            }
+            if sources.contains(&source) {
+                // Only an assigning macro in another's argument is left to the scan.
+                let scanned = MACRO_DEFS.with(|scope| scope.borrow()[0].lengths.by_name.values().filter(|i| i.is_none()).count());
+                assert_eq!(scanned, usize::from(source.contains("\\widen{\\tight}")), "{source:?}");
+            }
+        }
+    }
+
+    /// A document of `tables` tables in the forms `length_at` reads: a
+    /// preamble assignment, a macro, top-level `\addtolength`s, grouped and
+    /// environment-scoped `\setlength`s, and `\tabcolsep=` inside a group.
+    fn many_tables_source(tables: usize) -> (String, Vec<usize>) {
+        let mut src = String::from("\\documentclass{article}\\setlength{\\tabcolsep}{3pt}\n\\newcommand{\\tight}{\\setlength{\\tabcolsep}{1pt}}\n\\begin{document}\n");
+        let mut at = Vec::new();
+        for k in 0..tables {
+            src.push_str(&format!("\\section{{S{k}}} Some text % a comment {{\n\n"));
+            let table = "\\begin{tabular}{|l|l|}\\hline a & b \\\\ \\hline\\end{tabular}\n\n";
+            match k % 5 {
+                0 => src.push_str(&format!("{{\\setlength{{\\tabcolsep}}{{{}pt}}", k % 7)),
+                1 => src.push_str("\\begin{center}\\tight "),
+                2 => src.push_str("\\addtolength{\\arrayrulewidth}{0.01pt}{"),
+                3 => src.push_str("\\begingroup\\tabcolsep=2pt "),
+                _ => src.push_str("{"),
+            }
+            at.push(src.len());
+            src.push_str(table);
+            src.push_str(match k % 5 {
+                1 => "\\end{center}\n",
+                3 => "\\endgroup\n",
+                _ => "}\n",
+            });
+        }
+        src.push_str("\\end{document}\n");
+        (src, at)
+    }
+
+    /// Every table reads its lengths in one adapt call without rescanning the
+    /// source before it: doubling the number of tables about doubles the
+    /// time (a prefix scan per table grew it fourfold, #525/#623).
+    ///
+    /// This is a complexity guard, not a benchmark, so it uses an absolute
+    /// ceiling rather than a `t800 < t200 * N` ratio. A ratio over a
+    /// sub-millisecond baseline is fragile: on PR #765 CI this failed as
+    /// "800 tables took 5.044542ms, 200 took 587.834us: not linear", and the
+    /// identical commit passed on a bare re-run with no change -- a few
+    /// hundred microseconds of scheduler noise is a large fraction of a
+    /// ~600us baseline, and the error amplifies because the ratio's margin
+    /// scales with the *smaller* operand. Measured on dev hardware, normal
+    /// 800-table runs (best of 5) take ~1-1.3ms in `--release` and
+    /// ~10-11ms unoptimized. Forcing `length_at_checked` to always fall
+    /// through to `length_at_scan` (i.e. reverting #623 so every table
+    /// rescans the source instead of using the per-document index) makes
+    /// 800 tables take ~1.4s in `--release` -- about a thousandfold jump.
+    /// 300ms sits roughly 250-300x above the normal case and ~5x below the
+    /// reintroduced-quadratic case, so it stays quiet on a loaded machine
+    /// and still fires if the per-table rescan comes back.
+    #[test]
+    fn table_lengths_scale_linearly_with_the_number_of_tables() {
+        let resolve = |tables: usize| {
+            let (src, at) = many_tables_source(tables);
+            let mut best = std::time::Duration::MAX;
+            let mut lengths = Vec::new();
+            for _ in 0..5 {
+                let t0 = std::time::Instant::now();
+                let _scope = MacroDefsScope::enter(&[&src]);
+                lengths = at.iter().map(|&a| crate::table::TableLengths::read(|name, base| length_at(&src, name, 10, a, base)).tabcolsep).collect::<Vec<_>>();
+                best = best.min(t0.elapsed());
+            }
+            (best, lengths)
+        };
+        let (t200, l200) = resolve(200);
+        let (t400, _) = resolve(400);
+        let (t800, l800) = resolve(800);
+        eprintln!("table lengths: 200 tables {t200:?}, 400 tables {t400:?}, 800 tables {t800:?}");
+        assert_eq!(&l800[..200], &l200[..]);
+        assert_eq!(&l200[..5], &[0.0, 1.0, 3.0, 2.0, 3.0]);
+        assert!(
+            t800 < std::time::Duration::from_millis(300),
+            "800 tables took {t800:?} (200 took {t200:?}, 400 took {t400:?}): quadratic regression suspected, see #623"
+        );
+    }
+
+    #[test]
+    fn size_environments_give_their_size_until_a_declaration() {
+        use flashtex_compiler::parser::FontSizeLevel as L;
+        let src = "\\begin{document}\\begin{small}@a{\\Large @b}@c\\normalsize @d\\end{small}@e\\begin{Large}@f\\end{Large}\\end{document}";
+        let styles = Styles::new(src, Vec::new(), crate::nfss::Scheme::LmT1);
+        let at = |marker: &str| src.find(marker).unwrap();
+        assert_eq!(styles.size_env_at(src, at("@a")), Some(L::Small));
+        // A closed group's declaration is undone; one still open wins.
+        assert_eq!(styles.size_env_at(src, at("@c")), Some(L::Small));
+        assert_eq!(styles.size_env_at(src, at("@b")), None);
+        assert_eq!(styles.size_env_at(src, at("@d")), None);
+        assert_eq!(styles.size_env_at(src, at("@e")), None);
+        assert_eq!(styles.size_env_at(src, at("@f")), Some(L::Large2));
+    }
+
+    #[test]
+    fn glue_takes_the_size_of_the_text_it_is_read_with() {
+        let src = "{\\Large a}\\quad b a\\quad{\\Large b} a \\Large\\quad b";
+        let at = |from: usize| src[from..].find("\\quad").unwrap() + from;
+        let q1 = at(0);
+        let q2 = at(q1 + 1);
+        let q3 = at(q2 + 1);
+        // `{\Large a}\quad b`: the group has closed, the following text's size.
+        assert_eq!(glue_size(&[src], Some(q1 - 1), Span::new(q1, q1 + 5), 1440, 0), 0);
+        // `a\quad{\Large b}`: nothing between the text and the glue.
+        assert_eq!(glue_size(&[src], Some(q2), Span::new(q2, q2 + 5), 0, 1440), 0);
+        // `a \Large\quad b`: a declaration before the glue.
+        assert_eq!(glue_size(&[src], Some(q3 - 7), Span::new(q3, q3 + 5), 0, 1440), 1440);
+    }
+
+    #[test]
     fn preamble_scan_does_not_leak_grouped_setlength() {
         let src = "\\documentclass{article}\n{\\setlength{\\textwidth}{6in}}\n\\begin{document}x\\end{document}";
         assert!(
@@ -7295,7 +10475,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "known limit: \\input'd preambles are not in the adapter source string"]
+    #[ignore = "fails: panics at src/adapter.rs:7602: not implemented: scan \\input'd preambles at ae62d63d"]
     fn preamble_scan_does_not_see_input_files() {
         let src = "\\documentclass{article}\n\\input{layout}\n\\begin{document}x\\end{document}";
         let _ = adapted(src);
@@ -7303,7 +10483,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "known limit: next_command is alphabetic, so \\@setlength is missed"]
     fn preamble_scan_does_not_see_at_setlength() {
         let src = "\\documentclass{article}\n\\makeatletter\n\\@setlength{\\textwidth}{6in}\n\\makeatother\n\\begin{document}x\\end{document}";
         assert!(
@@ -7358,6 +10537,7 @@ mod tests {
                 Block::Chrome { .. } => "M".to_string(),
                 Block::Title { .. } => "T".to_string(),
                 Block::ClearPage { .. } => "N".to_string(),
+                Block::NoBreakFalse { .. } => "B".to_string(),
                 Block::TocEntry(..) => "E".to_string(),
                 Block::LongTable { .. } => "L".to_string(),
             })
@@ -7455,6 +10635,20 @@ mod tests {
                    crate::nfss::FamilyKind::Rm);
     }
 
+    /// A macro body's declarations around `#k` cover argument `k` at each
+    /// call (`macro_argument_intervals`), and a redefinition nested inside
+    /// the body (whose position is before the body's end) does not panic.
+    #[test]
+    fn a_macro_body_declaration_covers_its_argument() {
+        let src = "\\newcommand{\\note}[1]{{\\bfseries #1}}\nA \\note{bold} C";
+        let st = Styles::new(src, style_intervals(src), crate::nfss::Scheme::LmT1);
+        assert!(st.at(src.find("bold").unwrap()).bold);
+        assert!(!st.at(src.find('C').unwrap()).bold);
+        assert!(!st.at(src.find('A').unwrap()).bold);
+        let nested = "\\newcommand{\\a}[1]{\\def\\a{x}{\\bfseries #1}}\n\\a{y} z";
+        let _ = style_intervals(nested);
+    }
+
     /// `\verb`, the `verbatim` environment and `lstlisting` are set in the
     /// typewriter family, like `\url` and for the same reason: the compiler
     /// marks the run mono (`parser::Inline::Verbatim`, `Block::Verbatim`)
@@ -7548,5 +10742,36 @@ mod tests {
         let lead = it.iter().position(|i| matches!(i, Item::LeaveVmode));
         let brk = it.iter().position(|i| matches!(i, Item::LineBreak { .. }));
         assert!(lead.is_some() && brk.is_some() && lead > brk, "{it:?}");
+    }
+
+    /// `reading_order`: nested reads, `.tex` lookup, `\includeonly` (as
+    /// written or with `.tex`), cycles and unknown files.
+    #[test]
+    fn reading_order_follows_the_include_tree() {
+        let main = "\\documentclass{report}\n% \\includeonly{nothing}\n\\includeonly{a.tex, c}\n\\begin{document}\nX\\include{a}Y\\include{b}Z\\input{missing}\\include{c}W\\end{document}";
+        let a = "A1\\input{sub/n}A2";
+        let n = "N\\input{a}";
+        let b = "B";
+        let c = "C";
+        let texts = [c, n, main, b, a];
+        let paths = ["c.tex", "sub/n.tex", "main.tex", "b.tex", "a.tex"];
+        let got: Vec<(usize, &str)> = reading_order(&texts, &paths, 2).iter().map(|s| (s.document.0, &texts[s.document.0][s.start..s.end])).collect();
+        let at = main.find("\\begin").unwrap();
+        let entry_head = &main[..main.find("\\include{a}").unwrap()];
+        assert!(entry_head.len() > at);
+        assert_eq!(
+            got,
+            [
+                (2, entry_head),
+                (4, "A1"),
+                (1, "N\\input{a}"),
+                (4, "A2"),
+                (2, "Y\\include{b}Z\\input{missing}"),
+                (0, "C"),
+                (2, "W\\end{document}"),
+            ]
+        );
+        assert_eq!(reading_position(&reading_order(&texts, &paths, 2), DocumentId(0), 0), Some(got[..5].iter().map(|(_, t)| t.len()).sum()));
+        assert_eq!(reading_position(&reading_order(&texts, &paths, 2), DocumentId(3), 0), None);
     }
 }

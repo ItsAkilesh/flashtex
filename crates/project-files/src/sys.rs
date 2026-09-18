@@ -1,5 +1,6 @@
 //! Directory-relative file operations (`openat`, `renameat`, `unlinkat`,
-//! `mkdirat`, `flock`) on top of each platform's native primitives.
+//! `mkdirat`, `fstatat`, `flock`) on top of each platform's native
+//! primitives.
 //!
 //! Rust `std` exposes no `openat` family, so a path-string API cannot pin a
 //! walked directory handle: every `std::fs` call re-resolves the whole path
@@ -7,17 +8,24 @@
 //! `open` is followed. Rather than approximate, this module talks to the
 //! platform directly.
 //!
-//! * **POSIX** (macOS, Linux x86_64/aarch64) declares the handful of libc
-//!   symbols it needs; `std` already links the platform C library, so this
-//!   adds no external crate. Flag values are only known for those targets.
+//! * **POSIX** goes through the [`libc`] crate: every symbol, flag, errno
+//!   value and struct layout used here comes from it, and `libc` maintains
+//!   them per target (including the macOS `mode_t` width, the `$INODE64`
+//!   symbol variants and each Linux architecture's `struct stat`); nothing is
+//!   declared by hand. Rooted operations are enabled on macOS and on Linux
+//!   with glibc or musl.
 //! * **Windows** emulates the same operations with the NT native API
 //!   (`NtCreateFile`/`NtSetInformationFile` with `OBJECT_ATTRIBUTES.
 //!   RootDirectory` set to the pinned directory handle) via `windows-sys`.
 //!   See the [`imp`] module docs on that path for the mapping, and in
-//!   particular for the two places Windows cannot mirror POSIX exactly:
-//!   `".."` is not a resolvable relative name, so [`verify_parent`] compares
-//!   canonical paths instead of `..` identity; and POSIX permission bits have
-//!   no Windows analogue, so `mode` arguments are ignored.
+//!   particular for the places Windows cannot mirror POSIX exactly: `".."` is
+//!   not a resolvable relative name, so [`verify_parent`] compares canonical
+//!   paths instead of `..` identity; POSIX permission bits do not exist, so
+//!   `mode` arguments are ignored and [`EntryStat::mode`] carries only
+//!   synthesized file-type bits; there is no `fstatat`, so
+//!   [`stat_at_nofollow`] opens the entry for attributes alone; and hard
+//!   links are not offered as an install primitive (see [`link_at`]), which
+//!   costs nothing because [`rename_at_noreplace`] is always available there.
 //!
 //! Every other target gets an `io::ErrorKind::Unsupported` error, which the
 //! save layer surfaces as [`Refused::Unsupported`](crate::save::Refused::Unsupported).
@@ -27,140 +35,334 @@ use std::io;
 
 #[cfg(any(
     target_os = "macos",
-    all(
-        target_os = "linux",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    )
+    all(target_os = "linux", any(target_env = "gnu", target_env = "musl"))
 ))]
 mod imp {
-    use std::ffi::CString;
+    use std::ffi::{CStr, CString};
     use std::fs::File;
     use std::io;
-    use std::os::fd::{AsRawFd, FromRawFd};
-    use std::os::raw::{c_char, c_int, c_uint};
-
-    unsafe extern "C" {
-        fn openat(dirfd: c_int, path: *const c_char, flags: c_int, ...) -> c_int;
-        fn renameat(
-            olddirfd: c_int,
-            old: *const c_char,
-            newdirfd: c_int,
-            new: *const c_char,
-        ) -> c_int;
-        fn unlinkat(dirfd: c_int, path: *const c_char, flags: c_int) -> c_int;
-        fn mkdirat(dirfd: c_int, path: *const c_char, mode: c_uint) -> c_int;
-        fn flock(fd: c_int, operation: c_int) -> c_int;
-    }
+    use std::mem::MaybeUninit;
+    use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
+    use std::os::raw::c_int;
 
     pub const SUPPORTED: bool = true;
-    pub const O_RDONLY: c_int = 0;
-    pub const O_WRONLY: c_int = 1;
-    pub const O_RDWR: c_int = 2;
+    pub use libc::{
+        EEXIST, EINVAL, ELOOP, ENOENT, ENOSYS, ENOTDIR, ENOTSUP, EOPNOTSUPP, EPERM, O_CREAT,
+        O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_RDONLY, O_RDWR, O_WRONLY,
+    };
 
-    #[cfg(target_os = "macos")]
-    mod flags {
-        use std::os::raw::c_int;
-        pub const O_CREAT: c_int = 0x0200;
-        pub const O_EXCL: c_int = 0x0800;
-        pub const O_NOFOLLOW: c_int = 0x0100;
-        pub const O_DIRECTORY: c_int = 0x0010_0000;
-        pub const O_CLOEXEC: c_int = 0x0100_0000;
-        pub const ELOOP: i32 = 62;
-        pub const EWOULDBLOCK: i32 = 35;
+    /// The calling thread's `errno` lvalue.
+    fn errno_ptr() -> *mut c_int {
+        // SAFETY: both functions only return the calling thread's errno
+        // location.
+        #[cfg(target_os = "macos")]
+        unsafe {
+            libc::__error()
+        }
+        #[cfg(target_os = "linux")]
+        unsafe {
+            libc::__errno_location()
+        }
     }
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    mod flags {
-        use std::os::raw::c_int;
-        pub const O_CREAT: c_int = 0o100;
-        pub const O_EXCL: c_int = 0o200;
-        pub const O_NOFOLLOW: c_int = 0o400000;
-        pub const O_DIRECTORY: c_int = 0o200000;
-        pub const O_CLOEXEC: c_int = 0o2000000;
-        pub const ELOOP: i32 = 40;
-        pub const EWOULDBLOCK: i32 = 11;
-    }
-    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    mod flags {
-        use std::os::raw::c_int;
-        pub const O_CREAT: c_int = 0o100;
-        pub const O_EXCL: c_int = 0o200;
-        pub const O_NOFOLLOW: c_int = 0o100000;
-        pub const O_DIRECTORY: c_int = 0o40000;
-        pub const O_CLOEXEC: c_int = 0o2000000;
-        pub const ELOOP: i32 = 40;
-        pub const EWOULDBLOCK: i32 = 11;
-    }
-    pub use flags::*;
 
-    pub const ENOENT: i32 = 2;
-    pub const EEXIST: i32 = 17;
-    pub const ENOTDIR: i32 = 20;
-    const LOCK_EX: c_int = 2;
-    const LOCK_NB: c_int = 4;
-    const LOCK_UN: c_int = 8;
-
-    fn cstr(name: &str) -> io::Result<CString> {
-        CString::new(name)
+    fn cstr(name: impl AsRef<[u8]>) -> io::Result<CString> {
+        CString::new(name.as_ref())
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in path component"))
     }
 
-    /// `openat(dirfd, name, flags | O_CLOEXEC, mode)`.
+    fn check(rc: c_int) -> io::Result<()> {
+        if rc != 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// `openat(dirfd, name, flags | O_CLOEXEC | O_NONBLOCK, mode)`.
+    ///
+    /// `O_NONBLOCK` is always added so that opening a name which is (or was
+    /// swapped to) a FIFO returns at once instead of blocking until a writer
+    /// appears. It has no effect on reads or writes of regular files or on
+    /// directories. For a device node it is best-effort only: whether a
+    /// driver's open honours it, and what the open itself does, is up to the
+    /// driver. It is a backstop, not the check: callers first classify an
+    /// existing name with [`stat_at_nofollow`] and open only a regular file,
+    /// then `fstat` the descriptor and refuse anything but a regular file
+    /// (the name can change between the two).
     pub fn open_at(dir: &File, name: &str, flags: c_int, mode: u32) -> io::Result<File> {
+        open_at_bytes(dir, name.as_bytes(), flags, mode)
+    }
+
+    /// [`open_at`] for a name that need not be UTF-8.
+    pub fn open_at_bytes(dir: &File, name: &[u8], flags: c_int, mode: u32) -> io::Result<File> {
         let c = cstr(name)?;
         // SAFETY: `c` is a valid NUL-terminated string that outlives the call
-        // and `dir` is an open descriptor; the returned fd is owned by exactly
-        // one `File`.
+        // and `dir` is an open descriptor; the variadic mode is passed as the
+        // promoted `c_uint`. The returned fd is owned by exactly one `File`.
         let fd = unsafe {
-            openat(
+            libc::openat(
                 dir.as_raw_fd(),
                 c.as_ptr(),
-                flags | O_CLOEXEC,
-                mode as c_uint,
+                flags | libc::O_CLOEXEC | libc::O_NONBLOCK,
+                mode as libc::c_uint,
             )
         };
         if fd < 0 {
             return Err(io::Error::last_os_error());
         }
+        // SAFETY: `fd` is a freshly opened descriptor nothing else owns.
         Ok(unsafe { File::from_raw_fd(fd) })
     }
 
     pub fn rename_at(dir: &File, old: &str, new: &str) -> io::Result<()> {
         let (o, n) = (cstr(old)?, cstr(new)?);
         // SAFETY: valid C strings and an open directory descriptor.
-        let rc = unsafe { renameat(dir.as_raw_fd(), o.as_ptr(), dir.as_raw_fd(), n.as_ptr()) };
-        if rc != 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(())
+        check(unsafe { libc::renameat(dir.as_raw_fd(), o.as_ptr(), dir.as_raw_fd(), n.as_ptr()) })
+    }
+
+    /// Renames `old` to `new` inside `dir` only if `new` does not exist
+    /// (`renameatx_np(RENAME_EXCL)` on macOS, `renameat2(RENAME_NOREPLACE)`
+    /// on Linux): an entry created at `new` after the caller checked is never
+    /// replaced, and the call fails with `EEXIST`. Filesystems or kernels
+    /// without the primitive fail with an error for which
+    /// [`noreplace_unsupported`] is true; nothing was renamed then.
+    pub fn rename_at_noreplace(dir: &File, old: &str, new: &str) -> io::Result<()> {
+        let (o, n) = (cstr(old)?, cstr(new)?);
+        let fd = dir.as_raw_fd();
+        // SAFETY: valid C strings and an open directory descriptor.
+        #[cfg(target_os = "macos")]
+        let rc = unsafe { libc::renameatx_np(fd, o.as_ptr(), fd, n.as_ptr(), libc::RENAME_EXCL) };
+        // SAFETY: as above.
+        #[cfg(target_os = "linux")]
+        let rc = unsafe { libc::renameat2(fd, o.as_ptr(), fd, n.as_ptr(), libc::RENAME_NOREPLACE) };
+        check(rc)
+    }
+
+    /// Whether a [`rename_at_noreplace`] failure means the primitive is not
+    /// available here (rather than a real rename failure). Callers must not
+    /// fall back to a plain rename on it; see `save::install_new`.
+    pub fn noreplace_unsupported(err: &io::Error) -> bool {
+        [EINVAL, ENOSYS, ENOTSUP, EOPNOTSUPP]
+            .iter()
+            .any(|&c| err.raw_os_error() == Some(c))
+    }
+
+    /// `linkat(dir, old, dir, new, 0)`: a second name `new` for the entry
+    /// `old` in `dir`. Fails with `EEXIST`, atomically, if `new` exists (of
+    /// any type, including a dangling symlink), so it never replaces an
+    /// entry. Flags are 0, so a symlink at `old` is linked, never followed.
+    pub fn link_at(dir: &File, old: &str, new: &str) -> io::Result<()> {
+        let (o, n) = (cstr(old)?, cstr(new)?);
+        let fd = dir.as_raw_fd();
+        // SAFETY: valid C strings and an open directory descriptor.
+        check(unsafe { libc::linkat(fd, o.as_ptr(), fd, n.as_ptr(), 0) })
+    }
+
+    /// A new name `new` in `dir` for the open file `file` itself, not for
+    /// whatever a name currently points to, so no rename or swap of the
+    /// file's old name can redirect it. Fails with `EEXIST`, atomically, if
+    /// `new` exists.
+    ///
+    /// Linux only: `linkat(fd, "", dirfd, new, AT_EMPTY_PATH)`, which older
+    /// kernels allow only with `CAP_DAC_READ_SEARCH`, then
+    /// `linkat(AT_FDCWD, "/proc/self/fd/N", dirfd, new, AT_SYMLINK_FOLLOW)`.
+    /// Any other failure (and every call on macOS, which has neither) means
+    /// "not available here"; callers fall back to a checked name-based link.
+    pub fn link_fd_at(file: &File, dir: &File, new: &str) -> io::Result<()> {
+        #[cfg(target_os = "linux")]
+        {
+            let n = cstr(new)?;
+            // SAFETY: an open file descriptor, an empty C string, an open
+            // directory descriptor and a valid C string.
+            let rc = unsafe {
+                libc::linkat(
+                    file.as_raw_fd(),
+                    c"".as_ptr(),
+                    dir.as_raw_fd(),
+                    n.as_ptr(),
+                    libc::AT_EMPTY_PATH,
+                )
+            };
+            let first = match check(rc) {
+                Ok(()) => return Ok(()),
+                Err(e) if e.raw_os_error() == Some(EEXIST) => return Err(e),
+                Err(e) => e,
+            };
+            let proc_path = cstr(format!("/proc/self/fd/{}", file.as_raw_fd()))?;
+            // SAFETY: valid C strings and an open directory descriptor.
+            let rc = unsafe {
+                libc::linkat(
+                    libc::AT_FDCWD,
+                    proc_path.as_ptr(),
+                    dir.as_raw_fd(),
+                    n.as_ptr(),
+                    libc::AT_SYMLINK_FOLLOW,
+                )
+            };
+            match check(rc) {
+                Ok(()) => Ok(()),
+                Err(e) if e.raw_os_error() == Some(EEXIST) => Err(e),
+                Err(_) => Err(first),
+            }
         }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = (file, dir, new);
+            Err(io::Error::from_raw_os_error(ENOTSUP))
+        }
+    }
+
+    /// Whether a [`link_at`] failure means the filesystem has no hard links
+    /// (Linux reports `EPERM`, others `ENOTSUP`/`EOPNOTSUPP`/`ENOSYS`).
+    pub fn link_unsupported(err: &io::Error) -> bool {
+        [EPERM, ENOSYS, ENOTSUP, EOPNOTSUPP]
+            .iter()
+            .any(|&c| err.raw_os_error() == Some(c))
+    }
+
+    /// Names of the entries of the open directory `dir`, excluding `.` and
+    /// `..`, as raw bytes.
+    ///
+    /// The directory is read with `fdopendir` on a fresh descriptor opened as
+    /// `openat(dir, ".")`: the same directory object `dir` refers to, with
+    /// its own read offset, never re-resolved from a path string. Entries
+    /// are only named, not followed or stat'ed.
+    pub fn list_dir(dir: &File) -> io::Result<Vec<Vec<u8>>> {
+        let fresh = open_at_bytes(dir, b".", O_RDONLY | O_DIRECTORY, 0)?;
+        let fd = fresh.into_raw_fd();
+        // SAFETY: `fd` is an open directory descriptor; on success the DIR
+        // stream owns it and `closedir` closes it.
+        let dirp = unsafe { libc::fdopendir(fd) };
+        if dirp.is_null() {
+            let err = io::Error::last_os_error();
+            // SAFETY: fdopendir failed, so `fd` is still ours to close.
+            drop(unsafe { File::from_raw_fd(fd) });
+            return Err(err);
+        }
+        let mut names = Vec::new();
+        let result = loop {
+            // SAFETY: clearing the thread's errno lets a NULL return be told
+            // apart as end-of-directory or error.
+            unsafe { *errno_ptr() = 0 };
+            // SAFETY: `dirp` is a live DIR stream.
+            let ent = unsafe { libc::readdir(dirp) };
+            if ent.is_null() {
+                // SAFETY: as above.
+                let errno = unsafe { *errno_ptr() };
+                break if errno == 0 {
+                    Ok(())
+                } else {
+                    Err(io::Error::from_raw_os_error(errno))
+                };
+            }
+            // SAFETY: `ent` points at a `libc::dirent` whose `d_name` is
+            // NUL-terminated; it stays valid until the next `readdir` on this
+            // stream, and is copied before that.
+            let name = unsafe { CStr::from_ptr((*ent).d_name.as_ptr()) };
+            let name = name.to_bytes();
+            if name != b"." && name != b".." {
+                names.push(name.to_vec());
+            }
+        };
+        // SAFETY: `dirp` is a live DIR stream, closed exactly once.
+        unsafe { libc::closedir(dirp) };
+        result.map(|()| names)
     }
 
     pub fn unlink_at(dir: &File, name: &str) -> io::Result<()> {
         let c = cstr(name)?;
         // SAFETY: valid C string and an open directory descriptor.
-        let rc = unsafe { unlinkat(dir.as_raw_fd(), c.as_ptr(), 0) };
-        if rc != 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(())
-        }
+        check(unsafe { libc::unlinkat(dir.as_raw_fd(), c.as_ptr(), 0) })
     }
 
     pub fn mkdir_at(dir: &File, name: &str, mode: u32) -> io::Result<()> {
         let c = cstr(name)?;
         // SAFETY: valid C string and an open directory descriptor.
-        let rc = unsafe { mkdirat(dir.as_raw_fd(), c.as_ptr(), mode as c_uint) };
-        if rc != 0 {
-            Err(io::Error::last_os_error())
-        } else {
+        check(unsafe { libc::mkdirat(dir.as_raw_fd(), c.as_ptr(), mode as libc::mode_t) })
+    }
+
+    /// `fstatat(dirfd, name, AT_SYMLINK_NOFOLLOW)`: classifies the entry
+    /// `name` of the open directory `dir` without following a symlink and
+    /// without opening it (so a device's open side effects never run).
+    #[allow(clippy::unnecessary_cast)] // field widths differ per target
+    pub fn stat_at_nofollow(dir: &File, name: &[u8]) -> io::Result<super::EntryStat> {
+        let c = cstr(name)?;
+        let mut st = MaybeUninit::<libc::stat>::uninit();
+        // SAFETY: valid C string, an open directory descriptor, and a
+        // `libc::stat` buffer of the target's own layout.
+        check(unsafe {
+            libc::fstatat(
+                dir.as_raw_fd(),
+                c.as_ptr(),
+                st.as_mut_ptr(),
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        })?;
+        // SAFETY: `fstatat` returned 0, so it filled the whole struct.
+        let st = unsafe { st.assume_init() };
+        Ok(super::EntryStat {
+            dev: st.st_dev as u64,
+            ino: st.st_ino as u64,
+            mode: st.st_mode as u32,
+        })
+    }
+
+    /// Fills `buf` from the OS cryptographic random source:
+    /// `arc4random_buf` on macOS; on Linux the `getrandom` system call
+    /// (called directly, so no minimum libc version is needed), falling back
+    /// to reading `/dev/urandom` on kernels without it. Errors if no source
+    /// is available; callers fail rather than use a predictable value.
+    pub fn random_bytes(buf: &mut [u8]) -> io::Result<()> {
+        #[cfg(target_os = "macos")]
+        {
+            // SAFETY: `buf` is writable for `buf.len()` bytes;
+            // `arc4random_buf` cannot fail.
+            unsafe { libc::arc4random_buf(buf.as_mut_ptr().cast(), buf.len()) };
+            Ok(())
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let mut filled = 0;
+            while filled < buf.len() {
+                let rest = &mut buf[filled..];
+                // SAFETY: `rest` is writable for `rest.len()` bytes.
+                let n = unsafe {
+                    libc::syscall(
+                        libc::SYS_getrandom,
+                        rest.as_mut_ptr(),
+                        rest.len(),
+                        0 as libc::c_uint,
+                    )
+                };
+                if n > 0 {
+                    filled += n as usize;
+                    continue;
+                }
+                let err = io::Error::last_os_error();
+                if err.raw_os_error() == Some(libc::EINTR) {
+                    continue;
+                }
+                if err.raw_os_error() == Some(libc::ENOSYS) {
+                    use std::io::Read;
+                    return File::open("/dev/urandom")?.read_exact(&mut buf[filled..]);
+                }
+                return Err(err);
+            }
             Ok(())
         }
     }
 
     /// Opens `path` as a directory with plain `std`, for the one bootstrap
     /// open that has no directory handle to be relative to.
+    ///
+    /// `O_DIRECTORY | O_NONBLOCK` is carried so a FIFO at that path is
+    /// refused instead of blocking the open.
     pub fn open_dir_std(path: &std::path::Path) -> io::Result<File> {
-        File::open(path)
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(O_DIRECTORY | O_NONBLOCK)
+            .open(path)
     }
 
     /// Whether `child` is a direct entry of `dir`.
@@ -179,12 +381,12 @@ mod imp {
     /// description (any process, or another handle in this one) holds it.
     pub fn try_lock_exclusive(file: &File) -> io::Result<bool> {
         // SAFETY: `file` is an open descriptor.
-        let rc = unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) };
+        let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
         if rc == 0 {
             return Ok(true);
         }
         let err = io::Error::last_os_error();
-        if err.raw_os_error() == Some(EWOULDBLOCK) {
+        if err.raw_os_error() == Some(libc::EWOULDBLOCK) {
             Ok(false)
         } else {
             Err(err)
@@ -194,7 +396,7 @@ mod imp {
     pub fn unlock(file: &File) {
         // SAFETY: `file` is an open descriptor; failure is irrelevant at drop.
         unsafe {
-            flock(file.as_raw_fd(), LOCK_UN);
+            libc::flock(file.as_raw_fd(), libc::LOCK_UN);
         }
     }
 }
@@ -250,20 +452,24 @@ mod imp {
         NtSetInformationFile,
     };
     use windows_sys::Win32::Foundation::{
-        ERROR_ALREADY_EXISTS, ERROR_CANT_RESOLVE_FILENAME, ERROR_DIRECTORY, ERROR_FILE_NOT_FOUND,
-        ERROR_ACCESS_DENIED, ERROR_LOCK_VIOLATION, HANDLE, NTSTATUS, OBJ_CASE_INSENSITIVE,
-        RtlNtStatusToDosError, STATUS_DELETE_PENDING, STATUS_INVALID_DEVICE_REQUEST,
-        STATUS_INVALID_INFO_CLASS, STATUS_INVALID_PARAMETER, STATUS_NOT_A_DIRECTORY,
-        STATUS_NOT_SUPPORTED, STATUS_OBJECT_NAME_COLLISION, STATUS_OBJECT_NAME_NOT_FOUND,
-        STATUS_OBJECT_PATH_NOT_FOUND, STATUS_REPARSE_POINT_ENCOUNTERED, UNICODE_STRING,
+        ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, ERROR_CANT_RESOLVE_FILENAME, ERROR_DIRECTORY,
+        ERROR_FILE_NOT_FOUND, ERROR_INVALID_FUNCTION, ERROR_LOCK_VIOLATION, ERROR_NO_MORE_FILES,
+        ERROR_NOT_SUPPORTED, HANDLE, NTSTATUS, OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError,
+        STATUS_DELETE_PENDING, STATUS_INVALID_DEVICE_REQUEST, STATUS_INVALID_INFO_CLASS,
+        STATUS_INVALID_PARAMETER, STATUS_NOT_A_DIRECTORY, STATUS_NOT_SUPPORTED,
+        STATUS_OBJECT_NAME_COLLISION, STATUS_OBJECT_NAME_NOT_FOUND, STATUS_OBJECT_PATH_NOT_FOUND,
+        STATUS_REPARSE_POINT_ENCOUNTERED, UNICODE_STRING,
     };
+    use windows_sys::Win32::Security::Cryptography::ProcessPrng;
     use windows_sys::Win32::Storage::FileSystem::{
-        DELETE, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO,
-        FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS, FILE_DISPOSITION_INFO,
-        FILE_DISPOSITION_INFO_EX, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_ID_INFO,
+        DELETE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
+        FILE_ATTRIBUTE_TAG_INFO, FILE_DISPOSITION_FLAG_DELETE,
+        FILE_DISPOSITION_FLAG_POSIX_SEMANTICS, FILE_DISPOSITION_INFO, FILE_DISPOSITION_INFO_EX,
+        FILE_FULL_DIR_INFO, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_ID_INFO,
         FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_SHARE_DELETE,
         FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, FILE_WRITE_DATA, FileAttributeTagInfo,
-        FileDispositionInfo, FileDispositionInfoEx, FileIdInfo, GetFileInformationByHandleEx,
+        FileDispositionInfo, FileDispositionInfoEx, FileFullDirectoryInfo,
+        FileFullDirectoryRestartInfo, FileIdInfo, GetFileInformationByHandleEx,
         GetFinalPathNameByHandleW, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY, LockFileEx,
         SYNCHRONIZE, SetFileInformationByHandle, UnlockFileEx, VOLUME_NAME_DOS,
     };
@@ -294,15 +500,28 @@ mod imp {
     pub const ENOENT: i32 = ERROR_FILE_NOT_FOUND as i32; // 2
     pub const EEXIST: i32 = ERROR_ALREADY_EXISTS as i32; // 183
     pub const ENOTDIR: i32 = ERROR_DIRECTORY as i32; // 267
+    /// "The operation is not implemented here." Reported by [`link_at`] and
+    /// [`link_fd_at`], and recognized by [`link_unsupported`] /
+    /// [`noreplace_unsupported`].
+    pub const ENOTSUP: i32 = ERROR_NOT_SUPPORTED as i32; // 50
+    /// The Win32 code a volume returns for a request its driver does not
+    /// implement; the closest counterpart of the `EPERM` POSIX filesystems
+    /// report for "no hard links here".
+    pub const EPERM: i32 = ERROR_INVALID_FUNCTION as i32; // 1
 
     /// `IsReparseTagNameSurrogate`: the tag stands in for another name, i.e.
     /// it is a symlink or a junction/mount point rather than a filter's
     /// storage trick (OneDrive placeholders, dedup, WIM-backed files).
     const REPARSE_TAG_NAME_SURROGATE: u32 = 0x2000_0000;
 
-    /// `FILE_RENAME_FLAG_REPLACE_IF_EXISTS | _POSIX_SEMANTICS |
-    /// _IGNORE_READONLY_ATTRIBUTE` for `FileRenameInformationEx`.
-    const RENAME_EX_FLAGS: u32 = 0x1 | 0x2 | 0x40;
+    /// `FileRenameInformationEx` flags.
+    const RENAME_REPLACE_IF_EXISTS: u32 = 0x1;
+    const RENAME_POSIX_SEMANTICS: u32 = 0x2;
+    const RENAME_IGNORE_READONLY_ATTRIBUTE: u32 = 0x40;
+    /// The flag set a replacing rename uses; [`rename_at_noreplace`] clears
+    /// `RENAME_REPLACE_IF_EXISTS` from it.
+    const RENAME_EX_FLAGS: u32 =
+        RENAME_REPLACE_IF_EXISTS | RENAME_POSIX_SEMANTICS | RENAME_IGNORE_READONLY_ATTRIBUTE;
 
     const SHARE_ALL: u32 = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
@@ -633,7 +852,7 @@ mod imp {
     /// `size_of` — the trailing `WCHAR[1]` sits four bytes before the padded
     /// end of the struct on 64-bit, so `size_of` would place the name too far
     /// along and the kernel would read two leading NULs as the name.
-    fn rename_info(dir: &File, new: &str, flags: Option<u32>) -> (Vec<u64>, u32) {
+    fn rename_info(dir: &File, new: &str, flags: Option<u32>, replace: bool) -> (Vec<u64>, u32) {
         let name_offset = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
         let wide: Vec<u16> = new.encode_utf16().collect();
         let name_bytes = wide.len() * 2;
@@ -647,7 +866,7 @@ mod imp {
             let info = base.cast::<FILE_RENAME_INFO>();
             match flags {
                 Some(f) => (*info).Anonymous.Flags = f,
-                None => (*info).Anonymous.ReplaceIfExists = true,
+                None => (*info).Anonymous.ReplaceIfExists = replace,
             }
             (*info).RootDirectory = dir.as_raw_handle() as HANDLE;
             (*info).FileNameLength = name_bytes as u32;
@@ -679,15 +898,40 @@ mod imp {
     /// pre-rename observation). The classic form is the fallback for
     /// pre-1709 Windows and filesystems that reject the new class.
     pub fn rename_at(dir: &File, old: &str, new: &str) -> io::Result<()> {
+        rename_impl(dir, old, new, true)
+    }
+
+    /// Renames `old` to `new` inside `dir` only if `new` does not exist.
+    ///
+    /// This is the same call as [`rename_at`] with
+    /// `FILE_RENAME_REPLACE_IF_EXISTS` cleared, so an entry created at `new`
+    /// after the caller checked is never replaced: the kernel reports
+    /// `STATUS_OBJECT_NAME_COLLISION`, normalized here to [`EEXIST`]. The
+    /// classic `FileRenameInformation` fallback carries the same guarantee
+    /// through `ReplaceIfExists = false`, so unlike POSIX (where
+    /// `renameat2`/`renameatx_np` can be missing) no Windows filesystem
+    /// leaves this primitive unavailable, and [`noreplace_unsupported`] is
+    /// never true here.
+    pub fn rename_at_noreplace(dir: &File, old: &str, new: &str) -> io::Result<()> {
+        rename_impl(dir, old, new, false)
+    }
+
+    fn rename_impl(dir: &File, old: &str, new: &str, replace: bool) -> io::Result<()> {
         let src = open_for_delete(dir, old)?;
-        let (buf, len) = rename_info(dir, new, Some(RENAME_EX_FLAGS));
+        let ex_flags = if replace {
+            RENAME_EX_FLAGS
+        } else {
+            RENAME_EX_FLAGS & !RENAME_REPLACE_IF_EXISTS
+        };
+        let (buf, len) = rename_info(dir, new, Some(ex_flags), replace);
         let status = set_info(&src, &buf, len, FileRenameInformationEx);
         if status >= 0 {
             return Ok(());
         }
         // Fall back only when the *class* was rejected. Any other failure is
-        // a real one — a delete-pending target, a denial — and the classic
-        // form would only fail again, reporting a less accurate reason.
+        // a real one — a delete-pending target, a denial, an existing target
+        // under `!replace` — and the classic form would only fail again,
+        // reporting a less accurate reason.
         if !matches!(
             status,
             STATUS_INVALID_PARAMETER
@@ -697,10 +941,193 @@ mod imp {
         ) {
             return Err(status_to_error(status));
         }
-        let (buf, len) = rename_info(dir, new, None);
+        let (buf, len) = rename_info(dir, new, None, replace);
         let status = set_info(&src, &buf, len, FileRenameInformation);
         if status < 0 {
             return Err(status_to_error(status));
+        }
+        Ok(())
+    }
+
+    /// Whether a [`rename_at_noreplace`] failure means the primitive is not
+    /// available here (rather than a real rename failure).
+    ///
+    /// Windows' own [`rename_at_noreplace`] never reports this: it falls
+    /// back internally to the classic `FileRenameInformation`, which every
+    /// filesystem implements. The predicate still recognizes the same
+    /// "not implemented here" codes it does on POSIX, so an injected or
+    /// driver-reported one is classified the same way everywhere.
+    pub fn noreplace_unsupported(err: &io::Error) -> bool {
+        [ENOTSUP, EPERM]
+            .iter()
+            .any(|&c| err.raw_os_error() == Some(c))
+    }
+
+    /// Not offered on Windows; always fails with [`ENOTSUP`], for which
+    /// [`link_unsupported`] is true.
+    ///
+    /// `save::install_new` uses a hard link only as the fallback for POSIX
+    /// filesystems whose kernel has no no-replace rename. Windows always has
+    /// one ([`rename_at_noreplace`]), so the fallback is dead weight here,
+    /// and the honest way to say so is an error the caller already knows how
+    /// to interpret rather than an emulation. (`CreateHardLinkW` resolves a
+    /// path string instead of a pinned directory handle, so it would not
+    /// preserve the rooted guarantee anyway; `FILE_LINK_INFORMATION` would,
+    /// but nothing would exercise it.)
+    pub fn link_at(_: &File, _: &str, _: &str) -> io::Result<()> {
+        Err(io::Error::from_raw_os_error(ENOTSUP))
+    }
+
+    /// Not offered on Windows; see [`link_at`]. A plain failure here makes
+    /// `save::install_new` fall through to its name-based link attempt,
+    /// which reports [`ENOTSUP`] in turn.
+    pub fn link_fd_at(_: &File, _: &File, _: &str) -> io::Result<()> {
+        Err(io::Error::from_raw_os_error(ENOTSUP))
+    }
+
+    /// Whether a [`link_at`] failure means hard links are unavailable here.
+    /// Always true for what [`link_at`] itself returns.
+    pub fn link_unsupported(err: &io::Error) -> bool {
+        [ENOTSUP, EPERM]
+            .iter()
+            .any(|&c| err.raw_os_error() == Some(c))
+    }
+
+    /// [`open_at`] for a name that is not already a `&str`.
+    ///
+    /// Windows paths are UTF-16 and this crate's [`crate::ProjectPath`] is
+    /// UTF-8, so the bytes must be valid UTF-8; the one caller that does not
+    /// start from a `&str` ([`super::open_dir_nofollow`]) only ever passes a
+    /// name it obtained through `OsStr::to_str`.
+    pub fn open_at_bytes(dir: &File, name: &[u8], flags: c_int, mode: u32) -> io::Result<File> {
+        open_at(dir, str_name(name)?, flags, mode)
+    }
+
+    fn str_name(name: &[u8]) -> io::Result<&str> {
+        std::str::from_utf8(name).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "a Windows file name must be valid UTF-8 here",
+            )
+        })
+    }
+
+    /// Windows' stand-in for `fstatat(AT_SYMLINK_NOFOLLOW)`.
+    ///
+    /// There is no query-by-name-relative-to-a-handle API, so the entry is
+    /// opened relative to `dir` — with `FILE_OPEN_REPARSE_POINT`, so a
+    /// symlink or junction is described rather than followed, and with
+    /// `FILE_READ_ATTRIBUTES` as the only access, so no read or write
+    /// permission is required. The [`super::EntryStat::mode`] returned
+    /// carries synthesized POSIX *type* bits only (see
+    /// [`super::S_IFMT`]); Windows has no permission bits to report.
+    ///
+    /// **Difference from POSIX.** `fstatat` never opens, so it cannot be
+    /// refused by a sharing mode and cannot run a device's open side
+    /// effects. This does open, so an entry another process holds with a
+    /// restrictive sharing mode reports `ERROR_SHARING_VIOLATION` where
+    /// POSIX would have reported the entry's type. It is still the pinned,
+    /// no-follow, attributes-only observation the callers need, and it never
+    /// reads or writes content.
+    pub fn stat_at_nofollow(dir: &File, name: &[u8]) -> io::Result<super::EntryStat> {
+        let file = nt_create(
+            Some(dir),
+            str_name(name)?,
+            SYNCHRONIZE | FILE_READ_ATTRIBUTES,
+            FILE_OPEN,
+            FILE_OPEN_REPARSE_POINT,
+            0,
+        )?;
+        let (attributes, tag) = attribute_tag(&file)?;
+        let mode = if attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            && tag & REPARSE_TAG_NAME_SURROGATE != 0
+        {
+            // A symlink or a junction: both redirect to another name, which
+            // is exactly what POSIX calls a symlink for these callers.
+            super::S_IFLNK
+        } else if attributes & FILE_ATTRIBUTE_DIRECTORY != 0 {
+            super::S_IFDIR
+        } else {
+            super::S_IFREG
+        };
+        let (volume_serial, file_index) = file_id(&file)?;
+        Ok(super::EntryStat {
+            volume_serial,
+            file_index,
+            mode,
+        })
+    }
+
+    /// Names of the entries of the open directory `dir`, excluding `.` and
+    /// `..`, as UTF-8 bytes.
+    ///
+    /// `GetFileInformationByHandleEx(FileFullDirectoryInfo)` enumerates the
+    /// directory `dir` itself refers to, never a re-resolved path string, so
+    /// a parent renamed away after it was walked is not enumerated. Names
+    /// that are not representable as UTF-8 (unpaired surrogates) are skipped
+    /// rather than lossily transcoded: the only caller matches them against
+    /// UTF-8 [`crate::ProjectPath`]s, which such a name can never equal.
+    pub fn list_dir(dir: &File) -> io::Result<Vec<Vec<u8>>> {
+        // Enough for a few dozen entries per call; the loop refills it.
+        let mut buf = vec![0u64; 8192 / size_of::<u64>()];
+        let mut class = FileFullDirectoryRestartInfo;
+        let mut names = Vec::new();
+        loop {
+            // SAFETY: `buf` is a live, `u64`-aligned buffer of exactly the
+            // declared byte length, and `dir` is an open directory handle
+            // carrying `FILE_LIST_DIRECTORY` (see `open_at`).
+            let ok = unsafe {
+                GetFileInformationByHandleEx(
+                    dir.as_raw_handle() as HANDLE,
+                    class,
+                    buf.as_mut_ptr().cast(),
+                    (buf.len() * size_of::<u64>()) as u32,
+                )
+            };
+            if ok == 0 {
+                let err = io::Error::last_os_error();
+                if err.raw_os_error() == Some(ERROR_NO_MORE_FILES as i32) {
+                    return Ok(names);
+                }
+                return Err(err);
+            }
+            class = FileFullDirectoryInfo;
+            let mut offset = 0usize;
+            loop {
+                // SAFETY: the kernel filled `buf` with a chain of
+                // `FILE_FULL_DIR_INFO` records, each at `offset` bytes from
+                // the start and each followed by `FileNameLength` bytes of
+                // name; `NextEntryOffset` is 0 on the last one.
+                let (next, name) = unsafe {
+                    let base = buf.as_ptr().cast::<u8>().add(offset);
+                    let info = &*base.cast::<FILE_FULL_DIR_INFO>();
+                    let chars = info.FileNameLength as usize / 2;
+                    let name = std::slice::from_raw_parts(info.FileName.as_ptr(), chars);
+                    (info.NextEntryOffset as usize, name)
+                };
+                if let Ok(name) = String::from_utf16(name)
+                    && name != "."
+                    && name != ".."
+                {
+                    names.push(name.into_bytes());
+                }
+                if next == 0 {
+                    break;
+                }
+                offset += next;
+            }
+        }
+    }
+
+    /// Fills `buf` from the OS cryptographic random source. `ProcessPrng` is
+    /// the documented user-mode entry point to it and cannot fail in a
+    /// process that has one; a failure is still reported rather than
+    /// papered over with a predictable value.
+    pub fn random_bytes(buf: &mut [u8]) -> io::Result<()> {
+        // SAFETY: `buf` is writable for exactly `buf.len()` bytes.
+        let ok = unsafe { ProcessPrng(buf.as_mut_ptr(), buf.len()) };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
         }
         Ok(())
     }
@@ -805,10 +1232,7 @@ mod imp {
 #[cfg(not(any(
     windows,
     target_os = "macos",
-    all(
-        target_os = "linux",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    )
+    all(target_os = "linux", any(target_env = "gnu", target_env = "musl"))
 )))]
 mod imp {
     use std::fs::File;
@@ -816,6 +1240,9 @@ mod imp {
     use std::os::raw::c_int;
 
     pub const SUPPORTED: bool = false;
+    // Inert placeholders so the rest of the crate type-checks: nothing on
+    // this target reaches the OS with them, because `ProjectRoot::open`
+    // refuses with `Refused::Unsupported` before any rooted call is made.
     pub const O_RDONLY: c_int = 0;
     pub const O_WRONLY: c_int = 0;
     pub const O_RDWR: c_int = 0;
@@ -823,6 +1250,7 @@ mod imp {
     pub const O_EXCL: c_int = 0;
     pub const O_NOFOLLOW: c_int = 0;
     pub const O_DIRECTORY: c_int = 0;
+    pub const O_NONBLOCK: c_int = 0;
     pub const ELOOP: i32 = -1;
     pub const ENOENT: i32 = -1;
     pub const EEXIST: i32 = -1;
@@ -837,7 +1265,31 @@ mod imp {
     pub fn open_at(_: &File, _: &str, _: c_int, _: u32) -> io::Result<File> {
         Err(unsupported())
     }
+    pub fn open_at_bytes(_: &File, _: &[u8], _: c_int, _: u32) -> io::Result<File> {
+        Err(unsupported())
+    }
+    pub fn stat_at_nofollow(_: &File, _: &[u8]) -> io::Result<super::EntryStat> {
+        Err(unsupported())
+    }
     pub fn rename_at(_: &File, _: &str, _: &str) -> io::Result<()> {
+        Err(unsupported())
+    }
+    pub fn rename_at_noreplace(_: &File, _: &str, _: &str) -> io::Result<()> {
+        Err(unsupported())
+    }
+    pub fn noreplace_unsupported(_: &io::Error) -> bool {
+        false
+    }
+    pub fn link_at(_: &File, _: &str, _: &str) -> io::Result<()> {
+        Err(unsupported())
+    }
+    pub fn link_unsupported(_: &io::Error) -> bool {
+        false
+    }
+    pub fn link_fd_at(_: &File, _: &File, _: &str) -> io::Result<()> {
+        Err(unsupported())
+    }
+    pub fn list_dir(_: &File) -> io::Result<Vec<Vec<u8>>> {
         Err(unsupported())
     }
     pub fn unlink_at(_: &File, _: &str) -> io::Result<()> {
@@ -847,6 +1299,9 @@ mod imp {
         Err(unsupported())
     }
     pub fn try_lock_exclusive(_: &File) -> io::Result<bool> {
+        Err(unsupported())
+    }
+    pub fn random_bytes(_: &mut [u8]) -> io::Result<()> {
         Err(unsupported())
     }
     pub fn unlock(_: &File) {}
@@ -865,12 +1320,22 @@ pub fn errno_is(err: &io::Error, code: i32) -> bool {
 }
 
 /// Opens `path` itself as a directory without following a final symlink.
+///
+/// **Symlinks above the root are followed, deliberately.** Only the final
+/// component is opened with `O_NOFOLLOW`; its parent is opened by path string
+/// with ordinary resolution, so a symlink among the root's *ancestors*
+/// (`/Users/me/link/project` with `link -> /Volumes/work`) is followed and
+/// the directory it leads to becomes the pinned root. The caller chose that
+/// path, and symlinked home directories, checkouts and volume mounts are
+/// common; refusing them would reject real projects without protecting
+/// anything the caller did not already select. The refuse-all-symlinks
+/// policy applies *inside* the root: once the root descriptor is pinned,
+/// every project path is walked from it with `O_NOFOLLOW` at each component,
+/// and a later change to the ancestors does not move the pinned root.
 pub fn open_dir_nofollow(path: &std::path::Path) -> io::Result<File> {
-    // Walk from the filesystem root is unnecessary here: the caller chooses
-    // the root; only its final component must not be a symlink. `std` has no
-    // O_NOFOLLOW knob, so open the parent with std and the last component
-    // with `openat`.
-    let (parent, name) = match (path.parent(), path.file_name().and_then(|n| n.to_str())) {
+    // `std` has no O_NOFOLLOW knob, so open the parent with std and the last
+    // component with `openat`.
+    let (parent, name) = match (path.parent(), path.file_name().and_then(final_name)) {
         (Some(p), Some(n)) if !n.is_empty() => (p, n),
         // "/", "C:\" or similar: nothing to refuse.
         _ => return open_dir_std(path),
@@ -880,25 +1345,119 @@ pub fn open_dir_nofollow(path: &std::path::Path) -> io::Result<File> {
     } else {
         parent
     })?;
-    open_dir_at_nofollow(&parent, name)
+    open_dir_at_nofollow_bytes(&parent, name)
+}
+
+/// The root's final component as the bytes [`open_dir_at_nofollow_bytes`]
+/// takes.
+///
+/// On unix these are the name's own bytes, so a root whose final component is
+/// not valid UTF-8 still gets the `O_NOFOLLOW` open rather than a
+/// symlink-following fallback. Windows names are UTF-16 and the NT emulation
+/// takes UTF-8, so a name that does not survive that conversion (unpaired
+/// surrogates) has no rooted open available and falls back to the plain `std`
+/// one, exactly as an unnamed root does.
+#[cfg(unix)]
+fn final_name(name: &std::ffi::OsStr) -> Option<&[u8]> {
+    use std::os::unix::ffi::OsStrExt;
+    Some(name.as_bytes())
+}
+
+#[cfg(not(unix))]
+fn final_name(name: &std::ffi::OsStr) -> Option<&[u8]> {
+    name.to_str().map(str::as_bytes)
 }
 
 /// Opens directory `name` inside `dir` with `O_DIRECTORY | O_NOFOLLOW`.
 ///
-/// Linux reports a symlink as `ELOOP`; macOS reports `ENOTDIR` for a
 /// symlink-to-directory in this mode. Windows agrees with macOS: a *file*
 /// symlink opened with `FILE_DIRECTORY_FILE` reports `STATUS_NOT_A_DIRECTORY`
 /// (measured), while a *directory* symlink opens as its own reparse point and
 /// is caught directly as `ELOOP`. All three refuse to follow; to classify the
-/// refusal consistently, an `ENOTDIR` result is probed once more without
-/// `O_DIRECTORY` and mapped to `ELOOP` when that probe reports a symlink.
+/// refusal consistently, an `ENOTDIR` result is classified with
+/// [`stat_at_nofollow`] (on unix never a second open, which could run a
+/// device's open side effects) and mapped to `ELOOP` when the entry is a
+/// symlink.
 pub fn open_dir_at_nofollow(dir: &File, name: &str) -> io::Result<File> {
-    match open_at(dir, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW, 0) {
-        Err(e) if errno_is(&e, ENOTDIR) => match open_at(dir, name, O_RDONLY | O_NOFOLLOW, 0) {
-            Err(probe) if errno_is(&probe, ELOOP) => Err(probe),
+    open_dir_at_nofollow_bytes(dir, name.as_bytes())
+}
+
+fn open_dir_at_nofollow_bytes(dir: &File, name: &[u8]) -> io::Result<File> {
+    match open_at_bytes(dir, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW, 0) {
+        Err(e) if errno_is(&e, ENOTDIR) => match stat_at_nofollow(dir, name) {
+            Ok(st) if st.is_symlink() => Err(io::Error::from_raw_os_error(ELOOP)),
             _ => Err(e),
         },
         other => other,
+    }
+}
+
+/// File type bits of a [`EntryStat::mode`].
+///
+/// On unix these come from `libc` (`mode_t` is 16 bits on macOS and 32 on
+/// Linux; the values are widened, never truncated) and are the real
+/// `st_mode` bits. Elsewhere they are the same well-known POSIX numbering,
+/// used purely as this crate's own encoding of "regular file / directory /
+/// symlink" — see the Windows [`stat_at_nofollow`], which synthesizes them
+/// from the file attributes, so [`EntryStat::is_file`] and friends need no
+/// `cfg` of their own.
+#[cfg(unix)]
+#[allow(clippy::unnecessary_cast)]
+pub const S_IFMT: u32 = libc::S_IFMT as u32;
+#[cfg(unix)]
+#[allow(clippy::unnecessary_cast)]
+pub const S_IFREG: u32 = libc::S_IFREG as u32;
+#[cfg(unix)]
+#[allow(clippy::unnecessary_cast)]
+pub const S_IFDIR: u32 = libc::S_IFDIR as u32;
+#[cfg(unix)]
+#[allow(clippy::unnecessary_cast)]
+pub const S_IFLNK: u32 = libc::S_IFLNK as u32;
+
+#[cfg(not(unix))]
+pub const S_IFMT: u32 = 0o170000;
+#[cfg(not(unix))]
+pub const S_IFREG: u32 = 0o100000;
+#[cfg(not(unix))]
+pub const S_IFDIR: u32 = 0o040000;
+#[cfg(not(unix))]
+pub const S_IFLNK: u32 = 0o120000;
+
+/// What [`stat_at_nofollow`] reports about one directory entry.
+///
+/// The identity fields are platform-specific for exactly the reason
+/// [`crate::FileIdentity`]'s are, and carry the same values: on unix
+/// `(st_dev, st_ino)`, on Windows the `FILE_ID_INFO` pair that
+/// [`file_id`] returns for an open handle to the same file. Only equality is
+/// meaningful; `save.rs` turns a whole `EntryStat` into a `FileIdentity`
+/// rather than reading a field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntryStat {
+    /// `st_dev`, widened the same way `std::os::unix::fs::MetadataExt::dev` does.
+    #[cfg(unix)]
+    pub dev: u64,
+    #[cfg(unix)]
+    pub ino: u64,
+    /// `FILE_ID_INFO::VolumeSerialNumber`.
+    #[cfg(windows)]
+    pub volume_serial: u64,
+    /// `FILE_ID_INFO::FileId`, the 128-bit form (ReFS IDs do not fit in 64).
+    #[cfg(windows)]
+    pub file_index: u128,
+    /// File type and, on unix, permission bits. Windows has no permission
+    /// bits, so only the type bits above are set there.
+    pub mode: u32,
+}
+
+impl EntryStat {
+    pub fn is_file(&self) -> bool {
+        self.mode & S_IFMT == S_IFREG
+    }
+    pub fn is_dir(&self) -> bool {
+        self.mode & S_IFMT == S_IFDIR
+    }
+    pub fn is_symlink(&self) -> bool {
+        self.mode & S_IFMT == S_IFLNK
     }
 }
 
@@ -1052,5 +1611,94 @@ mod windows_tests {
         let sub = open_dir_at_nofollow(&root, "sub").unwrap();
         sub.sync_all()
             .expect("a walked directory handle must be flushable");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::MetadataExt;
+
+    /// The `fstatat` fields must agree with `std`'s own `lstat` for every
+    /// file type this crate distinguishes.
+    #[test]
+    fn stat_list_and_noreplace_match_std() {
+        if !SUPPORTED {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "flashtex-sys-stat-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("file"), "x").unwrap();
+        std::os::unix::fs::symlink(dir.join("file"), dir.join("link")).unwrap();
+        std::os::unix::fs::symlink(dir.join("absent"), dir.join("broken")).unwrap();
+        let handle = open_dir_nofollow(&dir).unwrap();
+        for name in ["file", "sub", "link", "broken"] {
+            let st = stat_at_nofollow(&handle, name.as_bytes()).unwrap();
+            let meta = std::fs::symlink_metadata(dir.join(name)).unwrap();
+            assert_eq!(st.mode, meta.mode(), "{name}");
+            assert_eq!(st.ino, meta.ino(), "{name}");
+            assert_eq!(st.dev, meta.dev(), "{name}");
+            let ft = meta.file_type();
+            assert_eq!(
+                (st.is_file(), st.is_dir(), st.is_symlink()),
+                (ft.is_file(), ft.is_dir(), ft.is_symlink()),
+                "{name}"
+            );
+        }
+        let err = stat_at_nofollow(&handle, b"absent").unwrap_err();
+        assert!(errno_is(&err, ENOENT), "{err:?}");
+
+        // `list_dir` agrees with `std::fs::read_dir`, and a second listing
+        // of the same handle is complete (its own read offset each time).
+        let mut expected: Vec<Vec<u8>> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| {
+                use std::os::unix::ffi::OsStrExt;
+                e.unwrap().file_name().as_bytes().to_vec()
+            })
+            .collect();
+        expected.sort();
+        for _ in 0..2 {
+            let mut names = list_dir(&handle).unwrap();
+            names.sort();
+            assert_eq!(names, expected);
+        }
+
+        // `rename_at_noreplace` never replaces an existing entry.
+        std::fs::write(dir.join("other"), "y").unwrap();
+        match rename_at_noreplace(&handle, "other", "file") {
+            Err(e) if noreplace_unsupported(&e) => {}
+            Err(e) => assert!(errno_is(&e, EEXIST), "{e:?}"),
+            Ok(()) => panic!("replaced an existing entry"),
+        }
+        assert_eq!(std::fs::read_to_string(dir.join("file")).unwrap(), "x");
+        rename_at_noreplace(&handle, "other", "fresh")
+            .or_else(|e| {
+                if noreplace_unsupported(&e) {
+                    rename_at(&handle, "other", "fresh")
+                } else {
+                    Err(e)
+                }
+            })
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("fresh")).unwrap(), "y");
+
+        // `link_at` never replaces an existing entry, dangling symlinks
+        // included, and links a regular file under a new name.
+        for existing in ["file", "broken"] {
+            let err = link_at(&handle, "fresh", existing).unwrap_err();
+            assert!(errno_is(&err, EEXIST), "{existing}: {err:?}");
+        }
+        assert_eq!(std::fs::read_to_string(dir.join("file")).unwrap(), "x");
+        link_at(&handle, "fresh", "linked").unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("linked")).unwrap(), "y");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -767,6 +767,9 @@ struct SourceEditorView: NSViewRepresentable {
         func registerPendingCloser(_ offset: Int) { pendingClosers.append(offset) }
         /// The user edit AppKit is applying (from `shouldChangeTextIn` to `textDidChange`).
         private var lastEdit: (range: NSRange, replacement: String)?
+        /// True while a linked name-span keystroke has an open undo group that
+        /// `syncLinkedEnvironmentPartner` must close (the partner registers into it).
+        var openLinkedUndo = false
         /// True while the coordinator inserts a closer or deletes a pair itself.
         private var pairing = false
         /// Marked text was seen since the last committed text change: that
@@ -805,6 +808,18 @@ struct SourceEditorView: NSViewRepresentable {
             ) { [weak self, weak scroll] _ in
                 MainActor.assumeIsolated {
                     guard let self, let tv = scroll?.documentView as? NSTextView else { return }
+                    // A bounds change posted inside `processEditing` must not
+                    // query layout (GH#681): handle it once the edit is done.
+                    if let storage = tv.textStorage, !storage.editedMask.isEmpty {
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, let tv = self.textView else { return }
+                            self.marks.scrolled(tv)
+                            self.syntax.scrolled()
+                            self.hover.dismiss()
+                            self.gutter?.needsDisplay = true
+                        }
+                        return
+                    }
                     self.marks.scrolled(tv)
                     self.syntax.scrolled()
                     self.hover.dismiss()
@@ -829,7 +844,7 @@ struct SourceEditorView: NSViewRepresentable {
                 completing.mathModeAtCaret = { [weak self] index in
                     guard let self, let text = self.textView?.textStorage?.string as NSString? else { return false }
                     return Completion.isMathMode(in: text, caretUTF16: index,
-                                                 highlighter: self.syntax.highlighter.length == text.length ? self.syntax.highlighter : nil)
+                                                 highlighter: self.syntax.inSync(with: text) ? self.syntax.highlighter : nil)
                 }
                 completing.backgroundDecorator = { [weak self] rect in self?.drawCurrentLine(in: rect) }
                 // GH74: a completion snippet's placeholder closer (`\section{}`)
@@ -886,7 +901,7 @@ struct SourceEditorView: NSViewRepresentable {
         func quickInfo(at index: Int) -> EditorIntelligence.QuickInfo? {
             guard let tv = textView else { return nil }
             let text = tv.textStorage?.string as NSString? ?? ""
-            let h = syntax.highlighter.length == text.length ? syntax.highlighter : nil
+            let h = syntax.inSync(with: text) ? syntax.highlighter : nil
             return EditorIntelligence.quickInfo(in: text, at: index, marks: marks.marks, highlighter: h,
                                                 userDefinition: parent.userDefinition, context: parent.hoverContext())
         }
@@ -899,7 +914,7 @@ struct SourceEditorView: NSViewRepresentable {
         func mathPreview(at index: Int) -> (image: CGImage, range: NSRange)? {
             guard let tv = textView, let context = parent.mathPreviewContext() else { return nil }
             let text = tv.textStorage?.string as NSString? ?? ""
-            let h = syntax.highlighter.length == text.length ? syntax.highlighter : nil
+            let h = syntax.inSync(with: text) ? syntax.highlighter : nil
             guard let span = EditorIntelligence.inlineMathSpan(in: text, at: index, highlighter: h) else { return nil }
             guard let crop = MathHoverPreview.crop(in: text, at: index, path: context.path, pages: context.frame.list.pages,
                                                    previewIsStale: context.previewIsStale, highlighter: h) else { return nil }
@@ -915,7 +930,7 @@ struct SourceEditorView: NSViewRepresentable {
         func commandClick(at index: Int) -> Bool {
             guard let tv = textView else { return false }
             let text = tv.textStorage?.string as NSString? ?? ""
-            let h = syntax.highlighter.length == text.length ? syntax.highlighter : nil
+            let h = syntax.inSync(with: text) ? syntax.highlighter : nil
             guard let target = EditorIntelligence.definitionTarget(in: text, at: index, highlighter: h) else { return false }
             hover.dismiss()
             tv.setSelectedRange(NSRange(location: index, length: 0)) // onCaretChange → model.caretUTF16
@@ -1028,7 +1043,26 @@ struct SourceEditorView: NSViewRepresentable {
                 refuse("the document changed since the edit was prepared (revision \(prepared), now \(current))")
                 return
             }
-            guard ns.location >= 0, NSMaxRange(ns) <= (tv.textStorage?.length ?? 0) else {
+            let len = tv.textStorage?.length ?? 0
+            if !edit.groupedEdits.isEmpty {
+                for e in edit.groupedEdits {
+                    guard e.range.location >= 0, NSMaxRange(e.range) <= len else {
+                        refuse("range \(e.range.location)..<\(NSMaxRange(e.range)) is outside the buffer (\(len) UTF-16 units)")
+                        return
+                    }
+                }
+                let selection = parent.selection?.nsRange ?? NSRange(location: edit.nsRange.location, length: (edit.text as NSString).length)
+                applyLineEdits(edit.groupedEdits, to: tv, actionName: "Change Environment", selection: selection, pushBinding: false)
+                awaitingEditDelivery = true
+                let s = lastKnownText
+                let onEditApplied = parent.onEditApplied
+                DispatchQueue.main.async { [weak self] in
+                    self?.awaitingEditDelivery = false
+                    onEditApplied(edit, s)
+                }
+                return
+            }
+            guard ns.location >= 0, NSMaxRange(ns) <= len else {
                 refuse("range \(ns.location)..<\(NSMaxRange(ns)) is outside the buffer (\(tv.textStorage?.length ?? 0) UTF-16 units)")
                 return
             }
@@ -1131,7 +1165,12 @@ struct SourceEditorView: NSViewRepresentable {
             (textView as? CompletingTextView)?.noteFoldEdit(range, replacementLength: replacementLength)
             refreshFoldGutter(rescan: false)
             if !pairing, programmaticChanges == 0 {
-                lastEdit = replacementString.map { (range, $0) }
+                let undoing = textView.undoManager?.isUndoing == true || textView.undoManager?.isRedoing == true
+                lastEdit = undoing ? nil : (range, replacementString ?? "")
+                if !undoing, EditorChangeEnvironment.isOnEnvironmentName(in: (textView.textStorage?.mutableString ?? "" as NSString), at: range.location) {
+                    textView.undoManager?.beginUndoGrouping()
+                    openLinkedUndo = true
+                }
                 noteTypingStep() // the selection change AppKit posts before textDidChange is a typing step: no highlight refresh, no announcement
             }
             return true
@@ -1209,8 +1248,15 @@ struct SourceEditorView: NSViewRepresentable {
             lastUserEditCpuNs = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
             // A change that leaves marked text behind is a composition step:
             // the model sees the buffer once the composition is committed.
-            guard !tv.hasMarkedText() else { return }
+            guard !tv.hasMarkedText() else {
+                if openLinkedUndo {
+                    tv.undoManager?.endUndoGrouping()
+                    openLinkedUndo = false
+                }
+                return
+            }
             if commitFromComposition { commitFromComposition = false } else { autoClose(after: edit, in: tv) }
+            syncLinkedEnvironmentPartner(in: tv, edit: edit)
             let s = SourceEditorView.nativeText(of: tv)
             lastKnownText = s
             parent.text = s

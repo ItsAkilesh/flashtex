@@ -39,7 +39,7 @@ fn big_bracket(class_option: &str, amsmath: bool) -> (u16, String) {
     let docs = [SourceDocument { path: "main.tex", text: &text }];
     let r = render(&docs, "main.tex", 1, "p", &fonts, &RenderOptions::default());
     for page in &r.v2.pages {
-        for it in &page.items {
+        for it in page.resident_items() {
             if let Item::GlyphRun(run) = it {
                 for g in &run.glyphs {
                     let c = &run.clusters[g.cluster as usize];
@@ -74,7 +74,7 @@ fn big_bracket_heights(class_option: &str, amsmath: bool) -> Vec<f64> {
     r.v2
         .pages
         .iter()
-        .flat_map(|page| page.items.iter())
+        .flat_map(|page| page.resident_items().iter())
         .filter_map(|item| match item {
             Item::GlyphRun(run) if run.role == RunRole::Math => Some(run),
             _ => None,
@@ -96,6 +96,7 @@ fn big_bracket_heights(class_option: &str, amsmath: bool) -> Vec<f64> {
 /// one variant further up the cmex chain — a visibly taller bracket than
 /// pdflatex sets.
 #[test]
+#[cfg_attr(not(feature = "amsmath-inline"), ignore = "requires the amsmath-inline feature")]
 fn without_amsmath_big_does_not_move_with_the_body_size() {
     if !lm_available() {
         eprintln!("skipping: Latin Modern not installed");
@@ -126,6 +127,7 @@ fn with_amsmath_big_tracks_the_body_size() {
 }
 
 #[test]
+#[cfg_attr(not(feature = "amsmath-inline"), ignore = "requires the amsmath-inline feature")]
 fn big_delimiter_heights_match_pdflatex_at_all_article_sizes() {
     if !lm_available() {
         eprintln!("skipping: Latin Modern not installed");

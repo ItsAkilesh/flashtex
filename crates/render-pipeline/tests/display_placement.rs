@@ -10,10 +10,19 @@
 //! `oracle.py check`). Too-wide formulas are squeezed by their math glue
 //! with the number beside them or on a line of its own (09, 10, 33; needs
 //! math-layout `MathBox::pack_to`), and `\numberwithin`/`subequations`
-//! numbers come from the compiler (18; 17's numbers are right, its `\eqref`
-//! misses LaTeX's `\sw@slant` italic correction before the space). Fixtures
-//! not listed here do not pass yet: 17, `\tag{$..$}` math (15) and nested
-//! list labels (20).
+//! numbers come from the compiler (17, 18; 17's `\eqref` takes `\textup`'s
+//! `\check@icl` italic correction before its space). Display 20 sits in a
+//! nested list, whose closing `\topsep` is its own level's. The fixture not
+//! listed here does not pass yet: `\tag{$..$}` math (15).
+//!
+//! 47-50 are the cumulative case: eight displays down one page whose box
+//! height is set by a *family-0* digit. Family 0 (`operators`) is `cmr`
+//! unless `lmodern` is loaded, and `rm-lmr`'s digits are 0.0147 em shorter,
+//! so with the wrong design each display's box is 0.11-0.18 bp short --
+//! under the 0.5 bp gate alone, and 1.17 / 1.29 / 1.41 bp by the foot of the
+//! page at 10 / 11 / 12 pt (89, 89 and 121 of the 163 words outside the
+//! gate). 50 is the same page *with* `lmodern`, which really does rebind
+//! `operators`, so it must not move either way.
 
 mod common;
 
@@ -40,8 +49,10 @@ const PASSING: &[&str] = &[
     "13-dollars-leqno",
     "14-equation-star",
     "16-gather-numbers",
+    "17-numberwithin-section",
     "18-subequations",
     "19-itemize-display",
+    "20-enumerate-nested-display",
     "21-after-heading",
     "22-page-bottom",
     "23-page-top",
@@ -58,6 +69,10 @@ const PASSING: &[&str] = &[
     "34-parindent-medium-line",
     "35-12pt-fleqn-leqno-align",
     "36-cm-default-fonts",
+    "47-cm-math-roman-boxes",
+    "48-cm-math-roman-boxes-11pt",
+    "49-cm-math-roman-boxes-12pt",
+    "50-lm-math-roman-boxes",
 ];
 
 fn num(v: &Value, k: &str) -> f64 {
@@ -90,7 +105,7 @@ fn display_placement_matches_pdflatex() {
         for (page, words) in r.v2.pages.iter().zip(pages) {
             // (first char, x bp, baseline y bp) of every glyph on the page.
             let mut glyphs = Vec::new();
-            for item in &page.items {
+            for item in page.resident_items() {
                 if let Item::GlyphRun(run) = item {
                     let mut chars = run.clusters.iter().map(|c| run.text[c.text_start_byte as usize..c.text_end_byte as usize].chars().next());
                     for g in &run.glyphs {

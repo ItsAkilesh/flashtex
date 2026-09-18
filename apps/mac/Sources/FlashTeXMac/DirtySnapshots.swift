@@ -6,9 +6,9 @@ import FlashTeXProtocol
 ///
 /// `recoverableBuffer` and `ProjectDocuments.detachedBuffers` keep discarded
 /// text for the session only, and only while the preview controller's ledger
-/// is *not* the durable home of that text (a session copy of a file not named
-/// `main.tex`, the direct worker route, the fixture route, or no helper at
-/// all). This store makes such text survive the process: one JSON snapshot
+/// is *not* the durable home of that text (a session temporary project for
+/// an unsaved buffer, the direct worker route, the fixture route, or no
+/// helper at all). This store makes such text survive the process: one JSON snapshot
 /// per file under Application Support (`FLASHTEX_DIRTY_SNAPSHOTS` overrides
 /// the directory for tests and automation), written when
 ///
@@ -173,6 +173,14 @@ extension ShellModel {
         let snapshot = DirtySnapshot(file: url.standardizedFileURL.path, text: text, diskSha256: diskHash, savedAt: Date(), reason: reason)
         guard dirtySnapshots.write(snapshot) != nil else { return nil }
         return snapshot
+    }
+
+    /// `preserveDirtyText` for a discard that drops the only in-memory copy:
+    /// false when the text differs from the file and the store could not keep
+    /// it (`dirtySnapshots.lastError` says why), so the caller must not
+    /// replace the buffer (#806).
+    func preserveDiscardedText(_ text: String, at url: URL, reason: String) -> Bool {
+        preserveDirtyText(text, at: url, reason: reason) != nil || Self.diskText(at: url)?.sameBytes(as: text) == true
     }
 
     /// Keeps every dirty member durably (entry: its URL; members: their

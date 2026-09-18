@@ -17,7 +17,10 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(env.payload.revision, 1)
         XCTAssertNil(env.payload.pdfPath)
         XCTAssertEqual(env.payload.pages.count, 1)
-        guard case .text(let item) = env.payload.pages[0].items[0] else { return XCTFail("expected text item") }
+        guard let firstPage = env.payload.pages.first, let firstItem = firstPage.items.first else {
+            return XCTFail("expected at least one page with at least one item")
+        }
+        guard case .text(let item) = firstItem else { return XCTFail("expected text item") }
         XCTAssertEqual(item.text, "Hello FlashTeX.")
         XCTAssertEqual(item.source, .init(path: "main.tex", startByte: 0, endByte: 14))
     }
@@ -121,6 +124,7 @@ final class StructuredDiagnosticTests: XCTestCase {
         let reference = try RuntimeV1.decodeCompileResultReference(data)
         XCTAssertEqual(fast.payload, reference.payload)
         XCTAssertEqual(fast.payload.diagnostics.count, 2)
+        guard fast.payload.diagnostics.count == 2 else { return XCTFail("expected two diagnostics, got \(fast.payload.diagnostics.count)") }
         let legacy = fast.payload.diagnostics[0]
         XCTAssertNil(legacy.code)
         XCTAssertNil(legacy.help)
@@ -129,10 +133,12 @@ final class StructuredDiagnosticTests: XCTestCase {
         XCTAssertEqual(d.code, "unsupported_feature")
         XCTAssertEqual(d.suggestion, "\\(...\\)")
         XCTAssertEqual(d.labels?.count, 2)
-        XCTAssertEqual(d.labels?[0].primary, true)
-        XCTAssertEqual(d.labels?[0].text, "this command")
-        XCTAssertEqual(d.labels?[1].primary, false)
-        XCTAssertEqual(d.labels?[1].text, "in this item")
+        let labels = try XCTUnwrap(d.labels)
+        guard labels.count == 2 else { return XCTFail("expected two labels, got \(labels.count)") }
+        XCTAssertEqual(labels[0].primary, true)
+        XCTAssertEqual(labels[0].text, "this command")
+        XCTAssertEqual(labels[1].primary, false)
+        XCTAssertEqual(labels[1].text, "in this item")
         XCTAssertEqual(d.notes, ["\\tilde is a math accent; here it is outside math mode"])
         XCTAssertEqual(d.help?.message, "wrap it in math: \\(\\tilde{c}_t\\)")
         XCTAssertEqual(d.help?.replacement?.startByte, 10)
@@ -161,5 +167,36 @@ final class StructuredDiagnosticTests: XCTestCase {
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         XCTAssertNil((obj["replacement"] as? [String: Any])?["path"])
         XCTAssertEqual((obj["replacement"] as? [String: Any])?["text"] as? String, "x")
+    }
+
+    /// The compiler nests the edit range inside `source` and emits no flat
+    /// `start_byte`. Both decoders used to require the flat pair, so every
+    /// diagnostic carrying a fix made the whole `compile_result` frame fail to
+    /// decode -- and the Mac dropped the preview update as a protocol
+    /// violation. These bytes are the shape `crates/compiler/src/diagnostics.rs`
+    /// actually writes (its own unit tests assert this string).
+    func testHelpReplacementAcceptsTheCompilersNestedSourceRange() throws {
+        let emitted = #"{"message":"did you mean \\alpha?","replacement":{"source":{"end_byte":11,"path":"main.tex","start_byte":5},"text":"\\alpha"}}"#
+        let help = try JSONDecoder().decode(RuntimeV1.Diagnostic.Help.self, from: Data(emitted.utf8))
+        let r = try XCTUnwrap(help.replacement)
+        XCTAssertEqual(r.startByte, 5)
+        XCTAssertEqual(r.endByte, 11)
+        XCTAssertEqual(r.text, "\\alpha")
+        XCTAssertEqual(r.path, "main.tex")
+    }
+
+    /// A flat pair still wins over a nested one, so a producer that sends both
+    /// is read the way it was before nested ranges were accepted.
+    func testFlatReplacementOffsetsWinOverNestedOnes() throws {
+        let both = #"{"message":"h","replacement":{"start_byte":1,"end_byte":2,"text":"x","source":{"path":"src.tex","start_byte":9,"end_byte":10}}}"#
+        let help = try JSONDecoder().decode(RuntimeV1.Diagnostic.Help.self, from: Data(both.utf8))
+        XCTAssertEqual(help.replacement?.startByte, 1)
+        XCTAssertEqual(help.replacement?.endByte, 2)
+    }
+
+    /// Neither form present is still an error, and it names both spellings.
+    func testReplacementWithNoRangeAtAllIsRejected() {
+        let none = #"{"message":"h","replacement":{"text":"x"}}"#
+        XCTAssertThrowsError(try JSONDecoder().decode(RuntimeV1.Diagnostic.Help.self, from: Data(none.utf8)))
     }
 }

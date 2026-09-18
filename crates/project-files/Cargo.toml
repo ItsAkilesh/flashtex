@@ -11,7 +11,17 @@ name = "flashtex_project_files"
 path = "src/lib.rs"
 
 [dependencies]
+libc = "0.2.189"
 unicode-normalization = "0.1.25"
+
+[features]
+# Deterministic race-test hooks (`save::race_hook`). Test-only and never on by
+# default: a normal or release build contains no hook code. This crate's own
+# integration tests turn it on through the self dev-dependency below.
+race-hook = []
+
+[dev-dependencies]
+flashtex-project-files = { path = ".", features = ["race-hook"] }
 
 # Windows has no `openat` family; `src/sys.rs` emulates it with the NT native
 # API (`NtCreateFile`/`NtSetInformationFile` against a pinned directory
@@ -25,6 +35,8 @@ windows-sys = { version = "=0.61.2", features = [
     "Wdk_Storage_FileSystem",
     "Win32_Foundation",
     "Win32_Security",
+    # `ProcessPrng`, the OS random source `save::temp_name` needs.
+    "Win32_Security_Cryptography",
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
 ] }
