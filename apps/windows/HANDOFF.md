@@ -878,3 +878,41 @@ that is what this is. The exact guarantee:
   library's deliberate one-directory-only rename.
 - The delete confirmation cannot be undone from FlashTeX (there is no trash
   integration); the dialog says so.
+
+### Independently re-verified by the parent session (2026-09-18)
+
+This agent ran in an **auto-created git worktree**
+(`.claude/worktrees/agent-a0e75e08fa9bd05b3`, its own branch, since removed)
+and pushed its commit (`92777dba`) directly to `fork/windows-native-wip` from
+there — the parent session's own checkout was still one commit behind until
+`git merge --ff-only fork/windows-native-wip` caught it up. **Important
+gotcha this surfaced**: a `cargo build --release` done inside a git worktree
+does NOT populate `target/release/` in the main checkout (or vice versa) —
+they're separate build directories. The very first re-run of
+`dotnet test tests/FlashTeX.ProjectFiles.Tests` in the main checkout showed 5
+failures (`unknown operation "remove"`/`"rename"`) purely because
+`crates/project-files/target/release/flashtex-project-files.exe` in the main
+checkout was still the pre-feature binary. Running `cargo build --release`
+from `crates/project-files/` in the main checkout fixed it immediately — all
+65 tests then passed. **Whenever a worktree-isolated agent reports Rust
+changes as verified, rebuild `--release` yourself in whichever checkout you're
+about to test/run from before trusting a "tests failed" result** — it may
+just be a stale binary, not a real regression (this exact false alarm has now
+happened at least twice this project — see also the earlier `project-files`
+merge-conflict agent's own worktree confusion above).
+
+With that rebuild done, independently confirmed from the parent session's own
+checkout (not just trusting the agent's report): `cargo test` in
+`crates/project-files/` → 86 passed, 0 failed (matches exactly); `dotnet build
+FlashTeX.sln` → 0 warnings, 0 errors; `dotnet test
+tests/FlashTeX.ProjectFiles.Tests` → 65 passed, 0 failed; the two pre-existing,
+unrelated failures the agent flagged (`FlashTeX.Editor.Tests.CompletionTests
+.BundledInventoryMatchesTheMacCopy`, a clippy lint in `sys.rs`) were confirmed
+still present and confirmed unrelated to this change. A fresh app launch +
+`PrintWindow` screenshot after all of this still shows the app working
+normally (editor, preview, diagnostics, outline all intact). Did not redo the
+agent's own interactive rename/delete UI verification (its report's detail —
+exact byte counts, specific file names, `Test-Path`/`Get-Content` checks
+before and after — reads as genuine, real command output, not a fabricated
+summary) but independently confirmed everything underneath it (build, full
+test suite, app still launches) checks out.
