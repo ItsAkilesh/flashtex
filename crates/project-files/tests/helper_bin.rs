@@ -198,6 +198,165 @@ fn refusals_and_bad_requests_are_errors_and_write_nothing() {
     assert!(!root.join("a.tex").exists());
 }
 
+/// `remove` over the wire: a real unlink reports `removed:true`, a path that
+/// was never there reports `removed:false` rather than failing (the library's
+/// own `Ok(false)`), and a second `remove` of the same file converges on
+/// `removed:false` instead of erroring.
+#[test]
+fn remove_over_the_wire_reports_whether_anything_was_there() {
+    let tmp = common::TempDir::new("helper-bin-remove");
+    let root = tmp.root();
+    std::fs::write(root.join("a.tex"), "bye\n").unwrap();
+    std::fs::create_dir(root.join("sub")).unwrap();
+    std::fs::write(root.join("sub/b.tex"), "nested\n").unwrap();
+    let replies = run(
+        root,
+        &[
+            r#"{"id":"1","operation":"remove","path":"a.tex"}"#,
+            r#"{"id":"2","operation":"remove","path":"a.tex"}"#,
+            r#"{"id":"3","operation":"remove","path":"never-existed.tex"}"#,
+            r#"{"id":"4","operation":"remove","path":"sub/b.tex"}"#,
+            r#"{"id":"5","operation":"read","path":"a.tex"}"#,
+            r#"{"id":"6","operation":"remove","path":"../outside.tex"}"#,
+            r#"{"id":"7","operation":"remove"}"#,
+        ],
+    );
+    assert_eq!(replies.len(), 7);
+    for (index, id, removed) in [(0, "1", true), (1, "2", false), (2, "3", false), (3, "4", true)] {
+        let p = payload(&replies[index], id);
+        assert_eq!(p.get("removed"), Some(&Json::Bool(removed)), "id={id}");
+    }
+    assert_eq!(
+        payload(&replies[0], "1").get("path").and_then(Json::as_str),
+        Some("a.tex")
+    );
+    assert_eq!(
+        payload(&replies[4], "5").get("exists"),
+        Some(&Json::Bool(false))
+    );
+    assert_eq!(error_code(&replies[5], "6"), "invalid_path");
+    assert_eq!(error_code(&replies[6], "7"), "invalid_request");
+    assert!(!root.join("a.tex").exists());
+    assert!(!root.join("sub/b.tex").exists());
+    assert!(root.join("sub").is_dir(), "the directory itself stays");
+}
+
+/// `rename` over the wire. The successful case moves the entry with no second
+/// copy left behind; an occupied `to` and a missing `from` are *conflicts*
+/// (payloads the shell must show), not errors; a cross-directory pair is an
+/// `invalid_request`; and a malformed request is rejected before anything is
+/// touched.
+#[test]
+fn rename_over_the_wire_moves_or_reports_a_conflict() {
+    let tmp = common::TempDir::new("helper-bin-rename");
+    let root = tmp.root();
+    std::fs::write(root.join("old.tex"), "chapter\n").unwrap();
+    std::fs::write(root.join("taken.tex"), "someone else\n").unwrap();
+    std::fs::create_dir(root.join("sub")).unwrap();
+    std::fs::write(root.join("sub/n.tex"), "nested\n").unwrap();
+    let h = sha256_hex(b"chapter\n");
+    let replies = run(
+        root,
+        &[
+            r#"{"id":"1","operation":"rename","from":"old.tex","to":"new.tex"}"#,
+            r#"{"id":"2","operation":"read","path":"new.tex"}"#,
+            r#"{"id":"3","operation":"read","path":"old.tex"}"#,
+            r#"{"id":"4","operation":"rename","from":"new.tex","to":"taken.tex"}"#,
+            r#"{"id":"5","operation":"rename","from":"gone.tex","to":"other.tex"}"#,
+            r#"{"id":"6","operation":"rename","from":"sub/n.tex","to":"sub/m.tex"}"#,
+            r#"{"id":"7","operation":"rename","from":"new.tex","to":"sub/new.tex"}"#,
+            r#"{"id":"8","operation":"rename","from":"new.tex"}"#,
+            r#"{"id":"9","operation":"rename","from":"new.tex","to":"../escape.tex"}"#,
+        ],
+    );
+    assert_eq!(replies.len(), 9);
+
+    let p = payload(&replies[0], "1");
+    assert_eq!(p.get("outcome").and_then(Json::as_str), Some("renamed"));
+    assert_eq!(p.get("from").and_then(Json::as_str), Some("old.tex"));
+    assert_eq!(p.get("to").and_then(Json::as_str), Some("new.tex"));
+    let p = payload(&replies[1], "2");
+    assert_eq!(p.get("text").and_then(Json::as_str), Some("chapter\n"));
+    assert_eq!(
+        p.get("sha256").and_then(Json::as_str),
+        Some(h.as_str()),
+        "content identity is carried over unchanged"
+    );
+    assert_eq!(
+        payload(&replies[2], "3").get("exists"),
+        Some(&Json::Bool(false)),
+        "no second copy at the old name"
+    );
+
+    let p = payload(&replies[3], "4");
+    assert_eq!(p.get("outcome").and_then(Json::as_str), Some("conflict"));
+    let c = p.get("conflict").unwrap();
+    assert_eq!(c.get("kind").and_then(Json::as_str), Some("already_exists"));
+    assert_eq!(c.get("path").and_then(Json::as_str), Some("taken.tex"));
+    assert_eq!(c.get("ours"), Some(&Json::Null));
+    assert_eq!(c.get("theirs"), Some(&Json::Null));
+
+    let c = payload(&replies[4], "5").get("conflict").unwrap();
+    assert_eq!(
+        c.get("kind").and_then(Json::as_str),
+        Some("deleted_externally")
+    );
+    assert_eq!(c.get("path").and_then(Json::as_str), Some("gone.tex"));
+
+    assert_eq!(
+        payload(&replies[5], "6")
+            .get("outcome")
+            .and_then(Json::as_str),
+        Some("renamed")
+    );
+    assert_eq!(error_code(&replies[6], "7"), "invalid_request");
+    assert_eq!(error_code(&replies[7], "8"), "invalid_request");
+    assert_eq!(error_code(&replies[8], "9"), "invalid_path");
+
+    assert_eq!(
+        std::fs::read_to_string(root.join("new.tex")).unwrap(),
+        "chapter\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("taken.tex")).unwrap(),
+        "someone else\n",
+        "the refused target was never clobbered"
+    );
+    assert!(!root.join("old.tex").exists());
+    assert!(!root.join("sub/n.tex").exists());
+    assert_eq!(
+        std::fs::read_to_string(root.join("sub/m.tex")).unwrap(),
+        "nested\n"
+    );
+    assert!(!root.join("sub/new.tex").exists());
+}
+
+/// `remove` and `rename` inherit the same refusals every other operation has:
+/// a symlink is neither followed nor moved, and the file it points to outside
+/// the root is untouched.
+#[test]
+fn remove_and_rename_refuse_symlinks_over_the_wire() {
+    let tmp = common::TempDir::new("helper-bin-rename-refuse");
+    let root = tmp.root();
+    let outside = common::TempDir::new("helper-bin-rename-outside");
+    let secret = outside.root().join("secret.tex");
+    std::fs::write(&secret, "secret\n").unwrap();
+    common::symlink_file(&secret, &root.join("link.tex"));
+    let replies = run(
+        root,
+        &[
+            r#"{"id":"1","operation":"remove","path":"link.tex"}"#,
+            r#"{"id":"2","operation":"rename","from":"link.tex","to":"moved.tex"}"#,
+        ],
+    );
+    assert_eq!(replies.len(), 2);
+    assert_eq!(error_code(&replies[0], "1"), "refused");
+    assert_eq!(error_code(&replies[1], "2"), "refused");
+    assert_eq!(std::fs::read_to_string(&secret).unwrap(), "secret\n");
+    assert!(std::fs::symlink_metadata(root.join("link.tex")).is_ok());
+    assert!(!root.join("moved.tex").exists());
+}
+
 #[test]
 fn symlinked_root_is_refused_at_startup() {
     let real = common::TempDir::new("helper-bin-realroot");

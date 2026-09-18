@@ -1,12 +1,14 @@
 // name: MainWindow.ProjectFiles.cs
-// purpose: Native open/save flows backed by flashtex-project-files. The helper owns
-// rooted, no-follow reads and optimistic-concurrency saves; the WinUI window owns
-// picker ownership and user-facing conflict feedback.
+// purpose: Native open/save/rename/delete flows backed by flashtex-project-files.
+// The helper owns rooted, no-follow reads, optimistic-concurrency saves, unlinks
+// and single-syscall no-replace renames; the WinUI window owns picker ownership,
+// confirmation prompts and user-facing conflict feedback.
 
 using FlashTeX.ProjectFiles;
 using FlashTeX.Protocol.ProjectFilesV1;
 using FlashTeX.Shell;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -59,6 +61,8 @@ public sealed partial class MainWindow
             };
             string path = document.Path;
             button.Click += (_, _) => _shell.SwitchActiveDocument(path);
+            button.ContextFlyout = BuildProjectRowMenu(path);
+            AutomationProperties.SetName(button, label);
             panel.Children.Add(button);
         }
 
@@ -91,8 +95,33 @@ public sealed partial class MainWindow
         ProjectTreeHost.Child = panel;
     }
 
+    /// <summary>
+    /// The right-click menu on a project-tree row. This is the app's first
+    /// <see cref="MenuFlyout"/> outside the <c>MenuBar</c> (nothing else had a
+    /// context menu yet), so it deliberately mirrors
+    /// <see cref="CreateMenuFlyoutItem"/>'s shape: a plain
+    /// <see cref="MenuFlyoutItem.Text"/> per action — which, unlike a button
+    /// whose content is a panel, UI Automation does expose a usable
+    /// <c>Name</c> for — dispatching through the same
+    /// <see cref="RunProjectFileCommandAsync"/> entry point the File menu's
+    /// Rename/Delete commands use, so there is one implementation and one
+    /// error-reporting path rather than two.
+    /// </summary>
+    private MenuFlyout BuildProjectRowMenu(string documentPath)
+    {
+        var flyout = new MenuFlyout();
+        var rename = new MenuFlyoutItem { Text = "Rename…" };
+        rename.Click += (_, _) => _ = RunProjectFileActionAsync(() => RenameDocumentFileAsync(documentPath));
+        var delete = new MenuFlyoutItem { Text = "Delete…" };
+        delete.Click += (_, _) => _ = RunProjectFileActionAsync(() => DeleteDocumentFileAsync(documentPath));
+        flyout.Items.Add(rename);
+        flyout.Items.Add(delete);
+        return flyout;
+    }
+
     private static bool IsProjectFileCommand(string id) =>
-        id is CommandIds.OpenLatexFile or CommandIds.Save or CommandIds.SaveAs or CommandIds.NewFile;
+        id is CommandIds.OpenLatexFile or CommandIds.Save or CommandIds.SaveAs or CommandIds.NewFile
+            or CommandIds.RenameFile or CommandIds.DeleteFile;
 
     private bool TryStartProjectFileCommand(string commandId)
     {
@@ -105,25 +134,36 @@ public sealed partial class MainWindow
         return true;
     }
 
-    private async Task RunProjectFileCommandAsync(string commandId)
+    private Task RunProjectFileCommandAsync(string commandId) => RunProjectFileActionAsync(() => commandId switch
+    {
+        CommandIds.OpenLatexFile => OpenLatexFileAsync(),
+        CommandIds.Save => SaveActiveFileAsync(saveAs: false),
+        CommandIds.SaveAs => SaveActiveFileAsync(saveAs: true),
+        CommandIds.NewFile => CreateNewFileAsync(),
+        CommandIds.RenameFile => RenameDocumentFileAsync(ActiveDocumentOrThrow().Path),
+        CommandIds.DeleteFile => DeleteDocumentFileAsync(ActiveDocumentOrThrow().Path),
+        _ => Task.CompletedTask,
+    });
+
+    /// <summary>
+    /// The one place every project-file flow's failure is surfaced. Each of
+    /// these is dispatched fire-and-forget from a synchronous handler (a menu
+    /// item's <c>Click</c>, <see cref="ExecuteCommand"/>), so an escaping
+    /// exception would otherwise become an unobserved task exception and the
+    /// action would appear to silently do nothing — the exact failure mode
+    /// rename and delete must not have.
+    /// </summary>
+    private async Task RunProjectFileActionAsync(Func<Task> action)
     {
         try
         {
-            switch (commandId)
-            {
-                case CommandIds.OpenLatexFile:
-                    await OpenLatexFileAsync().ConfigureAwait(true);
-                    break;
-                case CommandIds.Save:
-                    await SaveActiveFileAsync(saveAs: false).ConfigureAwait(true);
-                    break;
-                case CommandIds.SaveAs:
-                    await SaveActiveFileAsync(saveAs: true).ConfigureAwait(true);
-                    break;
-                case CommandIds.NewFile:
-                    await CreateNewFileAsync().ConfigureAwait(true);
-                    break;
-            }
+            await action().ConfigureAwait(true);
+        }
+        catch (ProjectFilesErrorException ex)
+        {
+            await ShowProjectFileDialogAsync(
+                "File operation refused",
+                $"The project-file helper refused this operation ({ex.Code}).\n\n{ex.Message}").ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -254,6 +294,209 @@ public sealed partial class MainWindow
         await _shell.OpenDocumentAsync(path, template).ConfigureAwait(true);
         _fileBindingsByDocument[path] = savedBinding;
         _shell.MarkDocumentSaved(path);
+    }
+
+    /// <summary>
+    /// Renames <paramref name="documentPath"/>'s file inside its own project
+    /// directory, then re-keys everything that tracked the old path.
+    ///
+    /// The on-disk step is <see cref="DocumentFilesClient.RenameAsync"/>, which
+    /// is a single no-replace rename in the helper
+    /// (crates/project-files <c>ProjectLock::rename</c>): it either moves the
+    /// entry or changes nothing, so an interrupted rename can never leave two
+    /// copies or none, and an existing file at the new name is refused rather
+    /// than clobbered. Only once that has succeeded is the shell's own state
+    /// moved, via <see cref="ShellModel.RenameDocument"/> — which keeps the
+    /// tab, its unsaved edits and its durable undo/redo history instead of
+    /// closing and reopening it. The file binding is re-keyed *before* the
+    /// shell rename, because <see cref="ReconcileDocumentWatchers"/> runs off
+    /// <c>Documents.CollectionChanged</c> and drops the binding and watcher of
+    /// any path that is no longer open.
+    /// </summary>
+    private async Task RenameDocumentFileAsync(string documentPath)
+    {
+        if (!_fileBindingsByDocument.TryGetValue(documentPath, out var binding))
+        {
+            await ShowProjectFileDialogAsync(
+                "Nothing to rename yet",
+                $"“{documentPath}” is only open in memory — it has no file in a project on disk. Use Save As to give it one first.").ConfigureAwait(true);
+            return;
+        }
+
+        string currentName = ProjectRelativeFileName(binding.RelativePath);
+        string? entered = await PromptForFileNameAsync("Rename file", $"New name for “{currentName}”:", currentName).ConfigureAwait(true);
+        if (entered is null)
+        {
+            return; // cancelled
+        }
+        string newName = entered.Trim();
+        if (newName.Length == 0 || newName == currentName)
+        {
+            return;
+        }
+        if (InvalidFileNameReason(newName) is { } reason)
+        {
+            await ShowProjectFileDialogAsync("Not a usable file name", reason).ConfigureAwait(true);
+            return;
+        }
+
+        string newRelativePath = ReplaceProjectRelativeFileName(binding.RelativePath, newName);
+        if (_shell.Documents.Any(d => d.Path == newRelativePath))
+        {
+            await ShowProjectFileDialogAsync(
+                "That name is already open",
+                $"“{newRelativePath}” is already open in another tab. Close it first, or choose a different name.").ConfigureAwait(true);
+            return;
+        }
+
+        RenameOutcome outcome = await binding.Client.RenameAsync(binding.RelativePath, newRelativePath).ConfigureAwait(true);
+        if (outcome is RenameOutcome.Conflict conflict)
+        {
+            await ShowProjectFileDialogAsync("Rename refused", DescribeRenameConflict(conflict.Details, binding.RelativePath, newRelativePath)).ConfigureAwait(true);
+            return;
+        }
+
+        var renamed = (RenameOutcome.Renamed)outcome;
+        _fileBindingsByDocument[renamed.To] = binding with { RelativePath = renamed.To };
+        if (!_shell.RenameDocument(documentPath, renamed.To))
+        {
+            // The tab closed while the helper was answering. The file did move,
+            // so the new binding above is the truthful record of it; the tab
+            // simply is not there to re-key.
+            _fileBindingsByDocument.Remove(renamed.To);
+        }
+        _fileBindingsByDocument.Remove(documentPath);
+        RebuildProjectTree();
+    }
+
+    /// <summary>
+    /// Deletes <paramref name="documentPath"/>'s file after an explicit
+    /// confirmation, then closes its tab. A file that another process already
+    /// deleted reports <c>removed:false</c> rather than failing — the tab is
+    /// still closed (the intent is satisfied) and the difference is stated
+    /// rather than hidden.
+    /// </summary>
+    private async Task DeleteDocumentFileAsync(string documentPath)
+    {
+        if (!_fileBindingsByDocument.TryGetValue(documentPath, out var binding))
+        {
+            await ShowProjectFileDialogAsync(
+                "Nothing to delete yet",
+                $"“{documentPath}” is only open in memory — it has no file in a project on disk.").ConfigureAwait(true);
+            return;
+        }
+
+        bool isDirty = _shell.Documents.Any(d => d.Path == documentPath && d.IsDirty);
+        var confirm = new ContentDialog
+        {
+            Title = "Delete file?",
+            Content = $"“{Path.Combine(binding.Root, binding.RelativePath)}” will be deleted from disk and its tab closed."
+                + (isDirty ? " This tab has unsaved changes, which will be lost." : string.Empty)
+                + " This cannot be undone from FlashTeX.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot,
+        };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        RemovePayload removed = await binding.Client.RemoveAsync(binding.RelativePath).ConfigureAwait(true);
+        _fileBindingsByDocument.Remove(documentPath);
+        await _shell.CloseDocumentAsync(documentPath).ConfigureAwait(true);
+        RebuildProjectTree();
+        if (!removed.Removed)
+        {
+            await ShowProjectFileDialogAsync(
+                "File was already gone",
+                $"“{removed.Path}” no longer existed on disk, so nothing was deleted. Its tab has been closed.").ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// A one-field prompt, matching <see cref="ShowProjectFileDialogAsync"/>'s
+    /// plain <see cref="ContentDialog"/> shape. Returns null when the user
+    /// cancels (as opposed to an empty string, which a caller treats as "no
+    /// change"). The <see cref="TextBox"/> carries an explicit
+    /// <see cref="AutomationProperties"/> name because WinUI computes none for
+    /// a bare text box, and without one UI Automation cannot find it to drive
+    /// this dialog.
+    /// </summary>
+    private async Task<string?> PromptForFileNameAsync(string title, string prompt, string current)
+    {
+        var input = new TextBox { Text = current, SelectionStart = 0, SelectionLength = current.Length };
+        AutomationProperties.SetName(input, "New file name");
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new TextBlock { Text = prompt, TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(input);
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = panel,
+            PrimaryButtonText = "Rename",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = Content.XamlRoot,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? input.Text : null;
+    }
+
+    /// <summary>
+    /// Why <paramref name="name"/> cannot be a project file name, or null if it
+    /// can. The helper's own <c>ProjectPath</c> normalization is the authority
+    /// and rejects all of these too; this exists only so the user reads a
+    /// sentence about the name they typed instead of an <c>invalid_path</c>
+    /// error code.
+    /// </summary>
+    private static string? InvalidFileNameReason(string name)
+    {
+        if (name is "." or "..")
+        {
+            return $"“{name}” names a directory, not a file.";
+        }
+        if (name.IndexOfAny(['/', '\\']) >= 0)
+        {
+            return "Rename changes a file's name inside its own folder, so the new name cannot contain a path separator.";
+        }
+        if (name.Contains(':') || name.IndexOfAny(['*', '?', '"', '<', '>', '|']) >= 0)
+        {
+            return "A project file name cannot contain any of : * ? \" < > |";
+        }
+        if (name.Any(char.IsControl))
+        {
+            return "A project file name cannot contain control characters.";
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// A rename conflict in the words of the thing the user did. Nothing moved
+    /// in either case; the old file is exactly as it was.
+    /// </summary>
+    private static string DescribeRenameConflict(SaveConflict conflict, string from, string to) => conflict.Kind switch
+    {
+        ConflictKind.already_exists =>
+            $"“{to}” already exists in this project, and FlashTeX will not overwrite it. Nothing was renamed — choose another name, or remove that file first.",
+        ConflictKind.deleted_externally =>
+            $"“{from}” is no longer on disk, so there was nothing to rename. Another program may have moved or deleted it.",
+        var kind => $"The rename of “{from}” to “{to}” was refused ({kind}) and nothing was changed.",
+    };
+
+    /// <summary>The last segment of a helper-side project-relative path, which always uses forward slashes (never <see cref="Path.DirectorySeparatorChar"/>).</summary>
+    private static string ProjectRelativeFileName(string relativePath)
+    {
+        int slash = relativePath.LastIndexOf('/');
+        return slash < 0 ? relativePath : relativePath[(slash + 1)..];
+    }
+
+    /// <summary>The sibling of <paramref name="relativePath"/> named <paramref name="fileName"/>, keeping its project-relative directory.</summary>
+    private static string ReplaceProjectRelativeFileName(string relativePath, string fileName)
+    {
+        int slash = relativePath.LastIndexOf('/');
+        return slash < 0 ? fileName : string.Concat(relativePath.AsSpan(0, slash + 1), fileName);
     }
 
     private async Task<OpenFileBinding?> SaveBoundDocumentAsync(ShellDocument document, OpenFileBinding binding)

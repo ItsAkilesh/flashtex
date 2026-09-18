@@ -124,6 +124,8 @@ namespace FlashTeX.Protocol;
 [JsonSerializable(typeof(ProjectFilesV1.ReadRequest))]
 [JsonSerializable(typeof(ProjectFilesV1.StatusRequest))]
 [JsonSerializable(typeof(ProjectFilesV1.SaveRequest))]
+[JsonSerializable(typeof(ProjectFilesV1.RemoveRequest))]
+[JsonSerializable(typeof(ProjectFilesV1.RenameRequest))]
 [JsonSerializable(typeof(ProjectFilesV1.PingPayload))]
 [JsonSerializable(typeof(ProjectFilesV1.ReadPayload))]
 [JsonSerializable(typeof(ProjectFilesV1.DiskState))]
@@ -132,6 +134,8 @@ namespace FlashTeX.Protocol;
 [JsonSerializable(typeof(ProjectFilesV1.ConflictKind))]
 [JsonSerializable(typeof(ProjectFilesV1.SaveConflict))]
 [JsonSerializable(typeof(ProjectFilesV1.SaveOutcomeWire))]
+[JsonSerializable(typeof(ProjectFilesV1.RemovePayload))]
+[JsonSerializable(typeof(ProjectFilesV1.RenameOutcomeWire))]
 [JsonSerializable(typeof(ProjectFilesV1.ErrorPayload), TypeInfoPropertyName = "ProjectFilesV1ErrorPayload")]
 
 // MARK: edit-ledger-v1

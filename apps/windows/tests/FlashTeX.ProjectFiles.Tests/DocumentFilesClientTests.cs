@@ -148,6 +148,99 @@ public sealed class DocumentFilesClientTests : IDisposable
     }
 
     [Fact]
+    public async Task RemoveAsync_DeletesTheFileAndReportsFalseWhenThereWasNothingToDelete()
+    {
+        AssertBinaryExists();
+        var stderrLines = new List<string>();
+        await using DocumentFilesClient client = StartClient(stderrLines);
+        await client.SaveAsync("doomed.tex", "bye\n", Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+        string diskPath = Path.Combine(_root, "doomed.tex");
+        Assert.True(File.Exists(diskPath));
+
+        RemovePayload removed = await client.RemoveAsync("doomed.tex").WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(removed.Removed);
+        Assert.Equal("doomed.tex", removed.Path);
+        Assert.False(File.Exists(diskPath));
+
+        // Deleting it again, and deleting something that never existed, are both
+        // `removed:false` rather than errors — a delete converges.
+        Assert.False((await client.RemoveAsync("doomed.tex").WaitAsync(TimeSpan.FromSeconds(10))).Removed);
+        Assert.False((await client.RemoveAsync("never.tex").WaitAsync(TimeSpan.FromSeconds(10))).Removed);
+    }
+
+    [Fact]
+    public async Task RenameAsync_MovesTheFileWithoutLeavingACopyAtTheOldName()
+    {
+        AssertBinaryExists();
+        var stderrLines = new List<string>();
+        await using DocumentFilesClient client = StartClient(stderrLines);
+        const string text = "chapter one\n";
+        SaveOutcome saved = await client.SaveAsync("old.tex", text, Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+        SaveOutcome.Saved savedOutcome = Assert.IsType<SaveOutcome.Saved>(saved);
+
+        RenameOutcome outcome = await client.RenameAsync("old.tex", "new.tex").WaitAsync(TimeSpan.FromSeconds(10));
+
+        RenameOutcome.Renamed renamed = Assert.IsType<RenameOutcome.Renamed>(outcome);
+        Assert.Equal("old.tex", renamed.From);
+        Assert.Equal("new.tex", renamed.To);
+        Assert.False(File.Exists(Path.Combine(_root, "old.tex")));
+        Assert.Equal(text, await File.ReadAllTextAsync(Path.Combine(_root, "new.tex")));
+
+        // Content identity is carried over, so the caller's save baseline stays valid.
+        ReadPayload read = await client.ReadAsync("new.tex").WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(savedOutcome.Receipt.Sha256, read.Sha256);
+    }
+
+    [Fact]
+    public async Task RenameAsync_OntoAnExistingName_ConflictsInsteadOfClobbering()
+    {
+        AssertBinaryExists();
+        var stderrLines = new List<string>();
+        await using DocumentFilesClient client = StartClient(stderrLines);
+        await client.SaveAsync("a.tex", "a\n", Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+        await client.SaveAsync("b.tex", "b\n", Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+
+        RenameOutcome outcome = await client.RenameAsync("a.tex", "b.tex").WaitAsync(TimeSpan.FromSeconds(10));
+
+        RenameOutcome.Conflict conflict = Assert.IsType<RenameOutcome.Conflict>(outcome);
+        Assert.Equal(ConflictKind.already_exists, conflict.Details.Kind);
+        Assert.Equal("b.tex", conflict.Details.Path);
+        Assert.Equal("a\n", await File.ReadAllTextAsync(Path.Combine(_root, "a.tex")));
+        Assert.Equal("b\n", await File.ReadAllTextAsync(Path.Combine(_root, "b.tex")));
+    }
+
+    [Fact]
+    public async Task RenameAsync_OfAMissingFile_ConflictsAndCreatesNothing()
+    {
+        AssertBinaryExists();
+        var stderrLines = new List<string>();
+        await using DocumentFilesClient client = StartClient(stderrLines);
+
+        RenameOutcome outcome = await client.RenameAsync("gone.tex", "new.tex").WaitAsync(TimeSpan.FromSeconds(10));
+
+        RenameOutcome.Conflict conflict = Assert.IsType<RenameOutcome.Conflict>(outcome);
+        Assert.Equal(ConflictKind.deleted_externally, conflict.Details.Kind);
+        Assert.False(File.Exists(Path.Combine(_root, "new.tex")));
+    }
+
+    [Fact]
+    public async Task RenameAsync_AcrossDirectories_IsRejectedAsAnInvalidRequest()
+    {
+        AssertBinaryExists();
+        var stderrLines = new List<string>();
+        await using DocumentFilesClient client = StartClient(stderrLines);
+        await client.SaveAsync("a.tex", "a\n", Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+        Directory.CreateDirectory(Path.Combine(_root, "sub"));
+
+        ProjectFilesErrorException error = await Assert.ThrowsAsync<ProjectFilesErrorException>(
+            () => client.RenameAsync("a.tex", "sub/a.tex").WaitAsync(TimeSpan.FromSeconds(10)));
+
+        Assert.Equal("invalid_request", error.Code);
+        Assert.Equal("a\n", await File.ReadAllTextAsync(Path.Combine(_root, "a.tex")));
+        Assert.False(File.Exists(Path.Combine(_root, "sub", "a.tex")));
+    }
+
+    [Fact]
     public async Task ReadAsync_OfAPathOutsideTheRoot_IsRefusedNotFollowed()
     {
         AssertBinaryExists();

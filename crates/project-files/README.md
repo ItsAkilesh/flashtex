@@ -103,12 +103,14 @@ impl ProjectRoot {
     pub fn lock(&self) -> Result<ProjectLock<'_>, SaveError>;   // non-blocking flock(LOCK_EX)
     pub fn save(&self, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>; // lock + save
     pub fn remove(&self, path: &ProjectPath) -> Result<bool, SaveError>;                                                    // lock + remove
+    pub fn rename(&self, from: &ProjectPath, to: &ProjectPath) -> Result<(), SaveError>;                                    // lock + rename
 }
 pub struct ProjectLock<'a>;                 // released on drop
 impl ProjectLock<'_> {
     pub fn root(&self) -> &ProjectRoot;
     pub fn save(&self, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>;
     pub fn remove(&self, path: &ProjectPath) -> Result<bool, SaveError>;
+    pub fn rename(&self, from: &ProjectPath, to: &ProjectPath) -> Result<(), SaveError>;
 }
 pub fn save_atomic(root: &Path, path: &ProjectPath, text: &str, expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>; // open + lock + save
 pub fn save_atomic_bytes(root: &Path, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>;
@@ -214,6 +216,43 @@ mtime, identity and mode from the same open descriptor.
    file's and its bytes must hash to what was written, else
    `Conflict{ModifiedDuringSave}`. The receipt carries the verified identity,
    size, hash and mtime.
+
+**Rename sequence** (`ProjectLock::rename`), all under the project lock. This
+is an **in-place rename within one directory**: `from` and `to` must have the
+same `ProjectPath::parent_dir()`, and a cross-directory pair is an
+`InvalidInput` I/O error with nothing renamed (the `sys` rename primitives take
+one pinned directory descriptor, and a two-descriptor variant would be a new
+primitive on three backends with its own escape analysis).
+
+1. Walk to the containing directory, refusing symlink and escaping components
+   exactly as a save does, and resolve `from`'s literal spelling to whatever
+   backs it on disk (NFC/NFD-insensitively).
+2. Classify `from` with `fstatat(AT_SYMLINK_NOFOLLOW)` on that descriptor: a
+   symlink is `Refused::SymlinkComponent`, any other non-regular entry
+   `Refused::NotARegularFile`, both left in place; an absent `from` is
+   `Conflict{DeletedExternally}`.
+3. Classify `to` the same way. **Any** entry there — regular file, directory,
+   symlink, special file — is `Conflict{AlreadyExists}` and nothing is renamed.
+   `from == to` lands here too. Rename conflicts carry no hashes, sizes or
+   mtimes: neither name is ever opened or read.
+4. `renameat2(RENAME_NOREPLACE)` (Linux) / `renameatx_np(RENAME_EXCL)` (macOS)
+   / `FileRenameInformationEx` without `FILE_RENAME_REPLACE_IF_EXISTS`
+   (Windows), then `fsync` the directory — a failure there is
+   `SaveError::DirectorySync`, since the rename already happened and only its
+   durability is unknown.
+
+The whole rename is **that one syscall**: either `to` names the file `from`
+named and `from` is gone, or nothing changed. There is no window in which both
+names exist and none in which neither does, so a crash, kill or interrupted
+process cannot leave the project with two copies or none — unlike a
+read-then-save-then-remove emulation, which this deliberately is not. Step 3's
+classification is only for a good error message; the kernel itself refuses to
+replace an entry created at `to` afterwards (`EEXIST` → `AlreadyExists`). This
+is fail-closed: on a filesystem with no no-replace rename at all
+(`sys::noreplace_unsupported`) it refuses with an `Unsupported` I/O error
+rather than falling back to a clobbering plain rename. No Windows filesystem
+reaches that branch. Content, mtime, permissions and identity are untouched, so
+a caller's content hash for `from` stays valid for `to`.
 
 **Lock.** `ProjectRoot::lock` takes a non-blocking advisory `flock(LOCK_EX)`
 on `<root>/.flashtex/project.lock` (created if missing) and returns
@@ -338,7 +377,12 @@ with its `check()` result.
   previous file intact; a refused or conflicted save writes nothing to the
   target and removes its temp file. Permissions of an existing target are
   preserved.
-- Saves by in-contract writers are serialized by the project lock.
+- A rename either moves the entry to the new name or changes nothing: it is a
+  single no-replace rename inside one directory, so the two names are never
+  both present and never both absent, and an occupied new name is refused
+  rather than clobbered.
+- Saves, removals and renames by in-contract writers are serialized by the
+  project lock.
 - Snapshot/diff never misses a content change whose mtime or size changed;
   a change that leaves both identical is caught on the next hash (see below).
 - The recovery journal never restores over diverged content without `force`
@@ -353,26 +397,38 @@ with its `check()` result.
 - **mtime granularity.** A same-size rewrite within the filesystem's mtime
   resolution (nanoseconds on APFS, coarser elsewhere) is not rehashed by
   `Snapshot::diff`. Callers can force a rehash with a fresh `Snapshot::take`.
-- **Rename over, and unlink of, an existing entry are checked, not
+- **Rename over, unlink of, and rename *of* an existing entry are checked, not
   compare-and-swap.** Graph discovery, `Snapshot`, the save-path
   normalization fallback and the recovery journal listing all stat and list
   through the pinned root descriptor, never a path string. A save classifies
   an existing target with `fstatat(AT_SYMLINK_NOFOLLOW)` immediately before
-  `renameat`, and `remove` does the same before `unlinkat`. POSIX has no
-  "rename over / unlink only if this is still that inode", so an entry
+  `renameat`; `remove` does the same before `unlinkat`; `rename` does the same
+  for its *source* before `renameat2`. POSIX has no
+  "rename over / rename / unlink only if this is still that inode", so an entry
   swapped in between the check and the call, by a process that can write the
-  project directory, is still replaced or removed. That is the whole
-  residual: the effect is limited to replacing or removing that one
-  directory entry inside the pinned directory. Neither call follows a
-  symlink (the link itself is replaced or removed; its target is never
-  opened, written or deleted), neither can replace or remove a directory,
-  and nothing outside the pinned directory is affected. A save's
+  project directory, is still replaced, moved or removed. That is the whole
+  residual: the effect is limited to replacing, moving or removing that one
+  directory entry inside the pinned directory. None of the three calls follows
+  a symlink (the link itself is replaced, moved or removed; its target is never
+  opened, written or deleted), a save cannot replace and `remove` cannot delete
+  a directory, and nothing outside the pinned directory is affected.
+  `rename`'s source is the one case that *can* move a swapped-in directory —
+  as a directory entry, to the other name in the same pinned directory, with
+  its contents untouched. A save's
   post-rename verification still confirms the saved file is what sits at
-  the name. Creating an absent target has no such window (see step 5). An
+  the name. Creating an absent target has no such window (see step 5), and
+  `rename`'s *destination* has none either: the no-replace rename is
+  fail-closed in the kernel. An
   exchange-then-verify rename (`RENAME_EXCHANGE`/`RENAME_SWAP` plus a swap
   back) was considered and not adopted: removing the displaced entry has the
   same check-then-unlink window, so it moves the residual instead of closing
   it.
+- **Rename is one directory only.** `ProjectLock::rename` is an in-place
+  rename; moving a file between project directories is not offered rather than
+  offered as a non-atomic copy-and-delete. A caller that genuinely wants a move
+  can `read` + `save(Expected::NewFile)` + `remove` itself, and owns the
+  crash window that creates (both names present) — this crate does not hide
+  that behind an API that looks atomic.
 - **Symlinks above the root are followed.** Only the root's own final
   component and everything inside it are refused as symlinks (see *Path
   binding*). Choosing a path through a symlinked ancestor chooses the
@@ -424,6 +480,14 @@ request order, one JSON object per line, 12 MiB line bound). Protocol
 | `{"id","operation":"read","path"}` | `{"path","exists","text"?,"sha256"?,"bytes"?,"mtime_unix_ms"?}` |
 | `{"id","operation":"status","path","expected_sha256"?}` | `{"path","exists","state":"unchanged"\|"modified"\|"deleted"\|"created",…}` relative to `expected_sha256` (`null`: caller expects no file) |
 | `{"id","operation":"save","path","text","expected":"new"\|"any"\|hex,"force"?}` | `{"outcome":"saved","receipt":{"path","bytes","sha256","mtime_unix_ms"}}` or `{"outcome":"conflict","conflict":{"path","kind","ours"?,"theirs"?,"mtime_unix_ms"?,"size"?}}` |
+| `{"id","operation":"remove","path"}` | `{"path","removed":bool}` — `removed:false` when nothing was there; an absent file is not an error |
+| `{"id","operation":"rename","from","to"}` | `{"outcome":"renamed","from","to"}` or `{"outcome":"conflict","conflict":{…}}` with kind `deleted_externally` (no `from`) or `already_exists` (occupied `to`), all detail fields null |
+
+`rename` is `ProjectLock::rename`: one no-replace rename inside one directory,
+so `from` and `to` must share a parent directory (a cross-directory pair is
+`invalid_request`), the new name is never clobbered, and the two names are
+never both present or both absent. Its conflicts carry no hashes, sizes or
+mtimes because neither name is opened or read.
 
 Errors are `{"id","error":{"code","message"}}`: `invalid_request`,
 `invalid_path`, `refused` (symlink component, escapes root, not a regular
@@ -511,7 +575,8 @@ acceptance on this Mac: open a nested project, edit an included file, save
 with an external modification, recover after a forced kill.
 
 Status: (a) decided as a child process (parent dispatch to
-`mac-document-files`); (b) done for `read`/`status`/`save` (binary above);
+`mac-document-files`); (b) done for `read`/`status`/`save`/`remove`/`rename`
+(binary above);
 (c) done in `DocumentFiles.swift` with a direct-Foundation fallback when no
 binary is found; `project_discover`, `project_poll` and the recovery
 operations are not yet exposed over the wire.

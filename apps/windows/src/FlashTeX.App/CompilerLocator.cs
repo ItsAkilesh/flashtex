@@ -78,13 +78,25 @@ internal static class CompilerLocator
         return arguments;
     }
 
-    /// <summary>Shared with <see cref="PdfToolLocator"/> so both locators walk the repo root the same way.</summary>
+    /// <summary>
+    /// Shared with <see cref="PdfToolLocator"/> so both locators walk the repo
+    /// root the same way.
+    ///
+    /// A <c>.git</c> <b>file</b> counts as well as a directory: in a
+    /// <c>git worktree</c> checkout (and in a submodule) the root carries a
+    /// one-line <c>gitdir:</c> pointer file instead of the real directory.
+    /// Without this the walk sails straight past a worktree root and keeps
+    /// climbing until it finds the *main* checkout's <c>.git</c> directory,
+    /// which is a different tree — so the app would silently run another
+    /// checkout's helper binaries against this checkout's source.
+    /// </summary>
     internal static DirectoryInfo? FindRepoRoot(DirectoryInfo? start)
     {
         var dir = start;
         while (dir is not null)
         {
-            if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
+            string marker = Path.Combine(dir.FullName, ".git");
+            if (Directory.Exists(marker) || File.Exists(marker))
             {
                 return dir;
             }

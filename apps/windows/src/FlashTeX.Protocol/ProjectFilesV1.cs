@@ -1,10 +1,12 @@
 // name: ProjectFilesV1.cs
 // purpose: Wire DTOs for the private flashtex-project-files JSON Lines helper
-//   (protocol project-files-v1): rooted, symlink-refusing read/status/save on
-//   one project directory. Requests are `{id, operation, ...fields}`; replies
-//   are `{id, payload}` or `{id, error: {code, message}}` — a save *conflict*
-//   is a payload, never an error: nothing was written and the caller must show
-//   it and keep its buffer. Authoritative source:
+//   (protocol project-files-v1): rooted, symlink-refusing
+//   read/status/save/remove/rename on one project directory. Requests are
+//   `{id, operation, ...fields}`; replies
+//   are `{id, payload}` or `{id, error: {code, message}}` — a save or rename
+//   *conflict*
+//   is a payload, never an error: nothing was written or renamed and the
+//   caller must show it and keep its buffer. Authoritative source:
 //   crates/project-files/src/bin/flashtex-project-files.rs. Ported from the
 //   responsibility of apps/mac/Sources/FlashTeXMac/DocumentFilesClient.swift's
 //   `ProjectFilesV1` enum.
@@ -117,6 +119,53 @@ public sealed record SaveRequest
 
     [JsonPropertyName("force")]
     public bool Force { get; }
+}
+
+/// <summary><c>remove</c> request: unlink one rooted, project-relative file. A path that is not there is not an error (see <see cref="RemovePayload.Removed"/>).</summary>
+public sealed record RemoveRequest
+{
+    public RemoveRequest(string id, string path)
+    {
+        Id = id;
+        Path = path;
+    }
+
+    [JsonPropertyName("id")]
+    public string Id { get; }
+
+    [JsonPropertyName("operation")]
+    public string Operation => "remove";
+
+    [JsonPropertyName("path")]
+    public string Path { get; }
+}
+
+/// <summary>
+/// <c>rename</c> request: one no-replace rename inside one project directory.
+/// <see cref="From"/> and <see cref="To"/> must share a parent directory —
+/// the helper answers <c>invalid_request</c> otherwise — and the helper never
+/// clobbers <see cref="To"/>.
+/// </summary>
+public sealed record RenameRequest
+{
+    public RenameRequest(string id, string from, string to)
+    {
+        Id = id;
+        From = from;
+        To = to;
+    }
+
+    [JsonPropertyName("id")]
+    public string Id { get; }
+
+    [JsonPropertyName("operation")]
+    public string Operation => "rename";
+
+    [JsonPropertyName("from")]
+    public string From { get; }
+
+    [JsonPropertyName("to")]
+    public string To { get; }
 }
 
 /// <summary>
@@ -242,6 +291,41 @@ public abstract record SaveOutcome
     public sealed record Saved(SaveReceipt Receipt) : SaveOutcome;
 
     public sealed record Conflict(SaveConflict Details) : SaveOutcome;
+}
+
+/// <summary>
+/// <c>remove</c> reply payload. <see cref="Removed"/> is false when nothing
+/// was at <see cref="Path"/> — not an error, so a delete of a file someone
+/// else already deleted converges instead of failing.
+/// </summary>
+public sealed record RemovePayload(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("removed")] bool Removed);
+
+/// <summary>Raw <c>rename</c> reply shape, before <see cref="RenameOutcome"/> narrows it to exactly one case.</summary>
+public sealed record RenameOutcomeWire(
+    [property: JsonPropertyName("outcome")] string Outcome,
+    [property: JsonPropertyName("from")] string? From,
+    [property: JsonPropertyName("to")] string? To,
+    [property: JsonPropertyName("conflict")] SaveConflict? Conflict);
+
+/// <summary>
+/// Narrowed <c>rename</c> result: exactly a rename or a conflict, never both.
+/// A conflict means nothing was renamed — either the source is gone
+/// (<see cref="ConflictKind.deleted_externally"/>) or the new name is already
+/// taken and was not clobbered (<see cref="ConflictKind.already_exists"/>).
+/// Rename conflicts carry no hashes, sizes or mtimes: the helper classifies
+/// both entries without ever opening or reading them.
+/// </summary>
+public abstract record RenameOutcome
+{
+    private RenameOutcome()
+    {
+    }
+
+    public sealed record Renamed(string From, string To) : RenameOutcome;
+
+    public sealed record Conflict(SaveConflict Details) : RenameOutcome;
 }
 
 /// <summary>project-files-v1's <c>error {code, message}</c> reply payload.</summary>

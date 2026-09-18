@@ -9,7 +9,15 @@ namespace FlashTeX.ProjectFiles.Tests;
 
 internal static class TestPaths
 {
-    /// <summary>Walks up from the test binary's directory until a `.git` marker locates the repo root.</summary>
+    /// <summary>
+    /// Walks up from the test binary's directory until a `.git` marker locates
+    /// the repo root. A `.git` <b>file</b> counts as well as a directory, so a
+    /// `git worktree` checkout stops at its own root: without that the walk
+    /// climbs past it into the main checkout and these tests would exercise
+    /// <em>another tree's</em> flashtex-project-files binary against this
+    /// tree's expectations. Same reasoning as
+    /// <c>FlashTeX.App.CompilerLocator.FindRepoRoot</c>.
+    /// </summary>
     public static string RepoRoot { get; } = FindRepoRoot();
 
     /// <summary>
@@ -25,13 +33,14 @@ internal static class TestPaths
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
+            string marker = Path.Combine(dir.FullName, ".git");
+            if (Directory.Exists(marker) || File.Exists(marker))
             {
                 return dir.FullName;
             }
             dir = dir.Parent;
         }
         throw new DirectoryNotFoundException(
-            $"could not locate the repo root (a '.git' directory) above '{AppContext.BaseDirectory}'");
+            $"could not locate the repo root (a '.git' directory or worktree pointer file) above '{AppContext.BaseDirectory}'");
     }
 }

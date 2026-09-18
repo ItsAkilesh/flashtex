@@ -125,6 +125,48 @@ public partial class ShellModel
         return true;
     }
 
+    /// <summary>
+    /// Re-keys the already-open tab at <paramref name="oldPath"/> to
+    /// <paramref name="newPath"/> in place, after the caller has renamed the
+    /// file on disk. The tab keeps its position, its text, its shell-local
+    /// <see cref="ShellDocument.Revision"/>, its dirty state and its live
+    /// edit-ledger store — so unsaved edits and the durable undo/redo history
+    /// both survive a rename, which close-and-reopen would discard. If the tab
+    /// was active it stays active under the new path.
+    /// </summary>
+    /// <returns>
+    /// False (a no-op) if <paramref name="oldPath"/> is not open, if the two
+    /// paths are equal, or if <paramref name="newPath"/> is already open —
+    /// this never merges two tabs.
+    /// </returns>
+    public bool RenameDocument(string oldPath, string newPath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(oldPath);
+        ArgumentException.ThrowIfNullOrEmpty(newPath);
+        if (oldPath == newPath)
+        {
+            return false;
+        }
+
+        var index = IndexOf(oldPath);
+        if (index < 0 || IndexOf(newPath) >= 0)
+        {
+            return false;
+        }
+
+        if (_baselineText.Remove(oldPath, out var baseline))
+        {
+            _baselineText[newPath] = baseline;
+        }
+        RenameEditLedgerKeys(oldPath, newPath);
+        Documents[index] = Documents[index] with { Path = newPath };
+        if (ActiveDocumentPath == oldPath)
+        {
+            ActiveDocumentPath = newPath;
+        }
+        return true;
+    }
+
     private bool IsDirtyAgainstBaseline(string path, string text) =>
         !_baselineText.TryGetValue(path, out var baseline) || baseline != text;
 

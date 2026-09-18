@@ -1,7 +1,8 @@
 // name: DocumentFilesClient.cs
 // purpose: Client for the flashtex-project-files JSON Lines helper
 //   (protocol project-files-v1, crates/project-files/src/bin/flashtex-project-files.rs):
-//   rooted, symlink-refusing read/status/save on one project directory. Ported
+//   rooted, symlink-refusing read/status/save/remove/rename on one project
+//   directory. Ported
 //   from the responsibility of apps/mac/Sources/FlashTeXMac/DocumentFilesClient.swift,
 //   built on the shared FlashTeX.Ipc.HelperProcess transport (the same pattern
 //   as FlashTeX.Ipc.WorkerClient/BridgeClient), following the wire shape's own
@@ -100,6 +101,49 @@ public sealed class DocumentFilesClient : IAsyncDisposable
             "conflict" => new SaveOutcome.Conflict(
                 wire.Conflict ?? throw new HelperProtocolException("save outcome 'conflict' carries no conflict details")),
             var other => throw new HelperProtocolException($"unknown save outcome '{other}'"),
+        };
+    }
+
+    /// <summary>
+    /// Unlinks a rooted, project-relative file. The returned
+    /// <see cref="RemovePayload.Removed"/> is <c>false</c> when nothing was
+    /// there — an absent path is not an error, so deleting a file another
+    /// process already deleted converges instead of throwing. A symlink or
+    /// non-regular entry is refused and left in place
+    /// (<see cref="ProjectFilesErrorException"/> with code <c>refused</c>).
+    /// </summary>
+    public Task<RemovePayload> RemoveAsync(string path, CancellationToken cancellationToken = default) =>
+        SendAsync<RemoveRequest, RemovePayload>(id => new RemoveRequest(id, path), cancellationToken);
+
+    /// <summary>
+    /// Renames a rooted, project-relative file within its own directory.
+    ///
+    /// The helper performs exactly one no-replace rename (crates/project-files
+    /// <c>ProjectLock::rename</c>), so either <paramref name="to"/> names the
+    /// file and <paramref name="from"/> is gone, or nothing changed: the two
+    /// names are never both present and never both absent, even if the helper
+    /// is killed mid-call. A conflict is returned, never thrown — the source
+    /// is gone, or the new name is already taken and was *not* clobbered — and
+    /// in both cases nothing on disk moved. <paramref name="from"/> and
+    /// <paramref name="to"/> must share a parent directory; a cross-directory
+    /// pair is an <c>invalid_request</c>
+    /// <see cref="ProjectFilesErrorException"/>.
+    /// </summary>
+    public async Task<RenameOutcome> RenameAsync(
+        string from,
+        string to,
+        CancellationToken cancellationToken = default)
+    {
+        RenameOutcomeWire wire = await SendAsync<RenameRequest, RenameOutcomeWire>(
+            id => new RenameRequest(id, from, to), cancellationToken).ConfigureAwait(false);
+        return wire.Outcome switch
+        {
+            "renamed" => new RenameOutcome.Renamed(
+                wire.From ?? throw new HelperProtocolException("rename outcome 'renamed' carries no 'from'"),
+                wire.To ?? throw new HelperProtocolException("rename outcome 'renamed' carries no 'to'")),
+            "conflict" => new RenameOutcome.Conflict(
+                wire.Conflict ?? throw new HelperProtocolException("rename outcome 'conflict' carries no conflict details")),
+            var other => throw new HelperProtocolException($"unknown rename outcome '{other}'"),
         };
     }
 

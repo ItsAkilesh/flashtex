@@ -63,16 +63,45 @@ public class CommandRegistryTests
     [Fact]
     public void Search_TitleTierRanksAboveCategoryTier()
     {
-        // "edit" appears in the Title of the three editor-font-size commands
-        // ("Editor" contains "edit"), in the Category ("Edit") of Undo/Redo/Find
-        // (whose titles do not contain "edit"), and nowhere else.
+        // "edit" reaches the title tier for the three editor-font-size commands
+        // ("Editor" contains "edit") and Toggle Edit History; the category tier
+        // for the commands filed under "Edit" whose titles do not contain it;
+        // and the description tier for anything that only mentions an edit in
+        // its description. This asserts the *tiers and their order*, not an
+        // exact row count: the command table is explicitly append-friendly
+        // (see CommandIds's trailing comments), so pinning a count here would
+        // fail on every unrelated command added later, as it already had by
+        // the time Rename/Delete File were appended.
         var results = CommandRegistry.Search("edit").Select(c => c.Id).ToList();
 
-        Assert.Equal(6, results.Count);
+        int TierStart(params string[] ids) => ids.Select(id => results.IndexOf(id)).Min();
+        int TierEnd(params string[] ids) => ids.Select(id => results.IndexOf(id)).Max();
+
+        Assert.All(
+            new[]
+            {
+                CommandIds.IncreaseEditorFontSize, CommandIds.DecreaseEditorFontSize,
+                CommandIds.ResetEditorFontSize, CommandIds.ToggleEditHistory,
+                CommandIds.Undo, CommandIds.Redo, CommandIds.Find,
+            },
+            id => Assert.Contains(id, results));
+
+        // Title tier, in table order, entirely ahead of the category tier.
         Assert.Equal(
             new[] { CommandIds.IncreaseEditorFontSize, CommandIds.DecreaseEditorFontSize, CommandIds.ResetEditorFontSize },
             results.Take(3));
-        Assert.Equal(new[] { CommandIds.Undo, CommandIds.Redo, CommandIds.Find }, results.Skip(3));
+        Assert.True(
+            TierEnd(CommandIds.IncreaseEditorFontSize, CommandIds.DecreaseEditorFontSize, CommandIds.ResetEditorFontSize, CommandIds.ToggleEditHistory)
+                < TierStart(CommandIds.Undo, CommandIds.Redo, CommandIds.Find),
+            $"title-tier rows must all precede category-tier rows: {string.Join(", ", results)}");
+
+        // Category tier, in table order, ahead of anything matched only by description.
+        Assert.Equal(
+            new[] { CommandIds.Undo, CommandIds.Redo, CommandIds.Find },
+            results.Skip(results.IndexOf(CommandIds.Undo)).Take(3));
+        Assert.True(
+            TierEnd(CommandIds.Undo, CommandIds.Redo, CommandIds.Find) < results.IndexOf(CommandIds.RenameFile),
+            $"Rename File matches only in its description, so it must rank last: {string.Join(", ", results)}");
     }
 
     [Fact]

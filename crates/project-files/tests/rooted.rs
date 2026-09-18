@@ -1152,3 +1152,219 @@ fn recovery_listing_refuses_a_symlinked_journal_directory() {
         "{err:?}"
     );
 }
+
+/// `ProjectLock::rename` in the ordinary case: one no-replace rename inside
+/// one directory. The content, and therefore the caller's content hash, is
+/// carried over untouched; the old name is gone in the same step, so there is
+/// never a moment where both names exist.
+#[test]
+fn rename_moves_the_entry_and_leaves_no_second_copy() {
+    let t = TempDir::new("rename-ok");
+    t.write("old.tex", "chapter one\n");
+    t.write("sub/nested.tex", "nested\n");
+    let root = ProjectRoot::open(t.root()).unwrap();
+
+    root.rename(&pp("old.tex"), &pp("new.tex")).unwrap();
+    assert!(!t.root().join("old.tex").exists(), "old name is gone");
+    assert_eq!(t.read("new.tex"), "chapter one\n");
+    assert_eq!(
+        root.read(&pp("new.tex"), 1024).unwrap().unwrap().sha256,
+        sha256(b"chapter one\n"),
+        "content identity survives the rename"
+    );
+
+    // A file in a subdirectory renames within that subdirectory.
+    root.rename(&pp("sub/nested.tex"), &pp("sub/renamed.tex"))
+        .unwrap();
+    assert!(!t.root().join("sub/nested.tex").exists());
+    assert_eq!(t.read("sub/renamed.tex"), "nested\n");
+}
+
+/// The new name is never clobbered: an occupied `to` is a conflict the caller
+/// must show, and *both* entries are still exactly as they were. This holds
+/// for an existing regular file, for a directory, and for a symlink (which is
+/// not followed, so the file it points to outside the root is untouched).
+#[test]
+fn rename_onto_an_existing_name_refuses_and_clobbers_nothing() {
+    let outside = TempDir::new("rename-exists-outside");
+    let victim = outside.write("victim.tex", "untouchable\n");
+    let t = TempDir::new("rename-exists");
+    t.write("a.tex", "a\n");
+    t.write("b.tex", "b\n");
+    fs::create_dir(t.root().join("adir")).unwrap();
+    symlink_file(&victim, &t.root().join("alink.tex"));
+    let root = ProjectRoot::open(t.root()).unwrap();
+
+    for target in ["b.tex", "adir", "alink.tex"] {
+        let err = root.rename(&pp("a.tex"), &pp(target)).unwrap_err();
+        assert!(
+            matches!(&err, SaveError::Conflict(c)
+                if c.kind == SaveConflictKind::AlreadyExists && c.path.as_str() == target),
+            "target={target}: {err:?}"
+        );
+    }
+    assert_eq!(t.read("a.tex"), "a\n", "source untouched");
+    assert_eq!(t.read("b.tex"), "b\n", "target untouched");
+    assert!(t.root().join("adir").is_dir());
+    assert!(
+        fs::symlink_metadata(t.root().join("alink.tex"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "untouchable\n");
+
+    // Renaming a file onto itself is refused the same way, rather than
+    // silently succeeding: the no-replace rename sees an occupied target.
+    let err = root.rename(&pp("a.tex"), &pp("a.tex")).unwrap_err();
+    assert!(
+        matches!(&err, SaveError::Conflict(c) if c.kind == SaveConflictKind::AlreadyExists),
+        "{err:?}"
+    );
+    assert_eq!(t.read("a.tex"), "a\n");
+}
+
+/// A missing source is a `DeletedExternally` conflict, never a silent success
+/// and never an error the shell has to parse out of an I/O message.
+#[test]
+fn rename_of_a_missing_source_is_a_deleted_externally_conflict() {
+    let t = TempDir::new("rename-missing");
+    let root = ProjectRoot::open(t.root()).unwrap();
+    let err = root.rename(&pp("gone.tex"), &pp("new.tex")).unwrap_err();
+    assert!(
+        matches!(&err, SaveError::Conflict(c)
+            if c.kind == SaveConflictKind::DeletedExternally && c.path.as_str() == "gone.tex"),
+        "{err:?}"
+    );
+    assert!(!t.root().join("new.tex").exists());
+}
+
+/// Rename inherits the rooted walk's refusals: a symlinked source is never
+/// followed or moved, a directory is not a renameable "file" here, and a
+/// symlinked parent component is refused before anything is classified.
+#[test]
+fn rename_refuses_symlinks_and_non_regular_sources() {
+    let outside = TempDir::new("rename-refuse-outside");
+    let victim = outside.write("victim.tex", "untouchable\n");
+    let t = TempDir::new("rename-refuse");
+    symlink_file(&victim, &t.root().join("alias.tex"));
+    fs::create_dir(t.root().join("adir")).unwrap();
+    symlink_dir(outside.root(), &t.root().join("linkdir"));
+    let root = ProjectRoot::open(t.root()).unwrap();
+
+    let err = root.rename(&pp("alias.tex"), &pp("moved.tex")).unwrap_err();
+    assert!(is_refused_symlink(&err, "alias.tex"), "{err:?}");
+    let err = root.rename(&pp("adir"), &pp("moveddir")).unwrap_err();
+    assert!(
+        matches!(&err, SaveError::Refused(Refused::NotARegularFile { component }) if component == "adir"),
+        "{err:?}"
+    );
+    let err = root
+        .rename(&pp("linkdir/victim.tex"), &pp("linkdir/moved.tex"))
+        .unwrap_err();
+    assert!(is_refused_symlink(&err, "linkdir"), "{err:?}");
+
+    assert!(!t.root().join("moved.tex").exists());
+    assert!(t.root().join("adir").is_dir());
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "untouchable\n");
+    assert!(!outside.root().join("moved.tex").exists());
+}
+
+/// Rename is an in-place rename within one directory, and says so instead of
+/// quietly doing a non-atomic copy-and-delete across two of them.
+#[test]
+fn rename_across_directories_is_refused_and_moves_nothing() {
+    let t = TempDir::new("rename-cross-dir");
+    t.write("a.tex", "a\n");
+    fs::create_dir(t.root().join("sub")).unwrap();
+    let err = ProjectRoot::open(t.root())
+        .unwrap()
+        .rename(&pp("a.tex"), &pp("sub/a.tex"))
+        .unwrap_err();
+    assert!(
+        matches!(&err, SaveError::Io(e) if e.kind() == std::io::ErrorKind::InvalidInput),
+        "{err:?}"
+    );
+    assert_eq!(t.read("a.tex"), "a\n");
+    assert!(!t.root().join("sub/a.tex").exists());
+}
+
+/// The stated residual for `rename`, pinned deterministically the same way
+/// the save and remove windows are: an entry swapped in at the *source* name
+/// between its `fstatat` classification and the rename is moved as whatever it
+/// then is — as a directory entry, never followed. Both names are inside the
+/// pinned directory, so that is the entire effect: the outside file a
+/// swapped-in symlink points at is untouched, and a swapped-in directory moves
+/// as a directory with its contents intact.
+#[test]
+fn rename_window_only_moves_the_directory_entry() {
+    let outside = TempDir::new("rename-window-outside");
+    let victim = outside.write("victim.tex", "untouchable\n");
+    let t = TempDir::new("rename-src-window");
+    t.write("a.tex", "base\n");
+    let source = t.root().join("a.tex");
+    let (link_source, victim2) = (source.clone(), victim.clone());
+    let (guard, fired) = swap_once_at(Window::BeforeRenameEntry, "a.tex", move || {
+        fs::remove_file(&link_source).unwrap();
+        symlink_file(&victim2, &link_source);
+    });
+    ProjectRoot::open(t.root())
+        .unwrap()
+        .rename(&pp("a.tex"), &pp("b.tex"))
+        .unwrap();
+    drop(guard);
+    assert_eq!(fired.get(), 1, "the hook must have swapped in the window");
+    assert!(
+        fs::symlink_metadata(&source).is_err(),
+        "the source name is gone either way"
+    );
+    assert!(
+        fs::symlink_metadata(t.root().join("b.tex"))
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "the swapped-in link was moved as a link, not followed"
+    );
+    assert_eq!(
+        fs::read_to_string(&victim).unwrap(),
+        "untouchable\n",
+        "the link's target outside the root is never opened or written"
+    );
+
+    let t = TempDir::new("rename-src-window-dir");
+    t.write("c.tex", "base\n");
+    let dir_source = t.root().join("c.tex");
+    let swap_source = dir_source.clone();
+    let (guard, fired) = swap_once_at(Window::BeforeRenameEntry, "c.tex", move || {
+        fs::remove_file(&swap_source).unwrap();
+        fs::create_dir(&swap_source).unwrap();
+        fs::write(swap_source.join("keep.tex"), "kept").unwrap();
+    });
+    ProjectRoot::open(t.root())
+        .unwrap()
+        .rename(&pp("c.tex"), &pp("d.tex"))
+        .unwrap();
+    drop(guard);
+    assert_eq!(fired.get(), 1);
+    assert_eq!(t.read("d.tex/keep.tex"), "kept", "moved, contents intact");
+    assert!(!dir_source.exists());
+}
+
+/// Rename holds the project lock for its whole sequence, exactly as save and
+/// remove do, so a second in-contract writer cannot interleave with it.
+#[test]
+fn rename_takes_the_project_lock() {
+    let t = TempDir::new("rename-lock");
+    t.write("a.tex", "a\n");
+    let root = ProjectRoot::open(t.root()).unwrap();
+    let held = root.lock().unwrap();
+    let err = root.rename(&pp("a.tex"), &pp("b.tex")).unwrap_err();
+    assert!(
+        matches!(&err, SaveError::Refused(Refused::LockUnavailable { .. })),
+        "{err:?}"
+    );
+    assert_eq!(t.read("a.tex"), "a\n");
+    drop(held);
+    root.rename(&pp("a.tex"), &pp("b.tex")).unwrap();
+    assert_eq!(t.read("b.tex"), "a\n");
+}

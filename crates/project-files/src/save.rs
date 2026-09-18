@@ -749,6 +749,11 @@ impl ProjectRoot {
     pub fn remove(&self, path: &ProjectPath) -> Result<bool, SaveError> {
         self.lock()?.remove(path)
     }
+
+    /// Lock, rename, unlock. See [`ProjectLock::rename`].
+    pub fn rename(&self, from: &ProjectPath, to: &ProjectPath) -> Result<(), SaveError> {
+        self.lock()?.rename(from, to)
+    }
 }
 
 /// Deterministic race-test support. **Not API**, and **not compiled into
@@ -792,6 +797,10 @@ pub mod race_hook {
         /// name still names the saved file; `unlinkat` of the temp name is
         /// next. Fired with the temp name.
         BeforeTempUnlink,
+        /// [`ProjectLock::rename`](crate::ProjectLock::rename) classified its
+        /// source entry as a regular file and found no entry at the new name;
+        /// the no-replace rename is next. Fired with the source name.
+        BeforeRenameEntry,
     }
 
     type Hook = Rc<dyn Fn(Window, &str)>;
@@ -1062,6 +1071,141 @@ impl ProjectLock<'_> {
             Err(e) => Err(e.into()),
         }
     }
+
+    /// Renames the regular file `from` to `to` **within one directory**, as a
+    /// single no-replace rename: either `to` names the file `from` named and
+    /// `from` is gone, or nothing changed. There is no window in which both
+    /// names exist and no window in which neither does, so an interrupted
+    /// process, a crash or a kill cannot leave the project with two copies or
+    /// none.
+    ///
+    /// The whole sequence runs under the project lock, like
+    /// [`ProjectLock::save`] and [`ProjectLock::remove`]:
+    ///
+    /// 1. Walk to the containing directory from the pinned root descriptor,
+    ///    refusing symlink and escaping components exactly as a save does.
+    ///    `from`'s literal spelling is resolved to whatever actually backs it
+    ///    on disk, NFC/NFD-insensitively, exactly as a save resolves its
+    ///    target name.
+    /// 2. Classify `from` with `fstatat(AT_SYMLINK_NOFOLLOW)` on that
+    ///    descriptor: a symlink is [`Refused::SymlinkComponent`] and any other
+    ///    non-regular entry [`Refused::NotARegularFile`], both with the entry
+    ///    left in place; an absent `from` is
+    ///    `Conflict{DeletedExternally}`, never a silent success.
+    /// 3. Classify `to` the same way. **Any** entry there — regular file,
+    ///    directory, symlink, special file — is `Conflict{AlreadyExists}` and
+    ///    nothing is renamed. The conflict carries no hashes or sizes: the
+    ///    entry is classified, never opened or read.
+    /// 4. [`sys::rename_at_noreplace`] (`renameat2(RENAME_NOREPLACE)` on
+    ///    Linux, `renameatx_np(RENAME_EXCL)` on macOS,
+    ///    `FileRenameInformationEx` without `FILE_RENAME_REPLACE_IF_EXISTS`
+    ///    on Windows), then `fsync` of the directory, whose failure is
+    ///    [`SaveError::DirectorySync`] — the rename has already happened and
+    ///    only its durability is unknown.
+    ///
+    /// # What this guarantees, and what it does not
+    ///
+    /// - **The new name is never clobbered.** Step 3's classification is only
+    ///   for a good error message; the kernel itself refuses to replace an
+    ///   entry created at `to` after that check (`EEXIST`, reported as
+    ///   `Conflict{AlreadyExists}`). This is fail-closed: where a filesystem
+    ///   offers no no-replace rename at all ([`sys::noreplace_unsupported`]),
+    ///   this refuses with an `Unsupported` I/O error rather than falling back
+    ///   to a plain rename that could overwrite someone's file. (No Windows
+    ///   filesystem reaches that branch; see [`sys::rename_at_noreplace`].)
+    /// - **Atomicity is the filesystem's**, exactly as for a save's install
+    ///   rename: within one directory on APFS, HFS+, ext4, XFS and NTFS a
+    ///   rename is atomic for other readers. Network and FAT volumes may not
+    ///   honour it. No power-loss test has been run.
+    /// - **Residual race at the source (not closable with POSIX).** Between
+    ///   step 2's `fstatat` of `from` and the rename there is no "rename only
+    ///   if this is still that inode". A process that can write the project
+    ///   directory and swaps `from` in that window gets *its* entry moved to
+    ///   `to` instead — as a directory entry, never followed: a symlink is
+    ///   moved as the link itself (its target is never opened, written or
+    ///   deleted), and a directory swapped in is moved as a directory. Both
+    ///   names are inside the pinned directory, so that is the entire possible
+    ///   effect; nothing outside it is touched. This is the same residual
+    ///   [`ProjectLock::remove`] and a save's install rename already state.
+    /// - **One directory only.** `from` and `to` must have the same
+    ///   [`ProjectPath::parent_dir`]; a cross-directory move is an
+    ///   `InvalidInput` I/O error and nothing is renamed. The rooted `sys`
+    ///   layer's rename primitives take a single pinned directory descriptor,
+    ///   and a two-directory variant would be a new primitive on three
+    ///   backends with its own escape and symlink analysis — not something to
+    ///   add for a callers that only ever renames a file in place.
+    /// - **`from == to`** (including a spelling that resolves to the same
+    ///   on-disk entry) is `Conflict{AlreadyExists}`: the no-replace rename
+    ///   refuses it rather than silently succeeding, so a caller that wants
+    ///   "no change" to be a no-op must check for it first.
+    /// - The file's content, mtime, permissions and identity are untouched, so
+    ///   a caller's content hash for `from` remains valid for `to`.
+    pub fn rename(&self, from: &ProjectPath, to: &ProjectPath) -> Result<(), SaveError> {
+        if from.parent_dir() != to.parent_dir() {
+            return Err(SaveError::Io(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "refusing to rename {from} to {to}: this is an in-place rename within one \
+                     project directory, and those are in {:?} and {:?}; nothing was renamed",
+                    from.parent_dir(),
+                    to.parent_dir()
+                ),
+            )));
+        }
+
+        let dir = self.root.walk(from, false)?;
+        let from_name = self.root.resolve_target_name(&dir, from)?;
+        if ProjectRoot::stat_regular(&dir, &from_name)?.is_none() {
+            return Err(rename_conflict(from, SaveConflictKind::DeletedExternally));
+        }
+
+        // Only for the error message: the rename itself is fail-closed below.
+        let to_name = self.root.resolve_target_name(&dir, to)?;
+        match sys::stat_at_nofollow(&dir, to_name.as_bytes()) {
+            Ok(_) => return Err(rename_conflict(to, SaveConflictKind::AlreadyExists)),
+            Err(e) if sys::errno_is(&e, sys::ENOENT) => {}
+            Err(e) => return Err(classify_open(e, &to_name)),
+        }
+
+        race_point!(BeforeRenameEntry, &from_name);
+        match sys::rename_at_noreplace(&dir, &from_name, to.file_name()) {
+            Ok(()) => {}
+            Err(e) if sys::errno_is(&e, sys::EEXIST) => {
+                return Err(rename_conflict(to, SaveConflictKind::AlreadyExists));
+            }
+            Err(e) if sys::errno_is(&e, sys::ENOENT) => {
+                return Err(rename_conflict(from, SaveConflictKind::DeletedExternally));
+            }
+            Err(e) if sys::noreplace_unsupported(&e) => {
+                return Err(SaveError::Io(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!(
+                        "refusing to rename {from} to {to}: this filesystem has no no-replace \
+                         rename ({e}), so a file created at {to} concurrently could be \
+                         overwritten; nothing was renamed"
+                    ),
+                )));
+            }
+            Err(e) => return Err(e.into()),
+        }
+        File::sync_all(&dir).map_err(SaveError::DirectorySync)?;
+        Ok(())
+    }
+}
+
+/// A [`ProjectLock::rename`] refusal that wrote nothing. Like a save conflict
+/// it is a report the caller must show, not a failure of the operation — and
+/// like one it never carries hashes or sizes here, because rename classifies
+/// entries with `fstatat` and never opens or reads either name.
+fn rename_conflict(path: &ProjectPath, kind: SaveConflictKind) -> SaveError {
+    SaveError::Conflict(Box::new(SaveConflict {
+        path: path.clone(),
+        kind,
+        ours: None,
+        theirs: None,
+        mtime: None,
+        size: None,
+    }))
 }
 
 /// The names step 5 of [`ProjectLock::save`] works on.

@@ -69,6 +69,19 @@ public static class CommandIds
     public const string ProjectSearch = "projectSearch";
     public const string CitationRename = "citationRename";
     public const string ToggleEditHistory = "toggleEditHistory";
+
+    /// <summary>
+    /// Rename/delete the active document's file on disk. Also reachable from a
+    /// project-tree row's right-click menu (MainWindow.ProjectFiles.cs); they
+    /// are commands as well so they appear in the File menu and the command
+    /// palette, and so a caller that cannot open a context flyout still has a
+    /// way in. Special-cased in MainWindow.Menu.cs's ExecuteCommand, matching
+    /// the existing project-file/export precedent.
+    /// </summary>
+    public const string RenameFile = "renameFile";
+
+    /// <summary>See <see cref="RenameFile"/>.</summary>
+    public const string DeleteFile = "deleteFile";
 }
 
 public static class CommandRegistry
@@ -163,6 +176,10 @@ public static class CommandRegistry
             "Rename Citation…", "Renames a citation key across the project via a reviewed, durable-helper-planned edit.", NeedsActiveDocument),
         Make(CommandIds.ToggleEditHistory, "Toggle Edit History", ShortcutModifiers.Ctrl | ShortcutModifiers.Shift, "H", "View",
             "Toggle Edit History", "Shows or reactivates the active document's durable undo/redo history panel.", NeedsActiveDocument),
+        Make(CommandIds.RenameFile, "Rename File", ShortcutModifiers.None, string.Empty, "File",
+            "Rename File…", "Renames the active document's file within its project directory, keeping the tab, its unsaved edits and its undo history.", NeedsActiveDocument),
+        Make(CommandIds.DeleteFile, "Delete File", ShortcutModifiers.None, string.Empty, "File",
+            "Delete File…", "Deletes the active document's file from the project after confirmation, and closes its tab.", NeedsActiveDocument),
     };
 
     /// <summary>

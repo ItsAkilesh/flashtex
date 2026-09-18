@@ -98,10 +98,11 @@ Not started yet (placeholders only):
 - Rendering-v2 preview: an exact embedded-font glyph/path/image interpreter
   remains required for the exact-export path. The current native preview is a
   deliberately honest runtime-v1 renderer and does not claim visual identity.
-- Folder-level project membership, include discovery, external-change watching,
-  rename/delete, and the outline remain to be integrated. Open/Save/Save As/New
-  File are now real native picker flows over `flashtex-project-files`' rooted,
-  hash-checked I/O; the project pane lists active documents.
+- Folder-level project membership and include discovery remain to be
+  integrated. Open/Save/Save As/New File are real native picker flows over
+  `flashtex-project-files`' rooted, hash-checked I/O; the project pane lists
+  active documents; external-change watching and the outline are wired; and
+  **Rename/Delete are done** (2026-09-18, see their own section below).
 - "Export PDF (Exact, v2)" — blocked on the Win2D preview pane milestone
   (needs a rendering-v2 display list nothing in this port captures yet); see
   "PDF export wiring" below. The other two export commands are done.
@@ -670,3 +671,210 @@ LaTeX File", then invoke "Find in Project" and confirm real cross-file
 matches); (4) Citation Rename's actual flow; (5) Win2D v2 preview visual
 correctness against a real fixture with math/multiple elements, not just the
 trivial seed doc.
+
+**(1) is done — see the next section.** (2)–(5) are still open.
+
+## Rename and Delete for project files (2026-09-18) — priority (1) above
+
+The whole stack, Rust wire protocol through WinUI3 context menu. Nothing here
+is a stub.
+
+### Rust: two new `project-files-v1` operations
+
+`crates/project-files/src/bin/flashtex-project-files.rs` grew `remove` and
+`rename` alongside `ping`/`read`/`status`/`save` (module header doc comment and
+`crates/project-files/README.md` both updated to match):
+
+- `{"id","operation":"remove","path"}` → `{"path","removed":bool}`. A thin
+  wrapper over the library's existing crash-safe `ProjectRoot::remove`;
+  `removed:false` when nothing was there, which is its own `Ok(false)` case,
+  not an error, so deleting a file another process already deleted converges.
+- `{"id","operation":"rename","from","to"}` →
+  `{"outcome":"renamed","from","to"}` or `{"outcome":"conflict","conflict":{…}}`.
+  Conflicts are payloads, never errors, exactly like `save`'s.
+
+### The rename atomicity decision — read this before changing it
+
+There was no rename primitive at the `ProjectRoot` public-API level, so one was
+added: **`ProjectLock::rename(from, to)` / `ProjectRoot::rename`** in
+`crates/project-files/src/save.rs`.
+
+It is **not** the read-old + save-new + remove-old emulation the obvious
+approach suggests. `src/sys.rs` already exposes a real, cross-platform
+`rename_at_noreplace` — `renameat2(RENAME_NOREPLACE)` on Linux,
+`renameatx_np(RENAME_EXCL)` on macOS, `FileRenameInformationEx` without
+`FILE_RENAME_REPLACE_IF_EXISTS` on Windows — which `save.rs`'s own
+`install_new` no-clobber install path already depends on. Exposing it at the
+`ProjectRoot` level with the same rigor as `save`/`remove` (pinned-directory
+walk, symlink refusal, project lock, directory fsync) was a small change, so
+that is what this is. The exact guarantee:
+
+- **One syscall.** Either `to` names the file `from` named and `from` is gone,
+  or nothing changed. There is no window in which both names exist and none in
+  which neither does — so a crash, a kill or an interrupted helper **cannot**
+  leave two copies or none. The two-step emulation would have; it was rejected
+  for exactly that reason.
+- **The new name is never clobbered**, fail-closed in the kernel: step 3's
+  `fstatat` of `to` is only for a good error message, and an entry created at
+  `to` after that check still makes the rename fail with `EEXIST`, reported as
+  `Conflict{AlreadyExists}`. On a filesystem with no no-replace rename at all
+  (`sys::noreplace_unsupported`) it refuses with an `Unsupported` I/O error
+  rather than falling back to a clobbering plain rename. No Windows filesystem
+  reaches that branch.
+- **Atomicity itself is the filesystem's**, same as a save's install rename:
+  within one directory on APFS, HFS+, ext4, XFS and NTFS a rename is atomic for
+  other readers. Network and FAT volumes may not honour it. No power-loss test
+  has been run.
+- **Residual race, source side (not closable with POSIX).** Between the
+  `fstatat` that classifies `from` as a regular file and the rename there is no
+  "rename only if this is still that inode". A process that can write the
+  project directory and swaps `from` in that window gets *its* entry moved to
+  `to` — as a directory entry, never followed: a symlink moves as the link
+  itself (its target is never opened, written or deleted), a directory moves as
+  a directory with contents intact. Both names are inside the pinned directory,
+  so that is the entire possible effect. This is the same residual `remove` and
+  `save`'s install rename already document, and it is pinned deterministically
+  by `rename_window_only_moves_the_directory_entry` in `tests/rooted.rs` using
+  the crate's existing `save::race_hook` infrastructure (a new
+  `Window::BeforeRenameEntry` firing point).
+- **One directory only.** `from` and `to` must share a
+  `ProjectPath::parent_dir()`. A cross-directory *move* would need a
+  two-directory-handle `sys` primitive on three backends with its own escape
+  and symlink analysis, and (importantly) the POSIX half could not be tested on
+  this Windows machine at all — so it is refused (`invalid_request` on the wire,
+  `InvalidInput` in the library) rather than offered as a quiet non-atomic
+  copy-and-delete. The rename dialog only ever produces a bare file name, so
+  the UI never generates one.
+- **`from == to`** is `Conflict{AlreadyExists}`, not a silent no-op; the UI
+  short-circuits an unchanged name before it ever calls.
+- Content, mtime, permissions and identity are untouched, so a caller's save
+  baseline hash for `from` stays valid for `to`.
+
+### C# client and UI
+
+- `src/FlashTeX.Protocol/ProjectFilesV1.cs`: `RemoveRequest`/`RenameRequest`,
+  `RemovePayload`, `RenameOutcomeWire`, and a narrowed `RenameOutcome`
+  (`Renamed` | `Conflict`) mirroring the existing `SaveOutcome` shape. All four
+  registered in `FlashTeXJsonContext` (source-gen, so a missing entry is a
+  runtime failure, not a compile error — don't forget this when adding DTOs).
+- `src/FlashTeX.ProjectFiles/DocumentFilesClient.cs`: `RemoveAsync`,
+  `RenameAsync`, same envelope/error pattern as `SaveAsync`.
+- `src/FlashTeX.Shell/ShellModel.Documents.cs`: **`RenameDocument(old, new)`** —
+  re-keys the tab *in place*, keeping its position, text, shell revision, dirty
+  state, dirty baseline, activation and its live edit-ledger client, so unsaved
+  edits and durable undo/redo survive a rename. Close-and-reopen would have
+  thrown both away. `ShellModel.EditLedger.cs`'s `RenameEditLedgerKeys` moves
+  all six per-document ledger dictionaries. Known, documented inertness: the
+  ledger store's own `EditLedgerDocument.Path` metadata keeps the original name
+  (renaming it would mean a fresh `initialize`, discarding the history); nothing
+  reads that field and each store is a private temp directory per tab, but it
+  would need addressing if stores ever become shared or project-relative.
+- `src/FlashTeX.Shell/CommandRegistry.cs`: appended `RenameFile`/`DeleteFile`
+  (category File, no default shortcut), special-cased in `MainWindow.Menu.cs`
+  via `IsProjectFileCommand` like the existing project-file commands.
+- `src/FlashTeX.App/MainWindow.ProjectFiles.cs`: the actual flows.
+  `RebuildProjectTree` now attaches a `ContextFlyout` `MenuFlyout`
+  ("Rename…"/"Delete…") to every open-document row — **this app's first context
+  menu**, so it deliberately mirrors `CreateMenuFlyoutItem`'s shape. Both the
+  flyout and the File-menu commands dispatch through one
+  `RunProjectFileActionAsync`, which is also the single place a failure is
+  surfaced (a `ProjectFilesErrorException` gets its own "refused (code)" dialog;
+  anything else gets "File operation failed") — these are fire-and-forget from
+  synchronous handlers, so without that they would become unobserved task
+  exceptions and the action would appear to do nothing.
+  - Rename prompts with a `ContentDialog` + `TextBox` (`AutomationProperties`
+    name "New file name", because WinUI computes none for a bare text box and
+    UI Automation cannot drive the dialog without one), validates the name
+    client-side only for a friendly message (the helper's `ProjectPath` is the
+    authority), refuses a name another tab already holds, then renames on disk
+    **first** and only re-keys shell state after the helper confirms.
+    `_fileBindingsByDocument` is re-keyed *before* `ShellModel.RenameDocument`,
+    because `ReconcileDocumentWatchers` runs off `Documents.CollectionChanged`
+    and drops the binding/watcher of any path no longer open.
+  - Delete confirms with a real `ContentDialog` naming the full path, warning
+    when the tab is dirty, with **Cancel as the default button**; then removes
+    and closes the tab. `removed:false` (someone else already deleted it) still
+    closes the tab and says so rather than hiding the difference.
+- `src/FlashTeX.App/CompilerLocator.cs` + `tests/FlashTeX.ProjectFiles.Tests/TestPaths.cs`:
+  **`FindRepoRoot` now accepts a `.git` *file*, not just a directory.** In a
+  `git worktree` checkout the root carries a one-line `gitdir:` pointer file, so
+  the old walk sailed past it and kept climbing to the *main* checkout's `.git`
+  directory — meaning the app and the tests silently ran another tree's helper
+  binaries against this tree's source. This was found the hard way while
+  verifying this change. The other three `TestPaths.cs` (Ipc, Shell, Editor)
+  still have the directory-only check; they locate compiler/edit-ledger/pdf
+  binaries that are not built in a fresh worktree, so "fixing" them would break
+  currently-passing tests. Worth doing properly at some point.
+
+### Verified (commands re-run, not summarized)
+
+- `cargo build --all-targets` and `cargo test` from `crates/project-files/`:
+  clean; **86 passed, 0 failed** across 7 targets (was 76 pre-merge-check, +10
+  new: 7 in `tests/rooted.rs`, 3 in `tests/helper_bin.rs`). New coverage:
+  successful rename incl. inside a subdirectory; rename onto an existing file,
+  directory and symlink, and onto itself (all `AlreadyExists`, nothing
+  clobbered, the symlink's outside target untouched); missing source
+  (`DeletedExternally`); symlink/non-regular/symlinked-parent refusals;
+  cross-directory refusal; the deterministic source-window race test; lock
+  exclusion; and over the wire, remove-existing/remove-twice/remove-missing,
+  rename success + conflicts + `invalid_request` + `invalid_path`, and
+  remove/rename symlink refusals.
+- `cargo build --release` from the same directory: clean.
+- `cargo clippy --all-targets -- -D warnings` there still fails on **one
+  pre-existing** finding untouched by this work — `unnecessary_mut_passed` at
+  `src/sys.rs:596` (`&mut attrs` into `NtCreateFile`). Not fixed here to keep
+  this change scoped; it is a one-word fix for whoever wants a green clippy.
+- `dotnet build src/FlashTeX.App/FlashTeX.App.csproj -c Debug` and
+  `dotnet build FlashTeX.sln -c Debug`: **0 warnings, 0 errors**.
+- `dotnet test tests/FlashTeX.Shell.Tests`: 73 passed (3 new `RenameDocument`
+  tests). `dotnet test tests/FlashTeX.ProjectFiles.Tests`: 65 passed (5 new
+  `RemoveAsync`/`RenameAsync` tests against the **real** release binary).
+  `FlashTeX.Ipc.Tests`: 19 passed.
+- **Fixed a pre-existing red test**: `CommandRegistryTests.Search_TitleTierRanksAboveCategoryTier`
+  asserted an exact row count of 6 for the query "edit". That was already 9
+  before this change (the previously-appended ProjectSearch/CitationRename/
+  ToggleEditHistory commands match "Edit" in title or category) and became 10.
+  Rewritten to assert the *tier ordering* it actually exists to test, which is
+  append-stable, instead of a count that breaks on every unrelated command.
+- **Still red, pre-existing and unrelated**:
+  `FlashTeX.Editor.Tests.CompletionTests.BundledInventoryMatchesTheMacCopy` —
+  a hash mismatch between the bundled completion inventory and the Mac copy.
+  Nothing in this change touches `FlashTeX.Editor`.
+- **Real UI run** (app launched from this worktree with its own
+  `flashtex-compiler`/`flashtex-edit-ledger` children attached; drove real menu
+  items and a real right-click context menu via `System.Windows.Automation`,
+  never `SendKeys`; `PrintWindow`/`PW_RENDERFULLCONTENT` screenshots):
+  1. Opened a real temp `.tex` fixture through the actual Win32 Open picker →
+     it appeared as a tab and a project-tree row.
+  2. Right-clicked its project-tree row → the "Rename…"/"Delete…" flyout
+     appeared (screenshotted).
+  3. Renamed it to an **already-occupied** name → "Rename refused —
+     “occupied.tex” already exists in this project, and FlashTeX will not
+     overwrite it. Nothing was renamed." Direct filesystem listing confirmed
+     both files byte-identical and untouched.
+  4. Renamed `chapter-one.tex` → `chapter-two.tex` → tab title *and* tree row
+     both updated in place; direct `Get-ChildItem`/`Get-Content` confirmed the
+     old name gone, the new name present with the identical 95 bytes, and **no
+     second copy**.
+  5. Delete's confirm dialog named the full path and defaulted to Cancel;
+     cancelling left the file on disk; confirming removed it from disk (direct
+     `Test-Path` → False) and closed its tab, re-activating the neighbour.
+  6. Rename on the in-memory-only seeded `main.tex` → "Nothing to rename yet …
+     Use Save As to give it one first." (correct, not a crash).
+  Test fixtures deleted and every `FlashTeX.App`/`flashtex-*` process killed
+  afterwards.
+
+### Remaining rough edges
+
+- Rename/Delete act on the *active* document from the File menu and on the
+  clicked row from the context menu; the include-file rows in the project tree
+  (the "↳ name" entries for files referenced but not open) have no context menu,
+  because they have no `OpenFileBinding` yet.
+- The `Documents.CollectionChanged`-driven `ReconcileDocumentWatchers` sees a
+  rename as a Replace and re-arms the watcher for the new path; that works, but
+  it means a rename briefly has both keys in `_fileBindingsByDocument`. Ordering
+  is deliberate and commented — don't reorder it without re-reading that comment.
+- No UI exists for *moving* a file between project directories, matching the
+  library's deliberate one-directory-only rename.
+- The delete confirmation cannot be undone from FlashTeX (there is no trash
+  integration); the dialog says so.

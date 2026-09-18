@@ -162,4 +162,54 @@ public class ShellModelDocumentsTests
 
         Assert.False(model.MarkDocumentSaved("missing.tex"));
     }
+
+    [Fact]
+    public async Task RenameDocument_KeepsTheTabInPlaceWithItsTextRevisionDirtyStateAndActivation()
+    {
+        var model = new ShellModel();
+        await model.OpenDocumentAsync("a.tex", "alpha");
+        await model.OpenDocumentAsync("b.tex", "beta");
+        model.SwitchActiveDocument("a.tex");
+        model.UpdateDocumentText("a.tex", "alpha beta"); // unsaved edits must survive
+
+        Assert.True(model.RenameDocument("a.tex", "renamed.tex"));
+
+        var renamed = model.Documents[0];
+        Assert.Equal("renamed.tex", renamed.Path);
+        Assert.Equal("alpha beta", renamed.Text);
+        Assert.Equal(2, renamed.Revision);
+        Assert.True(renamed.IsDirty);
+        Assert.Equal("renamed.tex", model.ActiveDocumentPath);
+        Assert.Equal(new[] { "renamed.tex", "b.tex" }, model.Documents.Select(d => d.Path));
+
+        // The dirty baseline moved with it: restoring the opened-with text is clean again.
+        model.UpdateDocumentText("renamed.tex", "alpha");
+        Assert.False(model.Documents[0].IsDirty);
+    }
+
+    [Fact]
+    public async Task RenameDocument_LeavesANonActiveTabNonActiveAndNeverMergesTwoTabs()
+    {
+        var model = new ShellModel();
+        await model.OpenDocumentAsync("a.tex", "alpha");
+        await model.OpenDocumentAsync("b.tex", "beta"); // b.tex is active
+
+        Assert.True(model.RenameDocument("a.tex", "renamed.tex"));
+        Assert.Equal("b.tex", model.ActiveDocumentPath);
+
+        // A name another tab already holds is refused rather than collapsing the two.
+        Assert.False(model.RenameDocument("renamed.tex", "b.tex"));
+        Assert.Equal(new[] { "renamed.tex", "b.tex" }, model.Documents.Select(d => d.Path));
+    }
+
+    [Fact]
+    public async Task RenameDocument_UnknownOrUnchangedPathIsANoOp()
+    {
+        var model = new ShellModel();
+        await model.OpenDocumentAsync("a.tex", "alpha");
+
+        Assert.False(model.RenameDocument("missing.tex", "other.tex"));
+        Assert.False(model.RenameDocument("a.tex", "a.tex"));
+        Assert.Equal(new[] { "a.tex" }, model.Documents.Select(d => d.Path));
+    }
 }

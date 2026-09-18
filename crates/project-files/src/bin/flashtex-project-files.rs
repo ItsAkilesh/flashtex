@@ -18,6 +18,17 @@
 //!   "sha256","mtime_unix_ms"}}` or `{"outcome":"conflict","conflict":{"path",
 //!   "kind":"modified_externally"|"deleted_externally"|"already_exists"|
 //!   "modified_during_save","ours"?,"theirs"?,"mtime_unix_ms"?,"size"?}}`
+//! - `{"id","operation":"remove","path"}` → payload `{"path","removed":bool}`
+//!   (`removed:false` when nothing was there — an absent file is not an error)
+//! - `{"id","operation":"rename","from","to"}` → payload
+//!   `{"outcome":"renamed","from","to"}` or `{"outcome":"conflict","conflict":
+//!   {"path","kind":"deleted_externally"|"already_exists","ours":null,
+//!   "theirs":null,"mtime_unix_ms":null,"size":null}}`. One no-replace rename
+//!   inside one directory: `from` and `to` must share a parent directory, the
+//!   new name is never clobbered, and the two names never both exist. A
+//!   missing `from` is `deleted_externally` and an occupied `to` is
+//!   `already_exists` — conflicts, not errors, with no hashes or sizes because
+//!   neither name is opened or read (`ProjectLock::rename`).
 //!
 //! Errors are `{"id","error":{"code","message"}}` with codes `invalid_request`,
 //! `invalid_path`, `refused` (symlink component, escape, not a regular file,
@@ -33,8 +44,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use flashtex_project_files::json::Json;
 use flashtex_project_files::{
-    DEFAULT_READ_LIMIT, Expected, ProjectPath, ProjectRoot, SaveConflictKind, SaveError,
-    sha256_from_hex, sha256_to_hex,
+    DEFAULT_READ_LIMIT, Expected, ProjectPath, ProjectRoot, SaveConflict, SaveConflictKind,
+    SaveError, sha256_from_hex, sha256_to_hex,
 };
 
 /// Same bound as the Mac `LineProcessClient` / transfer-v1 (12 MiB).
@@ -87,9 +98,36 @@ fn string_field<'a>(req: &'a Json, key: &str) -> Result<&'a str, Failure> {
         .ok_or_else(|| fail("invalid_request", format!("field {key:?} must be a string")))
 }
 
-fn project_path(req: &Json) -> Result<ProjectPath, Failure> {
-    let raw = string_field(req, "path")?;
+fn project_path_field(req: &Json, key: &str) -> Result<ProjectPath, Failure> {
+    let raw = string_field(req, key)?;
     ProjectPath::normalize(raw).map_err(|e| fail("invalid_path", format!("{raw:?}: {e}")))
+}
+
+fn project_path(req: &Json) -> Result<ProjectPath, Failure> {
+    project_path_field(req, "path")
+}
+
+/// The `conflict` object shared by `save` and `rename`. A conflict is never an
+/// error: nothing was written or renamed and the shell must show it and keep
+/// its buffer. `rename` leaves `ours`/`theirs`/`mtime_unix_ms`/`size` null —
+/// it classifies entries with `fstatat` and never opens or reads them.
+fn conflict_json(c: &SaveConflict) -> Json {
+    let mut j = Json::object();
+    j.insert("path", c.path.as_str())
+        .insert(
+            "kind",
+            match c.kind {
+                SaveConflictKind::ModifiedExternally => "modified_externally",
+                SaveConflictKind::DeletedExternally => "deleted_externally",
+                SaveConflictKind::AlreadyExists => "already_exists",
+                SaveConflictKind::ModifiedDuringSave => "modified_during_save",
+            },
+        )
+        .insert("ours", c.ours.as_ref().map(sha256_to_hex))
+        .insert("theirs", c.theirs.as_ref().map(sha256_to_hex))
+        .insert("mtime_unix_ms", c.mtime.map(unix_ms))
+        .insert("size", c.size);
+    j
 }
 
 fn read(root: &ProjectRoot, req: &Json) -> Result<Json, Failure> {
@@ -190,22 +228,60 @@ fn save(root: &ProjectRoot, req: &Json) -> Result<Json, Failure> {
             payload.insert("outcome", "saved").insert("receipt", r);
         }
         Err(SaveError::Conflict(c)) => {
-            let mut j = Json::object();
-            j.insert("path", c.path.as_str())
-                .insert(
-                    "kind",
-                    match c.kind {
-                        SaveConflictKind::ModifiedExternally => "modified_externally",
-                        SaveConflictKind::DeletedExternally => "deleted_externally",
-                        SaveConflictKind::AlreadyExists => "already_exists",
-                        SaveConflictKind::ModifiedDuringSave => "modified_during_save",
-                    },
-                )
-                .insert("ours", c.ours.as_ref().map(sha256_to_hex))
-                .insert("theirs", c.theirs.as_ref().map(sha256_to_hex))
-                .insert("mtime_unix_ms", c.mtime.map(unix_ms))
-                .insert("size", c.size);
-            payload.insert("outcome", "conflict").insert("conflict", j);
+            payload
+                .insert("outcome", "conflict")
+                .insert("conflict", conflict_json(&c));
+        }
+        Err(e) => return Err(e.into()),
+    }
+    Ok(payload)
+}
+
+/// `remove`: unlink one rooted, project-relative regular file. An absent file
+/// is `removed:false`, not an error — the library's own `Ok(false)` case, so a
+/// shell that deletes a file someone else already deleted converges instead of
+/// failing. A symlink or non-regular entry is `refused` and left in place.
+fn remove(root: &ProjectRoot, req: &Json) -> Result<Json, Failure> {
+    let path = project_path(req)?;
+    let removed = root.remove(&path)?;
+    let mut payload = Json::object();
+    payload.insert("path", path.as_str()).insert("removed", removed);
+    Ok(payload)
+}
+
+/// `rename`: one no-replace rename of a rooted, project-relative regular file
+/// within its own directory. See `ProjectLock::rename` for the exact
+/// guarantee: `to` is never clobbered, the two names never both exist, and the
+/// residual is the source-side check-then-rename window every other operation
+/// in this crate already states.
+///
+/// A cross-directory `from`/`to` pair is rejected here, before the library is
+/// called, so the shell gets `invalid_request` (a malformed request) rather
+/// than the library's `InvalidInput` I/O error reported as `io`.
+fn rename(root: &ProjectRoot, req: &Json) -> Result<Json, Failure> {
+    let from = project_path_field(req, "from")?;
+    let to = project_path_field(req, "to")?;
+    if from.parent_dir() != to.parent_dir() {
+        return Err(fail(
+            "invalid_request",
+            format!(
+                "rename is an in-place rename within one project directory: {from:?} and {to:?} \
+                 are in different directories"
+            ),
+        ));
+    }
+    let mut payload = Json::object();
+    match root.rename(&from, &to) {
+        Ok(()) => {
+            payload
+                .insert("outcome", "renamed")
+                .insert("from", from.as_str())
+                .insert("to", to.as_str());
+        }
+        Err(SaveError::Conflict(c)) => {
+            payload
+                .insert("outcome", "conflict")
+                .insert("conflict", conflict_json(&c));
         }
         Err(e) => return Err(e.into()),
     }
@@ -224,6 +300,8 @@ fn handle(root: &ProjectRoot, req: &Json) -> Result<Json, Failure> {
         "read" => read(root, req),
         "status" => status(root, req),
         "save" => save(root, req),
+        "remove" => remove(root, req),
+        "rename" => rename(root, req),
         other => Err(fail(
             "unsupported_operation",
             format!("unknown operation {other:?}"),

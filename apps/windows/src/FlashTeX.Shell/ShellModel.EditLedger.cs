@@ -154,6 +154,39 @@ public partial class ShellModel
         _ledgerHistoryState[path] = (CanUndo: false, CanRedo: false);
     }
 
+    /// <summary>
+    /// Moves every per-document edit-ledger entry from <paramref name="oldPath"/>
+    /// to <paramref name="newPath"/> when a tab is renamed (see
+    /// <see cref="RenameDocument"/>), keeping the same live client, store
+    /// directory and durable history rather than tearing them down.
+    ///
+    /// The store's *own* <see cref="EditLedgerDocument.Path"/> metadata keeps
+    /// the name the document was initialized under: renaming it would mean a
+    /// fresh <c>initialize</c>, which discards the undo/redo history this
+    /// exists to preserve. Nothing here keys off that field — the store is a
+    /// private temp directory per tab (see <see cref="InitializeEditLedgerAsync"/>),
+    /// and every lookup goes through the dictionaries below — so the stale
+    /// metadata is inert, but it is real and would need addressing if durable
+    /// stores ever become shared or project-relative.
+    /// </summary>
+    private void RenameEditLedgerKeys(string oldPath, string newPath)
+    {
+        Move(_ledgerClients, oldPath, newPath);
+        Move(_ledgerDocuments, oldPath, newPath);
+        Move(_ledgerStoreDirectories, oldPath, newPath);
+        Move(_ledgerReplaceInFlight, oldPath, newPath);
+        Move(_ledgerQueuedText, oldPath, newPath);
+        Move(_ledgerHistoryState, oldPath, newPath);
+
+        static void Move<TValue>(Dictionary<string, TValue> map, string from, string to)
+        {
+            if (map.Remove(from, out var value))
+            {
+                map[to] = value;
+            }
+        }
+    }
+
     private async Task DisposeEditLedgerAsync(string path)
     {
         if (_ledgerClients.Remove(path, out var client))
