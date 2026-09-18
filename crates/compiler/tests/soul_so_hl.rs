@@ -10,8 +10,12 @@
 //!   `x \so{ab} y` = 34.61125pt).
 //! - `\hl` is a yellow behind-text rule at the argument's natural width
 //!   with `xcolor` loaded (`word` and `\hl{word}` are both 21.4167pt wide;
-//!   the height grows to 1.75ex = 7.5347pt and the depth to 0.75ex =
-//!   3.22914pt). Single-line only: real soul's rule follows each line
+//!   the rule's height is 1.75ex = 7.5347pt and its depth 0.75ex =
+//!   3.22914pt, recorded as `SoulHighlightExtents` on the box — the depth
+//!   grows the line, the height is consumed by the render-pipeline paint
+//!   path, which still paints at content height until the vendored
+//!   compiler is re-pinned, see GH-828). Single-line only: real soul's
+//!   rule follows each line
 //!   fragment, which this compiler does not do; the interword gaps between
 //!   the fragments are not painted either (one `FidelityNote` warning per
 //!   multi-word `\hl`, see GH-828).
@@ -1265,10 +1269,12 @@ fn flat_caption_keeps_so_spacing() {
 /// line carries the oracle depth below the baseline. The next paragraph's
 /// first baseline therefore sits 3.22916pt (0.75ex) of descent below a
 /// highlight line, versus 2.0pt of nominal descent below a plain `x` line —
-/// a 1.22916pt shift. (The 1.75ex top is realised through the same
-/// underline path — see `soul_highlight_fragment_grows_ascent_to_rule_top`
-/// in `layout.rs` — but Core 14's nominal text ascent always dominates it,
-/// so no line-level shift can expose it here.)
+/// a 1.22916pt shift. (The 1.75ex top cannot move a line: it is
+/// 0.75347em of the fragment's own size, and the line's nominal text
+/// ascent is never smaller than that size. It is carried on the box as
+/// `SoulHighlightExtents` for the render-pipeline paint path instead,
+/// which still paints the highlight box at content height until the
+/// vendored compiler is re-pinned — see GH-828.)
 #[test]
 fn hl_line_carries_oracle_depth_in_layout() {
     fn second_baseline(first: &str) -> f64 {

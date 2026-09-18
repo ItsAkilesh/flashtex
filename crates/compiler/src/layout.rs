@@ -2844,22 +2844,6 @@ fn content_descender_depth(inlines: &[Inline], size: f64) -> f64 {
     }
 }
 
-/// The ascent/descent growth one underline fragment contributes to the
-/// current line (round-3 finding 1, see GH-828). `rule_top_and_depth`
-/// reports the rule top positive-downward from the baseline, so an
-/// above-baseline top — soul `\hl`'s -1.75ex with `xcolor` loaded — grows
-/// the line's ascent by its absolute value, while every geometry's extra
-/// depth grows the descent. All other underline geometries sit on or below
-/// the baseline, so only [`UnderlineGeom::SoulHighlight`] contributes
-/// ascent; previously the call site passed a literal `0.0` ascent and the
-/// computed highlight top was discarded on every path.
-fn underline_extent_growth(geom: UnderlineGeom, top: f64, extra_depth: f64) -> (f64, f64) {
-    match geom {
-        UnderlineGeom::SoulHighlight => (top.abs(), extra_depth.max(0.0)),
-        _ => (0.0, extra_depth.max(0.0)),
-    }
-}
-
 fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
     for inline in inlines {
         match inline {
@@ -3155,8 +3139,15 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                     descender,
                     ex,
                 );
-                let (ascent, descent) = underline_extent_growth(u.geom, top, extra_depth);
-                c.ensure_extents(ascent, descent);
+                // Only the extra depth can grow the line: every underline
+                // geometry's rule top sits at or below the baseline except
+                // soul `\hl`'s -1.75ex, and 1.75ex is 0.75347em of the
+                // fragment's own size, which the line's nominal text ascent
+                // (>= that size at this point, always) already covers. The
+                // highlight's true 1.75ex height is carried on the box as
+                // `SoulHighlightExtents` for the render-pipeline paint path
+                // to consume instead; see GH-828.
+                c.ensure_extents(0.0, extra_depth.max(0.0));
                 if width > 0.0 && u.thickness_pt > 0.0 {
                     c.pages
                         .last_mut()
@@ -3185,42 +3176,6 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
 mod tests {
     use super::*;
     use crate::parser;
-
-    #[test]
-    fn soul_highlight_fragment_grows_ascent_to_rule_top() {
-        // Round-3 finding 1 oracle (xcolor-loaded soul-ori.sty, 10pt cmr,
-        // x-height 4.30554pt): the highlight fragment is 1.75ex tall and
-        // 0.75ex deep — not the content height (4.30554pt) the old
-        // `ensure_extents(0.0, ...)` call site realised by discarding the
-        // computed top on every path.
-        let ex = 4.30554;
-        let (top, extra) =
-            parser::UnderlineGeom::SoulHighlight.rule_top_and_depth(0.0, 0.0, 2.5, ex);
-        let (ascent, descent) =
-            underline_extent_growth(parser::UnderlineGeom::SoulHighlight, top, extra);
-        assert!(
-            (ascent - 7.5347).abs() < 0.001,
-            "highlight ascent is 1.75ex, not the content height: got {ascent}"
-        );
-        assert!(
-            (descent - 3.22914).abs() < 0.0001,
-            "highlight descent is 0.75ex: got {descent}"
-        );
-        // Every other underline geometry sits on or below the baseline, so
-        // none contributes ascent — the old literal-`0.0` behaviour is
-        // preserved for them exactly.
-        for geom in [
-            parser::UnderlineGeom::UlemDescender,
-            parser::UnderlineGeom::MathUnderline,
-            parser::UnderlineGeom::Underbar,
-            parser::UnderlineGeom::Strike,
-        ] {
-            let (top, extra) = geom.rule_top_and_depth(0.4, 1.0, 2.5, ex);
-            let (ascent, descent) = underline_extent_growth(geom, top, extra);
-            assert_eq!(ascent, 0.0, "no ascent for {geom:?}");
-            assert_eq!(descent, extra.max(0.0), "depth still realised for {geom:?}");
-        }
-    }
 
     fn laid_out(source: &str) -> (parser::Parsed, Vec<Page>) {
         let parsed = parser::parse(source);
