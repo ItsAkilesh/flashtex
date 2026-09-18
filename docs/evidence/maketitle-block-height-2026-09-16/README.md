@@ -97,12 +97,12 @@ lecture-notes p1  ..\vbox(650.43001+0.0)x469.75502, glue set - 0.30122
 ```
 
 Shrinkable glue above the first body line is `\@topsepadd`'s 6 pt plus
-`\section*`'s `\@minus.2ex` (0.94266 pt at 11 pt) = 6.94267 pt, so the
+`\section*`'s `\@minus.2ex` (0.94266 pt at 11 pt) = 6.94266 pt, so the
 reference's first body line is lifted by
 
 ```
-math-sheet     0.74042 x 6.94267 = 5.1405 pt = 5.1213 bp
-lecture-notes  0.30122 x 6.94267 = 2.0912 pt = 2.0834 bp
+math-sheet     0.74042 x 6.94266 = 5.1405 pt = 5.1213 bp
+lecture-notes  0.30122 x 6.94266 = 2.0912 pt = 2.0834 bp
 ```
 
 Measured directly: truncating each fixture so page 1 no longer overflows moves
@@ -134,7 +134,8 @@ sides and which pdfTeX shrinks:
 | 11 pt, toc + 4 sections x 2 paragraphs | `- 0.23944` | −0.0155 bp (29 baselines) |
 | 11 pt, toc + 5 sections x 3 paragraphs | `- 0.91246` | −0.0125 bp (31 baselines) |
 
-The last of these is pinned as
+The fourth of these — 11 pt, toc + 4 sections x 2 paragraphs, glue set
+`- 0.23944`, 29 baselines — is pinned as
 `crates/render-pipeline/tests/maketitle_block_height.rs::a_shrunk_page_keeps_every_baseline`.
 
 ---

@@ -42,9 +42,9 @@
 //! ```
 //!
 //! Shrinkable glue above the first body line is `\@topsepadd`'s 6 pt plus
-//! `\section*`'s `\@minus.2ex` (0.94266 pt at 11 pt) = 6.94267 pt, so pdfTeX
-//! lifts that line by 0.74042 × 6.94267 = 5.1405 pt = **5.1213 bp** on
-//! `math-sheet` and by 0.30122 × 6.94267 = 2.0912 pt = **2.0834 bp** on
+//! `\section*`'s `\@minus.2ex` (0.94266 pt at 11 pt) = 6.94266 pt, so pdfTeX
+//! lifts that line by 0.74042 × 6.94266 = 5.1405 pt = **5.1213 bp** on
+//! `math-sheet` and by 0.30122 × 6.94266 = 2.0912 pt = **2.0834 bp** on
 //! `lecture-notes`. Truncating each fixture so page 1 no longer overflows
 //! removes exactly those amounts from the reference, and the reported step
 //! collapses from −0.5132 bp to **+0.0037 bp** (`math-sheet`) and from
