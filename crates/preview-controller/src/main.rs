@@ -213,18 +213,28 @@ fn run(config: Value) -> Result<(), String> {
     let writing_since = Arc::new(Mutex::new(None::<(std::time::Instant, Option<u64>)>));
     let writer_clock = writing_since.clone();
     thread::spawn(move || {
-        // A raw fd write, not the process's buffered `Stdout` (a `LineWriter`
-        // that would swallow a whole line-terminated frame into one blocking
-        // `write_all` and hide partial progress). Each `write()` here maps
-        // 1:1 to a `write(2)` syscall, so a slow reader that is still
-        // draining the pipe shows up as a sequence of small accepted writes
-        // rather than one long silence -- exactly what the watchdog below
-        // needs to tell "slow" apart from "stuck". Nothing else in this
-        // process touches stdout (checked: only `eprintln!`/stderr
-        // elsewhere), so bypassing the standard handle's lock is safe.
-        use std::os::unix::io::{AsRawFd, FromRawFd};
-        let mut stdout =
-            std::mem::ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(io::stdout().as_raw_fd()) });
+        // A raw fd/handle write, not the process's buffered `Stdout` (a
+        // `LineWriter` that would swallow a whole line-terminated frame into
+        // one blocking `write_all` and hide partial progress). Each
+        // `write()` here maps 1:1 to a `write(2)` syscall (or, on Windows, a
+        // `WriteFile` call), so a slow reader that is still draining the
+        // pipe shows up as a sequence of small accepted writes rather than
+        // one long silence -- exactly what the watchdog below needs to tell
+        // "slow" apart from "stuck". Nothing else in this process touches
+        // stdout (checked: only `eprintln!`/stderr elsewhere), so bypassing
+        // the standard handle's lock is safe.
+        #[cfg(unix)]
+        let mut stdout = {
+            use std::os::unix::io::{AsRawFd, FromRawFd};
+            std::mem::ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(io::stdout().as_raw_fd()) })
+        };
+        #[cfg(windows)]
+        let mut stdout = {
+            use std::os::windows::io::{AsRawHandle, FromRawHandle};
+            std::mem::ManuallyDrop::new(unsafe {
+                std::fs::File::from_raw_handle(io::stdout().as_raw_handle())
+            })
+        };
         loop {
             let frame = match output_rx.next(Duration::from_millis(2)) {
                 Ok(frame) => frame,
