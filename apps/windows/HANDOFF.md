@@ -1299,3 +1299,43 @@ exact byte counts, specific file names, `Test-Path`/`Get-Content` checks
 before and after — reads as genuine, real command output, not a fabricated
 summary) but independently confirmed everything underneath it (build, full
 test suite, app still launches) checks out.
+
+## Rust crate rebuild+test sweep, 2026-09-18 (closes a long-standing open item)
+
+Ran `cargo build --all-targets && cargo test` in each of the other
+Windows-touched Rust crates this port depends on
+(`bridge`, `edit-ledger`, `conversion-jobs`, `document-runtime`, `compiler`,
+`pdf`) to rule out silent post-merge breakage — this had been an open item
+since the big `origin/main` merge and was flagged again after each subsequent
+round. **Result: every crate builds clean and every test passes**, except one
+pre-existing, unrelated failure: `document-runtime`'s
+`queue_accounting::retained_buffers_follow_coalescing_close_and_failed_admission`
+fails on this machine with `"compiler launch: The system cannot find the path
+specified. (os error 3)"` — traced to `crates/document-runtime/src/lib.rs:1215`,
+which hardcodes `Command::new("/usr/bin/python3")` as a mock-compiler test
+stand-in. That's a Unix-only path with no Windows equivalent, predates this
+entire port and this merge, and does not reflect on `flashtex-compiler`
+correctness at all (it's test-only scaffolding in an unrelated crate). Not
+fixed (out of scope — fixing arbitrary pre-existing Unix-only test
+infrastructure in unrelated crates isn't part of this port), just recorded
+here so nobody re-discovers it and wastes time suspecting a real regression.
+`compiler`'s and `pdf`'s test suites include two genuinely slow tests (~330s
+and ~350s each, likely large reference-corpus comparisons) — expect the full
+sweep to take several minutes, don't assume a hang.
+
+**This closes out the "full rebuild+test of the other Windows-touched Rust
+crates" item** that had been sitting on this doc's open-items list since the
+merge. Nothing else is currently known to be silently broken by the merge.
+
+## Session housekeeping note
+
+`apps/windows/image.png` (the screenshot embedded at the top of this doc) was
+untracked in git and got accidentally deleted by a stray cleanup command in
+this session (`rm -f *.log image.png` intended only for leftover `.launch*.log`
+test-output files another agent left in the repo root — a real mistake, not
+intentional). Regenerated immediately via the standard `PrintWindow`
+technique and it's now tracked in git specifically so this can't silently
+happen again. If you ever need to clean up stray files in this directory,
+check `git status`/what's actually referenced by this doc first, or scope
+your cleanup command to an exact filename list rather than a glob that could
+catch something load-bearing.
