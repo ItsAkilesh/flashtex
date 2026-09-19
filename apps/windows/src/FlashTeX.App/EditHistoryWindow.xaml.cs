@@ -39,13 +39,31 @@ public sealed partial class EditHistoryWindow : Window
         _pollTimer.Tick += (_, _) => _ = RefreshAsync();
         _pollTimer.Start();
 
+        // Settings' color-theme choice applies to every open window (AppTheme.cs), not just
+        // MainWindow/SettingsWindow; this window has no XAML-named root, so Content itself
+        // (the top-level Grid) is where RequestedTheme goes.
+        if (Content is FrameworkElement root)
+        {
+            root.RequestedTheme = AppTheme.Current;
+        }
+        AppTheme.Changed += OnAppThemeChanged;
+
         Closed += OnClosed;
 
         _ = RefreshAsync();
     }
 
+    private void OnAppThemeChanged(ElementTheme theme) => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (Content is FrameworkElement root)
+        {
+            root.RequestedTheme = theme;
+        }
+    });
+
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        AppTheme.Changed -= OnAppThemeChanged;
         _pollTimer.Stop();
         _shell.PropertyChanged -= OnShellPropertyChanged;
     }

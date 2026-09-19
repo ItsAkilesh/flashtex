@@ -87,6 +87,8 @@ public sealed partial class MainWindow
                     ? TryStartCitationRename()
                 : commandId == CommandIds.ToggleEditHistory
                     ? TryToggleEditHistory()
+                : commandId == CommandIds.Settings
+                    ? TryToggleSettings()
                 : CommandRegistry.Execute(commandId, _shell);
         RefreshCommandEnabledState();
         return didRun;

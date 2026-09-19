@@ -141,6 +141,7 @@ describe("EditorBridge: incoming native -> JS messages", () => {
     onSetDiagnostics: unknown[][];
     onSetTheme: unknown[][];
     onSetFontSize: unknown[][];
+    onSetFontFamily: unknown[][];
     onCompletionReply: unknown[][];
     onRevealRange: unknown[][];
     onProtocolError: unknown[][];
@@ -154,6 +155,7 @@ describe("EditorBridge: incoming native -> JS messages", () => {
       onSetDiagnostics: [],
       onSetTheme: [],
       onSetFontSize: [],
+      onSetFontFamily: [],
       onCompletionReply: [],
       onRevealRange: [],
       onProtocolError: [],
@@ -164,6 +166,7 @@ describe("EditorBridge: incoming native -> JS messages", () => {
       onSetDiagnostics: (...args) => calls.onSetDiagnostics.push(args),
       onSetTheme: (...args) => calls.onSetTheme.push(args),
       onSetFontSize: (...args) => calls.onSetFontSize.push(args),
+      onSetFontFamily: (...args) => calls.onSetFontFamily.push(args),
       onCompletionReply: (...args) => calls.onCompletionReply.push(args),
       onRevealRange: (...args) => calls.onRevealRange.push(args),
       onProtocolError: (...args) => calls.onProtocolError.push(args),
@@ -217,6 +220,13 @@ describe("EditorBridge: incoming native -> JS messages", () => {
     transport.emitFromHost({ v: 1, id: "n-5", type: "set_font_size", payload: { font_size_px: 16 } });
     expect(calls.onSetTheme).toEqual([["dark"]]);
     expect(calls.onSetFontSize).toEqual([[16]]);
+  });
+
+  it("dispatches set_font_family with a chosen family and with null unchanged", () => {
+    const { transport, calls } = listenAndCapture(() => "");
+    transport.emitFromHost({ v: 1, id: "n-8", type: "set_font_family", payload: { font_family: "Consolas" } });
+    transport.emitFromHost({ v: 1, id: "n-9", type: "set_font_family", payload: { font_family: null } });
+    expect(calls.onSetFontFamily).toEqual([["Consolas"], [null]]);
   });
 
   it("dispatches completion_reply mapping insert_text to insertText", () => {

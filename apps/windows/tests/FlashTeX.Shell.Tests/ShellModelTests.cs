@@ -79,4 +79,21 @@ public class ShellModelTests
         Assert.NotNull(model.Chrome);
         Assert.Equal(13.0, model.EditorFontSize);
     }
+
+    [Fact]
+    public void EditorFontFamily_DefaultsToNullAndIsSettable()
+    {
+        // Null is a real, meaningful value here (EditorHost.Bridge.cs's SendFontFamily and
+        // FlashTeX.Editor/web/src/main.ts's fontFamilyExtension treat it as "use the bridge's own
+        // default font stack"), not merely "unset" -- SettingsWindow's "Default" choice sets it
+        // back to null explicitly rather than leaving some other sentinel.
+        var model = new ShellModel();
+        Assert.Null(model.EditorFontFamily);
+
+        model.EditorFontFamily = "Consolas";
+        Assert.Equal("Consolas", model.EditorFontFamily);
+
+        model.EditorFontFamily = null;
+        Assert.Null(model.EditorFontFamily);
+    }
 }

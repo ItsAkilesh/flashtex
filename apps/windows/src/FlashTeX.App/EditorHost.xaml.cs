@@ -1,8 +1,9 @@
 // name: EditorHost.xaml.cs
 // purpose: Lifecycle and ShellModel wiring for the shared editor-pane WebView2
 //   control: initializes CoreWebView2 against the built web/dist host page,
-//   mirrors ShellModel's active document/diagnostics/theme/font size into it,
-//   and applies edits the JS side reports back into ShellModel. See
+//   mirrors ShellModel's active document/diagnostics/theme/font size/font
+//   family (the last two set from SettingsWindow) into it, and applies edits
+//   the JS side reports back into ShellModel. See
 //   EditorHost.Bridge.cs for the wire envelope shapes and incoming-message
 //   dispatch, and EditorHost.Completion.cs for the native completion/
 //   signature-help Flyouts. One instance is shared by every open tab (per
@@ -115,6 +116,7 @@ public sealed partial class EditorHost : UserControl
         SyncActiveDocumentToWebView(forceFullResync: true);
         SendTheme();
         SendFontSize();
+        SendFontFamily();
     }
 
     /// <summary>
@@ -161,6 +163,9 @@ public sealed partial class EditorHost : UserControl
                     break;
                 case nameof(ShellModel.EditorFontSize):
                     SendFontSize();
+                    break;
+                case nameof(ShellModel.EditorFontFamily):
+                    SendFontFamily();
                     break;
             }
         });

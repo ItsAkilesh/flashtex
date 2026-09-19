@@ -48,10 +48,16 @@ public static class ShellChromeKeys
 
 public partial class ShellModel : ObservableObject
 {
-    private const double DefaultEditorFontSizePt = 13.0;
+    /// <summary>Default editor point size, applied until a user overrides it (SettingsWindow, FlashTeX.App).</summary>
+    public const double DefaultEditorFontSizePt = 13.0;
+
+    /// <summary>Smallest editor font size SettingsWindow's slider allows, matching the Mac port's range.</summary>
+    public const double MinEditorFontSizePt = 8.0;
+
+    /// <summary>Largest editor font size SettingsWindow's slider allows, matching the Mac port's range.</summary>
+    public const double MaxEditorFontSizePt = 36.0;
 
     private readonly IChromeScheduler _compileScheduler;
-    private readonly TimeSpan _compileDebounceInterval;
     private readonly string? _editLedgerExecutablePath;
 
     [ObservableProperty]
@@ -62,6 +68,15 @@ public partial class ShellModel : ObservableObject
 
     [ObservableProperty]
     private double _editorFontSize = DefaultEditorFontSizePt;
+
+    /// <summary>
+    /// Installed monospace family the editor should use, or null for the bridge's own
+    /// built-in default stack (see EditorHost.Bridge.cs's <c>SendFontFamily</c> and
+    /// FlashTeX.Editor/web/src/main.ts's <c>fontFamilyExtension</c>). SettingsWindow offers a
+    /// small fixed list rather than arbitrary text, so no validation happens here.
+    /// </summary>
+    [ObservableProperty]
+    private string? _editorFontFamily;
 
     /// <summary>
     /// Absolute root of the active project, when the host has one. It is supplied to the
@@ -98,7 +113,7 @@ public partial class ShellModel : ObservableObject
     {
         Chrome = chrome ?? new ShellChrome();
         _compileScheduler = compileScheduler ?? new RealTimeChromeScheduler();
-        _compileDebounceInterval = compileDebounceInterval ?? DefaultCompileDebounceInterval;
+        CompileDebounceInterval = compileDebounceInterval ?? DefaultCompileDebounceInterval;
         _editLedgerExecutablePath = editLedgerExecutablePath;
 
         Chrome.Register(ShellChromeKeys.WordCount, () => WordCount);

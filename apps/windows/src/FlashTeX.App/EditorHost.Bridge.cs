@@ -2,7 +2,7 @@
 // purpose: The native-side half of the WebView2 <-> CodeMirror bridge
 //   protocol (envelope shape `{v, id, type, payload}`, UTF-8 byte offsets):
 //   outgoing message senders (set_document/apply_edit/set_diagnostics/
-//   set_theme/set_font_size) and incoming message dispatch (edit_made/
+//   set_theme/set_font_size/set_font_family) and incoming message dispatch (edit_made/
 //   selection_changed/caret_moved/completion_request/set_caret_screen_rect).
 //   Field names and shapes mirror src/FlashTeX.Editor/web/src/bridge.ts
 //   exactly -- see that file's own doc comment and test/bridge.test.ts for
@@ -77,6 +77,13 @@ public sealed partial class EditorHost
     {
         double fontSizePx = _shell.EditorFontSize * 96.0 / 72.0;
         Post("set_font_size", new SetFontSizePayload(fontSizePx));
+    }
+
+    /// <summary>Pushes the SettingsWindow-chosen editor font family (null: the bridge's own
+    /// built-in default stack -- see FlashTeX.Editor/web/src/main.ts's <c>fontFamilyExtension</c>).</summary>
+    private void SendFontFamily()
+    {
+        Post("set_font_family", new SetFontFamilyPayload(_shell.EditorFontFamily));
     }
 
     /// <summary>Native -> JS `completion_reply`: acknowledges a `completion_request` for
@@ -245,6 +252,8 @@ public sealed partial class EditorHost
     private sealed record SetThemePayload([property: JsonPropertyName("theme")] string Theme);
 
     private sealed record SetFontSizePayload([property: JsonPropertyName("font_size_px")] double FontSizePx);
+
+    private sealed record SetFontFamilyPayload([property: JsonPropertyName("font_family")] string? FontFamily);
 
     private sealed record CompletionItemPayload(
         [property: JsonPropertyName("label")] string Label,

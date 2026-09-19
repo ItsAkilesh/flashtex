@@ -41,8 +41,12 @@ const fromNativeAnnotation = Annotation.define<boolean>();
 
 const themeCompartment = new Compartment();
 const fontSizeCompartment = new Compartment();
+const fontFamilyCompartment = new Compartment();
 
 const DEFAULT_FONT_SIZE_PX = 13;
+
+/** The stack used when SettingsWindow's font-family picker is set to its default entry (native side sends `font_family: null`). */
+const DEFAULT_FONT_FAMILY_STACK = "Cascadia Code, Consolas, ui-monospace, monospace";
 
 /** This page's own wire-message counter for `edit_made`'s `new_revision` field; independent of (and not required to match) ShellModel's shell-local `ShellDocument.Revision` counter on the native side -- that one is recomputed from the applied text, not read back from this field. */
 let revisionCounter = 1;
@@ -56,7 +60,6 @@ function themeExtension(theme: "light" | "dark"): Extension {
         backgroundColor: dark ? "#1e1e1e" : "#ffffff",
         height: "100%",
       },
-      ".cm-scroller": { fontFamily: "Cascadia Code, Consolas, ui-monospace, monospace" },
       ".cm-gutters": {
         backgroundColor: dark ? "#1e1e1e" : "#f3f3f3",
         color: dark ? "#6e7681" : "#237893",
@@ -69,6 +72,12 @@ function themeExtension(theme: "light" | "dark"): Extension {
 
 function fontSizeExtension(fontSizePx: number): Extension {
   return EditorView.theme({ "&": { fontSize: `${fontSizePx}px` } });
+}
+
+/** `fontFamily`: an installed monospace family SettingsWindow's picker chose, or null for `DEFAULT_FONT_FAMILY_STACK`. A chosen family is still followed by the same fallback stack, in case it somehow isn't actually installed in this WebView2 instance. */
+function fontFamilyExtension(fontFamily: string | null): Extension {
+  const stack = fontFamily ? `"${fontFamily}", ${DEFAULT_FONT_FAMILY_STACK}` : DEFAULT_FONT_FAMILY_STACK;
+  return EditorView.theme({ ".cm-scroller": { fontFamily: stack } });
 }
 
 function updateListener(bridge: EditorBridge) {
@@ -133,6 +142,7 @@ function createState(text: string, bridge: EditorBridge): EditorState {
       diagnostics(),
       themeCompartment.of(themeExtension("light")),
       fontSizeCompartment.of(fontSizeExtension(DEFAULT_FONT_SIZE_PX)),
+      fontFamilyCompartment.of(fontFamilyExtension(null)),
       keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.lineWrapping,
       updateListener(bridge),
@@ -172,6 +182,9 @@ function mount(): void {
     },
     onSetFontSize(fontSizePx) {
       view.dispatch({ effects: fontSizeCompartment.reconfigure(fontSizeExtension(fontSizePx)) });
+    },
+    onSetFontFamily(fontFamily) {
+      view.dispatch({ effects: fontFamilyCompartment.reconfigure(fontFamilyExtension(fontFamily)) });
     },
     onCompletionReply() {
       // Deliberate no-op: completion is rendered as a native WinUI3 Flyout (see this

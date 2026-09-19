@@ -72,6 +72,11 @@ export interface SetFontSizeWire {
   readonly font_size_px: number;
 }
 
+/** `font_family`: an installed monospace family name from SettingsWindow's fixed list, or null for the bridge's own default stack (see `fontFamilyExtension` in main.ts). */
+export interface SetFontFamilyWire {
+  readonly font_family: string | null;
+}
+
 export interface CompletionItemWire {
   readonly label: string;
   readonly detail?: string;
@@ -94,6 +99,7 @@ export type NativeToJsMessage =
   | Envelope<"set_diagnostics", SetDiagnosticsWire>
   | Envelope<"set_theme", SetThemeWire>
   | Envelope<"set_font_size", SetFontSizeWire>
+  | Envelope<"set_font_family", SetFontFamilyWire>
   | Envelope<"completion_reply", CompletionReplyWire>
   | Envelope<"reveal_range", RevealRangeWire>;
 
@@ -163,6 +169,7 @@ export interface NativeMessageHandlers {
   onSetDiagnostics?(diagnostics: readonly Diagnostic[]): void;
   onSetTheme?(theme: "light" | "dark"): void;
   onSetFontSize?(fontSizePx: number): void;
+  onSetFontFamily?(fontFamily: string | null): void;
   onCompletionReply?(requestId: string, items: readonly CompletionItem[]): void;
   onRevealRange?(range: Utf16Range): void;
   /** Called when a message's byte offsets don't land on a UTF-8/UTF-16 boundary of `getDocText()`, or the envelope is malformed. Never thrown past the transport's message handler. */
@@ -339,6 +346,9 @@ export class EditorBridge {
       case "set_font_size":
         handlers.onSetFontSize?.(envelope.payload.font_size_px);
         return;
+      case "set_font_family":
+        handlers.onSetFontFamily?.(envelope.payload.font_family);
+        return;
       case "completion_reply":
         handlers.onCompletionReply?.(
           envelope.payload.request_id,
@@ -400,6 +410,7 @@ const NATIVE_TO_JS_TYPES: ReadonlySet<string> = new Set<NativeToJsMessage["type"
   "set_diagnostics",
   "set_theme",
   "set_font_size",
+  "set_font_family",
   "completion_reply",
   "reveal_range",
 ]);

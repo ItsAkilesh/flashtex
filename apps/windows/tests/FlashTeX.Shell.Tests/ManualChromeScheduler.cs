@@ -16,6 +16,9 @@ internal sealed class ManualChromeScheduler : IChromeScheduler
     /// <summary>How many times <see cref="Schedule"/> has been called since construction (or the last <see cref="Fire"/>).</summary>
     public int PendingCount => _pending.Count;
 
+    /// <summary>The delay passed to the most recent <see cref="Schedule"/> call, or null if none is pending.</summary>
+    public TimeSpan? LastScheduledDelay => _pending.Count > 0 ? _pending[^1].Delay : null;
+
     public void Schedule(Action callback, TimeSpan delay)
     {
         _pending.Add((callback, delay));

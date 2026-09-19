@@ -82,6 +82,13 @@ public static class CommandIds
 
     /// <summary>See <see cref="RenameFile"/>.</summary>
     public const string DeleteFile = "deleteFile";
+
+    /// <summary>
+    /// Opens the singleton Settings window (editor font/theme/auto-compile debounce).
+    /// Special-cased in MainWindow.Menu.cs's ExecuteCommand, matching the existing
+    /// ToggleEditHistory precedent (MainWindow.Settings.cs).
+    /// </summary>
+    public const string Settings = "settings";
 }
 
 public static class CommandRegistry
@@ -180,6 +187,8 @@ public static class CommandRegistry
             "Rename File…", "Renames the active document's file within its project directory, keeping the tab, its unsaved edits and its undo history.", NeedsActiveDocument),
         Make(CommandIds.DeleteFile, "Delete File", ShortcutModifiers.None, string.Empty, "File",
             "Delete File…", "Deletes the active document's file from the project after confirmation, and closes its tab.", NeedsActiveDocument),
+        Make(CommandIds.Settings, "Settings", ShortcutModifiers.None, string.Empty, "File",
+            "Settings…", "Opens Settings: editor font size/family, color theme, and the auto-compile debounce interval.", Always),
     };
 
     /// <summary>

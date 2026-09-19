@@ -46,6 +46,10 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new SizeInt32(InitialWindowWidth, InitialWindowHeight));
         AppWindow.Move(new PointInt32(InitialWindowX, InitialWindowY));
 
+        ApplySavedAppSettings();
+        RootGrid.RequestedTheme = AppTheme.Current;
+        AppTheme.Changed += OnAppThemeChanged;
+
         BuildMenuBar();
         SetupTitleBar();
         BuildKeyboardAccelerators();
@@ -122,6 +126,24 @@ public sealed partial class MainWindow : Window
         return SeedDocumentText;
     }
 
+    /// <summary>
+    /// Applies whatever SettingsWindow last saved (or the documented defaults, on a first launch
+    /// or an unreadable/corrupt file) to the live <see cref="ShellModel"/> and <see cref="AppTheme"/>
+    /// before anything else in the constructor reads them, so editor font/theme/debounce are
+    /// correct from the very first compile and render rather than a moment of hardcoded defaults
+    /// followed by a settings-window-only apply.
+    /// </summary>
+    private void ApplySavedAppSettings()
+    {
+        AppSettingsData settings = AppSettings.TryLoad() ?? AppSettingsData.Default;
+        _shell.EditorFontSize = settings.EditorFontSize;
+        _shell.EditorFontFamily = settings.EditorFontFamily;
+        _shell.CompileDebounceInterval = TimeSpan.FromMilliseconds(settings.CompileDebounceMs);
+        AppTheme.Apply(settings.Theme);
+    }
+
+    private void OnAppThemeChanged(ElementTheme theme) => DispatcherQueue.TryEnqueue(() => RootGrid.RequestedTheme = theme);
+
     private void WirePaneSplitters()
     {
         var savedLayout = PaneSettings.TryLoad();
@@ -137,6 +159,8 @@ public sealed partial class MainWindow : Window
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
+        AppTheme.Changed -= OnAppThemeChanged;
+
         foreach (var watcher in _watchersByDocument.Values)
         {
             watcher.Dispose();

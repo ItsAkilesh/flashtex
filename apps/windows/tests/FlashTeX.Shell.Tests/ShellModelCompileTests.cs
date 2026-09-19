@@ -71,6 +71,30 @@ public class ShellModelCompileTests
     }
 
     [Fact]
+    public async Task CompileDebounceInterval_Setter_ChangesTheDelayPassedToTheScheduler()
+    {
+        // SettingsWindow sets this at runtime (no restart needed); this asserts that a changed
+        // value genuinely reaches IChromeScheduler.Schedule's delay argument, not just that the
+        // property getter echoes back what was set.
+        RequireCompilerBuilt();
+        var scheduler = new ManualChromeScheduler();
+        var model = new ShellModel(compileScheduler: scheduler);
+        model.AttachWorker(TestPaths.CompilerWorkerExePath);
+        await model.OpenDocumentAsync("main.tex", "one\n");
+
+        model.CompileDebounceInterval = TimeSpan.FromMilliseconds(999);
+        model.UpdateDocumentText("main.tex", "one two\n");
+
+        Assert.Equal(TimeSpan.FromMilliseconds(999), scheduler.LastScheduledDelay);
+
+        scheduler.Fire();
+        Assert.NotNull(model.LastCompileTask);
+        await model.LastCompileTask!.WaitAsync(Timeout);
+
+        await model.DetachWorkerAsync();
+    }
+
+    [Fact]
     public void UpdateDocumentText_WithNoWorkerAttached_SchedulesNoCompile()
     {
         var scheduler = new ManualChromeScheduler();

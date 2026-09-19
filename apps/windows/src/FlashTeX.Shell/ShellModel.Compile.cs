@@ -45,6 +45,27 @@ public partial class ShellModel : ICommandContext
     /// <summary>Default delay between an edit and the compile it triggers, when the injected scheduler is a real one.</summary>
     public static readonly TimeSpan DefaultCompileDebounceInterval = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>Smallest debounce interval SettingsWindow's slider allows; zero would fire a compile per keystroke.</summary>
+    public static readonly TimeSpan MinCompileDebounceInterval = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>Largest debounce interval SettingsWindow's slider allows.</summary>
+    public static readonly TimeSpan MaxCompileDebounceInterval = TimeSpan.FromMilliseconds(2000);
+
+    private TimeSpan _compileDebounceInterval;
+
+    /// <summary>
+    /// Delay between an edit and the debounced compile it schedules (<see cref="ScheduleAutoCompile"/>).
+    /// Settable at runtime (SettingsWindow applies a change immediately, no restart needed) rather
+    /// than fixed at construction; the constructor's <c>compileDebounceInterval</c> parameter still
+    /// seeds the initial value, mainly for tests that want <see cref="TimeSpan.Zero"/> or a
+    /// deterministic scheduler.
+    /// </summary>
+    public TimeSpan CompileDebounceInterval
+    {
+        get => _compileDebounceInterval;
+        set => _compileDebounceInterval = value;
+    }
+
     private WorkerClient? _worker;
     private bool _compileRefreshPending;
     private bool _compileInFlight;
@@ -162,7 +183,7 @@ public partial class ShellModel : ICommandContext
             return;
         }
         _compileRefreshPending = true;
-        _compileScheduler.Schedule(FireDebouncedCompile, _compileDebounceInterval);
+        _compileScheduler.Schedule(FireDebouncedCompile, CompileDebounceInterval);
     }
 
     private void FireDebouncedCompile()
