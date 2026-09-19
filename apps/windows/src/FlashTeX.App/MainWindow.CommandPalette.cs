@@ -5,6 +5,7 @@
 
 using FlashTeX.Shell;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
@@ -65,7 +66,14 @@ public sealed partial class MainWindow
                     var shortcut = new TextBlock { Text = command.DefaultShortcut.ToString(), Opacity = 0.65 };
                     Grid.SetColumn(shortcut, 1);
                     row.Children.Add(shortcut);
-                    list.Items.Add(new ListViewItem { Content = row, Tag = command });
+                    // Content is a Grid (title + shortcut hint side by side), which -- same as the
+                    // toolbar's icon+text Buttons -- gets an empty computed Name unless one is set
+                    // explicitly.
+                    var item = new ListViewItem { Content = row, Tag = command };
+                    AutomationProperties.SetName(item, command.DefaultShortcut.HasKey
+                        ? $"{command.Title}, {command.DefaultShortcut}"
+                        : command.Title);
+                    list.Items.Add(item);
                 }
             }
 

@@ -14,6 +14,7 @@ using FlashTeX.Protocol.PreviewControllerV1;
 using FlashTeX.Protocol.ProjectFilesV1;
 using FlashTeX.Protocol.RuntimeV1;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Windows.System;
 
@@ -57,6 +58,7 @@ public sealed partial class MainWindow
         try
         {
             var query = new TextBox { PlaceholderText = "Literal text to find…", Margin = new Thickness(0, 0, 0, 8) };
+            AutomationProperties.SetName(query, "Literal text to find");
             var status = new TextBlock { Opacity = 0.7, Margin = new Thickness(0, 0, 0, 8) };
             var list = new ListView { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 420, MinWidth = 560 };
             var content = new StackPanel();
@@ -88,7 +90,9 @@ public sealed partial class MainWindow
                     SearchResult result = await RunProjectSearchAsync(literal).ConfigureAwait(true);
                     foreach (SourceSpan match in result.Matches)
                     {
-                        list.Items.Add(new ListViewItem { Content = $"{match.Path}  @ bytes {match.StartByte}-{match.EndByte}", Tag = match });
+                        var item = new ListViewItem { Content = $"{match.Path}  @ bytes {match.StartByte}-{match.EndByte}", Tag = match };
+                        AutomationProperties.SetName(item, $"{match.Path}, bytes {match.StartByte} to {match.EndByte}");
+                        list.Items.Add(item);
                     }
                     status.Text = result.Termination == SearchTermination.complete
                         ? $"{result.Matches.Count} match{(result.Matches.Count == 1 ? "" : "es")}"

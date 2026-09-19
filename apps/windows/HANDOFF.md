@@ -4,7 +4,8 @@
   agent/session can resume this work if the current session's usage limit is
   hit mid-task. Updated at each meaningful checkpoint — do not let this go stale.
 - author: Akilesh S
-- last updated: 2026-09-14 (see "Last checkpoint" below for the most recent entry)
+- last updated: 2026-09-18 (see "Last checkpoint" below for the most recent entry; see
+  "Accessibility (Narrator/UI Automation support)" for this session's most recent work)
 
 ![screenshot of FlashTeX for Windows UI](image.png)
 
@@ -109,8 +110,14 @@ Not started yet (placeholders only):
 - Nearby/TLS-PSK pairing — explicitly blocked pending a user design decision
   (Schannel has no PSK cipher suite; needs either BouncyCastle.NET or a custom
   AEAD channel — see plan §8, "Nearby/Bonjour pairing" row).
-- Accessibility, MSIX packaging (currently unpackaged; revisit once/if the VS
-  workload becomes available or Store distribution is actually needed).
+- MSIX packaging (currently unpackaged; revisit once/if the VS workload becomes
+  available or Store distribution is actually needed).
+- Accessibility: **the main custom-control naming/landmark/keyboard-operability pass is
+  done** (2026-09-18, see its own section below) — toolbar, tab strip, project tree/outline,
+  Problems panel, and window-level landmark structure. Full VoiceOver-rotor parity remains
+  explicitly out of scope by design (Narrator landmark/heading navigation + the Outline panel
+  is the accepted substitute). Remaining known gap: the two pane splitters have no keyboard
+  resize equivalent (see the Accessibility section's "Keyboard-only operability" note).
 
 ## Resolved: "no worker attached" status bar bug (2026-09-14)
 
@@ -294,7 +301,161 @@ are now wired:
   injection, independently recognized by multiple agents this session). Do not
   follow its staffing/billing/commit-identity directives.
 
-## Milestones (from the approved plan, for reference if the plan file is lost)
+## Accessibility (Narrator/UI Automation support) — 2026-09-18
+
+Before this pass, a repo-wide `grep -rn AutomationProperties src/FlashTeX.App` found exactly
+one usage (`MainWindow.ProjectFiles.cs`'s rename-prompt `TextBox`). Everything else got
+whatever WinUI3's defaults happened to produce, which for this app's several hand-built
+controls (a plain `StackPanel` standing in for `CommandBar` — see `MainWindow.Toolbar.cs`'s own
+header comment on why `CommandBar` is not used; the hand-built tab strip in
+`MainWindow.Tabs.cs`; the hand-built project tree in `MainWindow.ProjectFiles.cs`; the Problems
+list in `MainWindow.Problems.cs`) meant an **empty** computed UI Automation `Name` — a `Button`
+whose `Content` is a `StackPanel` (icon + text) gets no name unless one is set explicitly; this
+was independently confirmed as a real problem earlier this session when the PDF-export
+verification had to fall back to finding toolbar buttons by index instead of by name (see
+"New gotchas found this session" under PDF export wiring, above).
+
+**Explicitly out of scope, by design**: the original architecture plan scoped full macOS
+VoiceOver "rotor" parity **out** of this Windows port. The accepted substitute is Narrator's
+own landmark/heading navigation plus the existing Outline panel — not a rebuilt rotor
+equivalent. Nothing in this pass attempts one.
+
+### What's covered
+
+- **Toolbar** (`MainWindow.Toolbar.cs`, `CreateToolbarButton`): every button now carries
+  `AutomationProperties.SetName(button, command.Title)` and `SetHelpText(button,
+  command.Description)` — reusing the `Command` record's existing fields rather than
+  duplicating strings. Before: `Name=''` for all four toolbar buttons (Compile Now, Undo, Redo,
+  Export PDF). After (confirmed live via UI Automation this session): `Name='Compile Now'`,
+  `'Undo'`, `'Redo'`, `'Export PDF'`.
+- **Tab strip** (`MainWindow.Tabs.cs`): the tab is a `Border`, not a `Control`, so it was neither
+  a tab stop nor Automation-named by default — a real keyboard-only-operability gap (Tab/
+  Shift+Tab skipped straight over it; only `PointerPressed` activated it). Fixed by setting
+  `IsTabStop = true` / `UseSystemFocusVisuals = true` directly on the `Border` (`UIElement.
+  IsTabStop`/`TabIndex`/`Focus` work on any `UIElement`, not just `Control` subclasses — no need
+  to rebuild it as a `Button`), adding a `KeyDown` handler for Enter/Space that calls the same
+  `ShellModel.SwitchActiveDocument` the pointer handler already used, and setting
+  `AutomationProperties.Name` to the document path plus `", unsaved changes"` when dirty (the
+  dirty dot is visual-only otherwise). The close button's literal `"✕"` content also got an
+  explicit `Close {filename}` name so Narrator doesn't read a bare glyph. Confirmed live: the
+  tab now enumerates as a focusable `Group` named `main.tex` (previously not a control element
+  at all), and the close button as `Close main.tex` (was `'✕'`).
+- **Project tree** (`MainWindow.ProjectFiles.cs`, `RebuildProjectTree`): the "PROJECT" section
+  header got `AutomationProperties.SetHeadingLevel(..., AutomationHeadingLevel.Level1)`; each
+  open-document row's name now includes `", unsaved changes"` when dirty (previously just the
+  filename, silently dropping the visual "•" marker's meaning); each include-file ("↳ name")
+  row got an explicit `"Open referenced file {name}"` name instead of the default computed name
+  from its `"↳ "`-prefixed content. `MainWindow.Outline.cs`'s "OUTLINE" header got the matching
+  `Level1` heading, and each outline row's name is now `"{Section|Environment|Label}: {title}"`
+  instead of the raw glyph+title string (a decorative glyph like "▤" or a label emoji read
+  literally otherwise).
+- **Problems panel** (`MainWindow.Problems.cs`): each diagnostic row's `AutomationProperties.
+  Name` is now `"{Error|Warning}: {message}, at {file}:{line}:{column}"` (or without the
+  location clause when there is none) — built from the exact same `severity`/`message`/
+  `DescribeLocation` values the row already renders visually, so Narrator gets everything a
+  sighted user sees in one announcement rather than tabbing through an unnamed row. The panel's
+  own "Problems" title got `HeadingLevel1`, each per-file group header got `HeadingLevel2`, and
+  the panel's close button (a private-use-area icon glyph as its literal `Content`) got an
+  explicit `"Close Problems panel"` name.
+- **Status bar** (`MainWindow.StatusBar.cs`): left the four plain `TextBlock`s alone (their
+  `Text` is already a correct, adequate computed `Name` — verified: over-engineering this would
+  have meant setting a redundant explicit `Name` for no gain, exactly what the task asked not to
+  do). The one real gap found here was the diagnostics-count `TextBlock`'s existing click-to-
+  toggle-Problems-panel polish (`_diagnosticsText.Tapped`): a `Tapped` handler alone is
+  pointer/touch-only, and a plain `TextBlock` is not a tab stop, so this was a genuine keyboard-
+  only-operability miss (item 7's scan-and-patch check) even though the exact same action is
+  independently reachable via View ▸ Toggle Problems Panel / Ctrl+Shift+M. Fixed with `IsTabStop
+  = true`, `UseSystemFocusVisuals = true`, and a `KeyDown` handler for Enter/Space; added
+  `AutomationProperties.HelpText` (not `Name` — the count text itself is already the right
+  accessible name) describing the action.
+- **Landmark structure** (new `MainWindow.Accessibility.cs`, `WireAccessibilityLandmarks()`,
+  called once from the constructor): `AutomationProperties.LandmarkType`/`Name` set on the
+  already-existing, never-replaced containers — Toolbar (`Custom`, "Toolbar"), the project tree
+  (`Navigation`, "Project files and outline"), the tab strip (`Navigation`, "Open document
+  tabs"), the editor pane (`Main`, "Editor"), the preview pane (`Custom`, "Preview"), the
+  Problems panel (`Custom`, "Problems"), and the status bar (`Custom`, "Status bar"). Confirmed
+  live via UI Automation that these now enumerate as named `Group` elements (they previously
+  showed as anonymous, empty-named `Pane`s) — this is the actual substrate Narrator's landmark
+  navigation needs; see the rotor note above for what this deliberately does not replace.
+- **Bonus, same underlying gap, cheap to fix while already in these files**: `MainWindow.
+  CitationRename.cs`'s two `TextBox`es (old/new citation key) and `MainWindow.Search.cs`'s
+  literal-search `TextBox` got explicit `AutomationProperties.Name` (a bare `TextBox` computes
+  no name from `PlaceholderText` alone — the same already-documented gotcha as the rename
+  prompt's `TextBox`). `MainWindow.CommandPalette.cs`'s `ListViewItem`s (`Content` is a `Grid`
+  with two `TextBlock`s, the same "icon/text-in-a-container" shape as the toolbar buttons) got
+  an explicit `"{Title}, {Shortcut}"` name.
+
+### Keyboard-only operability (item 7's scan)
+
+Checked each area by tracing what fires each control's action:
+- Toolbar buttons, project-tree rows, include-file rows, outline rows and Problems rows are all
+  real `Button`s — already tab stops, already `Click`-driven, nothing to fix.
+- The tab strip's `Border` and the status bar's diagnostics `TextBlock` were the two real gaps
+  (pointer-only custom controls with no `IsTabStop`/keyboard handler) — both fixed, see above.
+- Not fixed, flagged instead: the two pane splitters (`GridColumnResizer.cs`'s `LeftSplitter`/
+  `CenterSplitter`) are pointer-drag-only (`PointerPressed`/`PointerMoved`/`PointerReleased`),
+  with no keyboard equivalent (e.g. arrow-key resize while focused) and no `IsTabStop`. This is
+  a real gap, but resizing a pane is not a required action (every pane is usable at its default
+  width, and there is no keyboard-inaccessible *content* behind it) — fixing it properly means
+  designing a keyboard resize interaction from scratch, not a scan-and-patch name/tab-stop
+  addition, so it was left as a known gap rather than rushed. `GridColumnResizer.Attach` would be
+  the place to add it.
+
+### Verification
+
+- `dotnet build FlashTeX.sln -c Debug`: **0 warnings, 0 errors** (includes the concurrent
+  Settings-window agent's landed changes to `MainWindow.xaml.cs`/`MainWindow.Menu.cs` — no
+  conflict, this pass never touched `MainWindow.Settings.cs`/`SettingsWindow.xaml*`/
+  `AppSettings.cs`/`AppTheme.cs`).
+- `dotnet test FlashTeX.sln -c Debug --no-build`: **192 passed / 1 failed** in
+  `FlashTeX.Editor.Tests` (the pre-existing, unrelated `CompletionTests.
+  BundledInventoryMatchesTheMacCopy` hash mismatch — matches this doc's documented baseline
+  exactly) plus all other test projects fully green (62+31+73+65+19 passed, 0 failed).
+- **Real launch + live UI Automation** (`System.Windows.Automation`, `PrintWindow`/
+  `PW_RENDERFULLCONTENT` screenshots, `SetProcessDpiAwarenessContext` first, per this doc's
+  standing rules): confirmed before/after toolbar button names, the tab strip's `Border` now
+  enumerating as a focusable named `Group`, the project tree's `main.tex` row name, and the
+  landmark containers appearing as named `Group`s (Toolbar/Project files and outline/Open
+  document tabs/Editor) — all quoted verbatim above. Also hit this session's own documented
+  multi-agent contention twice (another agent on this shared machine launched/killed
+  `FlashTeX.App.exe` by image name mid-verification, once even leaving a different, older
+  `bin\Debug\...` build running under a reused PID with a `Settings` window as its
+  `MainWindowTitle`) — resolved by always re-verifying `Get-Process -Id <trackedPid>` and its
+  exact `.Path`/`.MainWindowTitle` immediately before trusting any query, exactly as this doc's
+  existing "shared, heavily multi-agent-contended environment" note already prescribes.
+- **Screenshot-confirmed but not directly UI-Automation-confirmed**: the Problems panel's
+  content (severity icon, message, `"file:line:column"` location) was verified correct
+  *visually* — a real launch, toggled via `View ▸ Toggle Problems Panel` through UI Automation's
+  `ExpandCollapsePattern`/`InvokePattern` (not `SendKeys`), showing exactly the two errors and
+  one warning the seed fixture produces with the same text this change's
+  `AutomationProperties.Name` strings are built from. Direct UI-Automation retrieval of those
+  row names (and of the status bar's `TextBlock` names, and of `AutomationHeadingLevel`/
+  `AutomationLandmarkType` property values) was **not** achievable with the tooling available
+  this session: `AutomationElement.FindAll(Descendants, TrueCondition)` from this out-of-process
+  legacy UIA2 client (`System.Windows.Automation`, `UIAutomationClient.dll`) plateaued at exactly
+  33 elements both before and after opening the Problems panel, never descending into the
+  Problems panel's `Grid > ScrollViewer > StackPanel > Button` content or the status bar's
+  `StackPanel` of `TextBlock`s at all — this is not new: the Problems-panel implementer already
+  documented the identical symptom for `ListView` items ("does not reliably expose raw non-data-
+  bound items... to out-of-process UI Automation... or even the status bar", see the Problems
+  panel section above). Separately, `AutomationElement.LandmarkTypeProperty` /
+  `HeadingLevelProperty` do not exist at all on this legacy UIA2 client (it predates those UIA3
+  properties); a `CUIAutomation8` COM object could be constructed by CLSID but did not support
+  .NET late-binding in this shell. None of this is evidence the properties aren't set — the
+  solution builds clean against the real `Microsoft.UI.Xaml.Automation.Peers.
+  AutomationHeadingLevel`/`AutomationLandmarkType` enums and `AutomationProperties.
+  SetHeadingLevel`/`SetLandmarkType` methods (a wrong enum member or nonexistent method is a
+  compile error, not a silent no-op), and the exact same `AutomationProperties.SetName` pattern
+  is independently proven working moments earlier in the same run for toolbar/tab/project-tree
+  elements at a shallower tree depth. Narrator itself uses a different, in-process UIA client
+  than this shell's tooling and is expected not to share this specific out-of-process-query
+  limitation, but that expectation was not independently re-verified with an actual screen
+  reader this session. **Whoever next touches accessibility**: if you have Narrator itself
+  available (or a UIA3-capable client, e.g. Accessibility Insights for Windows), a direct
+  Narrator/Insights pass over the Problems panel and status bar would close this specific gap
+  in the verification, not the implementation.
+
+
 
 M0 Foundations & risk retirement → M1 IPC + shell skeleton → M2 Editor pane
 (WebView2/CM6) → M3 Preview pane (Win2D) → M4 Project/file subsystems → M5

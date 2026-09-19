@@ -9,6 +9,7 @@ using FlashTeX.Protocol.ProjectFilesV1;
 using FlashTeX.Shell;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -41,7 +42,12 @@ public sealed partial class MainWindow
     private void RebuildProjectTree()
     {
         var panel = new StackPanel { Spacing = 2, Padding = new Thickness(6) };
-        panel.Children.Add(new TextBlock { Text = "PROJECT", FontSize = 12, Opacity = 0.65, Margin = new Thickness(6, 4, 6, 6) });
+        var projectHeader = new TextBlock { Text = "PROJECT", FontSize = 12, Opacity = 0.65, Margin = new Thickness(6, 4, 6, 6) };
+        // Gives Narrator's heading navigation (the plan's chosen substitute for a rebuilt
+        // macOS-rotor equivalent -- see HANDOFF.md's Accessibility section) a real landmark to
+        // jump to; a plain TextBlock has no heading semantics by default.
+        AutomationProperties.SetHeadingLevel(projectHeader, AutomationHeadingLevel.Level1);
+        panel.Children.Add(projectHeader);
         if (_shell.Documents.Count == 0)
         {
             panel.Children.Add(new TextBlock { Text = "No files open", Opacity = 0.65, Margin = new Thickness(6) });
@@ -62,7 +68,9 @@ public sealed partial class MainWindow
             string path = document.Path;
             button.Click += (_, _) => _shell.SwitchActiveDocument(path);
             button.ContextFlyout = BuildProjectRowMenu(path);
-            AutomationProperties.SetName(button, label);
+            // Match what is actually shown: the dirty marker is a visual-only "•" glyph, so a
+            // screen-reader user needs the unsaved-changes state spelled out in the name instead.
+            AutomationProperties.SetName(button, document.IsDirty ? $"{label}, unsaved changes" : label);
             panel.Children.Add(button);
         }
 
@@ -85,6 +93,7 @@ public sealed partial class MainWindow
                         Opacity = 0.8,
                     };
                     include.Click += (_, _) => _ = OpenProjectRelativeFileAsync(binding, candidate);
+                    AutomationProperties.SetName(include, $"Open referenced file {candidate}");
                     panel.Children.Add(include);
                     break; // candidate order is .tex then literal; opening probes both.
                 }

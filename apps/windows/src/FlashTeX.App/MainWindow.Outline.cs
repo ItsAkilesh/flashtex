@@ -14,6 +14,8 @@ using FlashTeX.Protocol;
 using FlashTeX.Protocol.RuntimeV1;
 using FlashTeX.Shell;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 
 namespace FlashTeX.App;
@@ -25,13 +27,18 @@ public sealed partial class MainWindow
     /// <summary>Adds the "OUTLINE" header plus one row per scanned item of <paramref name="active"/>'s text (nothing when there is no active document, or it is too large to scan).</summary>
     private void AppendOutlineSection(StackPanel panel, ShellDocument? active)
     {
-        panel.Children.Add(new TextBlock
+        var outlineHeader = new TextBlock
         {
             Text = "OUTLINE",
             FontSize = 12,
             Opacity = 0.65,
             Margin = new Thickness(6, 14, 6, 6),
-        });
+        };
+        // See MainWindow.ProjectFiles.cs's matching "PROJECT" header for why: a real heading
+        // level for Narrator's landmark/heading navigation, this port's accepted substitute for
+        // a rebuilt macOS-rotor equivalent.
+        AutomationProperties.SetHeadingLevel(outlineHeader, AutomationHeadingLevel.Level1);
+        panel.Children.Add(outlineHeader);
 
         if (active is null)
         {
@@ -68,6 +75,17 @@ public sealed partial class MainWindow
             };
             DocumentOutline.Item capturedItem = item;
             row.Click += (_, _) => RevealOutlineItem(path, text, capturedItem);
+            // Name by kind + title rather than letting the default computed name read the
+            // decorative glyph literally (e.g. "▤" or the label-tag emoji, neither of which
+            // announces anything meaningful on their own).
+            string kindWord = item.Kind switch
+            {
+                DocumentOutline.Kind.Section => "Section",
+                DocumentOutline.Kind.Environment => "Environment",
+                DocumentOutline.Kind.Label => "Label",
+                _ => "Item",
+            };
+            AutomationProperties.SetName(row, $"{kindWord}: {item.DisplayTitle}");
             panel.Children.Add(row);
         }
 

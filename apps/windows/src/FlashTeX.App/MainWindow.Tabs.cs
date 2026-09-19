@@ -18,8 +18,11 @@ using System.Collections.Specialized;
 using FlashTeX.Shell;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.System;
 
 namespace FlashTeX.App;
 
@@ -77,8 +80,25 @@ public sealed partial class MainWindow
             Background = isActive
                 ? new SolidColorBrush(Colors.SteelBlue) { Opacity = 0.25 }
                 : new SolidColorBrush(Colors.Transparent),
+            // Border is a FrameworkElement, not a Control, so it is neither a tab stop nor
+            // Automation-named by default -- this hand-built tab would otherwise be invisible
+            // to both keyboard-only users (Tab/Shift+Tab would skip straight over it) and
+            // Narrator (an anonymous, nameless element). UIElement.IsTabStop/TabIndex/Focus
+            // work on any UIElement (not just Control subclasses), so this does not require
+            // promoting the tab to a real Button.
+            IsTabStop = true,
+            UseSystemFocusVisuals = true,
         };
+        AutomationProperties.SetName(tab, document.IsDirty ? $"{document.Path}, unsaved changes" : document.Path);
         tab.PointerPressed += (_, _) => _shell.SwitchActiveDocument(document.Path);
+        tab.KeyDown += (_, e) =>
+        {
+            if (e.Key is VirtualKey.Enter or VirtualKey.Space)
+            {
+                _shell.SwitchActiveDocument(document.Path);
+                e.Handled = true;
+            }
+        };
         return tab;
     }
 
@@ -101,6 +121,9 @@ public sealed partial class MainWindow
             Background = new SolidColorBrush(Colors.Transparent),
             BorderThickness = new Thickness(0),
         };
+        // A bare "✕" glyph as Content would otherwise be read literally (e.g. "multiplication
+        // sign") rather than announcing what the button actually does.
+        AutomationProperties.SetName(button, $"Close {Path.GetFileName(path)}");
         button.Click += (_, _) => _ = _shell.CloseDocumentAsync(path);
         return button;
     }

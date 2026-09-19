@@ -19,6 +19,7 @@ using FlashTeX.Protocol;
 using FlashTeX.Protocol.PreviewControllerV1;
 using FlashTeX.Protocol.ProjectFilesV1;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace FlashTeX.App;
@@ -49,6 +50,11 @@ public sealed partial class MainWindow
         {
             var oldKeyBox = new TextBox { PlaceholderText = "e.g. smith2020" };
             var newKeyBox = new TextBox { PlaceholderText = "New key", Margin = new Thickness(0, 8, 0, 0) };
+            // A bare TextBox gets no computed UI Automation Name from PlaceholderText alone
+            // (same gotcha already documented for MainWindow.ProjectFiles.cs's rename prompt) --
+            // without this, both fields would be indistinguishable "Edit" controls to Narrator.
+            AutomationProperties.SetName(oldKeyBox, "Existing citation key");
+            AutomationProperties.SetName(newKeyBox, "New citation key");
             var status = new TextBlock { Opacity = 0.8, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) };
             var content = new StackPanel { MinWidth = 380 };
             content.Children.Add(new TextBlock { Text = "Existing citation key" });

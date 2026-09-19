@@ -13,6 +13,7 @@
 // date: 2026-09-14
 
 using FlashTeX.Shell;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace FlashTeX.App;
@@ -60,6 +61,16 @@ public sealed partial class MainWindow
 
         var button = new Button { Content = content, Padding = new Microsoft.UI.Xaml.Thickness(10, 6, 10, 6) };
         ToolTipService.SetToolTip(button, command.Description);
+
+        // A Button whose Content is a StackPanel (icon + text) gets an EMPTY computed UI
+        // Automation Name -- WinUI does not walk into nested content to synthesize one, unlike
+        // a MenuFlyoutItem's plain Text (MainWindow.Menu.cs's CreateMenuFlyoutItem never needed
+        // this). Narrator would announce nothing at all for every toolbar button without this.
+        // Reuse the same Title/Description the command already carries rather than a duplicate
+        // hardcoded string (Command is the single source of truth for both).
+        AutomationProperties.SetName(button, command.Title);
+        AutomationProperties.SetHelpText(button, command.Description);
+
         button.Click += (_, _) => ExecuteCommand(command.Id);
         return button;
     }

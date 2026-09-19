@@ -19,6 +19,8 @@ using FlashTeX.Protocol.RuntimeV1;
 using FlashTeX.Shell;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
@@ -94,7 +96,9 @@ public sealed partial class MainWindow
     private UIElement BuildProblemsHeader()
     {
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Padding = new Thickness(10, 6, 10, 6) };
-        header.Children.Add(new TextBlock { Text = "Problems", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        var titleText = new TextBlock { Text = "Problems", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+        AutomationProperties.SetHeadingLevel(titleText, AutomationHeadingLevel.Level1);
+        header.Children.Add(titleText);
         header.Children.Add(new TextBlock
         {
             Text = _shell.ErrorCount == 0 && _shell.WarningCount == 0
@@ -112,6 +116,9 @@ public sealed partial class MainWindow
             HorizontalAlignment = HorizontalAlignment.Right,
         };
         ToolTipService.SetToolTip(closeButton, "Close Problems panel");
+        // A private-use-area icon glyph as plain string Content would otherwise become the
+        // computed Name verbatim -- an unpronounceable code point, not "Close Problems panel".
+        AutomationProperties.SetName(closeButton, "Close Problems panel");
         closeButton.Click += (_, _) => SetProblemsPanelVisible(false);
 
         var row = new Grid();
@@ -139,13 +146,15 @@ public sealed partial class MainWindow
 
         foreach (var group in _shell.Diagnostics.GroupBy(d => d.Source?.Path ?? "(no location)"))
         {
-            yield return new TextBlock
+            var groupHeader = new TextBlock
             {
                 Text = group.Key,
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 Opacity = 0.75,
                 Margin = new Thickness(10, 8, 10, 2),
             };
+            AutomationProperties.SetHeadingLevel(groupHeader, AutomationHeadingLevel.Level2);
+            yield return groupHeader;
             foreach (var diagnostic in group)
             {
                 yield return BuildDiagnosticRow(diagnostic);
@@ -174,7 +183,8 @@ public sealed partial class MainWindow
         };
         var body = new StackPanel { Spacing = 2 };
         body.Children.Add(messageText);
-        if (DescribeLocation(diagnostic.Source) is { } location)
+        string? location = DescribeLocation(diagnostic.Source);
+        if (location is not null)
         {
             body.Children.Add(new TextBlock { Text = location, Opacity = 0.6, FontSize = 12 });
         }
@@ -196,6 +206,15 @@ public sealed partial class MainWindow
             Background = new SolidColorBrush(Colors.Transparent),
             BorderThickness = new Thickness(0),
         };
+        // The Content is a StackPanel (icon + wrapped message + location), so -- same as every
+        // other icon-plus-text control in this app -- WinUI computes an empty Name unless one is
+        // set explicitly. A screen-reader user tabbing through Problems needs severity, message
+        // and location together, not just whatever plain text happens to be nested inside.
+        string severityWord = diagnostic.Severity == Severity.error ? "Error" : "Warning";
+        AutomationProperties.SetName(row, location is null
+            ? $"{severityWord}: {diagnostic.Message}"
+            : $"{severityWord}: {diagnostic.Message}, at {location}");
+
         if (diagnostic.Source is null)
         {
             row.IsEnabled = false; // nothing to navigate to without a SourceRange.

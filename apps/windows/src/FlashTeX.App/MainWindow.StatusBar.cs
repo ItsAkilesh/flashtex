@@ -15,7 +15,9 @@
 // date: 2026-09-14
 
 using FlashTeX.Shell;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Windows.System;
 
 namespace FlashTeX.App;
 
@@ -42,8 +44,29 @@ public sealed partial class MainWindow
 
         // VS Code-style polish: clicking the diagnostics summary toggles the Problems panel
         // (MainWindow.Problems.cs) rather than only being reachable via the shortcut/menu item.
+        // A plain TextBlock is not a tab stop and Tapped only fires for pointer/touch input, so
+        // without the three lines below this was a real keyboard-only-operability gap (item 7's
+        // scan-and-patch check): a control that responds only to a pointer gesture and was never
+        // given IsTabStop is invisible to Tab/Shift+Tab navigation, even though the exact same
+        // action (CommandIds.ToggleProblems, Ctrl+Shift+M) is already reachable from the View
+        // menu/keyboard accelerator -- this just makes this shortcut path itself reachable too,
+        // rather than leaving it as a mouse-only dead end.
         _diagnosticsText.Tapped += (_, _) => ToggleProblemsPanel();
+        _diagnosticsText.IsTabStop = true;
+        _diagnosticsText.UseSystemFocusVisuals = true;
+        _diagnosticsText.KeyDown += (_, e) =>
+        {
+            if (e.Key is VirtualKey.Enter or VirtualKey.Space)
+            {
+                ToggleProblemsPanel();
+                e.Handled = true;
+            }
+        };
         ToolTipService.SetToolTip(_diagnosticsText, "Toggle Problems panel");
+        // Not AutomationProperties.Name -- that is left to default to the TextBlock's own Text
+        // (the diagnostics count, e.g. "3 errors, 2 warnings"), which is already the correct
+        // accessible name; HelpText adds the interactivity hint without overwriting it.
+        AutomationProperties.SetHelpText(_diagnosticsText, "Activate to toggle the Problems panel");
 
         _shell.Chrome.Register(StatusChromeKeys.ErrorCount, () => _shell.ErrorCount);
         _shell.Chrome.Register(StatusChromeKeys.WarningCount, () => _shell.WarningCount);

@@ -58,6 +58,7 @@ public sealed partial class MainWindow : Window
         WireProjectTree();
         WireProblemsPanel();
         WirePaneSplitters();
+        WireAccessibilityLandmarks();
 
         // Command availability (Compile needs a worker, Save/Undo/Redo need an active
         // document, Export needs a compile result, ...) can change from several different
