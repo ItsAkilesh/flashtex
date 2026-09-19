@@ -148,6 +148,19 @@ public sealed class DocumentFilesClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Recursively lists project files (<c>.tex</c>/<c>.bib</c>/<c>.sty</c>/
+    /// <c>.cls</c>/<c>.bst</c>/<c>.clo</c>) under <paramref name="subdirectory"/>
+    /// (the whole project root when <c>null</c>), as root-relative paths,
+    /// sorted. The helper's rooted, symlink-refusing walk excludes symlinks
+    /// and hidden directories (<c>.flashtex</c> included) rather than erroring
+    /// on them — see <see cref="ListPayload"/>. <see cref="ListPayload.Truncated"/>
+    /// is <c>true</c> if the helper's file-count cap was hit before the whole
+    /// tree was walked.
+    /// </summary>
+    public Task<ListPayload> ListAsync(string? subdirectory = null, CancellationToken cancellationToken = default) =>
+        SendAsync<ListRequest, ListPayload>(id => new ListRequest(id, subdirectory), cancellationToken);
+
+    /// <summary>
     /// Sends one request and decodes its reply, throwing <see cref="ProjectFilesErrorException"/>
     /// for an <c>error</c> envelope or <see cref="HelperProtocolException"/> if the
     /// reply carries neither <c>payload</c> nor <c>error</c>.

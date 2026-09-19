@@ -241,6 +241,43 @@ public sealed class DocumentFilesClientTests : IDisposable
     }
 
     [Fact]
+    public async Task ListAsync_FindsProjectFilesRecursivelyAndExcludesTheRest()
+    {
+        AssertBinaryExists();
+        var stderrLines = new List<string>();
+        await using DocumentFilesClient client = StartClient(stderrLines);
+        await client.SaveAsync("main.tex", "main\n", Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+        await client.SaveAsync("refs.bib", "@misc{x}\n", Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+        await client.SaveAsync("chapters/ch1.tex", "one\n", Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+        Directory.CreateDirectory(Path.Combine(_root, "build"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "build", "main.aux"), "aux\n");
+        await File.WriteAllTextAsync(Path.Combine(_root, "notes.md"), "not latex\n");
+
+        ListPayload listing = await client.ListAsync().WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(string.Empty, listing.Path);
+        Assert.False(listing.Truncated);
+        Assert.Equal(
+            new[] { "chapters/ch1.tex", "main.tex", "refs.bib" },
+            listing.Files.OrderBy(f => f, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task ListAsync_CanBeScopedToASubdirectory()
+    {
+        AssertBinaryExists();
+        var stderrLines = new List<string>();
+        await using DocumentFilesClient client = StartClient(stderrLines);
+        await client.SaveAsync("main.tex", "main\n", Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+        await client.SaveAsync("chapters/ch1.tex", "one\n", Expected.NewFile).WaitAsync(TimeSpan.FromSeconds(10));
+
+        ListPayload listing = await client.ListAsync("chapters").WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal("chapters", listing.Path);
+        Assert.Equal(new[] { "chapters/ch1.tex" }, listing.Files);
+    }
+
+    [Fact]
     public async Task ReadAsync_OfAPathOutsideTheRoot_IsRefusedNotFollowed()
     {
         AssertBinaryExists();

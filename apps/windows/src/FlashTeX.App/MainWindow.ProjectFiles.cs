@@ -25,6 +25,26 @@ public sealed partial class MainWindow
     private string? _activeProjectRoot;
     private string? _projectFilesToolMissingReason;
 
+    /// <summary>
+    /// True once a project root was established via <see cref="OpenFolderAsync"/>
+    /// (as opposed to <see cref="OpenLatexFileAsync"/>/Save As/New File, which
+    /// only ever establish a root as the side effect of one file). Gates the
+    /// extra "FOLDER" section <see cref="RebuildProjectTree"/> adds — the
+    /// single-file flow's tree (open documents + include rows) is otherwise
+    /// completely unchanged.
+    /// </summary>
+    private bool _isFolderProject;
+
+    /// <summary>
+    /// The most recent folder listing (flashtex-project-files' <c>list</c>
+    /// operation), root-relative paths, sorted. Populated by
+    /// <see cref="OpenFolderAsync"/>; stale once files are added or removed on
+    /// disk outside FlashTeX — there is no live folder watch for this yet
+    /// (HANDOFF.md's "Folder-level project membership" section says so
+    /// explicitly), only the existing per-open-document external-change watch.
+    /// </summary>
+    private IReadOnlyList<string> _folderProjectFiles = [];
+
     private void WireProjectTree()
     {
         _shell.Documents.CollectionChanged += (_, _) => RebuildProjectTree();
@@ -100,8 +120,55 @@ public sealed partial class MainWindow
             }
         }
 
+        AppendFolderSection(panel);
         AppendOutlineSection(panel, ActiveDocumentOrNull());
         ProjectTreeHost.Child = panel;
+    }
+
+    /// <summary>
+    /// The folder-backed project tree: every file <see cref="OpenFolderAsync"/>'s
+    /// last listing found, as a flat, sorted list of clickable rows — chosen
+    /// over a fully general, expand/collapse <c>TreeView</c> because a project
+    /// this size (dozens to a few hundred <c>.tex</c>/<c>.bib</c> files, not
+    /// thousands of arbitrary assets) reads perfectly well as one alphabetized
+    /// list, and a flat list needs no lazy-loading/expansion-state plumbing to
+    /// stay honest about what is actually on disk. No-op when no folder
+    /// project is open (<see cref="_isFolderProject"/> false), so the
+    /// single-file-open tree above is completely unaffected. A no-op for the
+    /// empty-folder case too (nothing to add). This never re-lists the folder
+    /// itself; see <see cref="_folderProjectFiles"/> for why files added or
+    /// removed outside FlashTeX are only picked up by reopening the folder.
+    /// </summary>
+    private void AppendFolderSection(StackPanel panel)
+    {
+        if (!_isFolderProject || _folderProjectFiles.Count == 0)
+        {
+            return;
+        }
+
+        var folderHeader = new TextBlock { Text = "FOLDER", FontSize = 12, Opacity = 0.65, Margin = new Thickness(6, 10, 6, 6) };
+        AutomationProperties.SetHeadingLevel(folderHeader, AutomationHeadingLevel.Level1);
+        panel.Children.Add(folderHeader);
+
+        foreach (string relativePath in _folderProjectFiles)
+        {
+            bool isOpen = _shell.Documents.Any(document => document.Path == relativePath);
+            var button = new Button
+            {
+                Content = relativePath,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Padding = new Thickness(8, 4, 8, 4),
+                Opacity = isOpen ? 1.0 : 0.85,
+                FontWeight = relativePath == _shell.ActiveDocumentPath
+                    ? Microsoft.UI.Text.FontWeights.SemiBold
+                    : Microsoft.UI.Text.FontWeights.Normal,
+            };
+            string capturedPath = relativePath;
+            button.Click += (_, _) => _ = RunProjectFileActionAsync(() => OpenFolderProjectFileAsync(capturedPath));
+            AutomationProperties.SetName(button, isOpen ? $"{relativePath}, open" : relativePath);
+            panel.Children.Add(button);
+        }
     }
 
     /// <summary>
@@ -130,7 +197,7 @@ public sealed partial class MainWindow
 
     private static bool IsProjectFileCommand(string id) =>
         id is CommandIds.OpenLatexFile or CommandIds.Save or CommandIds.SaveAs or CommandIds.NewFile
-            or CommandIds.RenameFile or CommandIds.DeleteFile;
+            or CommandIds.RenameFile or CommandIds.DeleteFile or CommandIds.OpenFolder;
 
     private bool TryStartProjectFileCommand(string commandId)
     {
@@ -151,6 +218,7 @@ public sealed partial class MainWindow
         CommandIds.NewFile => CreateNewFileAsync(),
         CommandIds.RenameFile => RenameDocumentFileAsync(ActiveDocumentOrThrow().Path),
         CommandIds.DeleteFile => DeleteDocumentFileAsync(ActiveDocumentOrThrow().Path),
+        CommandIds.OpenFolder => OpenFolderAsync(),
         _ => Task.CompletedTask,
     });
 
@@ -212,6 +280,93 @@ public sealed partial class MainWindow
 
         await _shell.OpenDocumentAsync(documentPath, read.Text).ConfigureAwait(true);
         _fileBindingsByDocument[documentPath] = new OpenFileBinding(client, root, read.Path, read.Sha256);
+    }
+
+    /// <summary>
+    /// Opens a whole folder as the project root (as opposed to
+    /// <see cref="OpenLatexFileAsync"/>, which only ever derives a root as the
+    /// parent of one picked file) and populates a real, persistent
+    /// folder-backed project tree via flashtex-project-files' <c>list</c>
+    /// operation — see <see cref="RebuildProjectTree"/>'s "FOLDER" section.
+    ///
+    /// This deliberately uses <see cref="NativeFolderPicker"/> (raw
+    /// <c>IFileOpenDialog</c>/<c>FOS_PICKFOLDERS</c> COM interop), not
+    /// <see cref="Windows.Storage.Pickers.FolderPicker"/> — the same
+    /// <c>InitializeWithWindow</c>-owned WinRT picker
+    /// <see cref="OpenLatexFileAsync"/>/<see cref="SaveActiveFileAsync"/> use
+    /// successfully for <c>FileOpenPicker</c>/<c>FileSavePicker</c>. Tried
+    /// first for consistency, it reliably threw
+    /// <c>COMException 0x80004005</c> (E_FAIL) from <c>PickSingleFolderAsync()</c>
+    /// in this unpackaged app when confirmed with a real UI-Automation-driven
+    /// picker interaction — see <see cref="NativeFolderPicker"/>'s header
+    /// comment for the full diagnosis. The dialog the user sees is identical
+    /// either way (the WinRT picker is itself a thin wrapper over the same
+    /// native dialog); only the broken post-pick marshaling is bypassed.
+    /// </summary>
+    private async Task OpenFolderAsync()
+    {
+        // A synchronous, blocking call on the calling (UI/STA) thread — exactly
+        // how IFileOpenDialog::Show is meant to be driven, and consistent with
+        // this being a modal dialog; wrapping it in Task.Run would move it onto
+        // a thread-pool (MTA) thread, which is the wrong apartment for a modal
+        // common item dialog parented to this window.
+        string? root = NativeFolderPicker.PickFolder(WindowNative.GetWindowHandle(this), "Select a project folder");
+        if (root is null)
+        {
+            return;
+        }
+
+        if (!await EstablishProjectRootAsync(root).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        var client = GetOrStartFileClient(root);
+        ListPayload listing = await client.ListAsync().ConfigureAwait(true);
+        _isFolderProject = true;
+        _folderProjectFiles = listing.Files;
+        RebuildProjectTree();
+
+        if (listing.Truncated)
+        {
+            await ShowProjectFileDialogAsync(
+                "Large project — list truncated",
+                $"This folder has more project files than FlashTeX lists at once; showing the first {listing.Files.Count}. " +
+                "Files beyond that are still on disk and can still be opened with Open LaTeX File.").ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Opens <paramref name="relativePath"/> (a row from the folder tree's
+    /// "FOLDER" section) against the current folder project root. Switches to
+    /// the tab instead of opening a second copy if it is already open,
+    /// mirroring <see cref="OpenProjectRelativeFileAsync"/>'s include-row
+    /// behavior but without requiring an already-open source document to scan
+    /// references from.
+    /// </summary>
+    private async Task OpenFolderProjectFileAsync(string relativePath)
+    {
+        if (_activeProjectRoot is not { } root)
+        {
+            return;
+        }
+        if (_shell.Documents.Any(document => document.Path == relativePath))
+        {
+            _shell.SwitchActiveDocument(relativePath);
+            return;
+        }
+
+        var client = GetOrStartFileClient(root);
+        var read = await client.ReadAsync(relativePath).ConfigureAwait(true);
+        if (!read.Exists || read.Text is null)
+        {
+            await ShowProjectFileDialogAsync(
+                "File not found",
+                $"“{relativePath}” no longer exists on disk. It will disappear from this list next time the folder is reopened.").ConfigureAwait(true);
+            return;
+        }
+        await _shell.OpenDocumentAsync(read.Path, read.Text).ConfigureAwait(true);
+        _fileBindingsByDocument[read.Path] = new OpenFileBinding(client, root, read.Path, read.Sha256);
     }
 
     private async Task SaveActiveFileAsync(bool saveAs)
@@ -579,6 +734,12 @@ public sealed partial class MainWindow
         _fileBindingsByDocument.Clear();
         _activeProjectRoot = root;
         _shell.ProjectRoot = root;
+        // A previous folder project's flat listing must not linger against a
+        // new root; New File's own caller re-derives this only when the root
+        // it just established is itself a folder-project root (OpenFolderAsync
+        // sets both back to true/populated right after this returns).
+        _isFolderProject = false;
+        _folderProjectFiles = [];
         return true;
     }
 

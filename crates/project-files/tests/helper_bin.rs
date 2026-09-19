@@ -372,3 +372,88 @@ fn symlinked_root_is_refused_at_startup() {
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("cannot open root"));
 }
+
+fn list_files_json(payload: &Json) -> Vec<String> {
+    payload
+        .get("files")
+        .and_then(|f| match f {
+            Json::Array(items) => Some(items),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("expected files array, got {}", payload.to_string_compact()))
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect()
+}
+
+/// `list` over the wire: every project file under the root (or a given
+/// subdirectory), recursively, sorted, with non-project files, a hidden
+/// `.flashtex/` directory (created for real by taking the project lock, not
+/// hand-placed) and a symlinked entry all silently excluded.
+#[test]
+fn list_over_the_wire_finds_project_files_and_excludes_the_rest() {
+    let tmp = common::TempDir::new("helper-bin-list");
+    let root = tmp.root();
+    std::fs::write(root.join("main.tex"), "main\n").unwrap();
+    std::fs::write(root.join("refs.bib"), "@misc{x}\n").unwrap();
+    std::fs::write(root.join("notes.md"), "not latex\n").unwrap();
+    std::fs::create_dir_all(root.join("chapters")).unwrap();
+    std::fs::write(root.join("chapters/ch1.tex"), "one\n").unwrap();
+    std::fs::create_dir_all(root.join(".hidden")).unwrap();
+    std::fs::write(root.join(".hidden/skip.tex"), "skip\n").unwrap();
+    let outside = common::TempDir::new("helper-bin-list-outside");
+    let secret = outside.root().join("secret.tex");
+    std::fs::write(&secret, "secret\n").unwrap();
+    common::symlink_file(&secret, &root.join("alias.tex"));
+    // A real lock/journal write, so `.flashtex/` genuinely exists on disk,
+    // not just as a name this test happens to also use.
+    {
+        let real_root = flashtex_project_files::ProjectRoot::open(root).unwrap();
+        drop(real_root.lock().unwrap());
+    }
+
+    let replies = run(
+        root,
+        &[
+            r#"{"id":"1","operation":"list"}"#,
+            r#"{"id":"2","operation":"list","path":"chapters"}"#,
+            r#"{"id":"3","operation":"list","path":"../escape"}"#,
+        ],
+    );
+    assert_eq!(replies.len(), 3);
+
+    let p = payload(&replies[0], "1");
+    assert_eq!(p.get("path").and_then(Json::as_str), Some(""));
+    assert_eq!(p.get("truncated"), Some(&Json::Bool(false)));
+    assert_eq!(
+        list_files_json(p),
+        vec!["chapters/ch1.tex", "main.tex", "refs.bib"]
+    );
+    assert!(root.join(".flashtex/project.lock").exists());
+
+    let p = payload(&replies[1], "2");
+    assert_eq!(p.get("path").and_then(Json::as_str), Some("chapters"));
+    assert_eq!(list_files_json(p), vec!["chapters/ch1.tex"]);
+
+    assert_eq!(error_code(&replies[2], "3"), "invalid_path");
+
+    assert_eq!(std::fs::read_to_string(&secret).unwrap(), "secret\n");
+}
+
+/// The helper's `LIST_LIMIT` is not adjustable over the wire (unlike the
+/// library's own `list_files`, which takes an explicit `limit`), so the
+/// over-the-cap behavior itself is covered directly against the library in
+/// `list_files_respects_the_limit_and_reports_truncation`
+/// (`tests/rooted.rs`) — the helper calls the exact same function with the
+/// same constant. This just confirms the ordinary, well-under-the-cap case
+/// reports `truncated:false` over the wire.
+#[test]
+fn list_over_the_wire_reports_truncated_false_when_under_the_cap() {
+    let tmp = common::TempDir::new("helper-bin-list-small");
+    let root = tmp.root();
+    std::fs::write(root.join("a.tex"), "a\n").unwrap();
+    let replies = run(root, &[r#"{"id":"1","operation":"list"}"#]);
+    let p = payload(&replies[0], "1");
+    assert_eq!(p.get("truncated"), Some(&Json::Bool(false)));
+    assert_eq!(list_files_json(p), vec!["a.tex"]);
+}

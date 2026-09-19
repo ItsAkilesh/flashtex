@@ -4,9 +4,10 @@
   agent/session can resume this work if the current session's usage limit is
   hit mid-task. Updated at each meaningful checkpoint — do not let this go stale.
 - author: Akilesh S
-- last updated: 2026-09-18 (see "Last checkpoint" below for the most recent entry; see
-  "Accessibility (Narrator/UI Automation support)" and "Settings window" for this session's
-  most recent, concurrently-landed work)
+- last updated: 2026-09-19 (see "Open Folder: real folder-level project browsing" for this
+  session's most recent work; see "Last checkpoint" below for the prior entry, and
+  "Accessibility (Narrator/UI Automation support)" and "Settings window" for the 2026-09-18
+  concurrently-landed work)
 
 ![screenshot of FlashTeX for Windows UI](image.png)
 
@@ -105,11 +106,15 @@ Not started yet (placeholders only):
   checked against the trivial single-line seeded document, not a real
   fixture with math/multiple pages/embedded images. See the "Post-merge
   verification round" section below for exactly what is and isn't confirmed.
-- Folder-level project membership and include discovery remain to be
-  integrated. Open/Save/Save As/New File are real native picker flows over
-  `flashtex-project-files`' rooted, hash-checked I/O; the project pane lists
-  active documents; external-change watching and the outline are wired; and
-  **Rename/Delete are done** (2026-09-18, see their own section below).
+- Include discovery from the active document (the "↳ name" rows) is done; a
+  recursive whole-folder listing is now **also done** — **Open Folder**
+  (2026-09-19, see its own section below). Open/Save/Save As/New File are real
+  native picker flows over `flashtex-project-files`' rooted, hash-checked I/O;
+  the project pane lists active documents; external-change watching and the
+  outline are wired; and **Rename/Delete are done** (2026-09-18, see their own
+  section below). Not yet done: live-updating the folder listing when files are
+  added/removed on disk outside FlashTeX (see the Open Folder section's "Known
+  rough edges").
 - "Export PDF (Exact, v2)" — blocked on the Win2D preview pane milestone
   (needs a rendering-v2 display list nothing in this port captures yet); see
   "PDF export wiring" below. The other two export commands are done.
@@ -688,8 +693,10 @@ Capture/review, citation rename, PDF export → M6 Nearby/Bonjour pairing → M7
 Edit history, accessibility, settings → M8 Packaging hardening.
 
 Current position: M0/M1/M2 complete; M3 has a functional runtime-v1 native
-preview but not the v2 precision renderer; M4 has real file open/save but not
-full project navigation; M5's ordinary PDF export is complete; M6 (Nearby/
+preview but not the v2 precision renderer; M4 has real file open/save,
+rename/delete and now whole-folder project browsing (Open Folder, see its own
+section) — remaining M4 gap is live folder-watching for externally added/
+removed files; M5's ordinary PDF export is complete; M6 (Nearby/
 Bonjour pairing) remains blocked on a design decision; M7's edit history,
 accessibility and settings pieces are now all done (see their own sections);
 M8 not started.
@@ -1344,3 +1351,263 @@ happen again. If you ever need to clean up stray files in this directory,
 check `git status`/what's actually referenced by this doc first, or scope
 your cleanup command to an exact filename list rather than a glob that could
 catch something load-bearing.
+
+## Open Folder: real folder-level project browsing (2026-09-19)
+
+Before this pass, the project tree only ever listed *currently open documents*
+plus include-scan rows for the active document's `\input`/`\include` targets
+(`ProjectIncludes.cs`). There was no way to browse a whole folder's contents
+and no directory-listing operation on the `flashtex-project-files` wire
+protocol at all — confirmed by reading the protocol doc comment and the
+`match` arms in `flashtex-project-files.rs` before starting, per the task's
+explicit instruction not to assume.
+
+### Rust: a new `list` operation, library-level first
+
+Checked `crates/project-files` for an existing "list files under this root"
+capability before building one. `ProjectGraph::discover` (`graph.rs`) is
+**not** it: it is reference-based (`\input`/`\include`/`\bibliography`
+traversal from one entry file), not a directory walker, and does not surface
+files nobody references. Nothing else in the crate enumerates a whole
+directory tree, so this needed a new `ProjectRoot::list_files` at the library
+level (`src/save.rs`), matching the crate's existing rigor rather than a naive
+`std::fs::read_dir` walk:
+
+```rust
+pub const DEFAULT_LIST_LIMIT: usize = 10_000;
+pub struct FileListing { pub files: Vec<ProjectPath>, pub truncated: bool }
+impl ProjectRoot {
+    pub fn list_files(&self, subdir: Option<&ProjectPath>, extensions: &[&str], limit: usize) -> Result<FileListing, SaveError>;
+}
+```
+
+- Walks with the exact same primitives every other rooted operation uses:
+  `open_dir_at_nofollow` to descend (a symlinked directory component is never
+  followed, `sys::verify_parent` checked at every step) and
+  `fstatat(AT_SYMLINK_NOFOLLOW)` to classify each entry before opening or
+  recursing into it.
+- **Unlike `read`/`save`/`remove`/`rename`**, which act on one path the
+  caller named and must explain a refusal for, a listing enumerates entries
+  nobody named: a symlink (file or directory), a hidden entry (name starting
+  with `.` — this is what excludes `.flashtex/`'s lock file and recovery
+  journal with no special case for that name), anything neither a regular
+  file nor a directory, and any entry that races away or fails to classify
+  are all **silently excluded**, never reported as an error. One bad entry
+  does not abort the rest of the walk.
+- Recursion stops at a fixed depth (64) — no legitimate LaTeX project nests
+  that deep; a subtree that deep is omitted, not an error (mirrors
+  `DiagnosticKind::DepthExceeded` being a diagnostic, not a hard
+  `DiscoverError`, in `graph.rs`).
+- `files` is returned sorted in `ProjectPath` order (Unicode-NFC) regardless
+  of on-disk directory-entry order, and `truncated` is `true` when `limit`
+  was hit before the whole tree was walked (the walk stops descending as
+  soon as the cap is reached, rather than paying full traversal cost merely
+  to report it).
+- Takes **no project lock** — nothing is written, so (like `read`) it can
+  race a concurrent save/rename/remove; a file can appear, disappear or
+  change between being listed and being acted on later.
+
+Wire protocol (`project-files-v1`, `flashtex-project-files.rs`), matching the
+existing `read`/`save`/`remove`/`rename` JSON shape exactly:
+
+```
+{"id","operation":"list","path"?}
+  → {"id","payload":{"path","files":[...],"truncated":bool}}
+```
+
+`path` is a project-relative directory (omitted or `null` lists the whole
+root, echoed back as `""`); `files` is every project file under it as
+root-relative `ProjectPath` strings, sorted. The helper fixes the extension
+set to `tex`/`bib`/`sty`/`cls`/`bst`/`clo` (`PROJECT_FILE_EXTENSIONS` — the
+source types a project browser opens for editing, not media pulled in via
+`\includegraphics`, which the graph hashes for identity but never opens) and
+the cap to `DEFAULT_LIST_LIMIT` (10,000 files); neither is adjustable over the
+wire. `README.md`'s "Directory listing" section and its `list` protocol-table
+row document the exact exclusion rules and guarantees at the same level of
+detail as every other operation there.
+
+**Verified** (`cargo build --all-targets && cargo test` and
+`cargo build --release` from `crates/project-files/`): clean, **95 passed, 0
+failed** (was 86; +9 new — 7 in `tests/rooted.rs`: empty directory, nested
+subdirectories, extension filtering case-insensitivity, hidden-directory/
+`.flashtex` exclusion, symlinked file+directory exclusion, a 250-file listing
+respecting a 100-file cap and reporting `truncated`, and subdirectory scoping;
+2 in `tests/helper_bin.rs`: the wire `list` operation end-to-end including a
+real `.flashtex/project.lock` on disk, and the under-the-cap
+`truncated:false` case). `cargo clippy --all-targets -- -D warnings` still has
+the one pre-existing, unrelated finding at `sys.rs:596` this doc's "Rename and
+Delete" section already recorded — untouched by this change.
+
+### C# client and `CommandIds.OpenFolder`
+
+- `src/FlashTeX.Protocol/ProjectFilesV1.cs`: `ListRequest`/`ListPayload`,
+  mirroring `StatusRequest.ExpectedSha256`'s "send an explicit JSON `null`"
+  convention for the optional `path`. Registered in `FlashTeXJsonContext`
+  (source-gen; a missing entry is a runtime failure, not a compile error).
+- `src/FlashTeX.ProjectFiles/DocumentFilesClient.cs`: `ListAsync(subdirectory:
+  null, ...)`, same envelope pattern as `ReadAsync`/`RemoveAsync`.
+- `src/FlashTeX.Shell/CommandRegistry.cs`: appended `CommandIds.OpenFolder`
+  and its `Make(...)` row (category File, no default shortcut — matching the
+  existing `RenameFile`/`DeleteFile`/`Settings` no-shortcut, append-only
+  precedent for minimizing merge risk with any other concurrent agent) at the
+  very end of the list.
+- `src/FlashTeX.App/MainWindow.ProjectFiles.cs`: the actual flow, handled
+  exactly like the other project-file commands (`IsProjectFileCommand`/
+  `RunProjectFileCommandAsync`), **not** special-cased in `MainWindow.Menu.cs`.
+  - `OpenFolderAsync()`: picks a folder, calls `EstablishProjectRootAsync`
+    (reusing its existing "unsaved changes" guard and all-documents-closed
+    logic verbatim, not duplicated), then `client.ListAsync()` and stores the
+    result in two new fields (`_isFolderProject`, `_folderProjectFiles`)
+    consumed by `RebuildProjectTree`'s new `AppendFolderSection`. A truncated
+    listing shows a one-time informational dialog naming how many files are
+    shown.
+  - `OpenFolderProjectFileAsync(relativePath)`: opens a folder-tree row,
+    switching to its tab instead of opening a second copy if already open —
+    the same de-duplication `SwitchActiveDocument` already gives
+    `RebuildProjectTree`'s open-document rows, just reached from a different
+    entry point since a folder-tree row has no `OpenFileBinding` to key off
+    yet when first clicked.
+  - `AppendFolderSection`: a **flat, sorted list** of clickable rows under a
+    new "FOLDER" heading, not a `TreeView`. Chosen deliberately: a LaTeX
+    project this size (dozens to a few hundred `.tex`/`.bib` files, not
+    thousands of arbitrary assets) reads perfectly well as one alphabetized
+    list, and a flat list needs no lazy-loading/expansion-state plumbing to
+    stay honest about what is actually on disk — a fully general
+    expand/collapse `TreeView` was judged out of proportion to the value it
+    would add here. No-op (and the single-file-open tree completely
+    unaffected) when `_isFolderProject` is false, which is the case for every
+    existing flow (`OpenLatexFileAsync`/`SaveActiveFileAsync`/
+    `CreateNewFileAsync`) — only `OpenFolderAsync` ever sets it `true`.
+    `EstablishProjectRootAsync`'s existing root-switch branch now also resets
+    both fields, so a previous folder project's listing cannot linger against
+    a newly opened single file or a different folder.
+
+### The `Windows.Storage.Pickers.FolderPicker` dead end — read before touching folder-picker code again
+
+`FolderPicker` (the same `InitializeWithWindow`-owned WinRT picker family as
+the already-working `FileOpenPicker`/`FileSavePicker`) was tried **first**,
+per the task's explicit suggestion and for consistency with the rest of this
+file. It reliably throws `System.Runtime.InteropServices.COMException
+(0x80004005, E_FAIL)` from `PickSingleFolderAsync()` in this specific app —
+confirmed with a real UI-Automation-driven repro, not a guess: the native
+"Select Folder" dialog opens, navigates and closes normally (the user's own
+click on its "Select Folder" button succeeds), and *only then* does the await
+throw, with an exception logged via a temporary diagnostic
+(`ex.ToString()`, removed again once diagnosed) showing the throw site was
+`PickSingleFolderAsync()` itself. This matches a known limitation of
+`Windows.Storage.Pickers` in **unpackaged** (`WindowsPackageType=None`) Win32
+apps: `FileOpenPicker`/`FileSavePicker` have a working unpackaged fallback
+path for marshaling the result back into the caller's process, but
+`FolderPicker`'s does not reliably resolve an arbitrary, not-previously-
+Explorer-indexed directory without a package identity's moniker cache — and a
+freshly created temp directory (exactly what this feature's own verification,
+and any real first-time "Open Folder" on a new project, both do) reproduces
+it every time.
+
+Fixed by **`src/FlashTeX.App/NativeFolderPicker.cs`** (new): raw
+`IFileOpenDialog`/`FOS_PICKFOLDERS` COM interop, reading the result via
+`IShellItem::GetDisplayName(SIGDN_FILESYSPATH)` instead of going through
+WinRT's `StorageFolder` marshaling. The dialog the user sees is **identical**
+either way — `Windows.Storage.Pickers.FolderPicker` is itself a thin wrapper
+over the same native common-item dialog — so this bypasses only the broken
+post-pick step, not the UI. `IFileOpenDialog::Show` is a blocking modal call
+driven synchronously on the calling (UI/STA) thread, deliberately **not**
+wrapped in `Task.Run` — a thread-pool thread would be the wrong COM apartment
+for a modal dialog parented to this window. If a future agent is tempted to
+"simplify" `OpenFolderAsync` back to `Windows.Storage.Pickers.FolderPicker`
+for consistency with `OpenLatexFileAsync`/`SaveActiveFileAsync`: don't, unless
+you've first re-verified this specific failure no longer reproduces on the
+target machine/OS build.
+
+### Verified (real launch, real folder, real UI Automation — not self-reported)
+
+Built a real temp folder (`main.tex` with `\input{chapters/intro}`,
+`refs.bib`, `chapters/intro.tex`) and drove the actual app through it via
+`System.Windows.Automation` + real mouse clicks (menu-item `InvokePattern
+.Invoke()` was found to **block the automation client for the entire modal
+picker interaction** in this app now that the click handler synchronously
+shows a blocking native dialog — switched to physically clicking menu items'
+`BoundingRectangle` centers instead, which posts input asynchronously and
+does not have this problem; worth remembering for any future command whose
+handler shows a modal dialog). `PrintWindow`/`PW_RENDERFULLCONTENT`
+screenshots throughout, `SetProcessDpiAwarenessContext` first per this doc's
+standing rule (confirmed load-bearing again this session: a click computed
+from an un-DPI-aware process landed on the wrong control on this machine's
+scaled display).
+
+1. File ▸ Open Folder → the native `IFileOpenDialog` opens titled "Select a
+   project folder"; typed the temp folder's path into its "Folder:" edit box
+   and confirmed with its own "Select Folder" button (not Enter — confirmed
+   Enter in this box can re-navigate deeper if a subfolder happens to be
+   list-selected, exactly what happened once during verification; the
+   button is the reliable confirm action).
+2. Real result, screenshotted: "PROJECT" reads "No files open"; a new
+   "FOLDER" section lists all three files, **sorted** exactly as the Rust
+   layer promises (`chapters/intro.tex`, `main.tex`, `refs.bib`); "OUTLINE"
+   reads "No active document". Toolbar actions correctly disabled with no
+   active document.
+3. Clicked `main.tex` in FOLDER → a real tab opened showing the file's
+   **actual on-disk content** (`Hello from the folder test.` /
+   `\input{chapters/intro}`), not placeholder text; "PROJECT" now lists it as
+   open; FOLDER still lists all three with `main.tex` bolded as active.
+4. Clicked `chapters/intro.tex` in FOLDER (a **nested subdirectory** file) →
+   a second real tab opened with its actual content ("This is the intro
+   chapter."); both files listed under PROJECT as open documents
+   simultaneously.
+5. Clicked `main.tex` in FOLDER again (already open) → switched to its
+   existing tab; still exactly two tabs, no duplicate created.
+6. Relaunched fresh (no folder opened) and confirmed the **single-file-open
+   tree is completely unaffected**: "PROJECT" shows only the seeded
+   `main.tex`, no "FOLDER" section at all — matches `AppendFolderSection`'s
+   `_isFolderProject`-false no-op by inspection and by this live screenshot,
+   both before and after a separate `Open LaTeX File` attempt.
+7. `dotnet build FlashTeX.sln -c Debug`: 0 warnings, 0 errors.
+   `dotnet test FlashTeX.sln -c Debug --no-build`: **447 passed, 1 failed**
+   across every test project (`FlashTeX.ProjectFiles.Tests` now 67, was 65 —
+   the 2 new `ListAsync` tests against the real release binary); the 1
+   failure is the same pre-existing, unrelated
+   `FlashTeX.Editor.Tests.CompletionTests.BundledInventoryMatchesTheMacCopy`
+   hash mismatch this doc has documented since 2026-09-14. One run this
+   session also hit `DocumentWatcherTests
+   .Watch_SeveralQuickInPlaceEditsCoalesceIntoOneNotification` failing
+   (expected 1 coalesced notification, got 2) under this machine's heavy
+   concurrent-agent CPU/IO contention; re-ran in isolation and it passed —
+   flaky timing on a loaded shared box, not a real regression, and unrelated
+   to any file this pass touched.
+8. This machine's now-standard multi-agent contention struck again multiple
+   times during verification: `FlashTeX.App.exe`/`PickerHost.exe` instances
+   from other concurrent agents' own testing appeared and were filtered out
+   by matching on the exact expected `.Path` before trusting any PID; a
+   `dotnet build FlashTeX.sln` once failed with the file-locked `MSB3026`/
+   `MSB3027` pattern this doc already documents (a still-running instance of
+   this pass's *own* previous test build holding the exe open) — resolved by
+   killing it and rebuilding, not a real error. Test fixtures and every
+   `FlashTeX.App.exe`/`flashtex-*.exe`/`PickerHost.exe` process this pass
+   started were cleaned up afterward.
+
+### Known rough edges
+
+- **No live folder-watching.** `_folderProjectFiles` is a one-time snapshot
+  from the moment "Open Folder" was invoked; a file added, removed or renamed
+  on disk by another program afterward is not reflected until the folder is
+  reopened. This is a reasonable, explicitly-scoped-out follow-up, not an
+  oversight — the existing per-open-document external-change watch
+  (`WireDocumentWatchers`) is unaffected and keeps working for whatever is
+  actually open.
+- Folder-tree rows have no context menu (no Rename/Delete) — those still only
+  work from an open document's tab/project-tree row, which already has an
+  `OpenFileBinding` to act through. Extending them to unopened folder rows
+  would need a binding-on-demand path; left for whoever picks this up next.
+- The include-scan section (the "↳ name" rows under PROJECT) can show a
+  reference as still-unresolved-looking even when the same file is already
+  open and listed under FOLDER, because of a **pre-existing** bug this pass
+  found but did not fix (out of scope): its candidate loop's `continue`
+  advances to the *next* candidate spelling (e.g. `chapters/intro` after
+  `chapters/intro.tex`) instead of skipping the whole reference once any
+  candidate is found open, so a second, differently-spelled candidate for the
+  same already-open file can still get its own row. Cosmetic (clicking it
+  just re-opens/reveals the same file) and not something this pass's diff
+  touches.
+- A truncated listing's dialog is shown once, right after opening the folder;
+  there is no persistent "showing N of M" indicator in the FOLDER section
+  itself afterward.

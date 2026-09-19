@@ -169,6 +169,31 @@ public sealed record RenameRequest
 }
 
 /// <summary>
+/// <c>list</c> request: every project file under <see cref="Path"/>
+/// (project-relative directory; <c>null</c> lists the whole root),
+/// recursively. <see cref="Path"/> is sent as an explicit JSON <c>null</c>
+/// when listing the root, the same convention <see cref="StatusRequest.ExpectedSha256"/>
+/// uses for "nothing to compare against".
+/// </summary>
+public sealed record ListRequest
+{
+    public ListRequest(string id, string? path)
+    {
+        Id = id;
+        Path = path;
+    }
+
+    [JsonPropertyName("id")]
+    public string Id { get; }
+
+    [JsonPropertyName("operation")]
+    public string Operation => "list";
+
+    [JsonPropertyName("path")]
+    public string? Path { get; }
+}
+
+/// <summary>
 /// What the caller believes is on disk before a <c>save</c>. Never itself
 /// serialized — a client passes one to <c>DocumentFilesClient.SaveAsync</c>,
 /// which reads <see cref="Wire"/> into <see cref="SaveRequest.Expected"/>.
@@ -327,6 +352,20 @@ public abstract record RenameOutcome
 
     public sealed record Conflict(SaveConflict Details) : RenameOutcome;
 }
+
+/// <summary>
+/// <c>list</c> reply payload. <see cref="Path"/> echoes back the requested
+/// directory (empty string for the whole root). <see cref="Files"/> is every
+/// project file under it, as root-relative path strings, sorted; a symlink,
+/// hidden entry (<c>.flashtex</c> included) or non-project extension is
+/// silently excluded, never reported as an error. <see cref="Truncated"/> is
+/// <c>true</c> when the helper's file-count cap was reached before the whole
+/// tree was walked.
+/// </summary>
+public sealed record ListPayload(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("files")] IReadOnlyList<string> Files,
+    [property: JsonPropertyName("truncated")] bool Truncated);
 
 /// <summary>project-files-v1's <c>error {code, message}</c> reply payload.</summary>
 public sealed record ErrorPayload(

@@ -28,8 +28,8 @@ use std::time::Duration;
 use common::{TempDir, pp, symlink_dir, symlink_file};
 use flashtex_project_files::save::race_hook::{self, Window};
 use flashtex_project_files::{
-    ChangeKind, Expected, Poller, ProjectRoot, Refused, RootReplaced, SaveConflictKind, SaveError,
-    Snapshot, save_atomic, sha256,
+    ChangeKind, Expected, Poller, ProjectPath, ProjectRoot, Refused, RootReplaced,
+    SaveConflictKind, SaveError, Snapshot, save_atomic, sha256,
 };
 // Only the FIFO cases below drive discovery, and they are unix-only.
 #[cfg(unix)]
@@ -1367,4 +1367,141 @@ fn rename_takes_the_project_lock() {
     drop(held);
     root.rename(&pp("a.tex"), &pp("b.tex")).unwrap();
     assert_eq!(t.read("b.tex"), "a\n");
+}
+
+const TEX_LIKE: &[&str] = &["tex", "bib", "sty", "cls"];
+
+fn list_paths(root: &ProjectRoot) -> Vec<String> {
+    root.list_files(None, TEX_LIKE, 10_000)
+        .unwrap()
+        .files
+        .iter()
+        .map(|p| p.as_str().to_string())
+        .collect()
+}
+
+/// An empty project directory lists as no files, not an error.
+#[test]
+fn list_files_of_an_empty_directory_is_empty() {
+    let t = TempDir::new("list-empty");
+    let root = ProjectRoot::open(t.root()).unwrap();
+    let listing = root.list_files(None, TEX_LIKE, 10_000).unwrap();
+    assert!(listing.files.is_empty());
+    assert!(!listing.truncated);
+}
+
+/// Files nested several directories deep are found, returned relative to the
+/// project root, and sorted in `ProjectPath` order regardless of the
+/// directory-entry order they were created in.
+#[test]
+fn list_files_finds_nested_subdirectories() {
+    let t = TempDir::new("list-nested");
+    t.write("main.tex", "main\n");
+    t.write("chapters/ch2.tex", "two\n");
+    t.write("chapters/ch1.tex", "one\n");
+    t.write("chapters/figs/deep/note.tex", "deep\n");
+    t.write("refs.bib", "@misc{x}\n");
+    let root = ProjectRoot::open(t.root()).unwrap();
+
+    assert_eq!(
+        list_paths(&root),
+        vec![
+            "chapters/ch1.tex",
+            "chapters/ch2.tex",
+            "chapters/figs/deep/note.tex",
+            "main.tex",
+            "refs.bib",
+        ]
+    );
+}
+
+/// Only extensions the caller asked for are reported; everything else in the
+/// tree (a `.png`, a `.aux` build artifact, an extensionless file) is
+/// silently excluded, not an error.
+#[test]
+fn list_files_filters_by_extension_case_insensitively() {
+    let t = TempDir::new("list-ext");
+    t.write("main.TEX", "main\n");
+    t.write("notes.md", "not latex\n");
+    t.write("build/main.aux", "aux\n");
+    t.write("figure.png", "not a real png\n");
+    t.write("Makefile", "all:\n");
+    let root = ProjectRoot::open(t.root()).unwrap();
+    assert_eq!(list_paths(&root), vec!["main.TEX"]);
+}
+
+/// `.flashtex/` (the lock file and recovery journal) and any other hidden
+/// directory are excluded by the same rule, with no special case for that
+/// name: a directory entry starting with `.` is never descended into.
+#[test]
+fn list_files_excludes_hidden_directories_including_dot_flashtex() {
+    let t = TempDir::new("list-hidden");
+    t.write("main.tex", "main\n");
+    t.write(".flashtex/recovery/deadbeef.json", "{}");
+    t.write(".hidden/also-hidden.tex", "nope\n");
+    let root = ProjectRoot::open(t.root()).unwrap();
+    // Exercise the lock file too, so a real lock/journal write is present
+    // exactly as it would be in a real project, not just a hand-placed file.
+    let _lock = root.lock().unwrap();
+    assert_eq!(list_paths(&root), vec!["main.tex"]);
+}
+
+/// A symlinked file and a symlinked directory anywhere in the tree are
+/// excluded from the listing — never followed, and not reported as a
+/// refusal, because a listing enumerates entries nobody named. The symlink's
+/// target outside the root is left completely alone.
+#[test]
+fn list_files_excludes_symlinked_entries() {
+    let outside = TempDir::new("list-symlink-outside");
+    outside.write("secret.tex", "outside\n");
+    let t = TempDir::new("list-symlink");
+    t.write("main.tex", "main\n");
+    t.write("real/kept.tex", "kept\n");
+    symlink_file(&outside.root().join("secret.tex"), &t.root().join("alias.tex"));
+    symlink_dir(outside.root(), &t.root().join("linked"));
+    let root = ProjectRoot::open(t.root()).unwrap();
+
+    assert_eq!(list_paths(&root), vec!["main.tex", "real/kept.tex"]);
+    assert_eq!(
+        fs::read_to_string(outside.root().join("secret.tex")).unwrap(),
+        "outside\n",
+        "the symlink target is never opened"
+    );
+}
+
+/// A listing larger than `limit` stops at exactly `limit` files and reports
+/// `truncated`, rather than either failing outright or silently returning an
+/// unbounded response.
+#[test]
+fn list_files_respects_the_limit_and_reports_truncation() {
+    let t = TempDir::new("list-large");
+    for i in 0..250 {
+        t.write(&format!("f{i:04}.tex", i = i), "x\n");
+    }
+    let root = ProjectRoot::open(t.root()).unwrap();
+
+    let full = root.list_files(None, TEX_LIKE, 10_000).unwrap();
+    assert_eq!(full.files.len(), 250);
+    assert!(!full.truncated);
+
+    let capped = root.list_files(None, TEX_LIKE, 100).unwrap();
+    assert_eq!(capped.files.len(), 100);
+    assert!(capped.truncated);
+}
+
+/// A listing can be scoped to a subdirectory instead of the whole root, using
+/// the same rooted, symlink-refusing walk (a symlinked subdirectory argument
+/// is refused, not silently listed).
+#[test]
+fn list_files_can_be_scoped_to_a_subdirectory() {
+    let t = TempDir::new("list-subdir");
+    t.write("main.tex", "main\n");
+    t.write("chapters/ch1.tex", "one\n");
+    t.write("chapters/sub/deep.tex", "deep\n");
+    let root = ProjectRoot::open(t.root()).unwrap();
+
+    let sub = ProjectPath::normalize("chapters").unwrap();
+    let listing = root.list_files(Some(&sub), TEX_LIKE, 10_000).unwrap();
+    let files: Vec<String> = listing.files.iter().map(|p| p.as_str().to_string()).collect();
+    assert_eq!(files, vec!["chapters/ch1.tex", "chapters/sub/deep.tex"]);
 }

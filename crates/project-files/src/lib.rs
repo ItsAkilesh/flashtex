@@ -39,9 +39,9 @@ pub use recovery::{
 };
 pub use revision::{FileRevision, RevisionTracker};
 pub use save::{
-    DEFAULT_READ_LIMIT, Expected, FileIdentity, LOCK_FILE, ProjectLock, ProjectRoot, Refused,
-    RootedRead, SaveConflict, SaveConflictKind, SaveError, SaveReceipt, save_atomic,
-    save_atomic_bytes,
+    DEFAULT_LIST_LIMIT, DEFAULT_READ_LIMIT, Expected, FileIdentity, FileListing, LOCK_FILE,
+    ProjectLock, ProjectRoot, Refused, RootedRead, SaveConflict, SaveConflictKind, SaveError,
+    SaveReceipt, save_atomic, save_atomic_bytes,
 };
 pub use scan::{ByteSpan, Reference, ReferenceKind, scan_references};
 pub use sha256::{

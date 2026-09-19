@@ -29,6 +29,20 @@
 //!   missing `from` is `deleted_externally` and an occupied `to` is
 //!   `already_exists` — conflicts, not errors, with no hashes or sizes because
 //!   neither name is opened or read (`ProjectLock::rename`).
+//! - `{"id","operation":"list","path"?}` → payload `{"path","files":[…],
+//!   "truncated":bool}`. `path` (project-relative directory; omitted or null
+//!   for the whole root) is echoed back. `files` is every project file
+//!   (`PROJECT_FILE_EXTENSIONS` below) under it, found by a rooted,
+//!   symlink-refusing recursive walk (`ProjectRoot::list_files`) that never
+//!   leaves `--root`, as root-relative `ProjectPath` strings sorted in
+//!   `ProjectPath` order. A symlink anywhere in the tree, a hidden entry
+//!   (name starting with `.` — this is what excludes `.flashtex/` itself, not
+//!   a special case for that name), and anything neither a regular file nor a
+//!   directory are silently excluded rather than refused: a listing
+//!   enumerates entries nobody named, so one such entry does not fail the
+//!   whole request the way it would for `read`/`save`/`remove`/`rename`'s
+//!   single caller-named path. Capped at `LIST_LIMIT` files; `truncated`
+//!   says whether the cap was hit before the whole tree was walked.
 //!
 //! Errors are `{"id","error":{"code","message"}}` with codes `invalid_request`,
 //! `invalid_path`, `refused` (symlink component, escape, not a regular file,
@@ -51,6 +65,16 @@ use flashtex_project_files::{
 /// Same bound as the Mac `LineProcessClient` / transfer-v1 (12 MiB).
 const MAX_LINE_BYTES: usize = 12 * 1024 * 1024;
 const PROTOCOL: &str = "project-files-v1";
+
+/// Extensions `list` reports — the LaTeX source types a project file browser
+/// can meaningfully open and edit, not media pulled in via
+/// `\includegraphics` (those are hashed for identity by `ProjectGraph`, never
+/// opened as a document).
+const PROJECT_FILE_EXTENSIONS: &[&str] = &["tex", "bib", "sty", "cls", "bst", "clo"];
+
+/// Cap on the number of files one `list` reply reports. Matches
+/// [`flashtex_project_files::DEFAULT_LIST_LIMIT`].
+const LIST_LIMIT: usize = flashtex_project_files::DEFAULT_LIST_LIMIT;
 
 struct Failure {
     code: &'static str,
@@ -288,6 +312,31 @@ fn rename(root: &ProjectRoot, req: &Json) -> Result<Json, Failure> {
     Ok(payload)
 }
 
+/// `list`: every project file under `path` (the whole root when omitted),
+/// found by `ProjectRoot::list_files`. See the module doc comment for exactly
+/// what is excluded and why.
+fn list(root: &ProjectRoot, req: &Json) -> Result<Json, Failure> {
+    let subdir = match req.get("path") {
+        None | Some(Json::Null) => None,
+        Some(_) => Some(project_path_field(req, "path")?),
+    };
+    let listing = root.list_files(subdir.as_ref(), PROJECT_FILE_EXTENSIONS, LIST_LIMIT)?;
+    let files: Vec<Json> = listing
+        .files
+        .iter()
+        .map(|p| Json::from(p.as_str()))
+        .collect();
+    let mut payload = Json::object();
+    payload
+        .insert(
+            "path",
+            subdir.as_ref().map(|p| p.as_str().to_string()).unwrap_or_default(),
+        )
+        .insert("files", files)
+        .insert("truncated", listing.truncated);
+    Ok(payload)
+}
+
 fn handle(root: &ProjectRoot, req: &Json) -> Result<Json, Failure> {
     match string_field(req, "operation")? {
         "ping" => {
@@ -302,6 +351,7 @@ fn handle(root: &ProjectRoot, req: &Json) -> Result<Json, Failure> {
         "save" => save(root, req),
         "remove" => remove(root, req),
         "rename" => rename(root, req),
+        "list" => list(root, req),
         other => Err(fail(
             "unsupported_operation",
             format!("unknown operation {other:?}"),

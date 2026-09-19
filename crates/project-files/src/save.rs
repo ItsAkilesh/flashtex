@@ -38,6 +38,33 @@ pub const LOCK_FILE: &str = ".flashtex/project.lock";
 /// Largest file `read` will load unless the caller passes a smaller limit.
 pub const DEFAULT_READ_LIMIT: u64 = 64 * 1024 * 1024;
 
+/// Suggested cap on the number of files [`ProjectRoot::list_files`] returns
+/// before truncating. Callers may pass a different `limit`; this is only the
+/// value the JSON Lines helper itself uses, matching this crate's existing
+/// convention of a hard cap on unbounded input/output (`DEFAULT_READ_LIMIT`
+/// above; `MAX_LINE_BYTES` in the helper binary).
+pub const DEFAULT_LIST_LIMIT: usize = 10_000;
+
+/// Recursion depth [`ProjectRoot::list_files`] stops descending past. No
+/// legitimate LaTeX project nests this deep; this exists purely so a
+/// pathological directory tree cannot make a listing recurse unboundedly.
+/// Symlinks — the other classic unbounded-recursion source — cannot cause
+/// this: every symlink is excluded before it is ever opened, so there is no
+/// cycle to loop on.
+const MAX_LIST_DEPTH: u32 = 64;
+
+/// One recursive listing of project files under a [`ProjectRoot`] (or one of
+/// its subdirectories). See [`ProjectRoot::list_files`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FileListing {
+    /// Paths relative to the project root, sorted in [`ProjectPath`] order
+    /// (Unicode-NFC), regardless of on-disk directory-entry order.
+    pub files: Vec<ProjectPath>,
+    /// `true` when the requested limit was reached before every matching
+    /// file was found.
+    pub truncated: bool,
+}
+
 /// Proof of a completed save.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveReceipt {
@@ -693,6 +720,165 @@ impl ProjectRoot {
             })?
             .to_string();
         Ok(Some((text, read)))
+    }
+
+    /// Opens the directory `subdir` (project-relative; `None` for the root
+    /// itself) through the same walk every other rooted operation uses:
+    /// `open_dir_at_nofollow` at each component, refusing a symlink anywhere,
+    /// with [`sys::verify_parent`] checked at every step so a directory
+    /// swapped out from under the walk cannot redirect it outside the pinned
+    /// root.
+    fn open_subdir(&self, subdir: Option<&ProjectPath>) -> Result<File, SaveError> {
+        let mut cur = self.dir.try_clone()?;
+        let Some(subdir) = subdir else {
+            return Ok(cur);
+        };
+        for component in subdir.as_str().split('/') {
+            let child =
+                sys::open_dir_at_nofollow(&cur, component).map_err(|e| classify_open(e, component))?;
+            if !sys::verify_parent(&cur, &child)? {
+                return Err(refused(Refused::EscapesRoot {
+                    component: component.to_string(),
+                }));
+            }
+            cur = child;
+        }
+        Ok(cur)
+    }
+
+    /// Recursively lists every regular file whose extension case-insensitively
+    /// matches one of `extensions`, starting at `subdir` (the project root
+    /// when `None`), stopping once `limit` files have been found. See
+    /// [`Self::list_files`].
+    fn list_files_into(
+        dir: &File,
+        prefix: &str,
+        extensions: &[&str],
+        limit: usize,
+        depth: u32,
+        out: &mut FileListing,
+    ) -> Result<(), SaveError> {
+        if out.files.len() >= limit {
+            out.truncated = true;
+            return Ok(());
+        }
+        if depth >= MAX_LIST_DEPTH {
+            // No legitimate LaTeX project nests this deep; omit the subtree
+            // rather than fail the whole listing over it.
+            return Ok(());
+        }
+        for raw in sys::list_dir(dir)? {
+            if out.files.len() >= limit {
+                out.truncated = true;
+                return Ok(());
+            }
+            // A name that is not valid UTF-8 cannot become a `ProjectPath`
+            // (every `ProjectPath` string is UTF-8); exclude it rather than
+            // fail the listing over an entry nobody named.
+            let Ok(name) = String::from_utf8(raw) else {
+                continue;
+            };
+            // Hidden entries are excluded and, if a directory, never
+            // descended into — this is what keeps `.flashtex/` (the lock
+            // file and recovery journal) out of every listing without a
+            // special case for that name specifically.
+            if name.starts_with('.') {
+                continue;
+            }
+            // Classify before opening or recursing, exactly like `save`/
+            // `remove`/`rename` do. A listing enumerates entries nobody
+            // named, so — unlike those operations, which act on one
+            // caller-named path and must explain a refusal — an entry this
+            // crate's safety model would refuse is silently excluded, not
+            // reported as an error: one unreadable or racily-vanished entry
+            // does not abort the rest of the listing, the same way an
+            // ordinary file browser skips an entry it can't read rather than
+            // failing outright.
+            let st = match sys::stat_at_nofollow(dir, name.as_bytes()) {
+                Ok(st) => st,
+                Err(_) => continue,
+            };
+            if st.is_symlink() {
+                continue;
+            }
+            let rel = if prefix.is_empty() {
+                name.clone()
+            } else {
+                format!("{prefix}/{name}")
+            };
+            if st.is_dir() {
+                let child = match sys::open_dir_at_nofollow(dir, &name) {
+                    Ok(f) => f,
+                    Err(_) => continue,
+                };
+                if !sys::verify_parent(dir, &child).unwrap_or(false) {
+                    continue;
+                }
+                Self::list_files_into(&child, &rel, extensions, limit, depth + 1, out)?;
+                continue;
+            }
+            if !st.is_file() {
+                continue; // FIFO, socket, device: not something a listing opens.
+            }
+            let Ok(path) = ProjectPath::normalize(&rel) else {
+                continue;
+            };
+            let matches = path.extension().is_some_and(|ext| {
+                extensions.iter().any(|allowed| allowed.eq_ignore_ascii_case(ext))
+            });
+            if matches {
+                out.files.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Recursively lists every project file under `subdir` (the project root
+    /// when `None`) whose extension case-insensitively matches one of
+    /// `extensions`, capped at `limit` entries.
+    ///
+    /// This walks with the same primitives as every other rooted operation in
+    /// this module: [`Self::open_subdir`]/`open_dir_at_nofollow` to descend
+    /// (a symlinked directory component is never followed, and
+    /// [`sys::verify_parent`] is checked at every step) and
+    /// `fstatat(AT_SYMLINK_NOFOLLOW)` to classify each entry before it is
+    /// opened or recursed into. See [`Self::list_files_into`] for exactly
+    /// what is excluded and why: symlinks (file or directory), hidden entries
+    /// (name starting with `.` — this is what keeps `.flashtex/` out without
+    /// a special case), non-regular files, and anything that races away or
+    /// fails to classify. None of those are reported as errors: a listing
+    /// enumerates entries nobody named, so one bad entry does not abort the
+    /// rest of it, unlike `read`/`save`/`remove`/`rename`'s single named
+    /// path.
+    ///
+    /// Recursion stops at a fixed depth no legitimate LaTeX project reaches
+    /// (mirroring `DiagnosticKind::DepthExceeded` in `graph.rs` being a
+    /// diagnostic, not a hard failure); a subtree that deep is omitted, not
+    /// reported.
+    ///
+    /// `files` is returned sorted by [`ProjectPath`] order (Unicode-NFC),
+    /// regardless of on-disk directory-entry order, so two listings of the
+    /// same unchanged tree compare equal. `truncated` is `true` when `limit`
+    /// was reached before every matching file was found; the walk stops
+    /// descending as soon as the cap is hit rather than paying the full
+    /// traversal cost merely to report it.
+    ///
+    /// This is a plain read — it takes no project lock, because nothing is
+    /// written — so it can race a concurrent save/rename/remove exactly as
+    /// [`Self::read`] can: a file can appear, disappear, or change between
+    /// being listed here and being acted on by a later call.
+    pub fn list_files(
+        &self,
+        subdir: Option<&ProjectPath>,
+        extensions: &[&str],
+        limit: usize,
+    ) -> Result<FileListing, SaveError> {
+        let dir = self.open_subdir(subdir)?;
+        let prefix = subdir.map(ProjectPath::as_str).unwrap_or("");
+        let mut out = FileListing::default();
+        Self::list_files_into(&dir, prefix, extensions, limit, 0, &mut out)?;
+        out.files.sort();
+        Ok(out)
     }
 
     /// Takes the per-project lock (`<root>/.flashtex/project.lock`) without

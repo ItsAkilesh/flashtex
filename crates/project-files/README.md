@@ -104,6 +104,7 @@ impl ProjectRoot {
     pub fn save(&self, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>; // lock + save
     pub fn remove(&self, path: &ProjectPath) -> Result<bool, SaveError>;                                                    // lock + remove
     pub fn rename(&self, from: &ProjectPath, to: &ProjectPath) -> Result<(), SaveError>;                                    // lock + rename
+    pub fn list_files(&self, subdir: Option<&ProjectPath>, extensions: &[&str], limit: usize) -> Result<FileListing, SaveError>; // no lock, nothing written
 }
 pub struct ProjectLock<'a>;                 // released on drop
 impl ProjectLock<'_> {
@@ -119,6 +120,8 @@ pub enum Expected { NewFile, Hash(Digest), Any }
 pub struct SaveReceipt { path, bytes: u64, sha256: Digest, mtime: SystemTime, identity: FileIdentity }
 pub struct RootedRead  { path, bytes: Vec<u8>, sha256, mtime, identity: FileIdentity, mode: u32 }
 pub struct FileIdentity { dev: u64, ino: u64 }
+pub struct FileListing { files: Vec<ProjectPath>, truncated: bool }
+pub const DEFAULT_LIST_LIMIT: usize = 10_000;
 pub enum SaveError { Conflict(Box<SaveConflict>), Refused(Refused), Io(io::Error), DirectorySync(io::Error) }
 pub enum Refused { SymlinkComponent{component}, NotADirectory{component}, NotARegularFile{component},
                    EscapesRoot{component}, TooLarge{limit,size}, LockUnavailable{lock_path}, Unsupported }
@@ -254,6 +257,42 @@ rather than falling back to a clobbering plain rename. No Windows filesystem
 reaches that branch. Content, mtime, permissions and identity are untouched, so
 a caller's content hash for `from` stays valid for `to`.
 
+**Directory listing** (`ProjectRoot::list_files`). A recursive, rooted,
+symlink-refusing walk that reports every regular file under the root (or a
+given subdirectory) whose extension case-insensitively matches a caller-given
+list, up to a caller-given `limit`. Unlike `read`/`save`/`remove`/`rename`,
+which each act on one path the caller named and must explain a refusal for,
+a listing enumerates entries nobody named — so an entry this crate's safety
+model would refuse is **silently excluded, not reported as an error**:
+
+- A symlink, anywhere in the tree — file or directory — is excluded and
+  never followed, the same refusal every other operation has, just without a
+  per-entry error to report it through.
+- A hidden entry (name starting with `.`) is excluded, and if it is a
+  directory, never descended into. This is what keeps `.flashtex/` (the lock
+  file and recovery journal) out of every listing, with no special case for
+  that name specifically.
+- Anything neither a regular file nor a directory (FIFO, socket, device) is
+  excluded. A directory-entry name that is not valid UTF-8 is excluded (no
+  `ProjectPath` can represent it). An entry that races away between being
+  listed and being classified, or a directory this process cannot read, is
+  excluded rather than failing the whole request — one bad entry does not
+  abort the rest of the walk.
+- Recursion stops at a fixed depth (64) no legitimate LaTeX project reaches;
+  a subtree that deep is omitted, not an error — mirroring
+  `DiagnosticKind::DepthExceeded` in the graph being a diagnostic, not a hard
+  `DiscoverError`.
+- The walk stops as soon as `limit` files have been found and reports
+  `truncated: true`, rather than paying the full traversal cost merely to
+  report a hard cap.
+- `files` is returned sorted in `ProjectPath` order (Unicode-NFC), regardless
+  of on-disk directory-entry order, so two listings of the same unchanged
+  tree compare equal.
+- This is a plain read: it takes **no project lock**, because nothing is
+  written, so it can race a concurrent save/rename/remove exactly as `read`
+  can — a file can appear, disappear, or change between being listed here and
+  being acted on by a later call.
+
 **Lock.** `ProjectRoot::lock` takes a non-blocking advisory `flock(LOCK_EX)`
 on `<root>/.flashtex/project.lock` (created if missing) and returns
 `Refused::LockUnavailable{lock_path}` if any other open file description —
@@ -381,6 +420,9 @@ with its `check()` result.
   single no-replace rename inside one directory, so the two names are never
   both present and never both absent, and an occupied new name is refused
   rather than clobbered.
+- A directory listing never follows a symlink and never descends into a
+  hidden directory; every path it returns was reached through the same
+  `O_NOFOLLOW`, parent-verified walk every other rooted operation uses.
 - Saves, removals and renames by in-contract writers are serialized by the
   project lock.
 - Snapshot/diff never misses a content change whose mtime or size changed;
@@ -482,12 +524,26 @@ request order, one JSON object per line, 12 MiB line bound). Protocol
 | `{"id","operation":"save","path","text","expected":"new"\|"any"\|hex,"force"?}` | `{"outcome":"saved","receipt":{"path","bytes","sha256","mtime_unix_ms"}}` or `{"outcome":"conflict","conflict":{"path","kind","ours"?,"theirs"?,"mtime_unix_ms"?,"size"?}}` |
 | `{"id","operation":"remove","path"}` | `{"path","removed":bool}` — `removed:false` when nothing was there; an absent file is not an error |
 | `{"id","operation":"rename","from","to"}` | `{"outcome":"renamed","from","to"}` or `{"outcome":"conflict","conflict":{…}}` with kind `deleted_externally` (no `from`) or `already_exists` (occupied `to`), all detail fields null |
+| `{"id","operation":"list","path"?}` | `{"path","files":[…],"truncated":bool}` — `path` is a project-relative directory (omitted/null lists the whole root); `files` is every project file under it as root-relative path strings, sorted |
 
 `rename` is `ProjectLock::rename`: one no-replace rename inside one directory,
 so `from` and `to` must share a parent directory (a cross-directory pair is
 `invalid_request`), the new name is never clobbered, and the two names are
 never both present or both absent. Its conflicts carry no hashes, sizes or
 mtimes because neither name is opened or read.
+
+`list` is `ProjectRoot::list_files` with a fixed extension set
+(`tex`/`bib`/`sty`/`cls`/`bst`/`clo`, the source types a project browser
+opens for editing — not media pulled in via `\includegraphics`, which the
+graph hashes for identity but never opens) and a fixed cap
+(`DEFAULT_LIST_LIMIT`, 10,000 files). A symlink anywhere in the tree, a
+hidden entry (`.flashtex` included, with no special case for that name), and
+anything neither a regular file nor a directory are silently excluded, never
+reported as an error — a listing enumerates entries nobody named, so one bad
+entry does not fail the whole request. It is the only read-type operation
+here that recurses; see the library's own "Directory listing" section above
+for the exact exclusion rules and the depth/size bounds. It takes no project
+lock, so (like `read`) it can observe a file mid-write by a concurrent saver.
 
 Errors are `{"id","error":{"code","message"}}`: `invalid_request`,
 `invalid_path`, `refused` (symlink component, escapes root, not a regular

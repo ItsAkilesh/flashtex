@@ -89,6 +89,20 @@ public static class CommandIds
     /// ToggleEditHistory precedent (MainWindow.Settings.cs).
     /// </summary>
     public const string Settings = "settings";
+
+    /// <summary>
+    /// Opens a whole folder as a project root via <c>FolderPicker</c>, lists
+    /// its project files recursively (flashtex-project-files' <c>list</c>
+    /// operation) and populates a real, persistent folder-backed project
+    /// tree — not just the open-document list <see cref="OpenLatexFile"/>
+    /// produces. A project opened this way is otherwise indistinguishable
+    /// from one opened via <see cref="OpenLatexFile"/>: Save/Rename/Delete
+    /// and the existing open-documents section keep working exactly as
+    /// before. Handled like the other project-file commands
+    /// (MainWindow.ProjectFiles.cs's IsProjectFileCommand/
+    /// RunProjectFileCommandAsync), not special-cased in MainWindow.Menu.cs.
+    /// </summary>
+    public const string OpenFolder = "openFolder";
 }
 
 public static class CommandRegistry
@@ -189,6 +203,8 @@ public static class CommandRegistry
             "Delete File…", "Deletes the active document's file from the project after confirmation, and closes its tab.", NeedsActiveDocument),
         Make(CommandIds.Settings, "Settings", ShortcutModifiers.None, string.Empty, "File",
             "Settings…", "Opens Settings: editor font size/family, color theme, and the auto-compile debounce interval.", Always),
+        Make(CommandIds.OpenFolder, "Open Folder", ShortcutModifiers.None, string.Empty, "File",
+            "Open Folder…", "Opens a folder as the project root and lists every .tex/.bib/project file under it, recursively.", Always),
     };
 
     /// <summary>
