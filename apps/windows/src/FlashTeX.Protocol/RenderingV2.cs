@@ -1039,18 +1039,44 @@ public static class RenderingV2Protocol
         }
         if (referenced.Count != run.Clusters.Count)
         {
-            throw OrphanedClusterFailure(at, run, referenced);
+            var orphaned = Enumerable.Range(0, run.Clusters.Count)
+                .Where(i => !referenced.Contains(i) && !IsInklessCluster(run, i))
+                .ToList();
+            if (orphaned.Count > 0)
+            {
+                throw OrphanedClusterFailure(at, run, orphaned);
+            }
         }
     }
 
     /// <summary>
+    /// Whether cluster <paramref name="index"/> may legitimately carry no glyph: its logical
+    /// text is whitespace only, so it has no ink of its own and a run painted without it
+    /// drops nothing visible.
+    /// </summary>
+    /// <remarks>
+    /// TeX sets an interword space as glue, never as a glyph, so a space that falls INSIDE a
+    /// run (rather than between two runs) is a positioned cluster — real hit rectangle, real
+    /// caret, correct advance either side of it — with no glyph at all. The producer emits
+    /// exactly that for <c>\</c> at end of line, whose <c>\^^M</c> control symbol reaches the
+    /// run's logical text as U+000D. Refusing those frames made every ordinary LaTeX document
+    /// containing that construct fall back to the runtime-v1 renderer.
+    /// A cluster whose text has any visible character and still has no glyph remains a
+    /// refusal: that is the missing-glyph case (an unmapped scalar glued to a word, e.g.
+    /// <c>😀shuffle</c>) this check exists for, where painting the run would silently
+    /// swallow a real character.
+    /// </remarks>
+    private static bool IsInklessCluster(GlyphRun run, int index) =>
+        run.ClusterText(index) is { Length: > 0 } text && text.All(char.IsWhiteSpace);
+
+    /// <summary>
     /// Names the offending cluster(s): index, logical text and source span(s), so the
     /// refusal points at the source that produced them (a missing-glyph scalar glued
-    /// to a word yields a cluster with no glyph).
+    /// to a word yields a cluster with no glyph). <paramref name="orphaned"/> has already
+    /// had the legitimately ink-free clusters removed (see <see cref="IsInklessCluster"/>).
     /// </summary>
-    private static RenderingV2ValidationException OrphanedClusterFailure(string at, GlyphRun run, HashSet<int> referenced)
+    private static RenderingV2ValidationException OrphanedClusterFailure(string at, GlyphRun run, IReadOnlyList<int> orphaned)
     {
-        var orphaned = Enumerable.Range(0, run.Clusters.Count).Where(i => !referenced.Contains(i)).ToList();
         string named = string.Join("; ", orphaned.Select(ci =>
         {
             var c = run.Clusters[ci];
@@ -1060,7 +1086,7 @@ public static class RenderingV2Protocol
             return $"cluster {ci} “{run.ClusterText(ci)}” ({where})";
         }));
         var firstSource = orphaned.Count > 0 ? run.Clusters[orphaned[0]].Sources?.FirstOrDefault() : null;
-        return Fail("invalid_display_list", $"{at}: {orphaned.Count} cluster(s) have no glyph (every cluster needs at least one glyph): {named}", firstSource);
+        return Fail("invalid_display_list", $"{at}: {orphaned.Count} cluster(s) have no glyph (every cluster with visible text needs at least one glyph): {named}", firstSource);
     }
 
     private static void ValidateClusters(string at, GlyphRun run, IReadOnlyDictionary<string, DocumentResource> documents)

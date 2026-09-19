@@ -98,14 +98,16 @@ runtime-v1 preview is working; its display-list-v2 embedded-font interpreter is
 not implemented yet.
 
 Not started yet (placeholders only):
-- Rendering-v2 preview: **a real `PreviewV2Host`/Win2D renderer exists and the
-  `display-list-v2` capability negotiation genuinely works** (confirmed live:
-  the status bar shows `display-list-v2: 1 page(s), 1 font(s)` against the
-  seeded doc) — this bullet is stale from before that work landed and is kept
-  only as a pointer to what's still open: visual correctness has only been
-  checked against the trivial single-line seeded document, not a real
-  fixture with math/multiple pages/embedded images. See the "Post-merge
-  verification round" section below for exactly what is and isn't confirmed.
+- Rendering-v2 preview: **a real `PreviewV2Host`/Win2D renderer exists, the
+  `display-list-v2` negotiation works, and as of 2026-09-19 it is verified
+  against real multi-page math documents** — glyph positioning, font
+  resolution, math glyph coverage and pagination all confirmed against
+  pdflatex ground truth, with two blocking bugs found and fixed. What is
+  still genuinely unexercised: embedded images, vector paths/clips (TikZ),
+  metrics-only `core14-afm` resources, non-black paint and v2 click-to-source.
+  See "Win2D display-list-v2 preview: real visual-accuracy verification" near
+  the end of this doc for the exact numbers and the per-item honest list;
+  that section supersedes the "Post-merge verification round" item (5).
 - Include discovery from the active document (the "↳ name" rows) is done; a
   recursive whole-folder listing is now **also done** — **Open Folder**
   (2026-09-19, see its own section below). Open/Save/Save As/New File are real
@@ -1067,7 +1069,9 @@ matches); (4) Citation Rename's actual flow; (5) Win2D v2 preview visual
 correctness against a real fixture with math/multiple elements, not just the
 trivial seed doc.
 
-**(1) is done — see the next section.** (2)–(5) are still open.
+**(1) is done — see the next section.** (5) is done too — see "Win2D
+display-list-v2 preview: real visual-accuracy verification (2026-09-19)" near
+the end of this doc. (2)–(4) are still open.
 
 ## Rename and Delete for project files (2026-09-18) — priority (1) above
 
@@ -1338,6 +1342,345 @@ sweep to take several minutes, don't assume a hang.
 **This closes out the "full rebuild+test of the other Windows-touched Rust
 crates" item** that had been sitting on this doc's open-items list since the
 merge. Nothing else is currently known to be silently broken by the merge.
+
+## Win2D display-list-v2 preview: real visual-accuracy verification (2026-09-19) — closes priority (5)
+
+This is the "Win2D v2 preview visual correctness against a real fixture with math/multiple
+elements, not just the trivial seed doc" item the post-merge round left open. Before this
+pass the only thing ever confirmed about the v2 renderer was that the **trivial seeded
+single-line document** produced `display-list-v2: 1 page(s), 1 font(s)` and painted
+something. Against a real document it did not work at all — two separate bugs, one on each
+side of the wire, made every non-trivial frame get refused and silently fall back to the
+runtime-v1 renderer. Both are fixed; see "What was actually broken" below.
+
+![Win2D display-list-v2 preview beside the pdflatex reference](preview-v2-vs-pdflatex.png)
+
+### Fixtures and ground truth
+
+- **`fixtures/real-world/ps-calculus/`** — the main fixture. 3 pages, `amsmath`/`amssymb`/
+  `enumitem`, display equations, fractions, sums with limits, sub/superscripts, matrices,
+  `\sqrt`, several paragraphs of body text. It ships its **own real pdflatex output**
+  (`reference.pdf`, 3 pages, `pdfTeX 3.141592653-2.6-1.40.27`, TeX Live 2025, recorded in
+  `reference.json`) — so the ground truth is genuine pdflatex, not another agent's claim.
+- **`fixtures/real-world/math-sheet/`** — 2 pages, deliberately glyph-hostile: `align`,
+  `cases`, `pmatrix`/`bmatrix`, `\binom`, big operators, `\mathbb`, and an explicit inventory
+  of Greek letters (α β γ δ ε ϵ θ λ μ π σ φ ϕ ω, Γ Δ Θ Λ Π Σ Φ Ω) and operators
+  (∂ ∇ ∞ ± × ∘ · ≤ ≥ ≠ ≈ ≡ ⊆ ∪ ∩ ∅ → ↦ ⇔). Also has its own `reference.pdf`.
+- **`fixtures/real-world/lab-report/`** — used only to check what the producer does with
+  `\includegraphics` (see "still unverified").
+
+**Loading a fixture needs no code change**: `MainWindow.xaml.cs`'s `SeedText()` already reads
+`FLASHTEX_SEED_TEX` (a path to a `.tex` file) and falls back to the built-in stub when it is
+unset. Set that variable before `Start-Process` and the app compiles and renders the real
+document on launch. Do not edit the seed constant for this.
+
+### Method — a three-way comparison, not "it rendered"
+
+The screenshot alone cannot separate "the Win2D painter is wrong" from "the engine's layout
+is wrong", so three rasters of the *same page* were compared pairwise:
+
+1. **The Win2D preview** — the real app, launched with the fixture seeded, window maximized,
+   captured with `PrintWindow`/`PW_RENDERFULLCONTENT`, and the page canvas located in the
+   capture by finding the one wide block of paper white. The canvas comes out at exactly
+   816 px for a 612 pt page, i.e. 96/72 DIP with no scaling, so it can be compared pixel-for-
+   pixel against anything rendered at 1.3333 px/pt.
+2. **An independent rasterizer of the same display list** — a throwaway Python script
+   (fontTools + Pillow) that reads the `display_list` JSON the app received, resolves each
+   font resource by SHA-256 among `apps/mac/Fonts`, and stamps each glyph outline by its
+   **original glyph id** at the producer's **absolute baseline origin**. It shares no code
+   with the C# renderer, so agreement between (1) and (2) is real evidence that Win2D places
+   glyphs where the wire says, and disagreement between (1)/(2) and (3) localizes to the
+   engine rather than to the preview.
+3. **The pdflatex `reference.pdf`**, rasterized with `pypdfium2` at the same scale.
+
+### What was actually broken (both fixed here)
+
+**1. The C# validator refused every frame containing a glyph-less cluster.**
+`RenderingV2.cs`'s `ValidateGlyphs` ended with "every cluster needs at least one glyph" and
+failed the whole display list otherwise. That rule exists for a real case — an unmapped
+scalar glued to a word (`😀shuffle`) becomes a cluster with no glyph, and painting the run
+would swallow it invisibly — but it also rejected **spaces**. TeX sets an interword space as
+glue, never as a glyph, so a space that lands *inside* a run instead of between two runs is a
+positioned cluster with a real hit rectangle, a real caret, correct advances either side, and
+no glyph. The producer emits exactly that for `\` at end of line, whose `\^^M` control symbol
+reaches the run's logical text as U+000D. In `ps-calculus` that happened **once in 688 glyph
+runs** and refused all three pages:
+
+```
+runtime-v1 preview (invalid_display_list: page 3 item 151: 1 cluster(s) have no glyph
+(every cluster needs at least one glyph): cluster 4 " " (main.tex bytes 5154..<5157))
+```
+
+Checked before relaxing anything: that cluster's hit rect is `x 302.177 w 3.055` pt and the
+glyphs either side sit at `299.144 + 3.033 = 302.177` and `305.231`, i.e. the space **is**
+typeset at the correct width and nothing is missing. The producer agrees: its own diagnostic
+list carries exactly one `missing_glyph`, and it is this character —
+`U+000D '\r' has no glyph in lmroman10-regular+ecrm1095; nothing drawn for it`.
+Fixed by permitting a glyph-less cluster
+only when its logical text is entirely whitespace (`IsInklessCluster`); a cluster with any
+visible character and no glyph is still a whole-frame refusal. The Swift original
+(`apps/mac/Sources/FlashTeXProtocol/RenderingV2.swift:936`) has the unrelaxed rule and will
+have the same bug — **worth porting this fix to the Mac app**.
+Pinned by 5 new tests in `tests/FlashTeX.Protocol.Tests/RenderingV2ClusterValidationTests.cs`
+(space / U+000D / tab accepted; a visible `-` with no glyph still refused, naming the cluster;
+the same `-` with a glyph accepted).
+
+**2. The Rust producer emitted diagnostic messages past its own wire limit.**
+With (1) fixed the frame was still refused, now with
+`invalid_display_list: diagnostics must carry a code and a 1...4096-byte message`. Six of the
+19 diagnostics were 4253–4272 bytes: asset-not-found messages that name **every** searched
+directory, which on a deep worktree path runs past 4096 on its own.
+`crates/render-pipeline/src/display.rs` declares `MAX_DIAGNOSTIC_MESSAGE = 4096` (matching
+`protocol/rendering-v2.schema.json`, `rendering-core`'s
+`text(&diagnostic.message, 1, 4096, "diagnostic message")` and the Swift/C# decoders) and
+`Diagnostic::from_compiler`'s doc comment claimed "Both wire limits are respected" — but only
+the appended `[note: ...]`/`[help: ...]` clauses were bounded; the base message was cloned
+whole, and the pipeline's own `Diagnostic::warning`/`error` constructors bounded nothing at
+all. Fixed with `clamp_diagnostic_message` (UTF-8-boundary-safe, marks the cut with `…`)
+applied in all three. Truncating is the right answer rather than refusing: the geometry is
+complete and correct whatever length a diagnostic string reached, and every
+envelope-validating consumer refuses the **whole frame** over one over-long string.
+Pinned by 4 new tests in that file's `mod tests`.
+
+With both fixed, the status bar reads `display-list-v2: 3 page(s), 8 font(s)` and the Win2D
+renderer paints for the first time against a real document.
+
+### Verified correct (numbers, not impressions)
+
+Ink overlap below is "what fraction of the Win2D preview's ink pixels fall inside the
+independent rasterizer's ink". It cannot reach 100% because the oracle flattens each glyph's
+contours into filled polygons (so 'o'/'e'/'a' counters are solid, giving it ~60% more ink)
+and neither antialiasing matches; the residual is threshold noise at stroke edges, not
+displaced glyphs. "Band" = one horizontal run of ink, i.e. one text line.
+
+| Page | Win2D ink inside the display-list oracle's ink | text bands (preview vs oracle) | worst matched band delta |
+|---|---|---|---|
+| ps-calculus p1 | 95.2% (22357 / 23489) | 25 vs 24, 1 unmatched | 1.5 px (= 1.1 pt) |
+| ps-calculus p3 | 94.7% (26354 / 27838) | 33 vs 29, 0 unmatched | 9.5 px, all of it band split/merge around the `\sqrt` box below |
+| math-sheet p1 | 94.3% (13454 / 14264) | 20 vs 20, 1 unmatched | 1.0 px |
+
+The "unmatched"/large-delta entries are an artefact of the band detector, not of placement:
+the oracle's solid-filled counters make neighbouring lines merge into one band where the
+preview keeps them separate, which shifts that band's midpoint. The overlay images show no
+doubled or displaced text anywhere.
+
+- **Glyph positioning**: confirmed. The Win2D-vs-oracle overlay has no red anywhere (no Win2D
+  ink outside the oracle's) and no doubled/ghosted text; every difference is the oracle's own
+  filled counters. `V2Frame.PrepareGlyphRun`'s zero-advance + per-glyph
+  `AdvanceOffset`/`AscenderOffset` scheme genuinely places each glyph at the producer's
+  absolute origin instead of letting DirectWrite accumulate advances.
+- **Fonts**: 8 resources on ps-calculus (LMRoman10/12/17 in Regular/Bold/Italic,
+  LatinModernMath-Regular, NewCMMath-Regular), 5 on math-sheet, all `opentype-cff`, all
+  resolved by content hash out of `apps/mac/Fonts` with no substitution and no refusal.
+- **Math glyphs**: no tofu, no missing-glyph boxes anywhere in either fixture — including
+  math-sheet's explicit Greek and operator inventory, `\mathbb`, big operators with limits,
+  nested fractions, `\binom`, `cases`, and grown `(`/`[`/`{`/`|` delimiters around matrices.
+  This is the check that a wrong glyph-id-to-font mapping would have failed loudly.
+- **Multiple pages**: all three ps-calculus pages and both math-sheet pages paint, each on its
+  own `CanvasControl`, in order, with the correct printed page numbers and correct content per
+  page — pagination is right, page 2 and 3 are not stubs.
+- **Rules**: every `\frac`/`\dfrac`/`\tfrac` bar and the `\sqrt` vinculum land at the right
+  x/width and (except the `\sqrt` case below) at 0.4364 pt thickness, matching the overlay.
+- **Against pdflatex**: every line of ps-calculus p1 lands on the same baseline to within
+  ~2 px (1.5 pt) through the body, with ~4–5 px in the `\maketitle` block and ~8–10 px in
+  display-math vertical spacing (math-sheet p1 also has 20 preview bands against 26 in the
+  reference, i.e. display rows the two group differently). Line breaking matches for all but
+  one paragraph: pdflatex hyphenates `intro-\nduction` at the end of the abstract's first
+  line and FlashTeX pushes the whole word down, so that paragraph's three lines carry
+  different words (visible in `preview-v2-vs-pdflatex.png` above). Minus signs in math are
+  also visibly shorter than the reference's. Those are **engine** differences, not renderer
+  differences — the independent rasterizer of the same display list reproduces them exactly,
+  and every compile here carries `ec_metrics_unavailable` / `tfm_missing` /
+  `math_metrics_opentype` diagnostics that say so in as many words ("line breaks can differ
+  from pdfLaTeX", "is not the reference geometry"). The repo does bundle the metrics that
+  would fix this; the next section explains precisely why the Windows worker cannot reach
+  them.
+
+### Found, NOT fixed: `\sqrt`'s vinculum paints as a tall filled black box
+
+Real and visible — `\sqrt{\bigl(4-x^2\bigr)}` on ps-calculus p2 and `\sqrt{-p/3}` on p3 both
+render with a solid black rectangle where pdflatex draws the thin bar over the radicand. It is
+**not** a renderer bug: the display list itself asks for it, e.g. page 3 item 266 is
+`rule x 321.179 top 604.739 w 11.675 h 15.8182` (pt) where every other rule on the page is
+`h 0.4364`. `PreviewV2Host` paints exactly what it is handed.
+
+**The chain underneath it is a Windows-port blocker worth its own task**, and it explains the
+other pdflatex divergences on this machine too:
+
+1. `crates/render-pipeline/Cargo.toml` depends on `vendor/project-files`, the frozen pin
+   (see its `VENDORING.md`) that this port's Windows `sys.rs` backend was never applied to:
+   `vendor/project-files/src/sys.rs` has `SUPPORTED = true` only under `#[cfg(unix)]` and
+   `SUPPORTED = false` otherwise, where the real `crates/project-files/src/sys.rs` now has a
+   full Windows `imp` with `SUPPORTED = true`.
+2. `ProjectRoot::open` starts with `if !sys::SUPPORTED { return Err(Refused::Unsupported) }`,
+   so on Windows it refuses **every** directory.
+3. `FontSet::required_metrics` loads the digest-bound Latin Modern set (`rm-lmr12/8/6.tfm`,
+   `ec-lmr12.tfm` plus `GUST-FONT-LICENSE.TXT`) through that rooted loader, so it can never
+   succeed. Verified directly: every candidate root, including a correct one, comes back
+   `Refused(Unsupported)` —
+   `math roman metrics: D:/…/apps/mac/Fonts/texmf: Refused(Unsupported); /usr/local/texlive/2026/texmf-dist: Refused(Unsupported); …`
+4. `typeset.rs` therefore falls back to `MathProvider::Otf` and warns `math_metrics_opentype`,
+   which is where the radical rule thickness goes wrong.
+
+The metrics themselves **are already in the repo** — `apps/mac/Fonts/texmf/fonts/tfm/public/lm`
+(`rm-lmr10.tfm`, `ec-lmr10.tfm`, …), `apps/mac/Fonts/texmf/fonts/tfm/jknappen/ec` and
+`apps/mac/Fonts/texmf/doc/fonts/lm/GUST-FONT-LICENSE.TXT`, i.e. a complete, manifest-valid
+texmf root. The app just never points the worker at them: `CompilerLocator.FontArguments`
+passes only `--font-dir <apps/mac/Fonts>`, and `flashtex-render` has no `--tfm-dir` flag
+(`FLASHTEX_TFM_DIRS` is colon-split, which cuts a Windows path at its drive letter — the same
+trap `CompilerLocator` already documents for `FLASHTEX_FONT_DIRS`).
+
+Measured, so the next agent does not have to re-derive it: adding
+`--font-dir <…>\apps\mac\Fonts\texmf\fonts\tfm\public\lm` and
+`--font-dir <…>\apps\mac\Fonts\texmf\fonts\tfm\jknappen\ec` to the worker takes ps-calculus
+from **19 diagnostics to 7** — every `ec_metrics_unavailable` and `tfm_missing` warning
+disappears, because the non-required TFMs are found by a plain file search that does not go
+through `ProjectRoot`. The remaining `required_metrics_unavailable` **error**, the
+OpenType-MATH fallback and the `\sqrt` box all survive, because those need step (1) fixed.
+Page geometry barely moves (ink overlap with pdflatex went 23.9% → 27.8% on p1, band deltas
+unchanged), so this is a diagnostics-noise and correctness-of-provenance fix, not a layout
+fix, and it was deliberately **not** landed here: half-plumbing the metrics while the
+vendored-crate half stays broken is worse than a clean follow-up that does both.
+Also note `FontSet::texmf_roots` strips a hardcoded `"/fonts/tfm/public/lm"` suffix, so it
+will not recognise a backslash-spelled Windows path as a texmf root even once (1) is fixed.
+
+Root cause of the box itself, as far as it was traced (not fixed — this is math-layout engine
+work with a golden corpus behind it): `crates/math-layout/src/layout.rs`'s `make_sqrt` sets
+`let rule_thickness = y.height;` where `y` is the radical-sign box from `var_delimiter`. That
+is literally TeX's rule (TeXbook Appendix G / `overbar(x, clr, height(y))`), and it is correct
+**for TFM metrics**, where the cmsy/cmex surd glyph is designed so its `height` is exactly the
+thickness of the bar at its top and its `depth` is the whole body. It is wrong for an OpenType
+MATH font, where the same accessor returns the glyph's full height above the baseline — hence
+15.8 pt. It only bites on the OpenType fallback (`MathProvider::Otf`, chosen in
+`crates/render-pipeline/src/typeset.rs` when `rm-lmr*.tfm` is unavailable, which this machine
+already warns about with `math_metrics_opentype`: "math is laid out with the OpenType MATH
+table instead of TeX's metrics"), and only when the radicand is tall enough that
+`var_delimiter` picks a larger variant or an assembly — `\sqrt{\pi}` and `\sqrt{ab}` in
+math-sheet, which use the base-size surd, render correctly. The engine already has a test
+pinning the correct behaviour on the TFM path (`crates/render-pipeline/tests/tall_radicals.rs`,
+whose header quotes pdfTeX `\showbox` output: rule 0.39998 pt thick, spanning the radicand's
+width), so the TFM path is presumably fine and only the OpenType fallback is wrong. Two
+possible fixes, in order of preference: (a) make the bundled metrics reachable on Windows so
+the fallback is not taken at all — see the chain above; (b) take the radical rule thickness
+from the MATH table (`RadicalRuleThickness`) on the OpenType path and re-derive the sign's
+vertical shift from it. (b) touches `crates/math-layout`, whose golden and size-oracle tests
+are pinned against MacTeX, so it deserves its own engine task rather than a drive-by change
+from a Windows-preview pass.
+
+### Still genuinely unverified (be specific, do not round this up)
+
+- **Images**: completely unexercised. Neither fixture has `\includegraphics`, and a run
+  against `fixtures/real-world/lab-report` (which does) produced **zero** `image` items,
+  because `ShellModel.Compile.cs` deliberately never requests `display-list-v2-images`. So
+  `V2Frame`'s `ImageNoticeItem` path and `PreviewV2Host`'s notice bar have still never been
+  seen to run. If you ever request that capability, this is the first thing to test.
+- **Vector paths**: `path_fill`/`path_stroke`/`clip` are unexercised — no fixture in
+  `fixtures/real-world/` uses TikZ or `picture`, so `PreviewV2Host.DrawPath`,
+  `BuildGeometry`, `BuildStrokeStyle` (including the ticks-to-stroke-width-multiples dash
+  conversion) and the clip-layer stack have never painted anything. The dash-array conversion
+  in particular is the kind of arithmetic that is wrong until proven right.
+- **`core14-afm` metrics-only resources**: never seen. Every font resource in every fixture
+  compiled here was `opentype-cff`, so `FontFileStore.Resolve`'s "never paintable" refusal
+  (the one `RenderingV2.cs` warns must never silently paint) was never taken. There is no
+  evidence it misbehaves; there is also no evidence it fires.
+- **Non-black paint**: every glyph run and rule in both fixtures is `rgba(0,0,0,1)`. Colour
+  conversion is untested against real output.
+- **Click-to-source on the v2 pane**: `PreviewV2Host.OnPagePointerPressed` /
+  `HitTestIndex.Query` were not exercised this pass (the v1 pane's equivalent is separately
+  proven). The tick-space conversion there uses its own `TicksPerDip` constant.
+- **The page cache**: `PreparedPageCache`/`LastFrameReusedPages` were never observed reusing
+  a page across a recompile, because every launch compiled exactly once.
+- **Text antialiasing/colour fidelity**: deliberately out of scope; the preview uses grayscale
+  antialiasing on purpose (see `PreviewV2Host.OnPageDraw`'s comment) and no attempt was made
+  to match pdfium's rasterization exactly.
+
+### Follow-ups this pass opened, in rough order of value
+
+1. **Re-pin `crates/render-pipeline/vendor/project-files` to the Windows-capable crate** (or
+   make the vendored `sys.rs` carry the same Windows `imp`). Its `PIN` file currently reads
+   `d5440b01f1681175e8dc25108d92424db188a7fe`, which predates this port's Windows backend.
+   Everything in the radical section above hangs off this, and it is the difference between
+   "math is laid out with the OpenType MATH table and is not the reference geometry" and
+   actual reference geometry on Windows. It is very likely also why so much of
+   `crates/render-pipeline`'s own test suite cannot pass on this machine (see below).
+2. **Point the worker at the bundled TFM trees** once (1) lands — measured effect and the two
+   exact `--font-dir` values are in the radical section. Consider adding a real `--tfm-dir`
+   flag to `flashtex-render` rather than overloading `--font-dir`, since `FLASHTEX_TFM_DIRS`
+   cannot express a Windows absolute path.
+3. **Port the glyph-less-cluster fix to the Mac app** (`apps/mac/Sources/FlashTeXProtocol/
+   RenderingV2.swift:936`) — it has the identical unrelaxed rule and will refuse the identical
+   documents.
+4. **`\sqrt` rule thickness on the OpenType MATH path** — see above; only worth doing if (1)
+   turns out not to be the whole story.
+5. Exercise the parts this pass could not: images, TikZ paths/clips, `core14-afm`, coloured
+   paint, v2 click-to-source.
+
+### Verification commands actually run
+
+- `dotnet build FlashTeX.sln -c Debug`: **0 warnings, 0 errors**.
+- `dotnet test FlashTeX.sln -c Debug --no-build`, re-run after rebasing onto the Open Folder
+  commit so the numbers include it: 67 `FlashTeX.Protocol.Tests` (was 62; +5 new), 31 Preview,
+  75 Shell, 19 Ipc, 67 ProjectFiles, 192/193 Editor. The **only** failure is the
+  long-documented, unrelated `FlashTeX.Editor.Tests.CompletionTests.BundledInventoryMatchesTheMacCopy`.
+  `FlashTeX.ProjectFiles.Tests` first showed 12 failures purely because this worktree had no
+  `crates/project-files/target/release/flashtex-project-files.exe` — the exact stale-worktree-binary
+  false alarm this doc already warns about; `cargo build --release` there, then all passed.
+- `cargo test --release` in `crates/render-pipeline`: the 4 new `display::tests` pass
+  (`display::` alone is 12 passed, was 8). **This crate's suite does not pass on Windows at
+  all, and did not before this change either** — it was never part of the 2026-09-18 "Rust
+  crate rebuild+test sweep" above, so nobody had recorded that. Two things to know:
+  - With nothing configured, ~117 test targets abort immediately in
+    `tests/common/mod.rs:26`, which panics on purpose when Latin Modern does not resolve
+    ("this test would have skipped silently and the run would have been green without
+    measuring anything"). Set `FLASHTEX_FONT_DIRS` to make the suite actually run — and note
+    it is **colon**-split, so a Windows absolute path is cut at its drive letter; run cargo
+    from the crate directory with the relative `../../apps/mac/Fonts` instead.
+  - With that set, the run is **164 failing tests**, nearly all of them pdflatex oracle
+    comparisons, plus `fonts::tests::a_flat_bundle_directory_with_tfms_and_licence_satisfies_the_required_set`
+    and `fonts::tests::missing_font_diagnostics_do_not_depend_on_the_executable_location`
+    — i.e. the same required-metrics/rooted-loader wall described in the `\sqrt` section, and
+    a message assertion that expects a macOS app-bundle path.
+  - **Attributed, not assumed**: the whole suite was run twice, once with `display.rs` checked
+    out at `1af0f238` and once with this change, and the two sets of failing test names were
+    diffed. **164 both times, with an empty regression set and an empty fixed set** — this
+    change moves nothing either way.
+
+### New gotchas for whoever renders next
+
+- **`crates/render-pipeline`, not `crates/compiler`, is the display-list-v2 worker.**
+  `CompilerLocator.FindWorker` prefers `crates/render-pipeline/target/release/flashtex-render.exe`
+  and only falls back to `flashtex-compiler.exe`, which declines the capability entirely. In a
+  fresh `git worktree` you must `cargo build --release --bin flashtex-render` from
+  `crates/render-pipeline` **and** `cargo build --release` from `crates/project-files` (for the
+  test suite) — a build in the main checkout does not populate the worktree's `target/`.
+- **`cargo test` relinks `target/release/flashtex-render.exe` from whatever source is in the
+  tree at the time**, so a test run (or anything that checks a source file out and back)
+  leaves the app running a worker you did not intend. This produced a convincing false
+  regression at the end of this pass — the status bar went back to
+  `runtime-v1 preview (invalid_display_list: diagnostics must carry a code and a 1...4096-byte
+  message)` — and `cargo build --release --bin flashtex-render` reported "Finished in 0.15s"
+  because cargo still considered the binary fresh. Touch the source (or `cargo clean -p`) to
+  force the relink, and check the exe's size/timestamp before trusting a launch.
+- **A `dotnet build src/FlashTeX.App/FlashTeX.App.csproj` can leave a stale
+  `FlashTeX.Protocol.dll` in the app's output.** This cost a full relaunch cycle chasing a bug
+  that was already fixed. Compare
+  `src/FlashTeX.App/bin/x64/Debug/.../FlashTeX.Protocol.dll`'s size/timestamp against
+  `src/FlashTeX.Protocol/bin/Debug/net8.0/FlashTeX.Protocol.dll` before trusting a run, or
+  build the whole `FlashTeX.sln`.
+- **Never `taskkill /F /IM FlashTeX.App.exe /T` on this machine.** Another agent runs the *main
+  checkout's* copy of the same image name; a capture that reported
+  `path=D:\Projects\flashtex\apps\windows\...` instead of `...\.claude\worktrees\...` proved
+  this both ways this session (theirs was killed by these scripts, and this worktree's instance
+  was killed twice by theirs mid-verification). Filter by `$_.Path.StartsWith(<worktree>)` and
+  `Stop-Process -Id` instead, and do launch+interact+capture in **one** shell invocation.
+- **The preview pane's `ScrollViewer` is not reachable from the out-of-process UIA2 client**
+  (`ScrollPattern` finds only the editor's and the menu's) — the same tree-depth plateau this
+  doc already records for the Problems panel. Synthetic mouse wheel does work, but only with
+  `SetForegroundWindow`, then `SetCursorPos`, then a real `MOUSEEVENTF_MOVE` before the
+  `MOUSEEVENTF_WHEEL` events; `SetCursorPos` alone is not enough for WinUI's pointer tracking.
+- **`%LOCALAPPDATA%\FlashTeX\window-panes.json`** is the cheap way to widen the preview pane
+  for a full-page capture (the splitters are pointer-drag-only). Back it up and restore it —
+  this pass did.
 
 ## Session housekeeping note
 

@@ -619,10 +619,15 @@ impl Diagnostic {
         self.suggestion.as_deref().filter(|s| !s.is_empty())
     }
 
+    /// Both constructors clamp `message` to the wire's `maxLength`: a pipeline
+    /// diagnostic interpolates values it does not control (an asset-not-found
+    /// message names every searched directory, which on a deep tree runs past
+    /// 4096 bytes on its own), and an envelope-validating consumer refuses the
+    /// WHOLE frame over one over-long string.
     pub fn error(code: &str, message: impl Into<String>, sources: Vec<SourceRange>) -> Diagnostic {
         Diagnostic {
             code: code.into(),
-            message: message.into(),
+            message: clamp_diagnostic_message(&message.into()),
             severity: Severity::Error,
             sources,
             recovery: None,
@@ -632,7 +637,7 @@ impl Diagnostic {
     pub fn warning(code: &str, message: impl Into<String>, sources: Vec<SourceRange>) -> Diagnostic {
         Diagnostic {
             code: code.into(),
-            message: message.into(),
+            message: clamp_diagnostic_message(&message.into()),
             severity: Severity::Warning,
             sources,
             recovery: None,
@@ -690,7 +695,12 @@ impl Diagnostic {
             }
         }
 
-        let mut message = d.message.clone();
+        // The compiler's own message can already exceed the wire limit on its own —
+        // an asset-not-found message names every searched directory — so it is
+        // clamped BEFORE any clause is appended. Only the clauses were bounded
+        // before, which let a long base message through whole and made every
+        // envelope-validating consumer refuse the entire frame over a string.
+        let mut message = clamp_diagnostic_message(&d.message);
         let mut push_clause = |prefix: &str, text: &str| {
             // One line, and no embedded newline from the compiler either.
             let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -795,6 +805,29 @@ impl DocumentFeatures {
 const MAX_DIAGNOSTIC_SOURCES: usize = 128;
 /// `protocol/rendering-v2.schema.json`: `diagnostic.message` `maxLength`.
 const MAX_DIAGNOSTIC_MESSAGE: usize = 4096;
+/// Marks a message this module shortened, so a reader can tell it is not the whole text.
+const DIAGNOSTIC_MESSAGE_ELLIPSIS: &str = "…";
+
+/// `message` shortened to the wire's `maxLength`, cut on a UTF-8 boundary.
+///
+/// Truncating is the right answer rather than refusing: the geometry a display
+/// list carries is complete and correct whatever length a diagnostic string
+/// reached, and the consumers that validate the envelope
+/// (`rendering-core`'s `text(&diagnostic.message, 1, 4096, ...)`, the Swift and
+/// C# native decoders) refuse the WHOLE frame for an over-long one.
+fn clamp_diagnostic_message(message: &str) -> String {
+    if message.len() <= MAX_DIAGNOSTIC_MESSAGE {
+        return message.to_string();
+    }
+    let mut end = MAX_DIAGNOSTIC_MESSAGE - DIAGNOSTIC_MESSAGE_ELLIPSIS.len();
+    while end > 0 && !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut clamped = String::with_capacity(end + DIAGNOSTIC_MESSAGE_ELLIPSIS.len());
+    clamped.push_str(&message[..end]);
+    clamped.push_str(DIAGNOSTIC_MESSAGE_ELLIPSIS);
+    clamped
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DisplayList {
@@ -1883,6 +1916,69 @@ mod tests {
         };
         assert_eq!(Diagnostic::from_compiler(&none, &[]).code, "compiler");
         assert_eq!(Diagnostic::from_compiler(&none, &[]).suggestion, None);
+    }
+
+    #[test]
+    fn from_compiler_clamps_a_message_that_is_already_over_the_wire_limit() {
+        use flashtex_compiler::diagnostics::{Diagnostic as C, Severity as CS};
+        // A real asset-not-found message names every searched directory; a long
+        // enough search path pushes it past `maxLength` on its own, before any
+        // `[note: ...]` clause is appended.
+        let over = C {
+            severity: CS::Warning,
+            message: "ec-lmr10.tfm not found in ".to_string() + &"a/very/long/search/path ".repeat(400),
+            span: None,
+            recovery: None,
+            code: None,
+            suggestion: None,
+            labels: Vec::new(),
+            notes: vec!["install the ec fonts".into()],
+            help: None,
+        };
+        assert!(over.message.len() > MAX_DIAGNOSTIC_MESSAGE);
+        let out = Diagnostic::from_compiler(&over, &[]);
+        assert!(
+            out.message.len() <= MAX_DIAGNOSTIC_MESSAGE,
+            "message stayed {} bytes, over the {MAX_DIAGNOSTIC_MESSAGE}-byte wire limit",
+            out.message.len()
+        );
+        assert!(out.message.ends_with(DIAGNOSTIC_MESSAGE_ELLIPSIS));
+        assert!(out.message.starts_with("ec-lmr10.tfm not found in "));
+        // Clamping happens before the clauses, so a clamped message has no room
+        // left for one rather than overflowing to fit it in.
+        assert!(!out.message.contains("[note:"));
+    }
+
+    #[test]
+    fn pipeline_diagnostics_are_clamped_to_the_wire_limit_too() {
+        // The font/metrics diagnostics this pipeline raises itself go through
+        // `warning`/`error`, not `from_compiler`.
+        let long = "ec-lmr10.tfm not found in ".to_string() + &"a/very/long/search/path ".repeat(400);
+        for d in [
+            Diagnostic::warning("tfm_missing", long.clone(), Vec::new()),
+            Diagnostic::error("required_metrics_unavailable", long, Vec::new()),
+        ] {
+            assert!(d.message.len() <= MAX_DIAGNOSTIC_MESSAGE, "{} bytes", d.message.len());
+            assert!(d.message.ends_with(DIAGNOSTIC_MESSAGE_ELLIPSIS));
+        }
+    }
+
+    #[test]
+    fn clamp_diagnostic_message_leaves_a_message_within_the_limit_untouched() {
+        assert_eq!(clamp_diagnostic_message("short"), "short");
+        let exact = "x".repeat(MAX_DIAGNOSTIC_MESSAGE);
+        assert_eq!(clamp_diagnostic_message(&exact), exact);
+    }
+
+    #[test]
+    fn clamp_diagnostic_message_never_splits_a_utf8_sequence() {
+        // Multi-byte characters straddling the cut: the result must still decode.
+        for pad in 0..8 {
+            let message = "a".repeat(pad) + &"é".repeat(MAX_DIAGNOSTIC_MESSAGE);
+            let clamped = clamp_diagnostic_message(&message);
+            assert!(clamped.len() <= MAX_DIAGNOSTIC_MESSAGE);
+            assert!(clamped.ends_with(DIAGNOSTIC_MESSAGE_ELLIPSIS));
+        }
     }
 
     /// The compiler's structured `labels`/`notes`/`help` (#346/#389) have no
