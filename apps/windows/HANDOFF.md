@@ -97,9 +97,14 @@ runtime-v1 preview is working; its display-list-v2 embedded-font interpreter is
 not implemented yet.
 
 Not started yet (placeholders only):
-- Rendering-v2 preview: an exact embedded-font glyph/path/image interpreter
-  remains required for the exact-export path. The current native preview is a
-  deliberately honest runtime-v1 renderer and does not claim visual identity.
+- Rendering-v2 preview: **a real `PreviewV2Host`/Win2D renderer exists and the
+  `display-list-v2` capability negotiation genuinely works** (confirmed live:
+  the status bar shows `display-list-v2: 1 page(s), 1 font(s)` against the
+  seeded doc) — this bullet is stale from before that work landed and is kept
+  only as a pointer to what's still open: visual correctness has only been
+  checked against the trivial single-line seeded document, not a real
+  fixture with math/multiple pages/embedded images. See the "Post-merge
+  verification round" section below for exactly what is and isn't confirmed.
 - Folder-level project membership and include discovery remain to be
   integrated. Open/Save/Save As/New File are real native picker flows over
   `flashtex-project-files`' rooted, hash-checked I/O; the project pane lists
