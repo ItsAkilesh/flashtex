@@ -1,5 +1,5 @@
 % u06-rtl: polyglossia right-to-left text: Arabic (Geeza Pro, a .ttc; the environment is `Arabic`, `arabic` is LaTeX's counter command) and Hebrew (Times New Roman)
-% oracle: known-difference (right-to-left text is shaped left to right: no ICU bidi yet, #1777)
+% preview: tolerance 2 px (Geeza Pro: the preview draws the ends of a joined Arabic word one coverage level darker than both PDFs draw their subset, at 2x; not positions or matrix)
 \documentclass{article}
 \usepackage{polyglossia}
 \setdefaultlanguage{english}

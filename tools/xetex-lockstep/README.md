@@ -105,6 +105,13 @@ python3 tools/xetex-lockstep/latex.py --engine <bin> [--cases 'l00*'] [--keep]
   picture's header, so each file is the header and nothing more.
 * **`latex-cases/l010-graphicx.tex`**: graphicx with the xetex driver
   (scaled, rotated, trimmed, clipped, by page), against `xelatex -no-pdf`.
+* **`latex-cases/l011-bidi-rtl.tex`**: ICU's bidi runs in
+  `measure_native_node` (`src/native/bidi.rs`): Latin, Hebrew and numbers
+  in one native word, brackets, explicit embeddings, overrides and
+  isolates, and polyglossia Hebrew and Arabic (Geeza Pro, a `.ttc`)
+  paragraphs with `\XeTeXinterwordspaceshaping=2`. P-T1 and XDV equal
+  (2026-10-11); before the port of the bidi pass every RTL word was shaped
+  left to right (#1777).
 
 ## Font lookup by name (`fontmatch.py`)
 

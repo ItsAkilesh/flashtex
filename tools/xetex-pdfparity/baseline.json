@@ -90,6 +90,227 @@
   "l010-graphicx": {
    "px": 621,
    "tounicode": []
+  },
+  "l011-bidi-rtl": {
+   "px": 436,
+   "tounicode": [
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:0",
+     "reference": [
+      "￿"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:207",
+     "reference": [
+      "�ن"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:241",
+     "reference": [
+      "ا"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:243",
+     "reference": [
+      "ب"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:247",
+     "reference": [
+      "ة"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:273",
+     "reference": [
+      "ر"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:277",
+     "reference": [
+      "س"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:287",
+     "reference": [
+      "ص"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:302",
+     "reference": [
+      "ع"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:329",
+     "reference": [
+      "ف"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:334",
+     "reference": [
+      "ق"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:337",
+     "reference": [
+      "ك"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:341",
+     "reference": [
+      "ل"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:342",
+     "reference": [
+      "ل"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:345",
+     "reference": [
+      "م"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:346",
+     "reference": [
+      "م"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:349",
+     "reference": [
+      "ن"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:350",
+     "reference": [
+      "ن"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:354",
+     "reference": [
+      "ه"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:357",
+     "reference": [
+      "و"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:363",
+     "reference": [
+      "�"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:904",
+     "reference": [
+      "�"
+     ]
+    },
+    {
+     "candidate": [
+      null
+     ],
+     "glyph": "GeezaPro gid:925",
+     "reference": [
+      "ع"
+     ]
+    },
+    {
+     "candidate": [
+      "­"
+     ],
+     "glyph": "TimesNewRomanPSMT gid:16",
+     "reference": [
+      "-"
+     ]
+    }
+   ]
   }
  },
  "comment": "tools/xetex-pdfparity/run.py --baseline: per case, the differing pixels allowed at `scale` and the ToUnicode differences allowed. Written by --write-baseline.",

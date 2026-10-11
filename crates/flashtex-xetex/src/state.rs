@@ -139,8 +139,6 @@ pub struct Host {
     /// XeTeXFontMgr's `sReqEngine`: the renderer the last font name asked
     /// for (`/AAT`, `/OT` or `/ICU`, `/GR`), or 0.
     pub req_engine: u8,
-    /// Whether text needing ICU's bidi analysis was reported (once).
-    pub bidi_warned: bool,
     /// XeTeX_ext.c's `saved_mapping_name`: the `:mapping=` of the TFM font
     /// being loaded, from `check_for_tfm_font_mapping` to
     /// `load_tfm_font_mapping`, both within one `\font`. Each check
