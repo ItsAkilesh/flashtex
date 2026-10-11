@@ -141,27 +141,38 @@ def run_case(name, engines, fmts, tmp, timeout, src=None, keep=True):
         exe = link(engines[who], os.path.join(d, ".bin"), "xelatex")
         env = env_for(fmts[who])
         t = time.time()
+        errp = os.path.join(d, ".stderr")
         try:
-            subprocess.run([exe] + RUN_ARGS + [doc_arg(name, meta, False)], cwd=d, env=env,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=timeout)
-            r = subprocess.run([exe] + RUN_ARGS + [doc_arg(name, meta, True)], cwd=d, env=env,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               timeout=timeout)
+            with open(errp, "wb") as err:
+                subprocess.run([exe] + RUN_ARGS + [doc_arg(name, meta, False)], cwd=d, env=env,
+                               stdout=subprocess.DEVNULL, stderr=err, timeout=timeout)
+                r = subprocess.run([exe] + RUN_ARGS + [doc_arg(name, meta, True)], cwd=d, env=env,
+                                   stdout=subprocess.DEVNULL, stderr=err, timeout=timeout)
             code = r.returncode
         except subprocess.TimeoutExpired:
             code = "timeout"
         logp = os.path.join(d, name + ".log")
         log = open(logp, encoding="utf-8", errors="surrogateescape").read() \
             if os.path.exists(logp) else ""
-        res[who] = (code, X.normalise(log, d), os.path.join(d, name + ".xdv"))
+        # the first TeX error, and an engine's panic, for the report
+        first_error = next((ln for ln in log.split("\n") if ln.startswith("! ")), None)
+        stderr = open(errp, encoding="utf-8", errors="replace").read()
+        panic = [ln for ln in stderr.split("\n") if "panicked" in ln or "error:" in ln.lower()][:3]
+        # only the compared lines are kept (traced logs run to millions of lines)
+        lines, _ = LS.split_accounting(X.normalise(log, d).split("\n"))
+        del log
+        res[who] = (code, lines, os.path.join(d, name + ".xdv"), first_error, panic)
         secs[who] = round(time.time() - t, 2)
     msgs = []
-    (rc, rlog, rxdv), (cc, clog, cxdv) = res["reference"], res["candidate"]
+    (rc, a, rxdv, rerr, _), (cc, b, cxdv, cerr, cpanic) = res["reference"], res["candidate"]
     if rc != cc:
         msgs.append("exit status reference=%s candidate=%s" % (rc, cc))
-    a, _ = LS.split_accounting(rlog.split("\n"))
-    b, _ = LS.split_accounting(clog.split("\n"))
+    if rc != 0 and rerr:
+        msgs.append("reference's first error: %s" % rerr[:200])
+    if cc != 0 and cerr:
+        msgs.append("candidate's first error: %s" % cerr[:200])
+    for ln in cpanic:
+        msgs.append("candidate stderr: %s" % ln[:300])
     if a != b:
         i = next((k for k in range(min(len(a), len(b))) if a[k] != b[k]),
                  min(len(a), len(b)))
@@ -183,7 +194,7 @@ def run_case(name, engines, fmts, tmp, timeout, src=None, keep=True):
             if f.encode() in data:
                 msgs.append("%s: %s is loaded (the document's font should win)" % (who, f))
     info = {"case": name, "ok": not msgs, "messages": msgs, "log_lines": len(a),
-            "exit": [rc, cc], "seconds": [secs["reference"], secs["candidate"]],
+            "exit": [rc, cc], "reference_error": rerr, "seconds": [secs["reference"], secs["candidate"]],
             "trace": meta.get("trace", "full"), "firstline": bool(meta.get("firstline")),
             "xdv": os.path.exists(rxdv)}
     if not keep:

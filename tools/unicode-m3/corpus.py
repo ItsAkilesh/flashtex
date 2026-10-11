@@ -53,15 +53,12 @@ def fetch(archive, spec, cache):
     p = os.path.join(cache, archive + ".tar.xz")
     if not (os.path.exists(p) and sha256(p) == spec["sha256"]):
         tmp = p + ".part"
-        for attempt in range(4):
-            try:
-                with urllib.request.urlopen(spec["url"], timeout=120) as r, open(tmp, "wb") as f:
-                    shutil.copyfileobj(r, f)
-                break
-            except OSError as e:
-                if attempt == 3:
-                    raise
-                print("fetch %s: %s; retrying" % (spec["url"], e), file=sys.stderr)
+        if shutil.which("curl"):
+            subprocess.run(["curl", "-fsSL", "--retry", "5", "--retry-all-errors", "-o", tmp, spec["url"]],
+                           check=True)
+        else:
+            with urllib.request.urlopen(spec["url"], timeout=120) as r, open(tmp, "wb") as f:
+                shutil.copyfileobj(r, f)
         got = sha256(tmp)
         if got != spec["sha256"]:
             os.remove(tmp)

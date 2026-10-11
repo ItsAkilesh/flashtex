@@ -81,25 +81,35 @@ def pick_counter(want):
     return "none"
 
 
+def timed(cmd, cwd, env, stderr=subprocess.DEVNULL):
+    """(exit status, wall seconds) of cmd, waited for with wait4: precise,
+    unlike subprocess.run with a timeout, which polls every 50 ms."""
+    t = time.perf_counter()
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=stderr)
+    _, status, _ = os.wait4(p.pid, 0)
+    secs = time.perf_counter() - t
+    p.returncode = os.waitstatus_to_exitcode(status)
+    return p.returncode, secs
+
+
 def measured(cmd, cwd, env, counter, timeout=1800):
     """(exit status, seconds, instructions or None) of one run of cmd."""
     t = time.time()
     if counter == "perf":
         out = os.path.join(cwd, ".perf.txt")
-        r = subprocess.run(["perf", "stat", "-x,", "-e", "instructions:u", "-o", out, "--"] + cmd,
-                           cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=timeout)
-        secs = time.time() - t
+        code, secs = timed(["perf", "stat", "-x,", "-e", "instructions:u", "-o", out, "--"] + cmd, cwd, env)
         m = re.search(r"^(\d+),[^,]*,instructions", open(out).read(), re.M)
-        return r.returncode, secs, int(m.group(1)) if m else None
+        return code, secs, int(m.group(1)) if m else None
     if counter == "valgrind":
+        # the count under callgrind; the wall time of a separate plain run
+        log = os.path.join(cwd, ".callgrind.txt")
         r = subprocess.run(["valgrind", "--tool=callgrind", "--callgrind-out-file=/dev/null",
-                            "--trace-children=yes"] + cmd, cwd=cwd, env=env,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
-                           timeout=timeout * 20)
-        secs = time.time() - t
-        n = [int(x.replace(",", "")) for x in re.findall(r"Collected : ([\d,]+)", r.stderr)]
-        return r.returncode, secs, sum(n) if n else None
+                            "--trace-children=yes", "--log-file=" + log] + cmd, cwd=cwd, env=env,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout * 30)
+        n = [int(x.replace(",", "")) for x in re.findall(r"Collected : ([\d,]+)", open(log).read())] \
+            if os.path.exists(log) else []
+        code, secs = timed(cmd, cwd, env)
+        return code, secs, sum(n) if n else None
     if counter == "time":
         r = subprocess.run(["/usr/bin/time", "-l"] + cmd, cwd=cwd, env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
@@ -108,9 +118,8 @@ def measured(cmd, cwd, env, counter, timeout=1800):
         m = re.search(r"^\s*(\d+)\s+instructions retired", r.stderr, re.M)
         n = int(m.group(1)) if m else None
         return r.returncode, secs, n if n else None
-    r = subprocess.run(cmd, cwd=cwd, env=env, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, timeout=timeout)
-    return r.returncode, time.time() - t, None
+    code, secs = timed(cmd, cwd, env)
+    return code, secs, None
 
 
 def summary(rows):

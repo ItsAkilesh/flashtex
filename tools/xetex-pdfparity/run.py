@@ -110,9 +110,9 @@ def run_engine(binary, fmt_dir, src, d, name, passes, timeout):
     limit = passes or 1
     while n < limit:
         try:
-            r = subprocess.run([exe] + PDF_ARGS + [arg], cwd=d, env=env,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               timeout=timeout)
+            with open(os.path.join(d, ".stderr-%d" % n), "wb") as err:
+                r = subprocess.run([exe] + PDF_ARGS + [arg], cwd=d, env=env,
+                                   stdout=subprocess.DEVNULL, stderr=err, timeout=timeout)
             code = r.returncode
         except subprocess.TimeoutExpired:
             code = "timeout"
@@ -168,6 +168,16 @@ def run_case(name, src, engines, fmts, tmp, opt, timeout, keep, xdv_check=None, 
         msgs.append("exit status reference=%s candidate=%s" % (rc, cc))
     if rc != 0:
         msgs.append("the reference exits %s: the case is broken (see its .log)" % rc)
+        logp = os.path.join(dirs["reference"], name + ".log")
+        if os.path.exists(logp):
+            e = next((ln for ln in open(logp, errors="replace") if ln.startswith("! ")), None)
+            if e:
+                msgs.append("reference's first error: %s" % e.strip()[:200])
+    for fn in sorted(os.listdir(dirs["candidate"])):
+        if fn.startswith(".stderr-"):
+            for ln in open(os.path.join(dirs["candidate"], fn), errors="replace"):
+                if "panicked" in ln:
+                    msgs.append("candidate stderr: %s" % ln.strip()[:300])
     if not os.path.exists(ra):
         res.update(ok=False, error="the reference wrote no PDF", messages=msgs)
         return res
