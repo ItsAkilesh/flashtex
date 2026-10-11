@@ -2094,13 +2094,15 @@ mod tests {
                 col: flashtex_display_list::page::NO_COLUMN,
             },
         ];
-        doc.pages.push(Built {
+        doc.pages.push(std::sync::Arc::new(Built {
             dl: p,
             sup: Supplement::default(),
             fonts: vec![res],
             images: vec![],
             forms: vec![],
-        });
+            frame: std::sync::OnceLock::new(),
+            forms_at: 0,
+        }));
         let opts = Options {
             producer: "test".into(),
             date: None,

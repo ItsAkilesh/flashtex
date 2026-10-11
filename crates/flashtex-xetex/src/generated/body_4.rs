@@ -4779,6 +4779,10 @@ impl Globals {
                 self.print_ln();
             }
         }
+        // §676
+        if (self.ckpt_on_shipout != 0i32) {
+            self.ckpt_request = self.ckpt_on_shipout;
+        }
     }
 
     /// The parameters to `hpack` and `vpack` correspond to \TeX's primitives

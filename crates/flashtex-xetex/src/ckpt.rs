@@ -39,6 +39,33 @@ use flashtex_engine::system::{ReadLog, StatSig};
 pub const REQ_LOOKUP: i32 = 1;
 /// `ckpt_request`: take S₀ (`changes/checkpoint.ch`'s `pop_input`).
 pub const REQ_S0: i32 = 2;
+/// `ckpt_request` (and `ckpt_on_shipout`): a page checkpoint, after a
+/// shipout.
+pub const REQ_PAGE: i32 = 3;
+
+/// The output's state at a page checkpoint: the document (its pages and
+/// forms shared, `out::doc::Doc`) and its PDF file's name, if open.
+#[derive(Clone)]
+pub struct OutSnap {
+    pub doc: crate::out::doc::Doc,
+    pub pdf_name: String,
+    pub pdf_open: bool,
+}
+
+/// A checkpoint taken after a page shipped (DESIGN.md §5.2): a later run
+/// whose edit comes after what it had read restarts here
+/// (`crate::resident`).
+pub struct PageCk {
+    pub id: CheckpointId,
+    /// The pages shipped by then.
+    pub pages: usize,
+    pub rec: Record,
+    pub out: Option<OutSnap>,
+    /// The read journal's lengths then (files, lookups, outputs).
+    pub reads: (usize, usize, usize),
+    /// How many output opens the run had made (`Resident::opens`).
+    pub opens: usize,
+}
 
 /// The run's state outside the word space that a checkpoint keeps besides
 /// what `state.rs` saves with the word space.
@@ -85,8 +112,11 @@ impl RunState {
 pub struct Record {
     /// Every file global, in `visit_files` order.
     pub files: Vec<FileSnap>,
-    /// What the run had written to its (captured) terminal.
+    /// What the run had written to its (captured) terminal: S₀ keeps the
+    /// bytes; a page checkpoint their number only (the last run's terminal
+    /// starts with them: `restore_record`'s `base`).
     pub terminal: Vec<u8>,
+    pub terminal_len: usize,
     pub run: RunState,
     /// `flashtex_engine::system::external_effects_len()`.
     pub effects: usize,
@@ -108,6 +138,8 @@ pub struct Taken {
     pub job_name: String,
     /// The font directories' state, when the run looked a font up by name.
     pub font_dirs: Option<[u64; 2]>,
+    /// How many output opens the run had made (`Resident::opens`).
+    pub opens: usize,
 }
 
 /// S₀ of a resident engine: the checkpoint, its record and its key.
@@ -119,11 +151,17 @@ pub struct S0 {
     /// taken, if the run looked a font up by name before it: a font added,
     /// removed or renamed changes what a name finds.
     pub font_dirs: Option<[u64; 2]>,
+    /// The read journal's lengths at S₀ (files, lookups, outputs).
+    pub reads: (usize, usize, usize),
+    /// How many output opens the run had made by then.
+    pub opens: usize,
 }
 
 struct SnapFiles {
     out: Vec<FileSnap>,
     err: Option<String>,
+    /// Keep the output files' bytes (S₀), not only their lengths.
+    keep: bool,
 }
 
 impl SnapFiles {
@@ -139,15 +177,15 @@ impl SnapFiles {
 
 impl FileVisit for SnapFiles {
     fn alpha(&mut self, f: &mut AlphaFile) {
-        let r = f.snapshot();
+        let r = f.snapshot(self.keep);
         self.push(r)
     }
     fn byte(&mut self, f: &mut ByteFile) {
-        let r = f.snapshot();
+        let r = f.snapshot(self.keep);
         self.push(r)
     }
     fn word(&mut self, f: &mut WordFile) {
-        let r = f.snapshot();
+        let r = f.snapshot(self.keep);
         self.push(r)
     }
 }
@@ -206,6 +244,7 @@ impl Globals {
                 }
             }
             REQ_S0 => self.take_s0(),
+            REQ_PAGE => self.take_page(),
             _ => {}
         }
     }
@@ -248,10 +287,11 @@ impl Globals {
 
     /// The state outside the word space now (every output stream flushed
     /// first). `Err`: no checkpoint can be taken here.
-    pub fn capture_record(&mut self) -> Result<Record, String> {
+    pub fn capture_record(&mut self, keep: bool) -> Result<Record, String> {
         let mut v = SnapFiles {
             out: vec![],
             err: None,
+            keep,
         };
         self.visit_files(&mut v);
         if let Some(e) = v.err {
@@ -270,15 +310,21 @@ impl Globals {
             .collect();
         Ok(Record {
             files: v.out,
-            terminal: self.term_out.captured_bytes().to_vec(),
+            terminal: if keep {
+                self.term_out.captured_bytes().to_vec()
+            } else {
+                vec![]
+            },
+            terminal_len: self.term_out.captured_bytes().len(),
             run: RunState::of(self),
             effects: flashtex_engine::system::external_effects_len(),
             engines,
         })
     }
 
-    /// Put the state outside the word space back as `rec` has it.
-    pub fn restore_record(&mut self, rec: &Record) -> Result<(), String> {
+    /// Put the state outside the word space back as `rec` has it; a record
+    /// that kept only its terminal's length takes that much of `base`.
+    pub fn restore_record(&mut self, rec: &Record, base: Option<&[u8]>) -> Result<(), String> {
         let mut v = RestoreFiles {
             snaps: &rec.files,
             i: 0,
@@ -288,7 +334,15 @@ impl Globals {
         if let Some(e) = v.err {
             return Err(format!("cannot restore the files: {e}"));
         }
-        self.term_out.set_captured(rec.terminal.clone());
+        let terminal = if rec.terminal.len() == rec.terminal_len {
+            rec.terminal.clone()
+        } else {
+            match base.and_then(|b| b.get(..rec.terminal_len)) {
+                Some(b) => b.to_vec(),
+                None => return Err("the terminal before the checkpoint is not kept".into()),
+            }
+        };
+        self.term_out.set_captured(terminal);
         rec.run.put(self);
         for (h, st) in &rec.engines {
             if let Some(e) = self.layout_engine(*h) {
@@ -299,6 +353,38 @@ impl Globals {
         Ok(())
     }
 
+    /// Take a page checkpoint here, if this run is to: after S₀, which
+    /// this run took or started from (`crate::resident`). A checkpoint that
+    /// cannot be taken here (a pipe is open) is skipped: the next page's
+    /// may be.
+    fn take_page(&mut self) {
+        if !self.host.resident.as_ref().is_some_and(|r| r.pages_on) {
+            return;
+        }
+        let out = self.host.out.as_ref().map(|o| OutSnap {
+            doc: o.doc.clone(),
+            pdf_name: o.pdf_name.clone(),
+            pdf_open: o.pdf.is_some(),
+        });
+        let Ok(rec) = self.capture_record(false) else {
+            return;
+        };
+        let reads = flashtex_engine::system::reads_len();
+        let pages = self.total_pages.max(0) as usize;
+        let id = self.checkpoint();
+        if let Some(r) = self.host.resident.as_mut() {
+            let opens = r.opens.len();
+            r.pages.push(PageCk {
+                id,
+                pages,
+                rec,
+                out,
+                reads,
+                opens,
+            });
+        }
+    }
+
     /// Take S₀ here, if this run is to (`crate::resident`).
     fn take_s0(&mut self) {
         if !self.host.resident.as_ref().is_some_and(|r| r.want_s0) {
@@ -306,6 +392,8 @@ impl Globals {
         }
         let r = self.s0_here();
         if let Some(res) = self.host.resident.as_mut() {
+            // pages from here on get checkpoints
+            res.pages_on |= r.is_ok();
             res.s0 = Some(r);
         }
     }
@@ -317,7 +405,7 @@ impl Globals {
                 return Err("a page was shipped before the document's start".into());
             }
         }
-        let rec = self.capture_record()?;
+        let rec = self.capture_record(true)?;
         let reads =
             flashtex_engine::system::reads_so_far().ok_or("the run's reads are not recorded")?;
         if let Some(b) = reads.barriers.first() {
@@ -350,6 +438,7 @@ impl Globals {
             (true, Some(r)) => Some(r.font_dirs()),
             _ => None,
         };
+        let opens = self.host.resident.as_ref().map_or(0, |r| r.opens.len());
         let id = self.checkpoint();
         Ok(Taken {
             id,
@@ -358,6 +447,7 @@ impl Globals {
             written,
             job_name,
             font_dirs,
+            opens,
         })
     }
 }
@@ -557,13 +647,13 @@ mod tests {
         g.term_out = AlphaFile::captured_terminal();
         let h = g.host.handles.alloc(Object::Other(Arc::new(e)));
         let unshaped = g.layout_engine(h).unwrap().shaping_state();
-        let rec = g.capture_record().unwrap();
+        let rec = g.capture_record(true).unwrap();
         assert_eq!(rec.engines, vec![(h, unshaped.clone())]);
         // the run goes on: the engine shapes
         shape(&g.layout_engine(h).unwrap(), "office");
         let shaped = g.layout_engine(h).unwrap().shaping_state();
         assert_ne!(shaped, unshaped);
-        g.restore_record(&rec).unwrap();
+        g.restore_record(&rec, None).unwrap();
         assert_eq!(g.layout_engine(h).unwrap().shaping_state(), unshaped);
     }
 }

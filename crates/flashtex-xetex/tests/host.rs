@@ -728,3 +728,96 @@ fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Page checkpoints (`crate::ckpt::PageCk`): an edit on a document's last
+/// page restarts after the pages before it, which are sent again from the
+/// checkpoint (`DONE.starts` `page`); an edit on its first page goes on
+/// from S₀; the output files, display list and all, are byte for byte a
+/// run of its own's.
+#[test]
+fn an_edit_late_in_a_long_document_restarts_near_it() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-pages-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let para = "Words and more words that fill the page, again and again, until the \
+                paragraph is long enough to break into several lines of text. ";
+    let mut body = String::new();
+    for i in 1..=6 {
+        body.push_str(&format!("\\section{{Part {i}}}\\label{{p{i}}}\n"));
+        for _ in 0..8 {
+            body.push_str(&para.repeat(3));
+            body.push_str("\n\n");
+        }
+    }
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\\begin{{document}}\n{body}See~\\ref{{p2}}.\n\\end{{document}}\n"
+    );
+    let texts = [
+        doc.clone(),
+        doc.replace("See~", "Look at~"),
+        doc.replacen("Words and more", "Wards and more", 1),
+        doc.clone(),
+    ];
+    type Outs = Vec<(String, Vec<u8>, String, String, Vec<Vec<u8>>)>;
+    let run = |envs: &[(&str, &str)]| -> Outs {
+        let sub = dir.join("run");
+        let _ = std::fs::remove_dir_all(&sub);
+        let (proj, out) = project(&sub, &doc);
+        let mut e = vec![("FLASHTEX_PIN_CLOCK", "1760000000.5")];
+        e.extend_from_slice(envs);
+        let h = start_with(&sub, &e, &sub.join("host.err"));
+        let mut c = Client::connect(&h.sock).unwrap();
+        let mut outs = vec![];
+        for (i, text) in texts.iter().enumerate() {
+            let id = i as i64 + 1;
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.clone())];
+            c.compile(&r).unwrap();
+            let (ev, done) = events(&mut c, id);
+            let pages: Vec<Vec<u8>> = ev
+                .iter()
+                .filter_map(|e| match e {
+                    Event::Page(p) => Some(p.encode()),
+                    _ => None,
+                })
+                .collect();
+            let starts = done
+                .get("starts")
+                .and_then(Json::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
+                .unwrap_or_default();
+            let o = Path::new(&out);
+            outs.push((
+                starts,
+                std::fs::read(o.join("main.pdf")).unwrap_or_default(),
+                std::fs::read_to_string(o.join("main.log")).unwrap(),
+                std::fs::read_to_string(o.join("main.aux")).unwrap_or_default(),
+                pages,
+            ));
+        }
+        c.bye().unwrap();
+        drop(h);
+        outs
+    };
+    let own = run(&[("FLASHTEX_UNICODE_INPROCESS", "0")]);
+    let got = run(&[]);
+    let starts: Vec<&str> = got.iter().map(|o| o.0.as_str()).collect();
+    assert!(starts[1].starts_with("page"), "{starts:?}");
+    assert!(starts[2].starts_with("s0"), "{starts:?}");
+    for (i, (a, b)) in got.iter().zip(&own).enumerate() {
+        assert!(a.1 == b.1, "compile {}: the PDFs differ", i + 1);
+        assert_eq!(a.2, b.2, "compile {}: the logs differ", i + 1);
+        assert_eq!(a.3, b.3, "compile {}: the .aux differs", i + 1);
+        assert!(a.4.len() > 4, "compile {}: {} pages", i + 1, a.4.len());
+        assert!(a.4 == b.4, "compile {}: the pages differ", i + 1);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

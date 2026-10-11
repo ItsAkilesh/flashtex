@@ -483,11 +483,15 @@ pub enum Stream {
         path: String,
         offset: u64,
     },
-    /// Writing `path`, which held `prefix` (flushed) at the checkpoint: a
-    /// restore writes the prefix back where the file differs and appends.
+    /// Writing `path`, which held `len` bytes (flushed) at the checkpoint.
+    /// With `prefix` (S₀'s), they are kept: a restore writes them back
+    /// where the file differs. Without (a page checkpoint's), the restore
+    /// cuts the file to `len`, its owner having checked that the file is
+    /// as the run that made the checkpoint left it (`crate::ckpt`).
     Out {
         path: String,
-        prefix: std::sync::Arc<Vec<u8>>,
+        len: u64,
+        prefix: Option<std::sync::Arc<Vec<u8>>>,
     },
     /// The DVI file in PDF mode: the bytes in memory.
     Mem(MemSink),
@@ -529,32 +533,57 @@ impl FileSnap {
     }
 }
 
-/// The bytes `path` holds (after its writer was flushed).
-fn out_prefix(path: &str) -> Result<std::sync::Arc<Vec<u8>>, String> {
-    std::fs::read(path)
-        .map(std::sync::Arc::new)
-        .map_err(|e| format!("{path}: {e}"))
+/// An output stream at a checkpoint (after its writer was flushed): the
+/// file's length, and with `keep`, its bytes.
+fn out_stream(path: String, keep: bool) -> Result<Stream, String> {
+    let e = |x: std::io::Error| format!("{path}: {x}");
+    if keep {
+        let d = std::fs::read(&path).map_err(e)?;
+        Ok(Stream::Out {
+            len: d.len() as u64,
+            prefix: Some(std::sync::Arc::new(d)),
+            path,
+        })
+    } else {
+        let len = std::fs::metadata(&path).map_err(e)?.len();
+        Ok(Stream::Out {
+            path,
+            len,
+            prefix: None,
+        })
+    }
 }
 
-/// `path` opened for writing after its first bytes, which are put back to
-/// `prefix` where they differ (a later run may have rewritten the file).
-fn reopen_out(path: &str, prefix: &[u8]) -> Result<File, String> {
+/// `path` opened for writing after its first `len` bytes: with `prefix`,
+/// those are put back where they differ (a later run may have rewritten the
+/// file); without, the file must hold at least `len` bytes, which are kept.
+fn reopen_out(path: &str, len: u64, prefix: Option<&[u8]>) -> Result<File, String> {
     use std::io::{Seek, SeekFrom};
     let e = |x: std::io::Error| format!("{path}: {x}");
-    if std::fs::read(path)
-        .ok()
-        .as_deref()
-        .map(|d| d.get(..prefix.len()))
-        != Some(Some(prefix))
-    {
-        std::fs::write(path, prefix).map_err(e)?;
+    match prefix {
+        Some(prefix) => {
+            if std::fs::read(path)
+                .ok()
+                .as_deref()
+                .map(|d| d.get(..prefix.len()))
+                != Some(Some(prefix))
+            {
+                std::fs::write(path, prefix).map_err(e)?;
+            }
+        }
+        None => {
+            let now = std::fs::metadata(path).map_err(e)?.len();
+            if now < len {
+                return Err(format!("{path} is shorter than the {len} bytes written"));
+            }
+        }
     }
     let mut f = std::fs::OpenOptions::new()
         .write(true)
         .open(path)
         .map_err(e)?;
-    f.set_len(prefix.len() as u64).map_err(e)?;
-    f.seek(SeekFrom::Start(prefix.len() as u64)).map_err(e)?;
+    f.set_len(len).map_err(e)?;
+    f.seek(SeekFrom::Start(len)).map_err(e)?;
     Ok(f)
 }
 
@@ -568,19 +597,17 @@ fn reopen_in(path: &str, offset: u64) -> Result<BufReader<File>, String> {
 }
 
 impl AlphaFile {
-    /// The file at a checkpoint: output flushed first. A pipe
-    /// (`\input|command`) or the process's standard input cannot be one.
-    pub fn snapshot(&mut self) -> Result<FileSnap, String> {
+    /// The file at a checkpoint: output flushed first (`keep`: its bytes
+    /// kept, `Stream::Out`). A pipe (`\input|command`) or the process's
+    /// standard input cannot be one.
+    pub fn snapshot(&mut self, keep: bool) -> Result<FileSnap, String> {
         use std::io::Seek;
         let stream = if self.captured.is_some() {
             Stream::Terminal
         } else if let Some(w) = self.output.as_mut() {
             let path = self.path.clone().ok_or("an output file without a name")?;
             w.flush().map_err(|e| format!("{path}: {e}"))?;
-            Stream::Out {
-                prefix: out_prefix(&path)?,
-                path,
-            }
+            out_stream(path, keep)?
         } else {
             match self.input.as_mut() {
                 None => Stream::None,
@@ -619,8 +646,8 @@ impl AlphaFile {
                 self.input = Some(TextIn::File(reopen_in(path, *offset)?));
                 self.path = Some(path.clone());
             }
-            Stream::Out { path, prefix } => {
-                let f = reopen_out(path, prefix)?;
+            Stream::Out { path, len, prefix } => {
+                let f = reopen_out(path, *len, prefix.as_deref().map(|p| &p[..]))?;
                 self.output = Some(BufWriter::new(Box::new(f)));
                 self.path = Some(path.clone());
             }
@@ -637,18 +664,16 @@ impl AlphaFile {
 }
 
 impl ByteFile {
-    /// The file at a checkpoint (output flushed first).
-    pub fn snapshot(&mut self) -> Result<FileSnap, String> {
+    /// The file at a checkpoint (output flushed first; `keep`: its bytes
+    /// kept).
+    pub fn snapshot(&mut self, keep: bool) -> Result<FileSnap, String> {
         use std::io::Seek;
         let stream = if let Some(m) = self.mem.as_ref() {
             Stream::Mem(m.clone())
         } else if let Some(w) = self.output.as_mut() {
             let path = self.path.clone().ok_or("an output file without a name")?;
             w.flush().map_err(|e| format!("{path}: {e}"))?;
-            Stream::Out {
-                prefix: out_prefix(&path)?,
-                path,
-            }
+            out_stream(path, keep)?
         } else if let Some(r) = self.input.as_mut() {
             let path = self.path.clone().ok_or("an input file without a name")?;
             let offset = r.stream_position().map_err(|e| format!("{path}: {e}"))?;
@@ -674,8 +699,9 @@ impl ByteFile {
                 self.input = Some(reopen_in(path, *offset)?);
                 self.path = Some(path.clone());
             }
-            Stream::Out { path, prefix } => {
-                self.output = Some(BufWriter::new(reopen_out(path, prefix)?));
+            Stream::Out { path, len, prefix } => {
+                let f = reopen_out(path, *len, prefix.as_deref().map(|p| &p[..]))?;
+                self.output = Some(BufWriter::new(f));
                 self.path = Some(path.clone());
             }
         }
@@ -694,7 +720,7 @@ impl ByteFile {
 impl WordFile {
     /// The file at a checkpoint: none is open between commands but while a
     /// format is loaded or dumped.
-    pub fn snapshot(&mut self) -> Result<FileSnap, String> {
+    pub fn snapshot(&mut self, _keep: bool) -> Result<FileSnap, String> {
         if self.input.is_some() || self.output.is_some() {
             return Err("a format file is open".into());
         }
@@ -970,6 +996,11 @@ impl Globals {
         }
         if f.is_some() {
             flashtex_engine::system::note_output(&fname);
+            // a resident run's output opens, in order (`crate::ckpt`: a
+            // file opened again after a checkpoint cannot be cut back to it)
+            if let Some(r) = self.host.resident.as_mut() {
+                r.opens.push(fname.clone());
+            }
         }
         if f.is_some() && fname != name {
             let b = fname.as_bytes().to_vec();
