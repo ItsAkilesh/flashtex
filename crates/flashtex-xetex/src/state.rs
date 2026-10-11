@@ -168,6 +168,9 @@ pub struct Host {
     /// The paths `find_pic_file` found, for the output (`crate::out`), which
     /// takes them from here at each page.
     pub pictures: std::collections::BTreeSet<String>,
+    /// The display list's source map (`crate::dlsource`): node positions,
+    /// spans and the markers of the page being shipped.
+    pub dl: crate::dlsource::DlSource,
     /// A hot spare's go-ahead (`crate::host::spare`): the descriptor the
     /// run waits on after the format is loaded, taken at that wait. `None`
     /// for every other run.

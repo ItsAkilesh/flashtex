@@ -7001,6 +7001,7 @@ impl Globals {
                             self.avail = self.mem[crate::ix::U((self.lig_stack) as usize)].hh().rh();
                             { let __ix1901 = self.lig_stack; self.mem[crate::ix::U((__ix1901) as usize)].set_hh_rh((268435455i32).wrapping_neg()); }
                             self.dyn_used = (self.dyn_used).wrapping_add(1i32);
+                            self.dl_new_node(self.lig_stack);
                         }
                     }
                 }
@@ -7219,6 +7220,7 @@ impl Globals {
                             self.avail = self.mem[crate::ix::U((self.lig_stack) as usize)].hh().rh();
                             { let __ix1921 = self.lig_stack; self.mem[crate::ix::U((__ix1921) as usize)].set_hh_rh((268435455i32).wrapping_neg()); }
                             self.dyn_used = (self.dyn_used).wrapping_add(1i32);
+                            self.dl_new_node(self.lig_stack);
                         }
                     }
                 }

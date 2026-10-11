@@ -124,19 +124,29 @@ final class EngineV3UnicodeFlowsTests: XCTestCase {
         XCTAssertLessThanOrEqual(source.startByte, line5 + "Hello \\undefinedmacro{} world.".utf8.count)
     }
 
-    /// Reverse search (a click on a glyph) and forward search (the caret's
-    /// line) need the display list's SOURCES and SPAN items, which the
-    /// Unicode host does not send yet (#1789): neither finds anything.
+    /// Reverse search (a click on a glyph), forward search (a line and
+    /// column of the source) and caret follow, from the display list's
+    /// SOURCES, SPAN items and glyph columns (#1789; a native word's glyphs
+    /// carry the column of its first character).
     func testReverseAndForwardSearch() async throws {
         let model = try await startedModel()
         defer { model.engineV3.stop() }
         let s = model.engineV3
-        XCTExpectFailure("Unicode mode sends no source map yet (#1789)")
         let ix = try XCTUnwrap(s.sourceIndex(page: 0))
         XCTAssertFalse(ix.glyphs.isEmpty, "page 1 has glyphs")
-        let hit = ix.glyphs.first.flatMap { s.source(page: 0, at: CGPoint(x: $0.cell.midX, y: $0.cell.midY)) }
-        XCTAssertEqual(hit?.path, "paper.tex", "reverse search")
-        XCTAssertEqual(hit?.line, 6)
-        XCTAssertNotNil(s.place(path: "paper.tex", line: 7, col: nil), "forward search")
+        let hits = ix.glyphs.compactMap { s.source(page: 0, at: CGPoint(x: $0.cell.midX, y: $0.cell.midY)) }
+        XCTAssertEqual(hits.first?.path, "paper.tex", "reverse search")
+        XCTAssertEqual(hits.first?.line, 5, "the section number: \\section's line")
+        // Line 6 is `Unicode text: naïve café, Œuvre, see section~\\ref{alpha}.`:
+        // `naïve` starts at byte 14, `café` at 21 (ï is two bytes).
+        let line6 = hits.filter { $0.line == 6 }
+        XCTAssertTrue(line6.contains { $0.col == 14 }, "naïve: \(line6.map(\.col))")
+        XCTAssertTrue(line6.contains { $0.col == 21 }, "café: \(line6.map(\.col))")
+        // Forward search: the line's word at the column, on its page.
+        let naive = try XCTUnwrap(s.place(path: "paper.tex", line: 6, col: 14), "forward search")
+        XCTAssertEqual(naive.page, 0)
+        let cafe = try XCTUnwrap(s.place(path: "paper.tex", line: 6, col: 21))
+        XCTAssertGreaterThan(cafe.rect.minX, naive.rect.minX, "café is right of naïve")
+        XCTAssertEqual(s.place(path: "paper.tex", line: 9, col: nil)?.page, 1, "Second page. is on page 2")
     }
 }

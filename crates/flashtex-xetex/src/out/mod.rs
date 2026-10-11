@@ -45,6 +45,7 @@ use crate::system::ByteFile;
 use doc::{Built, Doc};
 use flashtex_display_list::frame::write_frame;
 use flashtex_display_list::kind;
+use flashtex_display_list::page::Item;
 use flashtex_display_list::resource::Font;
 use std::collections::HashSet;
 use std::io::Write;
@@ -69,6 +70,9 @@ struct DlSink {
     fonts: HashSet<u16>,
     images: HashSet<u32>,
     forms: usize,
+    /// The source map's spans and files sent (spec §5.3).
+    spans: HashSet<u32>,
+    files: HashSet<u32>,
     /// `FLASHTEX_DISPLAY_LIST_FONT_FORMATS`: the font formats whose
     /// programs the reader takes (`None`: all).
     formats: Option<HashSet<String>>,
@@ -91,6 +95,8 @@ impl Output {
                     fonts: HashSet::new(),
                     images: HashSet::new(),
                     forms: 0,
+                    spans: HashSet::new(),
+                    files: HashSet::new(),
                     formats: std::env::var("FLASHTEX_DISPLAY_LIST_FONT_FORMATS")
                         .ok()
                         .map(|s| {
@@ -226,13 +232,25 @@ pub fn page_done(g: &mut Globals, f: &mut ByteFile) {
     out.doc.pictures.append(&mut g.host.pictures);
     let mag = g.eqtb[(int_base + mag_code - 1) as usize].int();
     let page_no = g.total_pages as u32; // already counted
+                                        // The source map's markers of this page, as offsets into its bytes
+                                        // (`crate::dlsource`); each page starts unmarked.
+    let marks: Vec<(u32, u32, u16)> = std::mem::take(&mut g.host.dl.markers)
+        .into_iter()
+        .filter(|m| (m.pos as i64) >= start && (m.pos as i64) < end)
+        .map(|m| ((m.pos as i64 - start) as u32, m.span, m.col))
+        .collect();
+    g.host.dl.page_done();
     let built = match missing {
         Some(p) => Err(format!("byte {p} of the XDV stream is not in memory")),
-        None => page::Builder::page(&mut out.doc, &EngineMetrics(g), mag, page_no, &bytes),
+        None => {
+            page::Builder::page_marked(&mut out.doc, &EngineMetrics(g), mag, page_no, &bytes, marks)
+        }
     };
     match built {
         Ok(b) => {
-            send_page(&mut out, &b);
+            send_page(&mut out, &b, |spans, sent, files| {
+                g.dl_sources(spans, sent, files)
+            });
             out.doc.pages.push(b);
         }
         Err(e) => out.doc.errors.push(format!("page {page_no}: {e}")),
@@ -322,17 +340,38 @@ fn pdf_date() -> Option<String> {
 
 /// Send a page, and the forms and resources it needs first, to the
 /// display-list sink.
-fn send_page(out: &mut Output, b: &Built) {
+fn send_page(
+    out: &mut Output,
+    b: &Built,
+    sources: impl FnOnce(&[u32], &mut HashSet<u32>, &mut HashSet<u32>) -> Option<Vec<u8>>,
+) {
     let Some(dl) = out.dl.as_mut() else {
         return;
     };
     let doc = &out.doc;
+    // The source map's spans of the page and of the forms sent with it,
+    // declared before them (spec §5.3).
+    let mut spans: Vec<u32> = doc.forms[dl.forms.min(doc.forms.len())..]
+        .iter()
+        .chain(std::iter::once(b))
+        .flat_map(|x| x.dl.items.iter())
+        .filter_map(|it| match it {
+            Item::Span(s) => Some(*s),
+            _ => None,
+        })
+        .collect();
+    spans.sort_unstable();
+    spans.dedup();
+    let src = sources(&spans, &mut dl.spans, &mut dl.files);
     let mut ok = true;
     let mut send = |k: u8, body: &[u8], w: &mut Box<dyn Write + Send>| {
         if ok && write_frame(w, k, body).is_err() {
             ok = false;
         }
     };
+    if let Some(src) = src {
+        send(kind::SOURCES, &src, &mut dl.w);
+    }
     // Forms made since the last page.
     while dl.forms < doc.forms.len() {
         let form = &doc.forms[dl.forms];

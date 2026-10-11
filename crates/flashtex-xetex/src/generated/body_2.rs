@@ -2215,7 +2215,9 @@ impl Globals {
         while (((self.cur_input.loc_field == (268435455i32).wrapping_neg()) && (self.cur_input.index_field != v_template)) && (self.cur_input.index_field != output_text)) {
             self.end_token_list();
         }
+        self.dl_token_begin();
         p = self.get_avail();
+        self.dl_token_end();
         { let __v200 = self.cur_tok; self.mem[crate::ix::U((p) as usize)].set_hh_lh(__v200); }
         if (self.cur_tok < right_brace_limit) {
             if (self.cur_tok < left_brace_limit) {
@@ -3454,6 +3456,7 @@ impl Globals {
                                                                         self.avail = self.mem[crate::ix::U((q) as usize)].hh().rh();
                                                                         self.mem[crate::ix::U((q) as usize)].set_hh_rh((268435455i32).wrapping_neg());
                                                                         self.dyn_used = (self.dyn_used).wrapping_add(1i32);
+                                                                        self.dl_new_node(q);
                                                                     }
                                                                 }
                                                             }

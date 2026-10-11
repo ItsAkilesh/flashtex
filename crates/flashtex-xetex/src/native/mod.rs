@@ -800,6 +800,9 @@ impl Globals {
             std::process::exit(3);
         };
         let text = self.node_text(p);
+        // The display list's source map: a native word's column is its
+        // first character's (`crate::dlsource`).
+        self.dl_native_word(p, &text);
         // ubidi_setPara(text, getDefaultDirection(engine)): the direction
         // runs, laid out each in its direction, in visual order (`bidi`).
         // Text without a right-to-left character, an Arabic number or an

@@ -592,6 +592,13 @@ for every node it allocates, where it was reading at that moment:
   page's own boxes): **no span** (0), rather than a wrong one;
 - `col = 0xFFFF`: no column is known.
 
+`flashtex-host-unicode` (XeTeX) records the same, with two differences: a
+native (OpenType) word is one node made once the word is read, so every
+glyph of it carries the column of the word's first character (found in the
+line; the word's end when it is not there, as for text a macro made); and
+columns are UTF-8 bytes of the line TeX read as Unicode scalars. Each
+engine run of a compile starts its span ids afresh and declares them again.
+
 **Forward search** (source → page): find the glyphs whose span is
 (file, line) and whose `col` is nearest the caret. **Inverse search**
 (click → source): the glyph under the point gives (file, line, col).
