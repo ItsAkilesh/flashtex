@@ -20,6 +20,10 @@
 //! place, the directory's time put back), as a change within the same tick
 //! would be. Each fails if a racy signature is trusted, in the memo (2) or
 //! in `refresh_disk_dirs` (4), or if the memo ignores a new expansion (4).
+//! From the review of #1776: 5 fails if a listing taken after kpathsea's
+//! walk validates it, and 6 if the memo compares names by `to_lowercase`
+//! (on a case-insensitive file system) or lists again for a name that is
+//! not ASCII.
 //! Through every step the memo's answer is kpathsea's own on the same
 //! instance with the memo off. One test in its own process: it sets
 //! `FLASHTEX_RACY_MS` (every signature racy), `TEXMFHOME` and the working
@@ -97,6 +101,9 @@ fn racy_directories_are_listed_again() {
         look(&mut r, "flashrace.sty", "again").1,
         "racy directories, listed again, did not answer"
     );
+    // (the first check trusts no listing, so the second forgets once and
+    // lists the racy directories before kpathsea walks them again)
+    r.refresh_disk_dirs();
     r.refresh_disk_dirs();
     let f0 = KpathseaResolver::disk_forgets();
     r.refresh_disk_dirs();
@@ -138,6 +145,44 @@ fn racy_directories_are_listed_again() {
         .find_ex("flashdeep.sty", Format::Tex, false)
         .0;
     assert_eq!(p, fresh, "a fresh process finds another file");
+
+    // 5. A subdirectory made after kpathsea walked the subtree, before the
+    // resolver's first check: a listing taken at that check already shows
+    // it, so it proves nothing about the walk (review of #1776, HIGH 1).
+    let mut r2 = KpathseaResolver::for_texlive(&bin, "pdflatex", "pdftex");
+    assert_eq!(r2.find_ex("flashdeep2.sty", Format::Tex, false).0, None);
+    std::fs::create_dir_all(sub.join("deeper2")).unwrap();
+    std::fs::write(sub.join("deeper2/flashdeep2.sty"), "% deep\n").unwrap();
+    r2.refresh_disk_dirs(); // the first check
+    r2.refresh_disk_dirs();
+    let (p, _) = look(&mut r2, "flashdeep2.sty", "made before the first check");
+    assert!(found_in(&p, &sub.join("deeper2")), "{p:?}");
+
+    // 6. A name a case-insensitive file system matches beyond ASCII case
+    // (U+FB01, the `fi` ligature: APFS opens `\u{FB01}xa.sty` as
+    // `fixa.sty`) appears in the working directory, searched first (review
+    // of #1776, HIGH 2). Whatever kpathsea finds, the memo does not answer.
+    std::fs::write(sub.join("fixa.sty"), "% fixa\n").unwrap();
+    std::fs::write(cwd.join("flashpad2.tmp"), "% pad\n").unwrap();
+    r.refresh_disk_dirs();
+    let (p, _) = look(&mut r, "fixa.sty", "fixa");
+    assert!(found_in(&p, &sub), "{p:?}");
+    assert!(look(&mut r, "fixa.sty", "fixa again").1);
+    quietly(&cwd, "flashpad2.tmp", "\u{FB01}xa.sty");
+    r.refresh_disk_dirs();
+    assert!(
+        !look(&mut r, "fixa.sty", "a ligature in the working directory").1,
+        "the memo answered past an entry a case-insensitive file system may match"
+    );
+    // ... and a name that is not ASCII is left to the signature. (Any entry
+    // that could match it is not ASCII either, so the entry rule alone
+    // also holds this; the name rule is defence in depth.)
+    std::fs::write(sub.join("flash\u{e9}.sty"), "% e\n").unwrap();
+    look(&mut r, "flash\u{e9}.sty", "not ASCII");
+    assert!(
+        !look(&mut r, "flash\u{e9}.sty", "not ASCII again").1,
+        "a name that is not ASCII answered from a racy directory"
+    );
 
     let _ = std::fs::remove_dir_all(&base);
 }
