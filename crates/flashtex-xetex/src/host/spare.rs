@@ -137,7 +137,7 @@ pub fn hints(g: &crate::Globals) {
 /// (`flashtex_font_discovery`'s walk: links followed, hidden entries left
 /// out, at most 6 levels down), each with its identity, and the directory
 /// [`crate::fontmgr::catalog::os_extra_dirs`] lists.
-fn font_dirs() -> Vec<(PathBuf, Option<Ident>)> {
+pub(crate) fn font_dirs() -> Vec<(PathBuf, Option<Ident>)> {
     fn tree(dir: &Path, depth: usize, out: &mut Vec<(PathBuf, Option<Ident>)>) {
         if depth > 6 {
             return;
@@ -501,6 +501,13 @@ impl Spares {
         }
     }
 
+    /// No spares: compiles run in the host's own process (`inproc`), where
+    /// the format stays loaded.
+    pub fn off(mut self) -> Spares {
+        self.enabled = false;
+        self
+    }
+
     /// The number of the next run started on this connection.
     pub fn next_run(&mut self) -> u64 {
         self.runs += 1;
@@ -519,6 +526,12 @@ impl Spares {
 
     pub fn enabled(&self) -> bool {
         self.enabled && self.profile_allows
+    }
+
+    /// The connection's mode is Low Memory: nothing is kept between
+    /// compiles (no spare, no resident engine).
+    pub fn lean(&self) -> bool {
+        !self.profile_allows
     }
 
     /// The connection's performance mode changed (`PROFILE`): Low Memory

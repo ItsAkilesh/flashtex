@@ -3231,6 +3231,7 @@ impl Globals {
         let mut save_warning_index: halfword = 0; // §423
         let mut match_chr: UTF16_code = 0; // §423
         'l_exit_f: {
+            self.flashtex_poll();
             save_scanner_status = self.scanner_status;
             save_warning_index = self.warning_index;
             self.warning_index = self.cur_cs;

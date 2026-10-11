@@ -129,6 +129,19 @@ pdfTeX's own, each needing a XeTeX counterpart written against `xetex.web`:
    format image (`fmtimage.ch` for `xetex.web`) and the kpathsea and font
    catalogs kept in the process. Gate: P-T1 lockstep, XDV and the PDF parity
    baseline unchanged; spares removed.
+   *Landed (lane XETEX-INCR, step 1), before R2:* `src/resident.rs`,
+   `src/host/inproc.rs`. The engine is kept between runs, and the state
+   right after the format load is a checkpoint (`changes/resident.ch`'s
+   `flashtex_format_ready`) that later runs of the same command line and
+   unchanged format file restore, then run the rest of the main program
+   (`run_after_format`): no `fmtimage.ch`, no `initialize`/`init_prim` at
+   all. The clock is the session's (as Classic's), the terminal and the
+   output's reports are captured, exits unwind, and a run stops at its host's
+   cancel (`flashtex_poll` between commands and at each macro call). The
+   runtime is still per process, so one engine thread serves the process.
+   Spares remain behind `FLASHTEX_UNICODE_INPROCESS=0`, as the comparison
+   path; `tools/incr-bench/unicode.py --verify` compares every in-process
+   compile with a from-scratch one in a process of its own.
 3. **S₀** at `\begin{document}`, keyed by the read-set (font files and
    directories included). This is the step that matters for unicode-math.
 4. **L2 checkpoints** at `\shipout` with §4's state, `checkpoint.ch` for

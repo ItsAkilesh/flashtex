@@ -5914,6 +5914,7 @@ impl Globals {
                 }
             }
             if __goto_1 <= 1 { // L60
+                self.flashtex_poll();
                 self.get_x_token();
             }
             if __goto_1 <= 2 { // reswitch
@@ -9460,6 +9461,54 @@ impl Globals {
         self.primitive(66962i32, assign_int, 7892351i32);
         // §1390
         self.no_new_control_sequence = true;
+    }
+
+    /// The rest of the section that gets the first line of input and prepares
+    /// to start, after the format is loaded (see changes/resident.ch): the code
+    /// that followed the load, moved here so that a resident engine restarting
+    /// from the state after the load can run it.
+    /// @<Last-minute...
+    // §1723
+    pub fn start_after_format(&mut self) {
+        if (self.eTeX_mode == 1i32) {
+            {
+                crate::system::wr_str(&mut self.term_out, "entering extended mode");
+                crate::system::wr_ln(&mut self.term_out);
+            }
+        }
+        if ((self.eqtb[crate::ix::U(((7892312i32) - 1) as usize)].int() < 0i32) || (self.eqtb[crate::ix::U(((7892312i32) - 1) as usize)].int() > 255i32)) {
+            self.cur_input.limit_field = (self.cur_input.limit_field).wrapping_sub(1i32);
+        } else {
+            { let __ix2009 = self.cur_input.limit_field; let __v2010 = self.eqtb[crate::ix::U(((7892312i32) - 1) as usize)].int(); self.buffer[crate::ix::U((__ix2009) as usize)] = __v2010; }
+        }
+        self.fix_date_and_time();
+        self.random_seed = ((self.microseconds).wrapping_mul(1000i32)).wrapping_add((self.epochseconds % 1000000i32));
+        self.init_randoms(self.random_seed);
+        // §813
+        self.magic_offset = (self.str_start[crate::ix::U(((math_spacing).wrapping_sub(65536i32)) as usize)]).wrapping_sub((9i32).wrapping_mul(ord_noad));
+        // §79
+        if (self.interaction == batch_mode) {
+            self.selector = no_print;
+        } else {
+            self.selector = term_only;
+        }
+        // §1723
+        if ((self.cur_input.loc_field < self.cur_input.limit_field) && (self.eqtb[crate::ix::U((((cat_code_base).wrapping_add(self.buffer[crate::ix::U((self.cur_input.loc_field) as usize)])) - 1) as usize)].hh().rh() != escape)) {
+            self.start_input();
+        }
+    }
+
+    /// A resident engine's run from the state after the format is loaded: the
+    /// main program from that point on.
+    /// @<Last-minute...
+    // §1724
+    pub fn run_after_format(&mut self) {
+        self.start_after_format();
+        self.history = spotless;
+        self.main_control();
+        self.final_cleanup();
+        self.close_files_and_terminate();
+        self.ready_already = 0i32;
     }
 
 }

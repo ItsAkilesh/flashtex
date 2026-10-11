@@ -177,6 +177,19 @@ pub struct Host {
     /// What the host that started this run asked of it (`crate::host::spare`).
     #[cfg(unix)]
     pub child_env: crate::host::spare::ChildEnv,
+    /// The clock pinned for the run (seconds, microseconds since the
+    /// epoch): a resident engine's session clock, or `FLASHTEX_PIN_CLOCK`.
+    /// `\time`, `\day`, `\month`, `\year`, the start time, the PDF's
+    /// dates and (through the run's first `seconds_and_micros`) the random
+    /// seed read it (DESIGN.md §4.5).
+    pub clock: Option<(i64, i32)>,
+    /// The run's first `seconds_and_micros` is still to come: it reads
+    /// `clock`; later ones (`\pdfelapsedtime`) read the system's clock.
+    pub seed_pending: bool,
+    /// A run of a resident engine (`crate::resident`): its exits return to
+    /// the host, its terminal is captured.
+    /// `None` for a run that is a process of its own.
+    pub resident: Option<Box<crate::resident::Resident>>,
 }
 
 /// `-no-pdf`, true unless set otherwise.
