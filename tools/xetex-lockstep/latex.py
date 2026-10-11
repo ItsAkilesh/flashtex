@@ -18,9 +18,21 @@ files must be byte-identical after the two normalisations of run.py
 (PLAN.md §3.5).
 
     python3 tools/xetex-lockstep/latex.py --engine <bin> [--cases 'l00*'] [--jobs N] [--keep]
+    python3 tools/xetex-lockstep/latex.py --engine <bin> --cases-dir DIR [--json OUT]
+
+`--cases-dir DIR` (repeatable) takes the cases from DIR instead of
+`latex-cases/`: each `NAME.tex`, and each directory `NAME/` holding
+`NAME.tex` with the files it reads (tools/unicode-m3/corpus.py writes these).
+Such a directory may hold `.m3case.json`: `firstline`, TeX code put ahead of
+`\\input{NAME}` on the first line of every run of both engines (the effective
+source of a `[fonts]` project, PROPOSAL.md §4.5), and `trace`, `full` (the
+default: `\\tracingall`, as above) or `boxes` (`\\tracingoutput` and the box
+dumps at every `\\shipout`, without `\\tracingall`'s macro trace: for long
+documents, reported as such).
 """
 import argparse
 import fnmatch
+import json
 import os
 import shutil
 import subprocess
@@ -40,6 +52,54 @@ RUN_ARGS = ["-fmt=xelatex", "-no-pdf", "-interaction=nonstopmode",
             "-cnf-line=max_print_line=10000", "-cnf-line=error_line=254"]
 TRACE = ("\\tracingall\\tracingonline=1"
          "\\showboxdepth=2147483647\\showboxbreadth=2147483647\\input{%s}")
+TRACE_PREFIX = {
+    "full": "\\tracingall\\tracingonline=1\\showboxdepth=2147483647\\showboxbreadth=2147483647",
+    "boxes": "\\tracingoutput=1\\tracingonline=1\\showboxdepth=2147483647\\showboxbreadth=2147483647",
+}
+META = ".m3case.json"
+
+
+def find_cases(dirs):
+    """{name: path} of the cases in `dirs`: `NAME.tex` files and `NAME/`
+    directories holding `NAME.tex`."""
+    out = {}
+    for d in dirs:
+        for fn in sorted(os.listdir(d)):
+            p = os.path.join(d, fn)
+            if fn.endswith(".tex") and os.path.isfile(p):
+                out[fn[:-4]] = p
+            elif os.path.isdir(p) and os.path.isfile(os.path.join(p, fn + ".tex")):
+                out[fn] = p
+    return out
+
+
+def case_meta(src):
+    p = os.path.join(src, META)
+    if os.path.isdir(src) and os.path.isfile(p):
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def stage(src, name, d):
+    """Copy case `name` from `src` (a file or a directory) into `d`."""
+    os.makedirs(d, exist_ok=True)
+    if os.path.isdir(src):
+        shutil.copytree(src, d, dirs_exist_ok=True, symlinks=True,
+                        ignore=shutil.ignore_patterns(META, "expect.json"))
+    else:
+        shutil.copy(src, os.path.join(d, name + ".tex"))
+
+
+def doc_arg(name, meta, traced):
+    """The last argument of a run: the main file, after the case's first-line
+    code (the host's `preamble\\input{main.tex}`), traced or not."""
+    first = meta.get("firstline", "")
+    if traced:
+        return TRACE_PREFIX[meta.get("trace", "full")] + first + "\\input{%s}" % name
+    if first:
+        return first + "\\input{%s.tex}" % name
+    return name + ".tex"
 
 
 def env_for(fmt_dir):
@@ -70,21 +130,23 @@ def build_format(binary, d):
     return time.time() - t, r.returncode, log
 
 
-def run_case(name, engines, fmts, tmp, timeout):
-    src = os.path.join(CASES, name + ".tex")
+def run_case(name, engines, fmts, tmp, timeout, src=None, keep=True):
+    src = src or os.path.join(CASES, name + ".tex")
+    meta = case_meta(src)
     res = {}
+    secs = {}
     for who in ("reference", "candidate"):
         d = os.path.join(tmp, name, who)
-        os.makedirs(d, exist_ok=True)
-        shutil.copy(src, os.path.join(d, name + ".tex"))
+        stage(src, name, d)
         exe = link(engines[who], os.path.join(d, ".bin"), "xelatex")
         env = env_for(fmts[who])
+        t = time.time()
         try:
-            subprocess.run([exe] + RUN_ARGS + [name + ".tex"], cwd=d, env=env,
+            subprocess.run([exe] + RUN_ARGS + [doc_arg(name, meta, False)], cwd=d, env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            timeout=timeout)
-            r = subprocess.run([exe] + RUN_ARGS + [TRACE % name], cwd=d, env=env,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            r = subprocess.run([exe] + RUN_ARGS + [doc_arg(name, meta, True)], cwd=d, env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                timeout=timeout)
             code = r.returncode
         except subprocess.TimeoutExpired:
@@ -93,6 +155,7 @@ def run_case(name, engines, fmts, tmp, timeout):
         log = open(logp, encoding="utf-8", errors="surrogateescape").read() \
             if os.path.exists(logp) else ""
         res[who] = (code, X.normalise(log, d), os.path.join(d, name + ".xdv"))
+        secs[who] = round(time.time() - t, 2)
     msgs = []
     (rc, rlog, rxdv), (cc, clog, cxdv) = res["reference"], res["candidate"]
     if rc != cc:
@@ -108,7 +171,24 @@ def run_case(name, engines, fmts, tmp, timeout):
     x = X.compare_xdv(rxdv, cxdv)
     if x:
         msgs.append(x)
-    return name, not msgs, msgs, len(a)
+    # `[fonts]` precedence (PROPOSAL.md §4.5): fonts each XDV must or must not
+    # load (file names in its define_native_font records), in both engines,
+    # so the oracle confirms what the expectation says
+    for who, xdv in (("reference", rxdv), ("candidate", cxdv)):
+        data = open(xdv, "rb").read() if os.path.exists(xdv) else b""
+        for f in meta.get("expect_fonts", []):
+            if f.encode() not in data:
+                msgs.append("%s: %s is not loaded (expected)" % (who, f))
+        for f in meta.get("forbid_fonts", []):
+            if f.encode() in data:
+                msgs.append("%s: %s is loaded (the document's font should win)" % (who, f))
+    info = {"case": name, "ok": not msgs, "messages": msgs, "log_lines": len(a),
+            "exit": [rc, cc], "seconds": [secs["reference"], secs["candidate"]],
+            "trace": meta.get("trace", "full"), "firstline": bool(meta.get("firstline")),
+            "xdv": os.path.exists(rxdv)}
+    if not keep:
+        shutil.rmtree(os.path.join(tmp, name), ignore_errors=True)
+    return name, not msgs, msgs, len(a), info
 
 
 def main(argv=None):
@@ -119,12 +199,15 @@ def main(argv=None):
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--timeout", type=float, default=900)
     ap.add_argument("--keep", action="store_true")
+    ap.add_argument("--cases-dir", action="append",
+                    help="take the cases from DIR (repeatable) instead of latex-cases/")
+    ap.add_argument("--json", help="write every case's result here")
     a = ap.parse_args(argv)
     if not X.check_reference(a.reference):
         print("reference %s is not %s" % (a.reference, X.PINNED_REFERENCE))
         return 2
-    names = sorted(fn[:-4] for fn in os.listdir(CASES) if fn.endswith(".tex"))
-    names = [n for n in names if any(fnmatch.fnmatch(n, p) for p in a.cases)]
+    srcs = find_cases(a.cases_dir or [CASES])
+    names = [n for n in sorted(srcs) if any(fnmatch.fnmatch(n, p) for p in a.cases)]
     tmp = tempfile.mkdtemp(prefix="xelatex-lockstep-")
     engines = {"reference": a.reference, "candidate": a.engine}
     fmts = {}
@@ -157,14 +240,23 @@ def main(argv=None):
         len(fa), len(fdiff) + abs(len(fa) - len(fb)),
         "".join("\n  ref:  %s\n  cand: %s" % p for p in fdiff[:5])))
     ok = 0
+    infos = []
     with ThreadPoolExecutor(max_workers=a.jobs) as ex:
-        for name, good, msgs, n in ex.map(
-                lambda n: run_case(n, engines, fmts, tmp, a.timeout), names):
+        for name, good, msgs, n, info in ex.map(
+                lambda n: run_case(n, engines, fmts, tmp, a.timeout, srcs[n], a.keep), names):
             ok += good
-            print("%s %s (%d log lines)" % ("PASS" if good else "FAIL", name, n))
+            infos.append(info)
+            print("%s %s (%d log lines%s)" % ("PASS" if good else "FAIL", name, n,
+                                               ", box dumps only" if info["trace"] == "boxes" else ""),
+                  flush=True)
             for m in msgs:
                 print("  " + m)
     print("%d cases, %d equal, %d differ" % (len(names), ok, len(names) - ok))
+    if a.json:
+        with open(a.json, "w") as f:
+            json.dump({"engine": a.engine, "reference": a.reference, "format_log_lines": len(fa),
+                       "format_log_differences": len(fdiff) + abs(len(fa) - len(fb)),
+                       "cases": infos, "equal": ok, "total": len(names)}, f, indent=1)
     if a.keep:
         print("kept:", tmp)
     else:

@@ -97,9 +97,10 @@ def aux_state(d, name):
 
 def run_engine(binary, fmt_dir, src, d, name, passes, timeout):
     """Run `passes` passes (or, with passes=None, until the auxiliary files
-    are stable). Returns (passes run, exit status of the last, seconds)."""
-    os.makedirs(d, exist_ok=True)
-    shutil.copy(src, os.path.join(d, name + ".tex"))
+    are stable). Returns (passes run, exit status of the last, seconds).
+    `src` is a case file or a case directory (latex.py's `--cases-dir`)."""
+    L.stage(src, name, d)
+    arg = L.doc_arg(name, L.case_meta(src), False)
     exe = L.link(binary, os.path.join(d, ".bin"), "xelatex")
     env = L.env_for(fmt_dir)
     n = 0
@@ -109,7 +110,7 @@ def run_engine(binary, fmt_dir, src, d, name, passes, timeout):
     limit = passes or 1
     while n < limit:
         try:
-            r = subprocess.run([exe] + PDF_ARGS + [name + ".tex"], cwd=d, env=env,
+            r = subprocess.run([exe] + PDF_ARGS + [arg], cwd=d, env=env,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                timeout=timeout)
             code = r.returncode
@@ -129,7 +130,7 @@ def run_engine(binary, fmt_dir, src, d, name, passes, timeout):
 run_engine.max_passes = 4
 
 
-def reference_xdv(binary, fmt_dir, d, name, timeout):
+def reference_xdv(binary, fmt_dir, d, name, timeout, src=None):
     """One more reference pass with `-no-pdf` (latex.py's own arguments) in
     the reference's directory, after its PDF passes: the auxiliary files are
     stable, so it typesets the same pages, and its XDV holds TeX's exact
@@ -140,7 +141,8 @@ def reference_xdv(binary, fmt_dir, d, name, timeout):
     if os.path.exists(pdf):
         shutil.copy(pdf, keep)
     try:
-        subprocess.run([exe] + L.RUN_ARGS + [name + ".tex"], cwd=d, env=L.env_for(fmt_dir),
+        arg = L.doc_arg(name, L.case_meta(src), False) if src else name + ".tex"
+        subprocess.run([exe] + L.RUN_ARGS + [arg], cwd=d, env=L.env_for(fmt_dir),
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
     except subprocess.TimeoutExpired:
         return None
@@ -155,7 +157,7 @@ def run_case(name, src, engines, fmts, tmp, opt, timeout, keep, xdv_check=None, 
     res = {"case": name}
     dirs = {w: os.path.join(tmp, name, w) for w in ("reference", "candidate")}
     n, rc, rt = run_engine(engines["reference"], fmts["reference"], src, dirs["reference"], name, None, timeout)
-    xdv = reference_xdv(engines["reference"], fmts["reference"], dirs["reference"], name, timeout) \
+    xdv = reference_xdv(engines["reference"], fmts["reference"], dirs["reference"], name, timeout, src) \
         if xdv_check is not None else None
     m, cc, ct = run_engine(engines["candidate"], fmts["candidate"], src, dirs["candidate"], name, n, timeout)
     res.update(passes=n, exit=[rc, cc], seconds=[round(rt, 2), round(ct, 2)])
@@ -305,6 +307,11 @@ def main(argv=None):
                          "in the reference's XDV, tolerance in bp (default 0.001)")
     ap.add_argument("--no-xdv-check", action="store_true", help="skip the XDV check")
     ap.add_argument("--json", help="write every case's report here")
+    ap.add_argument("--cases-dir", action="append",
+                    help="take the cases from DIR (repeatable; latex.py's case files and directories) "
+                         "instead of latex-cases/ and cases/")
+    ap.add_argument("--pdf-dir", help="copy each case's two PDFs here as NAME.reference.pdf and "
+                                      "NAME.candidate.pdf (for a visual comparison elsewhere)")
     ap.add_argument("--baseline", help="a baseline (JSON, --write-baseline): a case passes with its listed "
                     "ToUnicode differences and at most its listed pixels (a CI gate)")
     ap.add_argument("--write-baseline", help="write this run's pixels and ToUnicode differences as a baseline")
@@ -326,7 +333,7 @@ def main(argv=None):
         if base.get("scale") != opt.scale:
             print("baseline %s is at scale %s, this run at %s" % (a.baseline, base.get("scale"), opt.scale))
             return 2
-    cases = all_cases()
+    cases = L.find_cases(a.cases_dir) if a.cases_dir else all_cases()
     names = [n for n in cases if any(fnmatch.fnmatch(n, p) for p in a.cases)]
     tmp = tempfile.mkdtemp(prefix="xetex-pdfparity-")
     if a.diff_dir is None and a.keep:
@@ -359,6 +366,12 @@ def main(argv=None):
                           not a.self_test) for n in names]
         for f in futs:
             r = f.result()
+            if a.pdf_dir:
+                os.makedirs(a.pdf_dir, exist_ok=True)
+                for who in ("reference", "candidate"):
+                    p = os.path.join(tmp, r["case"], who, r["case"] + ".pdf")
+                    if os.path.exists(p):
+                        shutil.copy(p, os.path.join(a.pdf_dir, "%s.%s.pdf" % (r["case"], who)))
             if a.self_test and "report" in r:
                 ref_pdf = os.path.join(tmp, r["case"], "reference", r["case"] + ".pdf")
                 r["rewrites"] = self_test_rewrites(r["case"], ref_pdf, opt, os.path.join(tmp, r["case"]))
@@ -367,6 +380,8 @@ def main(argv=None):
             if base is not None:
                 judge(r, base)
             results.append(r)
+            if not a.keep:
+                shutil.rmtree(os.path.join(tmp, r["case"]), ignore_errors=True)
             ok += bool(r.get("ok"))
             if "report" in r:
                 totals["structural"] += r["report"]["structural_differences"]
