@@ -16,12 +16,26 @@
 //! * `statsig` — a file's identity (`StatSig`) and the racy window.
 //! * `zlib` — TeX Live's zlib (feature `zlib`), for the PDF writers and the
 //!   bundle.
+//! * `resolver` — the file resolver: kpathsea (feature `kpathsea`), the
+//!   working directory, the bundle.
+//! * `lookupproof` — what a lookup's answer depends on, checked without
+//!   making the lookup again.
+//! * `formats` — the format cache (feature `distribution`).
+//! * `bundle` — the no-TeX-Live bundle (feature `distribution`).
+//! * `trace` — the file trace (`FLASHTEX_FILE_TRACE`).
 
+#[cfg(all(feature = "distribution", not(feature = "tex82")))]
+pub mod bundle;
 pub mod busy;
+#[cfg(feature = "distribution")]
+pub mod formats;
 #[cfg(all(any(target_os = "linux", target_os = "macos"), not(feature = "tex82")))]
 pub mod logalloc;
+pub mod lookupproof;
 pub mod memstat;
 pub mod os;
 pub mod persist;
+pub mod resolver;
 pub mod statsig;
+pub mod trace;
 pub mod zlib;
