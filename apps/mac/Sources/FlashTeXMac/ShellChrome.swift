@@ -87,7 +87,7 @@ final class ShellChrome {
             if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
         }
         set(\.route, .engineV3)
-        set(\.routeHelp, s.environmentNote.isEmpty ? "pdfLaTeX-compatible engine (flashtex-host)" : s.environmentNote)
+        set(\.routeHelp, s.environmentNote.isEmpty ? (s.engineName == "XeLaTeX" ? "XeLaTeX-compatible engine (flashtex-host-unicode)" : "pdfLaTeX-compatible engine (flashtex-host)") : s.environmentNote)
         set(\.previewSource, .none)
         set(\.historicalLabel, nil)
         set(\.hasResult, s.pageCount > 0)
@@ -109,7 +109,7 @@ final class ShellChrome {
         var highlighted = false
         switch s.phase {
         case .idle: text = s.bundleConsentShown ? "waiting: download the TeX files?" : "preview engine idle"
-        case .starting: text = s.bundleProgressNote ?? "preparing the pdfLaTeX format…" // a bundle download first (no TeX Live)
+        case .starting: text = s.bundleProgressNote ?? "preparing the \(s.engineName) format…" // a bundle download first (no TeX Live)
         case .failed(let why): text = why; highlighted = true
         case .ready:
             if s.editsWaiting { text = "edited — ⌘B to compile" }
