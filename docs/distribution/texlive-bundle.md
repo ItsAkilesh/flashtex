@@ -55,6 +55,10 @@ Live's own `LICENSE.TL` and `LICENSE.CTAN`.
   (xetex), Latin Modern Math (lm-math), STIX Two, Libertinus, TeX Gyre Math, polyglossia,
   xeCJK with ctex's hook and the Fandol fonts. `scripts/notex-host-check.sh --host-unicode`
   checks that the Unicode host builds xelatex.fmt and compiles from the bundle alone.
+- Since `texbundle-tl2026-4`, one file of FlashTeX's own besides TeX Live's:
+  `texmf-var/fonts/misc/flashtex/flashtex-xetex-fonts.json`, the names of the bundle's
+  OpenType and TrueType faces, written at pack time (`--font-index-tool`) so that Unicode
+  mode finds them by name with no TeX Live (`docs/design/xetex/PLAN.md` §3.4, #1783).
 - `tools/bundle/tl2026/core.txt`: the core range, first in the file, what building
   `pdflatex.fmt` and a hello-world read (`texbundle.py core`), so a first compile needs one
   request for it.
