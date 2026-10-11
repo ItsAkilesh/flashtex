@@ -271,8 +271,27 @@ pub fn after_compile(
         }
         let builtin = super::proc::builtin(r.tool)
             .then(|| PathBuf::from(format!("{}{}", super::proc::BUILTIN, r.tool)));
-        let Some(prog) = builtin.as_ref().or_else(|| program(programs, r.tool)) else {
-            skip(&format!("{} is not installed", r.tool), memory);
+        // With no TeX Live biber: the pinned one (`bundle::biber`), fetched
+        // now if the user agreed, else why not.
+        let mut missing_why = format!("{} is not installed", r.tool);
+        let fetched =
+            if builtin.is_none() && r.tool == "biber" && program(programs, r.tool).is_none() {
+                match flashtex_engine::bundle::biber::ensure() {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        missing_why = e;
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+        let Some(prog) = builtin
+            .as_ref()
+            .or_else(|| program(programs, r.tool))
+            .or(fetched.as_ref())
+        else {
+            skip(&missing_why, memory);
             continue;
         };
         send_json(
