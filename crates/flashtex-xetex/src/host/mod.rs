@@ -32,6 +32,7 @@
 //! Invoked as `xetex` or `xelatex` (`argv[0]`), it is the engine itself.
 
 pub mod compile;
+pub mod diag;
 pub mod fonts;
 pub mod format;
 pub mod proc;
@@ -380,6 +381,9 @@ fn connection(host: &Arc<Host>, conn: UnixStream, n: u64) {
         line_state: accepted
             .iter()
             .any(|a| a == flashtex_display_list::accept::LINE_STATE),
+        diag: accepted
+            .iter()
+            .any(|a| a == flashtex_display_list::diag::CAPABILITY),
     };
     let caps = [
         "compile",
@@ -394,6 +398,7 @@ fn connection(host: &Arc<Host>, conn: UnixStream, n: u64) {
         "buffers",
         "edits",
         flashtex_display_list::PROFILE_CAPABILITY,
+        flashtex_display_list::diag::CAPABILITY,
     ];
     // a mode the host does not know is ignored (protocol §6.9)
     let mode = hello

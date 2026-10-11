@@ -104,7 +104,7 @@ final class EngineV3UnicodeFlowsTests: XCTestCase {
         }
     }
 
-    /// An error in Unicode mode is a Problems row on its file and line; one
+    /// An error in Unicode mode is a Problems row on its token; one
     /// TeX recovers from is, under best effort, a warning that names
     /// XeLaTeX (it said "pdfLaTeX would report an error here").
     func testAnErrorIsAProblemOnItsFileAndLine() async throws {
@@ -120,8 +120,12 @@ final class EngineV3UnicodeFlowsTests: XCTestCase {
         let source = try XCTUnwrap(row.source)
         XCTAssertEqual(source.path, "paper.tex")
         let line5 = Array(text.utf8).count - Array("Hello \\undefinedmacro{} world.\n\\end{document}\n".utf8).count
-        XCTAssertGreaterThanOrEqual(source.startByte, line5, "on line 5")
-        XCTAssertLessThanOrEqual(source.startByte, line5 + "Hello \\undefinedmacro{} world.".utf8.count)
+        // diag-v1 (#1791): the row is the undefined command itself, with its
+        // code and the explanation, as in Classic mode.
+        XCTAssertTrue(model.engineV3.hostOffersDiagV1, "the Unicode host offers diag-v1")
+        XCTAssertEqual(text.utf8Slice(source.startByte, source.endByte), "\\undefinedmacro", "the token TeX stopped after")
+        XCTAssertEqual(row.code, "tex/undefined-control-sequence")
+        XCTAssertNotNil(row.notes?.first, "an explanation")
     }
 
     /// Reverse search (a click on a glyph), forward search (a line and
