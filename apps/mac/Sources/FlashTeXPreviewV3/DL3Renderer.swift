@@ -70,6 +70,12 @@ public final class DL3RenderFont: @unchecked Sendable {
     /// Whether `code` draws anything.
     public func draws(_ code: Int) -> Bool {
         if let type3 { return type3[code]?.mask != nil }
+        // A glyph id is drawn whatever it is, 0 too: the PDF shows glyph 0
+        // (CID 0, the font's .notdef box) where the shaper found no glyph
+        // (XeTeX keeps those in a native word with inter-word space shaping:
+        // Latin words in an Arabic font were boxes in xelatex's PDF and ours,
+        // and blank in the preview).
+        if glyphIdCount > 0 { return code >= 0 && code < glyphIdCount }
         return glyph(code) != 0
     }
 
@@ -79,7 +85,7 @@ public final class DL3RenderFont: @unchecked Sendable {
     /// character code, and reading it through the cmap drew every letter of
     /// a Unicode-mode page as another (`hello` as `?2HHQ`).
     @inline(__always) public func glyph(_ code: Int) -> CGGlyph {
-        if glyphIdCount > 0 { return code > 0 && code < glyphIdCount ? CGGlyph(code) : 0 }
+        if glyphIdCount > 0 { return code >= 0 && code < glyphIdCount ? CGGlyph(code) : 0 }
         return code >= 0 && code < glyphs.count ? glyphs[code] : 0
     }
 

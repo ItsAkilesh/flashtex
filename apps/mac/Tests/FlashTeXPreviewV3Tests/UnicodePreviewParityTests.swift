@@ -120,6 +120,12 @@ final class UnicodePreviewParityTests: XCTestCase {
         // typesetting differs from xelatex's there (not the preview); the
         // mismatch is reported, and the mark must go once it no longer differs.
         let knownDifference = source.contains("% oracle: known-difference")
+        // `% preview: tolerance N px (why)`: up to N pixels, each one
+        // coverage level (delta 1) off, against FlashTeX's PDF.
+        let tolerance = source.split(separator: "\n").lazy.compactMap { line -> Int? in
+            guard let r = line.range(of: "% preview: tolerance ") else { return nil }
+            return Int(line[r.upperBound...].prefix { $0.isNumber })
+        }.first ?? Self.maxOwnPixels
         func judge(_ i: Int, _ m: (share: Double, ink: Int), _ what: String) {
             let text = "\(name) p\(i + 1)\(what) vs xelatex's PDF: \(String(format: "%.2f", m.share * 100))% of \(m.ink) inked cells differ"
             XCTAssertGreaterThan(m.ink, 0, "\(name) p\(i + 1): nothing drawn")
@@ -155,7 +161,8 @@ final class UnicodePreviewParityTests: XCTestCase {
                       let b = DL3Renderer.rasterize(pdfPage: page, scale: scale) else { XCTFail("\(name) p\(i + 1): render"); continue }
                 let d = DL3Parity.diff(DL3Parity.rgba(a), DL3Parity.rgba(b))
                 r.ownPixels[scale] = d.pixels
-                XCTAssertLessThanOrEqual(d.pixels, Self.maxOwnPixels, "\(name) p\(i + 1) at \(scale)x vs FlashTeX's PDF: \(d.pixels) px differ (max Δ \(d.maxDelta))")
+                let within = d.pixels <= Self.maxOwnPixels || (d.pixels <= tolerance && d.maxDelta <= 1)
+                XCTAssertTrue(within, "\(name) p\(i + 1) at \(scale)x vs FlashTeX's PDF: \(d.pixels) px differ (max Δ \(d.maxDelta))")
                 if d.pixels > 0 { Self.write(a, "\(name)-p\(i + 1)-\(scale)x-preview"); Self.write(b, "\(name)-p\(i + 1)-\(scale)x-flashtex") }
             }
             if let oracle, let page = oracle.page(at: i + 1),
