@@ -157,7 +157,10 @@ def run_case(name, engines, fmts, tmp, timeout, src=None, keep=True):
         # the first TeX error, and an engine's panic, for the report
         first_error = next((ln for ln in log.split("\n") if ln.startswith("! ")), None)
         stderr = open(errp, encoding="utf-8", errors="replace").read()
-        panic = [ln for ln in stderr.split("\n") if "panicked" in ln or "error:" in ln.lower()][:3]
+        # a panic's location, its message and (with RUST_BACKTRACE) the frames
+        el = stderr.split("\n")
+        at = next((k for k, ln in enumerate(el) if "panicked" in ln), None)
+        panic = [] if at is None else [ln for ln in el[at:at + 40] if ln.strip()][:40]
         # only the compared lines are kept (traced logs run to millions of lines)
         lines, _ = LS.split_accounting(X.normalise(log, d).split("\n"))
         del log
@@ -167,12 +170,14 @@ def run_case(name, engines, fmts, tmp, timeout, src=None, keep=True):
     (rc, a, rxdv, rerr, _), (cc, b, cxdv, cerr, cpanic) = res["reference"], res["candidate"]
     if rc != cc:
         msgs.append("exit status reference=%s candidate=%s" % (rc, cc))
+    notes = []  # shown, not failures: the oracle decides what a document does
     if rc != 0 and rerr:
-        msgs.append("reference's first error: %s" % rerr[:200])
+        notes.append("reference's first error: %s" % rerr[:200])
     if cc != 0 and cerr:
-        msgs.append("candidate's first error: %s" % cerr[:200])
-    for ln in cpanic:
-        msgs.append("candidate stderr: %s" % ln[:300])
+        notes.append("candidate's first error: %s" % cerr[:200])
+    if cpanic:
+        msgs.append("the candidate panicked: %s" % cpanic[0][:300])
+        notes.extend("  " + ln[:300] for ln in cpanic[1:])
     if a != b:
         i = next((k for k in range(min(len(a), len(b))) if a[k] != b[k]),
                  min(len(a), len(b)))
@@ -193,13 +198,13 @@ def run_case(name, engines, fmts, tmp, timeout, src=None, keep=True):
         for f in meta.get("forbid_fonts", []):
             if f.encode() in data:
                 msgs.append("%s: %s is loaded (the document's font should win)" % (who, f))
-    info = {"case": name, "ok": not msgs, "messages": msgs, "log_lines": len(a),
+    info = {"case": name, "ok": not msgs, "messages": msgs, "notes": notes, "log_lines": len(a),
             "exit": [rc, cc], "reference_error": rerr, "seconds": [secs["reference"], secs["candidate"]],
             "trace": meta.get("trace", "full"), "firstline": bool(meta.get("firstline")),
             "xdv": os.path.exists(rxdv)}
     if not keep:
         shutil.rmtree(os.path.join(tmp, name), ignore_errors=True)
-    return name, not msgs, msgs, len(a), info
+    return name, not msgs, msgs + notes, len(a), info
 
 
 def main(argv=None):
