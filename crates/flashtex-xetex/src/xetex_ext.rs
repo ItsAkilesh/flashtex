@@ -297,7 +297,7 @@ impl Globals {
     /// `mapped_text` array, which grows to fit up to the
     /// `mapped_text_size + 1` units reserved for it (`changes/ext.ch`, the
     /// bound `native_text` has too).
-    fn apply_mapping(&mut self, m: i32, txt: &[u16]) -> i32 {
+    pub(crate) fn apply_mapping(&mut self, m: i32, txt: &[u16]) -> i32 {
         let Some(map) = self.mapping(m) else {
             return 0;
         };
@@ -601,6 +601,9 @@ impl Globals {
             .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
+        // the read journal: the time read (S₀'s key, as the pdfTeX
+        // engine's `getfilemoddate` notes it)
+        flashtex_engine::system::note_stamp(&path, t);
         let s = flashtex_engine::pdftex::utils::make_pdf_time(t, force_source_date());
         if self.pool_ptr as usize + s.len() >= crate::generated::consts::pool_size as usize {
             self.pool_ptr = crate::generated::consts::pool_size;
@@ -617,6 +620,8 @@ impl Globals {
         let Ok(meta) = std::fs::metadata(&path) else {
             return;
         };
+        // the read journal: the length read
+        flashtex_engine::system::note_size_read(&path);
         let b = meta.len().to_string().into_bytes();
         if self.pool_ptr as usize + b.len() >= crate::generated::consts::pool_size as usize {
             self.pool_ptr = crate::generated::consts::pool_size;
@@ -641,6 +646,8 @@ impl Globals {
         let Ok(data) = std::fs::read(&path) else {
             return;
         };
+        // the read journal: all of the file, read at once
+        flashtex_engine::system::note_whole_read(&path);
         if offset < 0 {
             return;
         }
@@ -662,6 +669,7 @@ impl Globals {
             let Ok(data) = std::fs::read(&path) else {
                 return;
             };
+            flashtex_engine::system::note_whole_read(&path);
             flashtex_engine::pdftex::md5::digest(&data)
         } else {
             let bytes = crate::system::tex_string_utf8(self, s);

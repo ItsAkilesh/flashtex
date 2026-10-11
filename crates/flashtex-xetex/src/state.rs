@@ -94,6 +94,14 @@ impl Handles {
         }
     }
 
+    /// Every handle that refers to an object, with it.
+    pub fn objects(&self) -> impl Iterator<Item = (i32, &Object)> {
+        self.table
+            .iter()
+            .enumerate()
+            .filter_map(|(i, o)| o.as_ref().map(|o| (i as i32 + 1, o)))
+    }
+
     /// How many handles refer to an object.
     pub fn live(&self) -> usize {
         self.table.iter().filter(|s| s.is_some()).count()

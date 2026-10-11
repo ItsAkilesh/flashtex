@@ -117,7 +117,11 @@ impl Output {
     /// display list goes to `w` (none: no display list), the programs of
     /// fonts in `formats` only (`None`: all), and the output's reports are
     /// kept ([`Output::reports`]) instead of going to the standard error.
-    pub fn to_writer(w: Option<Box<dyn Write + Send>>, formats: Option<HashSet<String>>) -> Output {
+    pub fn to_writer(
+        w: Option<Box<dyn Write + Send>>,
+        formats: Option<HashSet<String>>,
+        cache: Option<std::sync::Arc<fonts::FontCache>>,
+    ) -> Output {
         let dl = w.map(|w| DlSink {
             w,
             fonts: HashSet::new(),
@@ -127,6 +131,7 @@ impl Output {
         });
         let mut o = Output::with_sink(dl);
         o.reports = Some(Vec::new());
+        o.doc.fonts.cache = cache;
         o
     }
 

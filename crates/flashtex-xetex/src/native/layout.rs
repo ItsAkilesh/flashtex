@@ -249,6 +249,23 @@ impl LayoutEngine {
         out
     }
 
+    /// What the last shaping left that later answers read: the shaper it
+    /// used (`usingOpenType`, `usingGraphite`) and its script. A checkpoint
+    /// keeps it (`crate::ckpt`): the engine is shared with the checkpoints,
+    /// so a restore puts back what it was there.
+    pub fn shaping_state(&self) -> (Option<String>, u32) {
+        (
+            self.shaper.lock().unwrap().clone(),
+            self.last_script.load(Ordering::Relaxed),
+        )
+    }
+
+    /// Put back a [`shaping_state`](Self::shaping_state).
+    pub fn set_shaping_state(&self, s: &(Option<String>, u32)) {
+        *self.shaper.lock().unwrap() = s.0.clone();
+        self.last_script.store(s.1, Ordering::Relaxed);
+    }
+
     /// `getDefaultDirection`: whether the script of the buffer (of the
     /// last shaping) is written right to left.
     pub fn default_rtl(&self) -> bool {

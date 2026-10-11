@@ -627,12 +627,13 @@ fn low_memory_keeps_no_spare() {
 }
 
 /// Compiles in the host's own process (`crate::resident`; from the second
-/// run on, from the state kept where the format is loaded) write what runs
-/// in processes of their own write, byte for byte: the PDF, the log and the
-/// `.aux`, over two passes, an edit, an error, a fatal error (the engine
+/// run on, from the state kept where the format is loaded, and an edit after
+/// the preamble from S₀) write what runs in processes of their own write,
+/// byte for byte: the PDF, the log and the `.aux`, over two passes, an edit
+/// in the body, a preamble edit, an error, a fatal error (the engine
 /// recovers from it) and an edit back; the same in Low Memory, which keeps
-/// no engine between compiles, and without the kept state
-/// (`FLASHTEX_UNICODE_FORMAT_POINT=0`).
+/// no engine between compiles, without S₀ (`FLASHTEX_UNICODE_S0=0`) and
+/// without the kept state (`FLASHTEX_UNICODE_FORMAT_POINT=0`).
 #[test]
 fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
     if !texlive() {
@@ -644,11 +645,15 @@ fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
     let texts = [
         DOC.to_string(),
         DOC.replace("See section", "Look at section"),
+        DOC.replace("See section", "Look at section").replace(
+            "\\begin{document}",
+            "\\newcommand\\later{x}\n\\begin{document}",
+        ),
         DOC.replace("See section", "\\undefinedmacro See"),
         DOC.replace("See section", "\\input{no-such-file} See"),
         DOC.to_string(),
     ];
-    type Outs = Vec<(String, Vec<u8>, String, String)>;
+    type Outs = Vec<(String, Vec<u8>, String, String, String)>;
     let run = |envs: &[(&str, &str)], profile: Option<&str>| -> Outs {
         // the same paths every time: the log names them
         let sub = dir.join("run");
@@ -671,6 +676,13 @@ fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
                 std::fs::read(o.join("main.pdf")).unwrap_or_default(),
                 std::fs::read_to_string(o.join("main.log")).unwrap(),
                 std::fs::read_to_string(o.join("main.aux")).unwrap_or_default(),
+                // where the compile's first run started
+                done.get("starts")
+                    .and_then(Json::as_array)
+                    .and_then(|a| a.first())
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("")
+                    .to_string(),
             ));
         }
         c.bye().unwrap();
@@ -679,11 +691,13 @@ fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
     };
     let own = run(&[("FLASHTEX_UNICODE_INPROCESS", "0")], None);
     let statuses: Vec<&str> = own.iter().map(|o| o.0.as_str()).collect();
-    assert_eq!(statuses, ["ok", "ok", "error", "error", "ok"]);
+    assert_eq!(statuses, ["ok", "ok", "ok", "error", "error", "ok"]);
     let no_point = [("FLASHTEX_UNICODE_FORMAT_POINT", "0")];
+    let no_s0 = [("FLASHTEX_UNICODE_S0", "0")];
     for (what, envs, profile) in [
         ("in process", &[][..], None),
         ("in process, Low Memory", &[][..], Some("low-memory")),
+        ("in process, no S0", &no_s0[..], None),
         ("in process, no kept state", &no_point[..], None),
     ] {
         let got = run(envs, profile);
@@ -692,6 +706,24 @@ fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
             assert!(a.1 == b.1, "{what}: compile {}: the PDFs differ", i + 1);
             assert_eq!(a.2, b.2, "{what}: compile {}: the logs differ", i + 1);
             assert_eq!(a.3, b.3, "{what}: compile {}: the .aux differs", i + 1);
+        }
+        let starts: Vec<&str> = got.iter().map(|o| o.4.as_str()).collect();
+        if what == "in process" {
+            // the body edits go on from S₀; the preamble edits (one, then
+            // its removal) run from the format and take a new S₀; the fatal
+            // error's second pass read the `.aux` its first pass left, and
+            // its S₀ stands for the edit back
+            assert_eq!(
+                starts,
+                ["fresh", "s0", "format", "format", "s0", "s0"],
+                "{what}"
+            );
+        } else if what == "in process, no S0" {
+            assert_eq!(
+                starts,
+                ["fresh", "format", "format", "format", "format", "format"],
+                "{what}"
+            );
         }
     }
     let _ = std::fs::remove_dir_all(&dir);

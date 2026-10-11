@@ -144,6 +144,22 @@ pdfTeX's own, each needing a XeTeX counterpart written against `xetex.web`:
    compile with a from-scratch one in a process of its own.
 3. **S₀** at `\begin{document}`, keyed by the read-set (font files and
    directories included). This is the step that matters for unicode-math.
+   *Landed (lane XETEX-INCR, step 2):* `changes/checkpoint.ch` (Classic's
+   arming at `\document` and the hook at `big_switch`, against `xetex.web`;
+   `resume_main_control`), `src/ckpt.rs` (the record: every file global's
+   stream, an output file's bytes so far being written back on a restore;
+   the captured terminal; the run's state outside the word space; each
+   layout engine's shaping state). The key is Classic's `host::Key`, checked
+   by Classic's code, built from the same read journal (this engine's own
+   opens now note their files: the output-directory shortcut, font files,
+   `\filemoddate` and the other whole reads), plus the font directories
+   when the preamble named a font. §4's two beliefs, tested
+   (`ckpt::tests`): HarfBuzz/FreeType answers and TECkit conversions do
+   not depend on what was asked before; but a layout engine keeps the last
+   shaping's shaper and script, which `usingOpenType`/`usingGraphite` read,
+   so the record keeps them and a restore puts them back. S₀ is refused
+   when a page shipped before it (the output's state is not kept yet: step
+   4), and when the preamble ran a shell command.
 4. **L2 checkpoints** at `\shipout` with §4's state, `checkpoint.ch` for
    `xetex.web`.
 5. **L3 restart and converge**: `iso.rs` for XeTeX's nodes, the dead-word

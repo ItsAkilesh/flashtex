@@ -234,6 +234,8 @@ pub struct RunResult {
     pub stderr: String,
     /// An in-process run that broke off (`inproc`): why.
     pub failure: Option<String>,
+    /// An in-process run: where it started.
+    pub start: Option<crate::resident::Start>,
 }
 
 /// A running engine the connection can stop (`CANCEL`, a newer `COMPILE`).
@@ -588,6 +590,15 @@ fn run_in_process(
     res.exit_code = rep.exit_code;
     res.stderr = rep.reports.join("\n");
     res.failure = rep.failure;
+    res.start = Some(rep.start);
+    if std::env::var_os("FLASHTEX_UNICODE_DEBUG").is_some() {
+        eprintln!(
+            "flashtex-host-unicode: run from {} (checked in {:.2} ms){}",
+            rep.start.name(),
+            rep.check_ms,
+            rep.s0_note.map(|n| format!(": {n}")).unwrap_or_default()
+        );
+    }
     Ok(res)
 }
 
@@ -798,6 +809,24 @@ pub struct Outcome {
     pub passes: usize,
     pub first_page_ms: Option<f64>,
     pub diagnostics: usize,
+    /// Where each pass's run started (`crate::resident::Start`; a run in a
+    /// process of its own: none).
+    pub starts: Vec<&'static str>,
+}
+
+impl Outcome {
+    /// A compile that ended as `status` without a run.
+    pub fn none(status: &'static str) -> Outcome {
+        Outcome {
+            status,
+            exit_code: None,
+            pages: 0,
+            passes: 0,
+            first_page_ms: None,
+            diagnostics: 0,
+            starts: vec![],
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -817,6 +846,7 @@ pub fn compile(
     let mut passes = 0;
     let mut last;
     let mut first_page_ms = None;
+    let mut starts = vec![];
     loop {
         let before = pass_state(&job.output_dir, &job.jobname);
         passes += 1;
@@ -835,16 +865,18 @@ pub fn compile(
                     ]),
                 );
                 return Outcome {
-                    status: "failed",
-                    exit_code: None,
-                    pages: 0,
                     passes,
                     first_page_ms,
                     diagnostics: 1,
+                    starts,
+                    ..Outcome::none("failed")
                 };
             }
         };
         first_page_ms = first_page_ms.or(last.first_page_ms);
+        if let Some(s) = last.start {
+            starts.push(s.name());
+        }
         if let Some(f) = &last.failure {
             send_json(
                 out,
@@ -919,6 +951,7 @@ pub fn compile(
         passes,
         first_page_ms,
         diagnostics: diags.len(),
+        starts,
     }
 }
 

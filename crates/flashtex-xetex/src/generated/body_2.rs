@@ -2195,6 +2195,12 @@ impl Globals {
         {
             self.input_ptr = (self.input_ptr).wrapping_sub(1i32);
             self.cur_input = self.input_stack[crate::ix::U((self.input_ptr) as usize)];
+            if (self.input_ptr < self.ckpt_arm_level) {
+                {
+                    self.ckpt_arm_level = 0i32;
+                    self.ckpt_request = 2i32;
+                }
+            }
         }
         {
             if (self.interrupt != 0i32) {
@@ -2321,6 +2327,12 @@ impl Globals {
         {
             self.input_ptr = (self.input_ptr).wrapping_sub(1i32);
             self.cur_input = self.input_stack[crate::ix::U((self.input_ptr) as usize)];
+            if (self.input_ptr < self.ckpt_arm_level) {
+                {
+                    self.ckpt_arm_level = 0i32;
+                    self.ckpt_request = 2i32;
+                }
+            }
         }
         self.in_open = (self.in_open).wrapping_sub(1i32);
     }
@@ -3640,6 +3652,14 @@ impl Globals {
             self.begin_token_list(ref_count, macro_);
             self.cur_input.name_field = self.warning_index;
             self.cur_input.loc_field = self.mem[crate::ix::U((r) as usize)].hh().rh();
+            if (self.ckpt_arm_cs != 0i32) {
+                if (self.warning_index == self.ckpt_arm_cs) {
+                    {
+                        self.ckpt_arm_level = self.input_ptr;
+                        self.ckpt_arm_cs = 0i32;
+                    }
+                }
+            }
             if (n > 0i32) {
                 {
                     if ((self.param_ptr).wrapping_add(n) > self.max_param_stack) {

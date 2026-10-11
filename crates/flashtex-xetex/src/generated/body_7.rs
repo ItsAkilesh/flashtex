@@ -5909,12 +5909,19 @@ impl Globals {
         let mut __goto_1: i32 = 0;
         'l_dispatch_1: loop {
             if __goto_1 <= 0 {
-                if (self.eqtb[crate::ix::U(((every_job_loc) - 1) as usize)].hh().rh() != (268435455i32).wrapping_neg()) {
-                    self.begin_token_list(self.eqtb[crate::ix::U(((every_job_loc) - 1) as usize)].hh().rh(), every_job_text);
+                if self.ckpt_resuming {
+                    self.ckpt_resuming = false;
+                } else {
+                    if (self.eqtb[crate::ix::U(((every_job_loc) - 1) as usize)].hh().rh() != (268435455i32).wrapping_neg()) {
+                        self.begin_token_list(self.eqtb[crate::ix::U(((every_job_loc) - 1) as usize)].hh().rh(), every_job_text);
+                    }
                 }
             }
             if __goto_1 <= 1 { // L60
                 self.flashtex_poll();
+                if (self.ckpt_request != 0i32) {
+                    self.flashtex_checkpoint_hook();
+                }
                 self.get_x_token();
             }
             if __goto_1 <= 2 { // reswitch
@@ -9505,6 +9512,18 @@ impl Globals {
     pub fn run_after_format(&mut self) {
         self.start_after_format();
         self.history = spotless;
+        self.main_control();
+        self.final_cleanup();
+        self.close_files_and_terminate();
+        self.ready_already = 0i32;
+    }
+
+    /// A run restored from a checkpoint taken at `big_switch` goes on from there
+    /// to the end, as the main program does after `main_control`.
+    /// @<Last-minute...
+    // §1727
+    pub fn resume_main_control(&mut self) {
+        self.ckpt_resuming = true;
         self.main_control();
         self.final_cleanup();
         self.close_files_and_terminate();

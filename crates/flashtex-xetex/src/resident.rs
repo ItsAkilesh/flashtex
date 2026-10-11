@@ -1,6 +1,6 @@
 //! The resident engine: runs of the Unicode engine in its host's own
-//! process (docs/design/xetex/INCREMENTAL.md §5 step 2; DESIGN.md §5.1),
-//! one after another, instead of a process per run.
+//! process (docs/design/xetex/INCREMENTAL.md §5 steps 2 and 3; DESIGN.md
+//! §5.1), one after another, instead of a process per run.
 //!
 //! * **The format is loaded once.** A run's work before it reads the
 //!   document -- `initialize` and `init_prim` over XeTeX's Unicode-sized
@@ -14,6 +14,12 @@
 //!   rest of the main program (`run_after_format`). Anything else (another
 //!   job, another format file, a changed one) is a run from the start that
 //!   keeps a new point.
+//! * **S₀.** A run from the start or from the format point takes S₀ at the
+//!   document's start (`crate::ckpt`, `changes/checkpoint.ch`). A later run
+//!   whose S₀ key still holds -- nothing the run read before S₀ changed: an
+//!   edit after the preamble -- restores S₀ and runs only the document's
+//!   body (`resume_main_control`); otherwise it runs from the format point
+//!   and takes a new S₀.
 //! * **Exits return.** `final_end` and the other exits unwind to [`Engine::run`]
 //!   with [`EngineExit`] instead of ending the process (`system::exit_process`).
 //! * **The terminal is captured** (no standard input: a run that asks for a
@@ -28,13 +34,15 @@
 //!   line of input and at every page (`flashtex_poll`), and the run
 //!   unwinds with [`Cancelled`].
 //! * **The fonts' catalog** (the installed fonts' names, which a lookup by
-//!   name reads) is kept across runs by the host ([`CatalogSource`]) while
-//!   the font directories are unchanged.
+//!   name reads) is kept across runs by the host ([`Fonts`]) while the font
+//!   directories are unchanged.
 //!
 //! The engine's runtime (`flashtex_engine::system`: the run's
-//! configuration, the resolver) is still per process, so a process runs one
-//! resident engine at a time; R2 makes it per engine (PLAN.md §3.3).
+//! configuration, the resolver, the read journal) is still per process (the
+//! journal per thread), so a process runs one resident engine at a time, on
+//! one thread; R2 makes it per engine (PLAN.md §3.3).
 
+use crate::ckpt::{RunState, Taken, REQ_LOOKUP, S0};
 use crate::fontmgr::FontCatalog;
 use crate::generated::Globals;
 use crate::system::{self, AlphaFile, ByteFile, FileVisit, WordFile};
@@ -54,8 +62,31 @@ pub struct EngineExit(pub i32);
 /// to stop.
 pub struct Cancelled;
 
-/// Where a resident engine's runs get the fonts' catalog.
-pub type CatalogSource = Box<dyn FnMut() -> Arc<FontCatalog> + Send>;
+/// Where a resident engine's runs get the installed fonts' catalog (the
+/// host's, which keeps it across runs).
+pub trait Fonts: Send {
+    /// The catalog for a lookup by name.
+    fn catalog(&mut self) -> Arc<FontCatalog>;
+    /// The state of what a catalog made now is made from (the font
+    /// directories): the same value, the same catalog.
+    fn dirs(&mut self) -> [u64; 2];
+}
+
+/// The catalog made at every lookup, from the font directories as they are.
+struct Unkept;
+
+impl Fonts for Unkept {
+    fn catalog(&mut self) -> Arc<FontCatalog> {
+        Arc::new(FontCatalog::system_cached(None))
+    }
+    fn dirs(&mut self) -> [u64; 2] {
+        // nothing watched: never the same
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos() as u64);
+        [t, !t]
+    }
+}
 
 /// What a resident engine's run is (`Host::resident`).
 pub struct Resident {
@@ -68,54 +99,22 @@ pub struct Resident {
     /// The point kept by this run, and the format file it loaded with its
     /// identity then.
     point: Option<(CheckpointId, RunState, Option<FormatFile>)>,
-    catalog: Option<CatalogSource>,
+    /// Take S₀ (`crate::ckpt`).
+    pub(crate) want_s0: bool,
+    /// S₀ as this run took it, or why it could not.
+    pub(crate) s0: Option<Result<Taken, String>>,
+    fonts: Box<dyn Fonts>,
 }
 
 impl Resident {
     /// The fonts' catalog for a lookup by name.
     pub(crate) fn font_catalog(&mut self) -> Arc<FontCatalog> {
-        match self.catalog.as_mut() {
-            Some(f) => f(),
-            None => Arc::new(FontCatalog::system_cached(None)),
-        }
-    }
-}
-
-/// The run's state outside the word space that the point keeps and a
-/// checkpoint does not (`state.rs`'s `Saved` keeps the rest).
-#[derive(Clone)]
-struct RunState {
-    start: Option<(i64, Vec<u8>)>,
-    terminating: bool,
-    tex_input_type: bool,
-    req_engine: u8,
-    bidi_warned: bool,
-    saved_mapping_name: Option<Vec<u8>>,
-}
-
-impl RunState {
-    fn of(g: &Globals) -> RunState {
-        let h = &g.host;
-        RunState {
-            start: h.start.clone(),
-            terminating: h.terminating,
-            tex_input_type: h.tex_input_type,
-            req_engine: h.req_engine,
-            bidi_warned: h.bidi_warned,
-            saved_mapping_name: h.saved_mapping_name.clone(),
-        }
+        self.fonts.catalog()
     }
 
-    fn put(&self, g: &mut Globals) {
-        let h = &mut g.host;
-        h.start = self.start.clone();
-        h.terminating = self.terminating;
-        h.tex_input_type = self.tex_input_type;
-        h.req_engine = self.req_engine;
-        h.bidi_warned = self.bidi_warned;
-        h.saved_mapping_name = self.saved_mapping_name.clone();
-        h.first_line = None;
-        h.pictures.clear();
+    /// The font directories' state now (`Fonts::dirs`).
+    pub(crate) fn font_dirs(&mut self) -> [u64; 2] {
+        self.fonts.dirs()
     }
 }
 
@@ -199,7 +198,6 @@ struct Point {
     key: PointKey,
     id: CheckpointId,
     state: RunState,
-    /// The format file the run loaded, and its identity then.
     format: Option<FormatFile>,
 }
 
@@ -244,6 +242,28 @@ pub struct Spec {
     pub lean: bool,
 }
 
+/// Where a run started.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Start {
+    /// From the start: `initialize`, the format's undump.
+    #[default]
+    Fresh,
+    /// From the state after the format load.
+    Format,
+    /// From S₀: the document's body only.
+    S0,
+}
+
+impl Start {
+    pub fn name(self) -> &'static str {
+        match self {
+            Start::Fresh => "fresh",
+            Start::Format => "format",
+            Start::S0 => "s0",
+        }
+    }
+}
+
 /// How a run ended.
 #[derive(Debug, Default)]
 pub struct Report {
@@ -258,21 +278,31 @@ pub struct Report {
     pub terminal: Vec<u8>,
     /// The output's reports (`FlashTeX output: ...`).
     pub reports: Vec<String>,
-    /// The run started from the kept point where the format is loaded.
-    pub from_format: bool,
+    /// Where the run started.
+    pub start: Start,
+    /// Why S₀ was not used (`start` is not S₀ though one was kept), or why
+    /// the run took none.
+    pub s0_note: Option<String>,
+    /// How long deciding where to start took (S₀'s key check).
+    pub check_ms: f64,
 }
 
-/// A resident engine: the engine kept between runs, and the point where its
-/// format is loaded.
+/// A resident engine: the engine kept between runs, the point where its
+/// format is loaded, and S₀.
 pub struct Engine {
     g: Option<Box<Globals>>,
     point: Option<Point>,
+    s0: Option<S0>,
     /// The session's clock (DESIGN.md §4.5).
     pub clock: (i64, i32),
-    catalog: Option<CatalogSource>,
+    fonts: Option<Box<dyn Fonts>>,
     /// Keep and use the point after the format load (`FLASHTEX_UNICODE_FORMAT_POINT=0`
     /// turns it off: every run loads the format).
     pub keep_point: bool,
+    /// Take and use S₀ (`FLASHTEX_UNICODE_S0=0` turns it off).
+    pub keep_s0: bool,
+    /// The output's font map index and font programs, kept across runs.
+    font_cache: Arc<crate::out::fonts::FontCache>,
 }
 
 /// Resets every file of the engine: closed, as at the start of a run.
@@ -290,9 +320,15 @@ impl FileVisit for CloseFiles {
     }
 }
 
+fn env_on(name: &str) -> bool {
+    std::env::var(name).map_or(true, |v| v != "0")
+}
+
 impl Engine {
-    /// A resident engine whose session clock is `clock` (`None`: now).
-    pub fn new(clock: Option<(i64, i32)>, catalog: Option<CatalogSource>) -> Engine {
+    /// A resident engine whose session clock is `clock` (`None`: now) and
+    /// whose runs get the fonts' catalog from `fonts` (`None`: made at every
+    /// lookup).
+    pub fn new(clock: Option<(i64, i32)>, fonts: Option<Box<dyn Fonts>>) -> Engine {
         let clock = clock.unwrap_or_else(|| {
             let d = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -302,17 +338,56 @@ impl Engine {
         Engine {
             g: None,
             point: None,
+            s0: None,
             clock,
-            catalog,
-            keep_point: std::env::var("FLASHTEX_UNICODE_FORMAT_POINT").map_or(true, |v| v != "0"),
+            fonts,
+            keep_point: env_on("FLASHTEX_UNICODE_FORMAT_POINT"),
+            keep_s0: env_on("FLASHTEX_UNICODE_S0"),
+            font_cache: Arc::default(),
         }
     }
 
-    /// Forget the engine and its point (memory back; the next run starts
-    /// from the start).
+    /// Forget the engine, its point and S₀ (memory back; the next run
+    /// starts from the start).
     pub fn clear(&mut self) {
+        self.s0 = None;
         self.point = None;
         self.g = None;
+    }
+
+    /// Where this run can start, and why not from S₀ when one is kept.
+    fn start_for(&mut self, key: &PointKey, first_line: &[u8]) -> (Start, Option<String>) {
+        let point_ok = self.keep_point
+            && self.g.is_some()
+            && self
+                .point
+                .as_ref()
+                .is_some_and(|p| p.key == *key && p.format_holds());
+        if !point_ok {
+            self.s0 = None;
+            return (Start::Fresh, None);
+        }
+        let Some(s0) = self.s0.as_mut() else {
+            return (Start::Format, None);
+        };
+        let why = match s0.key.check_refresh(self.clock, first_line) {
+            Err(why) => Some(why),
+            Ok(()) => match s0.font_dirs {
+                None => None,
+                Some(d) => match self.fonts.as_mut().map(|f| f.dirs()) {
+                    Some(now) if now == d => None,
+                    Some(_) => Some("the font directories changed".to_string()),
+                    None => Some("the font directories are not watched".to_string()),
+                },
+            },
+        };
+        match why {
+            None => (Start::S0, None),
+            Some(w) => {
+                self.s0 = None;
+                (Start::Format, Some(w))
+            }
+        }
     }
 
     /// Run the engine once, as `spec` asks.
@@ -328,6 +403,7 @@ impl Engine {
         // a directory made since the last run is searched (#1493)
         flashtex_engine::system::refresh_disk_dirs();
         let first_line = (!c.args.is_empty()).then(|| system::command_line(&c.args));
+        let line = first_line.clone().unwrap_or_default();
         let key = PointKey {
             run: format!("{:?}", flashtex_engine::system::run()),
             first_line: first_line.clone(),
@@ -335,62 +411,120 @@ impl Engine {
             root: spec.root.clone(),
             format_dir: spec.format_dir.clone(),
         };
-        let reuse = self.keep_point
-            && self.g.is_some()
-            && self
-                .point
-                .as_ref()
-                .is_some_and(|p| p.key == key && p.format_holds());
+        let t_check = std::time::Instant::now();
+        let (mut start, mut s0_note) = self.start_for(&key, &line);
+        let check_ms = t_check.elapsed().as_secs_f64() * 1e3;
+        let mut rewrite_failed = None;
+        if start == Start::S0 {
+            // the files the run wrote and closed before S₀, as it left them
+            if let Err(e) = self.s0.as_ref().expect("checked").key.rewrite_outputs() {
+                rewrite_failed = Some(e);
+            }
+        }
+        if let Some(e) = rewrite_failed {
+            self.s0 = None;
+            start = Start::Format;
+            s0_note = Some(e);
+        }
+        // Put the kept state back: from S₀, else from the format point,
+        // else from the start (a restore that fails -- a file it reopens
+        // gone -- falls back to the next).
+        loop {
+            if start == Start::Fresh {
+                // the old engine's memory goes before the new one's comes
+                self.clear();
+                self.g = Some(Globals::new());
+                break;
+            }
+            let g = self.g.as_mut().expect("kept with its point");
+            let restored = match start {
+                Start::Format => {
+                    let p = self.point.as_ref().expect("checked");
+                    g.restore(p.id).map(|()| {
+                        g.visit_files(&mut CloseFiles);
+                        p.state.put(g);
+                    })
+                }
+                _ => {
+                    let s0 = self.s0.as_ref().expect("checked");
+                    g.restore(s0.id).and_then(|()| {
+                        // (the record puts the terminal back: captured, as
+                        // S₀'s run had it)
+                        g.term_out = AlphaFile::captured_terminal();
+                        g.restore_record(&s0.rec)
+                    })
+                }
+            };
+            match restored {
+                Ok(()) => break,
+                Err(e) => {
+                    s0_note = Some(format!("the kept state ({}): {e}", start.name()));
+                    self.s0 = None;
+                    start = if start == Start::S0 {
+                        Start::Format
+                    } else {
+                        Start::Fresh
+                    };
+                }
+            }
+        }
+        let want_s0 = self.keep_s0 && self.keep_point && !spec.lean && start != Start::S0;
         let resident = Box::new(Resident {
             cancel: spec.cancel.clone(),
             format_dir: spec.format_dir.clone(),
-            keep_point: self.keep_point && !reuse && !spec.lean,
+            keep_point: self.keep_point && start == Start::Fresh && !spec.lean,
             point: None,
-            catalog: self.catalog.take(),
+            want_s0,
+            s0: None,
+            fonts: self.fonts.take().unwrap_or_else(|| Box::new(Unkept)),
         });
-        let out = (!c.no_pdf)
-            .then(|| Box::new(crate::out::Output::to_writer(spec.dl, spec.font_formats)));
-        if !reuse {
-            // the old engine's memory goes before the new one's comes
-            self.clear();
-            self.g = Some(Globals::new());
-        }
+        let out = (!c.no_pdf).then(|| {
+            Box::new(crate::out::Output::to_writer(
+                spec.dl,
+                spec.font_formats,
+                Some(self.font_cache.clone()),
+            ))
+        });
         let g = self.g.as_mut().expect("made above");
-        if reuse {
-            let p = self.point.as_ref().expect("checked above");
-            if let Err(e) = g.restore(p.id) {
-                self.catalog = resident.catalog;
-                self.clear();
-                return Report {
-                    failure: Some(format!("the state after the format load: {e}")),
-                    ..Report::default()
-                };
-            }
-            g.visit_files(&mut CloseFiles);
-            p.state.put(g);
+        if start != Start::S0 {
+            g.term_out = AlphaFile::captured_terminal();
         }
-        g.term_out = AlphaFile::captured_terminal();
         g.host.clock = Some(self.clock);
-        // the point is after the run's first reading of the clock
-        g.host.seed_pending = !reuse;
+        // the point and S₀ are after the run's first reading of the clock
+        g.host.seed_pending = start == Start::Fresh;
         g.host.resident = Some(resident);
         g.host.out = out;
         system::set_no_pdf(g, c.no_pdf);
-        if !reuse {
+        // S₀ is armed by the run's first `big_switch` (`crate::ckpt`); a run
+        // from S₀ asks for nothing
+        g.ckpt_request = if want_s0 { REQ_LOOKUP } else { 0 };
+        if start != Start::S0 {
+            g.ckpt_arm_cs = 0;
+            g.ckpt_arm_level = 0;
+        }
+        if start == Start::Fresh {
             if let Some(l) = first_line {
                 system::set_first_line(g, l);
             }
         }
+        if want_s0 {
+            flashtex_engine::system::record_reads(true);
+        }
         let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if reuse {
-                g.run_after_format();
-            } else {
-                g.tex_body();
+            match start {
+                Start::Fresh => g.tex_body(),
+                Start::Format => g.run_after_format(),
+                Start::S0 => g.resume_main_control(),
             }
             system::final_end(g)
         }));
+        if want_s0 {
+            flashtex_engine::system::record_reads(false);
+        }
         let mut rep = Report {
-            from_format: reuse,
+            start,
+            s0_note,
+            check_ms,
             ..Report::default()
         };
         match ran {
@@ -412,20 +546,27 @@ impl Engine {
         }
         rep.terminal = g.term_out.take_captured();
         if let Some(o) = g.host.out.take() {
+            // the font files the next run is likely to read again
+            self.font_cache.retain(&o.doc.fonts.programs_read());
             rep.reports = o.reports.unwrap_or_default();
             // the display list's writer goes with it: its reader sees the end
         }
         // every file closed (written out), as a process's exit leaves them
         g.visit_files(&mut CloseFiles);
-        let resident = g.host.resident.take();
         let mut kept = None;
-        if let Some(r) = resident {
-            self.catalog = r.catalog;
+        let mut taken = None;
+        if let Some(r) = g.host.resident.take() {
+            self.fonts = Some(r.fonts);
             kept = r.point;
+            taken = r.s0;
         }
         if rep.failure.is_some() || spec.lean {
             // a broken run's engine is not used again; Low Memory keeps none
+            // (nor the fonts' files)
             self.clear();
+            if spec.lean {
+                self.font_cache = Arc::default();
+            }
             return rep;
         }
         if let Some((id, state, format)) = kept {
@@ -435,6 +576,26 @@ impl Engine {
                 state,
                 format,
             });
+        }
+        // S₀, from a run that went on to its end (a cancelled run's journal
+        // is whole up to S₀, which is all the key reads)
+        match taken {
+            Some(Ok(t)) => match crate::ckpt::make_key(&t, self.clock, &line) {
+                Ok(k) => {
+                    self.s0 = Some(S0 {
+                        id: t.id,
+                        rec: t.rec,
+                        key: k,
+                        font_dirs: t.font_dirs,
+                    })
+                }
+                Err(e) => rep.s0_note = Some(format!("no S0: {e}")),
+            },
+            Some(Err(e)) => rep.s0_note = Some(format!("no S0: {e}")),
+            None if want_s0 => {
+                rep.s0_note = Some("no S0: the document's start was not reached".into())
+            }
+            None => {}
         }
         rep
     }
