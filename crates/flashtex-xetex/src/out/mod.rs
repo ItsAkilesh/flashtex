@@ -393,6 +393,8 @@ fn send_resources(
 /// A built page's or form's `PAGE`/`FORM` body, with its content hash.
 pub fn encode(doc: &Doc, b: &Built) -> Vec<u8> {
     let mut page = b.dl.clone();
+    // The rules as FlashTeX's PDF draws them (spec §4.4).
+    page.rule_geometry = pdf::rule_geometry(&page);
     let font_key = |id: u16| doc.fonts.resource(id).map_or([0; 32], |r| r.key);
     let image_key = |id: u32| doc.images.get(id).map_or([0; 32], |i| i.key);
     page.hash = page.content_hash(&font_key, &image_key);

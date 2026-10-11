@@ -231,6 +231,11 @@ impl Stream {
     }
 
     fn sync_glyph_matrix(&mut self, m: [f64; 4]) {
+        // The text matrix as the PDF writer writes it (six decimals, `Tf`
+        // size or `Tm`, src/out/pdf.rs), so that the preview draws each glyph
+        // at the PDF's very size: 14.346195662749 against the PDF's
+        // 14.346196 changed single pixels of section headings.
+        let m = m.map(|v| super::pdfobj::fmt_num(v, 6).parse::<f64>().unwrap_or(v));
         let n = self.matrix([m[0], m[1], m[2], m[3], 0.0, 0.0]);
         if n != self.told_matrix {
             self.push(Item::Matrix(n));

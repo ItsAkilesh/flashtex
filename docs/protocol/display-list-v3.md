@@ -345,6 +345,11 @@ the PDF does: translate by (e, f), then fill that rectangle or stroke that
 line with butt caps. (Drawn from the sp rectangle instead, a 0.249 bp
 stroked rule's edge row differs from the PDF's by one coverage level at
 5.25, 6.5 and 6.75 px/pt: measured on proof-practice-21242.)
+`flashtex-host-unicode` sends `RULE_GEOMETRY` (not `ORIGINS`, so it does
+not claim `exact-geometry`) on every page and form with a rule: the numbers
+its own PDF writer draws the rule with (five decimals, e = f = 0); and its
+glyph MATRIX entries are the text matrix that writer writes (six decimals),
+so its glyphs and rules draw as its PDF does (lane UNICODE-PREVIEW-QA).
 
 **Paths** (`\pdfliteral` graphics: TikZ/pgf, `\pdfsetmatrix`, colour
 boxes, …):
@@ -525,6 +530,22 @@ JSON, before the first `PAGE` that draws it:
 | `width`, `height` | pixels (PDF: the box, in bp) |
 | `rotate`, `x_res`, `y_res` | as pdfTeX read them |
 | `page`, `page_box`, `orig_x`, `orig_y` | PDF only: the page included, the box (`media`, `crop`, `bleed`, `trim`, `art`) and its origin |
+| `color_space` | optional, PNG and JPEG: the colour space the host's PDF gives the samples when it is not their Device space (below) |
+
+`color_space` (optional; absent: DeviceGray, DeviceRGB or DeviceCMYK by the
+samples, as pdfTeX writes PNG and JPEG data, so older clients are unaffected)
+is an object: `{"type": "icc"}`, the ICC profile the file itself embeds (a
+PNG's `iCCP`, a JPEG's `ICC_PROFILE` segments; the PDF's `ICCBased` stream is
+that profile); or `{"type": "calgray", "gamma", "white_point"}` /
+`{"type": "calrgb", "gamma", "white_point", "matrix"}`, the PDF's `CalGray` /
+`CalRGB` with exactly the numbers it writes (`gamma` applies to each
+component; `white_point` is `[X Y Z]`, `matrix` the nine `/Matrix` entries;
+the black point is zero). `intent`, when present, is the image's `/Intent`
+(`Perceptual`, `RelativeColorimetric`, `Saturation`, `AbsoluteColorimetric`).
+`flashtex-host-unicode` sends it: its PDF writes images as xdvipdfmx does
+(a PNG's `sRGB` or `gAMA`/`cHRM` as `CalGray`/`CalRGB`, embedded profiles as
+`ICCBased`), and a client that drew those samples as Device colours showed
+every such image lighter or darker than the PDF.
 
 The IMAGE item's matrix is exactly the PDF's `cm` before `/Im Do`. For a
 PNG, JPEG or JBIG2 image (an Image XObject) it maps the unit square to stream
