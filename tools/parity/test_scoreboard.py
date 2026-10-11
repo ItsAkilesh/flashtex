@@ -1100,7 +1100,15 @@ class OwnerBar(unittest.TestCase):
         self.assertIn("OFFICIAL: ${{ needs.pick.outputs.route == 'pc' }}", pub)
         self.assertIn("|| 'off' }}", pub.split("ISSUES:", 1)[1].split("\n", 1)[0])  # a Mac board files none
         self.assertIn("--slice=flashtex.slice", jobs["scoreboard"])
-        self.assertIn("exit 1", jobs["scoreboard-unavailable"])
+        # the PC off: the hosted route (its own oracle, T4 in the same run), which gates but files no issue
+        self.assertIn("route=hosted", auto)
+        self.assertIn("route == 'hosted'", pub.split("GATE:", 1)[1].split("\n", 1)[0])
+        self.assertNotIn("hosted", pub.split("ISSUES:", 1)[1].split("\n", 1)[0])
+        board = jobs["hosted-board"]
+        self.assertIn("--collect", board)
+        self.assertIn("--t4-new", board)
+        self.assertIn("--issues off", board)
+        self.assertNotIn(": write", board + jobs["hosted-part"] + jobs["hosted-t4"] + jobs["hosted-build"])
 
     def test_gate_from_board(self):
         b = self.arxiv((979, 1000), (990, 1000))
