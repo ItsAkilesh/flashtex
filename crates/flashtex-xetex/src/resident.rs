@@ -121,6 +121,9 @@ pub struct Resident {
     /// the next compile reads the `.aux` the last complete run wrote, as
     /// S₀'s key and the page checkpoints expect.
     pub(crate) guard: Vec<(String, Option<Vec<u8>>)>,
+    /// A run from S₀ or a page: the last complete run's later state, for
+    /// the convergence test (`crate::conv`).
+    pub(crate) conv: Option<crate::conv::Old>,
     fonts: Box<dyn Fonts>,
 }
 
@@ -715,6 +718,7 @@ impl Engine {
             pages: vec![],
             opens: vec![],
             guard: vec![],
+            conv: None,
             fonts: Box::new(Unkept),
         };
         if start.in_body() {
@@ -732,6 +736,7 @@ impl Engine {
             }
         }
         let before = (self.journal.clone(), self.opens.clone());
+        let mut conv: Option<crate::conv::Old> = None;
         // Put the kept state back: from a page, else S₀, else the format
         // point, else the start (a restore that fails -- a file it reopens
         // gone -- falls back to the next).
@@ -751,21 +756,31 @@ impl Engine {
                         p.state.put(g);
                     })
                 }
-                Start::Page(i) => {
-                    let ck = &self.pages[i];
-                    g.restore(ck.id).and_then(|()| {
-                        g.term_out = AlphaFile::captured_terminal();
-                        g.restore_record(&ck.rec, Some(&self.terminal))
-                    })
-                }
-                _ => {
-                    let s0 = self.s0.as_ref().expect("checked");
-                    g.restore(s0.id).and_then(|()| {
-                        // (the record puts the terminal back: captured, as
-                        // S₀'s run had it)
-                        g.term_out = AlphaFile::captured_terminal();
-                        g.restore_record(&s0.rec, None)
-                    })
+                Start::Page(_) | Start::S0 | Start::Fresh => {
+                    // (the old run's later state kept as a branch: the
+                    // convergence test, `crate::conv`)
+                    let (id, rec, base, later) = match start {
+                        Start::Page(i) => (
+                            self.pages[i].id,
+                            &self.pages[i].rec,
+                            Some(&self.terminal[..]),
+                            &self.pages[i + 1..],
+                        ),
+                        _ => {
+                            let s0 = self.s0.as_ref().expect("checked");
+                            (s0.id, &s0.rec, None, &self.pages[..])
+                        }
+                    };
+                    let old: Vec<(usize, CheckpointId)> =
+                        later.iter().map(|c| (c.pages, c.id)).collect();
+                    match g.restore_branch(id) {
+                        Err(e) => Err(e),
+                        Ok(branch) => {
+                            conv = Some(crate::conv::Old::new(branch, old));
+                            g.term_out = AlphaFile::captured_terminal();
+                            g.restore_record(rec, base)
+                        }
+                    }
                 }
             };
             match restored {
@@ -778,6 +793,9 @@ impl Engine {
                     break;
                 }
                 Err(e) => {
+                    if let Some(c) = conv.take() {
+                        g.arena.drop_branch(c.branch);
+                    }
                     s0_note = Some(format!("the kept state ({}): {e}", start.name()));
                     start = match start {
                         Start::Page(_) => Start::S0,
@@ -827,6 +845,7 @@ impl Engine {
             pages: vec![],
             opens,
             guard: guard.guard,
+            conv,
             fonts: self.fonts.take().unwrap_or_else(|| Box::new(Unkept)),
         });
         let mut out = (!c.no_pdf).then(|| {
@@ -950,6 +969,12 @@ impl Engine {
             taken = r.s0;
             new_pages = r.pages;
             opens = r.opens;
+            if let Some(c) = r.conv {
+                if let Some(rep_c) = c.report() {
+                    rep.s0_note = Some(rep_c);
+                }
+                g.arena.drop_branch(c.branch);
+            }
             if rep.cancelled {
                 // the output files as the last complete run left them
                 for (p, d) in r.guard {

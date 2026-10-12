@@ -384,6 +384,7 @@ impl Globals {
                 opens,
             });
         }
+        self.conv_test(pages);
     }
 
     /// Take S₀ here, if this run is to (`crate::resident`).

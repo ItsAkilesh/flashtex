@@ -270,6 +270,31 @@ impl Globals {
         Ok(())
     }
 
+    /// Put checkpoint `id` back as [`restore`](Self::restore) does, keeping
+    /// the run it leaves as a detached branch of the word space (its later
+    /// checkpoints and its latest state), for the convergence test and jump
+    /// (`crate::conv`). The host states saved with the branch's checkpoints
+    /// stay.
+    pub fn restore_branch(
+        &mut self,
+        id: flashtex_engine::arena::CheckpointId,
+    ) -> Result<flashtex_engine::arena::Branch, String> {
+        let saved = self
+            .host
+            .checkpoints
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| format!("no host state saved with checkpoint {id:?}"))?;
+        let b = self.arena.restore_branch(id)?;
+        self.fill_scalars();
+        self.host.font_mgr = saved.font_mgr;
+        self.host.full_name_of_file = saved.full_name_of_file;
+        self.host.protrusion = saved.protrusion;
+        self.host.handles = saved.handles;
+        self.host.dl.restore(&saved.dl);
+        Ok(b)
+    }
+
     /// Copy the scalar globals into the word space's scalar region, through
     /// the barrier (as the pdfTeX engine's `spill_scalars`).
     pub fn spill_scalars(&mut self) {
