@@ -173,7 +173,7 @@ fn fmt_num_fast(v: f64, digits: usize) -> Option<String> {
     if fr != 0 {
         // the fraction's digits, trailing zeros dropped
         let mut width = digits;
-        while fr % 10 == 0 {
+        while fr.is_multiple_of(10) {
             fr /= 10;
             width -= 1;
         }
