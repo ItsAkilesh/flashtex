@@ -63,9 +63,9 @@ jobs:
           <?xml version="1.0"?>
           <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
           <fontconfig>
-            <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
             <dir>$tl/texmf-dist/fonts/opentype</dir>
             <dir>$tl/texmf-dist/fonts/truetype</dir>
+            <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
             <cachedir>$RUNNER_TEMP/fc-cache</cachedir>
           </fontconfig>
           EOF
@@ -75,6 +75,19 @@ jobs:
             echo "FLASHTEX_CACHE_DIR=$RUNNER_TEMP/flashtex-cache"
           } >> "$GITHUB_ENV"
           FONTCONFIG_FILE="$RUNNER_TEMP/fonts.conf" fc-cache -f >/dev/null 2>&1 || true
+          # the order fontconfig lists duplicates in, under this order and the old one
+          echo "== texmf first"; FONTCONFIG_FILE="$RUNNER_TEMP/fonts.conf" fc-list "DejaVu Sans Mono:style=Bold" file || true
+          cat > "$RUNNER_TEMP/fonts-old.conf" <<EOF
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+          <fontconfig>
+            <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+            <dir>$tl/texmf-dist/fonts/opentype</dir>
+            <dir>$tl/texmf-dist/fonts/truetype</dir>
+            <cachedir>$RUNNER_TEMP/fc-cache</cachedir>
+          </fontconfig>
+          EOF
+          echo "== system first"; FONTCONFIG_FILE="$RUNNER_TEMP/fonts-old.conf" fc-list "DejaVu Sans Mono:style=Bold" file || true
       - name: assemble the corpus
         run: |
           set -euo pipefail
