@@ -98,7 +98,7 @@ the engine and how it shares one runtime and one engine interface with the pdfTe
   `.tec` files (`tex-text.tec` comes from the bundle or TeX Live); ICU for
   encodings, normalisation and line breaking is pinned the same way, at the
   version TeX Live 2026 builds with.
-- **Vendored (S1):** [`third_party/harfbuzz`](../../../third_party/harfbuzz/README.md) and [`third_party/freetype`](../../../third_party/freetype/README.md), built by `crates/flashtex-xetex/fontlibs`, and [`third_party/teckit`](../../../third_party/teckit/README.md) (TECkit 2.5.13's engine, used under its LGPL-2.1-or-later option, with TeX Live's zlib), built by `crates/flashtex-xetex/teckit`; all pinned by `crates/flashtex-xetex/tests/pinned_libs.rs`. A TFM font's `:mapping=` goes through tex.ch's ML\TeX `effective_char` as in TeX Live (`changes/mltex.ch`).
+- **Vendored (S1):** [`third_party/harfbuzz`](../../../third_party/harfbuzz/README.md) and [`third_party/freetype`](../../../third_party/freetype/README.md), built by `crates/flashtex-xetex/fontlibs`, and [`third_party/teckit`](../../../third_party/teckit/README.md) (TECkit 2.5.13's engine, used under its LGPL-2.1-or-later option, with TeX Live's zlib), built by `crates/flashtex-xetex/teckit`; and [`third_party/icu`](../../../third_party/icu/README.md) (ICU 78.2's bidi sources, not built: `crates/flashtex-xetex/src/native/ubidi` ports them, for the direction runs of `measure_native_node`); all pinned by `crates/flashtex-xetex/tests/pinned_libs.rs`. A TFM font's `:mapping=` goes through tex.ch's ML\TeX `effective_char` as in TeX Live (`changes/mltex.ch`).
 - **Font lookup, platform-free.** XeTeX asks Core Text (macOS) or fontconfig
   (elsewhere) for the installed fonts; FlashTeX does not. A name is resolved
   by XeTeX's own matching rules, rewritten, over a platform-free index of the
@@ -213,6 +213,21 @@ shared runtime library crate; neither is `xetex` or xdvipdfmx.
   dependencies, `tex-text.tec` and the other TECkit mappings, and the OpenType
   fonts the defaults name (Latin Modern and Latin Modern Math, TeX Gyre). Its
   manifest gets a Unicode-mode section checked by the S3 no-TeX-Live gate.
+- **The bundle's fonts by name, with no TeX Live (owner direction, #1783;
+  a deliberate difference from macOS xelatex).** In bundle mode,
+  `\setmainfont{TeX Gyre Pagella}` finds the bundle's OpenType and TrueType
+  fonts by family, style and full name, as xelatex finds TeX Live's fonts
+  on Linux and Windows through fontconfig; macOS xelatex's Core Text search
+  does not see TeX Live's trees, so there the same document sets nothing.
+  `texbundle.py pack --font-index-tool` has `flashtex-host-unicode
+  --bundle-font-index` write the names of every face it packs
+  (`fontmgr::catalog::write_bundle_font_index`, the names the catalog reads
+  from the files) to `texmf-var/fonts/misc/flashtex/flashtex-xetex-fonts.json`,
+  FlashTeX's own generated file in the core range. The engine appends those
+  faces after the installed ones (`bundle_faces`), so an installed font of the
+  same name wins, and fetches a face's file when a lookup selects its
+  family. With a TeX Live the bundle is not used and lookups are unchanged
+  (macOS xelatex's behaviour).
 
 ### 3.5 Parity targets
 
@@ -555,7 +570,8 @@ the incremental Unicode host after R2: `INCREMENTAL.md`.
 | risk | mitigation |
 |---|---|
 | Glyph metrics through FreeType (heights, depths, italic corrections, bounding boxes) | Rewrite `XeTeXFontInst.cpp`/`XeTeXLayoutInterface.cpp`'s metrics against the vendored FreeType; compare every `\XeTeXglyphbounds`, `\fontcharht` etc. with xetex in lockstep cases |
-| Shaping version lock: shaped output depends on HarfBuzz's exact version (and line breaking on ICU's) | Vendor HarfBuzz 12.3.2, FreeType 2.14.1 and TeX Live 2026's ICU as TeX Live builds them (sha256 in `third_party/<lib>/README.md`); a test pins the versions; an upgrade is a lane of its own with a lockstep run against the matching TeX Live |
+| Shaping version lock: shaped output depends on HarfBuzz's exact version (and line breaking on ICU's) | Vendor HarfBuzz 12.3.2, FreeType 2.14.1 and TeX Live 2026's ICU as TeX Live builds them (sha256 in `third_party/<lib>/README.md`); a test pins the versions; an upgrade is a lane of its own with a lockstep run against the matching TeX Live | (ICU: see the next row)
+| ICU deviation (lane M3-PANIC, #1816, accepted by the Commander 2026-10-12): ICU's code is **not** vendored, only TeX Live 2026's compiled line-break tables (`third_party/icu`: `line*.brk` from `libs/icu`'s ICU 78.2 data, sha256-pinned by `tests/pinned_libs.rs`), run by a Rust port of ICU's `RuleBasedBreakIterator` (`handleNext`, the forward break and dictionary caches, `UCPTrie`) in `src/native/linebreak.rs`. ICU's dictionary engines (dictbe.cpp) are **not ported**: Thai, Lao, Khmer and Myanmar runs are cut by ICU4X's dictionary segmenter (`icu_segmenter` =2.1.2, dictionaries exported from ICU 78, no LSTM, like TeX Live's data), with ICU's minimum run lengths and the Thai engine's MAI YAMOK rule; other SA scripts get no breaks (ICU's `UnhandledEngine`). Bidi (`ubidi`) is the RTL lane's, not this one's | **Evidence** (run 38208911857): 287 of 287 words cut as TeX Live's xetex cuts them (`linebreak_xetex.tsv`, written by `tools/xetex-linebreak/probe.py`: 47 chosen over root, zh, zh_TW, ja, ko, `lb=`, Thai, Lao, Khmer, Myanmar, Tibetan, Hebrew, Arabic, Devanagari, emoji and format characters, plus 240 random words over ten locales); lockstep case `n023-linebreak-locale` equal (P-T1 + XDV). ICU4X's own line rules were rejected: they differed on 4 of 37 words. **Known risk:** Thai, Lao, Khmer and Myanmar break by ICU4X's dictionary algorithm, not ICU's (only 13 such words are measured; one difference, MAI YAMOK, was found and patched), so text in those scripts under `\XeTeXlinebreaklocale` may break differently from xelatex. Closing it is a port of dictbe.cpp's four engines over ICU's own `.dict` files, in a lane of its own |
 | C pointers in `mem` | Handles (S0's model): the runtime owns the glyph arrays; `copy_native_glyph_info`/`free_native_glyph_info` map to copy/free of a handle; checkpoints (DESIGN.md §5.2) snapshot the handle tables with the word space (§4.7) |
 | XDV for native fonts (`define_native_font`, glyph arrays, `set_text_and_glyphs`) | `make_font_def` and `make_xdv_glyph_array_data` rewritten from XeTeX_ext.c, compared byte for byte with the path normalised |
 | Font lookup by name without Core Text or fontconfig picks another face than `xelatex` | XeTeX's matching rules rewritten over the platform-free index (§3.1); P-T1 cases use fonts by file name first; name lookups are measured against `xelatex` on a named set of macOS and TeX Live fonts, and every difference is reported with the two candidate faces |

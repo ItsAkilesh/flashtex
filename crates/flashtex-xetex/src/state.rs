@@ -147,6 +147,17 @@ pub struct Host {
     /// XeTeXFontMgr's `sReqEngine`: the renderer the last font name asked
     /// for (`/AAT`, `/OT` or `/ICU`, `/GR`), or 0.
     pub req_engine: u8,
+    /// XeTeX_ext.c's `brkIter` (the rules of the line break iterator,
+    /// `crate::native::linebreak`) and `brkLocaleStrNum` (the string number
+    /// of the locale it was opened for). Which iterator is open decides
+    /// later answers, so a checkpoint saves both.
+    pub brk_iter: Option<crate::native::linebreak::Rules>,
+    pub brk_locale_str_num: i32,
+    /// The iterator's text, as the boundaries `ubrk_next` returns for it, and
+    /// how many it has returned. `do_locale_linebreaks` reads them all
+    /// within one command, so a checkpoint does not save them.
+    pub brk_boundaries: Vec<i32>,
+    pub brk_next: usize,
     /// XeTeX_ext.c's `saved_mapping_name`: the `:mapping=` of the TFM font
     /// being loaded, from `check_for_tfm_font_mapping` to
     /// `load_tfm_font_mapping`, both within one `\font`. Each check
@@ -228,6 +239,8 @@ struct Saved {
     /// The display list's source map (`crate::dlsource`): its side table
     /// is indexed like `mem`, so it goes back with the word space.
     dl: crate::dlsource::DlSnap,
+    brk_iter: Option<crate::native::linebreak::Rules>,
+    brk_locale_str_num: i32,
 }
 
 impl Globals {
@@ -244,6 +257,8 @@ impl Globals {
             protrusion: self.host.protrusion.clone(),
             handles: self.host.handles.clone(),
             dl: self.host.dl.snapshot(),
+            brk_iter: self.host.brk_iter,
+            brk_locale_str_num: self.host.brk_locale_str_num,
         };
         self.host.checkpoints.insert(id, saved);
         id
@@ -267,6 +282,8 @@ impl Globals {
         self.host.protrusion = saved.protrusion;
         self.host.handles = saved.handles;
         self.host.dl.restore(&saved.dl);
+        self.host.brk_iter = saved.brk_iter;
+        self.host.brk_locale_str_num = saved.brk_locale_str_num;
         Ok(())
     }
 
