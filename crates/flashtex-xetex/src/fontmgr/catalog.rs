@@ -8,6 +8,10 @@ use super::sfnt::{self, Face, FileBytes, NameRecord, SizeParams};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+/// The catalog kept between runs (`system_cached`).
+#[cfg(unix)]
+mod kept;
+
 // XeTeXFontMgr_FC.cpp's name ids.
 const K_FONT_FAMILY_NAME: u16 = 1;
 const K_FONT_STYLE_NAME: u16 = 2;
@@ -346,24 +350,43 @@ impl FontCatalog {
     /// [`NameCache::default_path`] (none if there is no cache directory):
     /// a cold lookup by name otherwise reads every installed face's names
     /// (about 1,400 faces, 0.3-1 s on macOS, measured 2026-10-04).
+    ///
+    /// The catalog itself is also kept between runs (`catalog/kept.rs`,
+    /// beside the name cache): while no directory the walk lists and no
+    /// font file it visits has changed, a run takes the whole catalog from
+    /// there and opens no font file.
     pub fn system_cached(project_root: Option<&Path>) -> FontCatalog {
         let Some(cache_path) = NameCache::default_path() else {
             return FontCatalog::system(project_root);
         };
-        let mut cache = NameCache::load(&cache_path);
         let mut dirs = flashtex_font_discovery::scan_dirs(project_root);
         for d in os_extra_dirs() {
             if !dirs.contains(&d) {
                 dirs.push(d);
             }
         }
-        let index = flashtex_font_discovery::FontIndex::scan(&dirs);
+        #[cfg(unix)]
+        return kept::system(&cache_path, &dirs);
+        #[cfg(not(unix))]
+        FontCatalog::scan_named(&cache_path, &dirs, &mut |_| {}).0
+    }
+
+    /// The catalog of `dirs`, its names through the name cache at
+    /// `cache_path`, and the scan it was made from; `on_dir` sees every
+    /// directory the scan lists, before it is listed.
+    fn scan_named(
+        cache_path: &Path,
+        dirs: &[PathBuf],
+        on_dir: &mut dyn FnMut(&Path),
+    ) -> (FontCatalog, flashtex_font_discovery::FontIndex) {
+        let index = flashtex_font_discovery::FontIndex::scan_traced(dirs, on_dir);
+        let mut cache = NameCache::load(cache_path);
         let catalog = FontCatalog::from_files_cached(
             index.files().iter().map(|f| (f.path.clone(), f.face_index)),
             &mut cache,
         );
-        cache.save(&cache_path);
-        catalog
+        cache.save(cache_path);
+        (catalog, index)
     }
 
     /// The catalog of the fonts in `dirs`, in `font-discovery`'s scan order
