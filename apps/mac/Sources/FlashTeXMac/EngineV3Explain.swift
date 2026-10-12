@@ -165,7 +165,7 @@ enum EngineV3Explain {
         case "tex/display-math-should-end-with-dollars":
             return "A display (\\[ … \\] or $$ … $$) is not closed before the paragraph ends."
         case "tex/emergency-stop", "tex/fatal-error-no-output":
-            return "pdfLaTeX stops here and writes no PDF. The pages after this point are those of the last good compile, shown stale."
+            return "TeX stops here and writes no PDF. The pages after this point are those of the last good compile, shown stale."
         case "tex/capacity-exceeded":
             return "TeX ran out of one of its fixed limits; this is usually a command that calls itself without end."
         case "latex/environment-mismatch":

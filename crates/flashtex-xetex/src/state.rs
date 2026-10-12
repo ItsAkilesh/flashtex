@@ -147,8 +147,6 @@ pub struct Host {
     /// XeTeXFontMgr's `sReqEngine`: the renderer the last font name asked
     /// for (`/AAT`, `/OT` or `/ICU`, `/GR`), or 0.
     pub req_engine: u8,
-    /// Whether text needing ICU's bidi analysis was reported (once).
-    pub bidi_warned: bool,
     /// XeTeX_ext.c's `saved_mapping_name`: the `:mapping=` of the TFM font
     /// being loaded, from `check_for_tfm_font_mapping` to
     /// `load_tfm_font_mapping`, both within one `\font`. Each check
@@ -178,6 +176,9 @@ pub struct Host {
     /// The paths `find_pic_file` found, for the output (`crate::out`), which
     /// takes them from here at each page.
     pub pictures: std::collections::BTreeSet<String>,
+    /// The display list's source map (`crate::dlsource`): node positions,
+    /// spans and the markers of the page being shipped.
+    pub dl: crate::dlsource::DlSource,
     /// A hot spare's go-ahead (`crate::host::spare`): the descriptor the
     /// run waits on after the format is loaded, taken at that wait. `None`
     /// for every other run.
@@ -224,6 +225,9 @@ struct Saved {
     full_name_of_file: Option<String>,
     protrusion: Protrusion,
     handles: Handles,
+    /// The display list's source map (`crate::dlsource`): its side table
+    /// is indexed like `mem`, so it goes back with the word space.
+    dl: crate::dlsource::DlSnap,
 }
 
 impl Globals {
@@ -239,6 +243,7 @@ impl Globals {
             full_name_of_file: self.host.full_name_of_file.clone(),
             protrusion: self.host.protrusion.clone(),
             handles: self.host.handles.clone(),
+            dl: self.host.dl.snapshot(),
         };
         self.host.checkpoints.insert(id, saved);
         id
@@ -261,6 +266,7 @@ impl Globals {
         self.host.full_name_of_file = saved.full_name_of_file;
         self.host.protrusion = saved.protrusion;
         self.host.handles = saved.handles;
+        self.host.dl.restore(&saved.dl);
         Ok(())
     }
 

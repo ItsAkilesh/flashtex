@@ -987,10 +987,18 @@ impl Globals {
                 fname = format!("{dir}/{name}");
             }
         }
+        // (a resident run keeps what the file held: a cancelled run puts
+        // it back, `crate::resident`)
+        if let Some(r) = self.host.resident.as_mut() {
+            r.guard_out(&fname);
+        }
         let mut f = File::create(&fname).ok();
         if f.is_none() && !absolute {
             if let Some(out) = texmf_var("TEXMFOUTPUT").filter(|v| !v.is_empty()) {
                 fname = format!("{out}/{name}");
+                if let Some(r) = self.host.resident.as_mut() {
+                    r.guard_out(&fname);
+                }
                 f = File::create(&fname).ok();
             }
         }

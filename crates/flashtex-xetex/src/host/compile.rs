@@ -221,6 +221,8 @@ impl Job {
 pub struct Accept {
     pub color_spaces: bool,
     pub line_state: bool,
+    /// `diag-v1` (spec §6.7): `DIAG`s in place of `DIAGNOSTIC`s.
+    pub diag: bool,
 }
 
 /// One run of the engine: what it sent and how it ended.
@@ -922,7 +924,17 @@ pub fn compile(
     let log = std::fs::read_to_string(job.output_dir.join(format!("{}.log", job.jobname)))
         .unwrap_or_default();
     let diags = log_diagnostics(&log);
-    if !last.cancelled {
+    let mut count = diags.len();
+    if !last.cancelled && accept.diag {
+        // diag-v1: structured, from the same log (`super::diag`)
+        let structured = super::diag::from_log(&log, &job.root, job.id);
+        count = structured.len();
+        for d in &structured {
+            if !send(out, kind::DIAG, &d.encode()) {
+                break;
+            }
+        }
+    } else if !last.cancelled {
         for d in &diags {
             let mut j = vec![
                 ("id".to_string(), Json::Int(job.id)),
@@ -953,7 +965,7 @@ pub fn compile(
         pages: last.pages,
         passes,
         first_page_ms,
-        diagnostics: diags.len(),
+        diagnostics: count,
         starts,
     }
 }

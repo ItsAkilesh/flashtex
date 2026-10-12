@@ -116,10 +116,28 @@ pub struct Resident {
     /// The output files the runs opened, in order (`system`'s
     /// `open_output_file`).
     pub(crate) opens: Vec<String>,
+    /// The output files this run cut back or created, with what they held
+    /// before (`None`: no file): a cancelled run puts them back, so that
+    /// the next compile reads the `.aux` the last complete run wrote, as
+    /// S₀'s key and the page checkpoints expect.
+    pub(crate) guard: Vec<(String, Option<Vec<u8>>)>,
     fonts: Box<dyn Fonts>,
 }
 
 impl Resident {
+    /// Keep what output file `path` holds before this run first writes it
+    /// (not the PDF, which a run writes at its end, nor the log, which no
+    /// run reads).
+    pub(crate) fn guard_out(&mut self, path: &str) {
+        let p = Path::new(path);
+        if p.extension().is_some_and(|e| e == "pdf" || e == "log")
+            || self.guard.iter().any(|(q, _)| q == path)
+        {
+            return;
+        }
+        self.guard.push((path.to_string(), std::fs::read(p).ok()));
+    }
+
     /// The fonts' catalog for a lookup by name.
     pub(crate) fn font_catalog(&mut self) -> Arc<FontCatalog> {
         self.fonts.catalog()
@@ -452,7 +470,12 @@ impl Engine {
     }
 
     /// Where this run can start, and why not from S₀ when one is kept.
-    fn start_for(&mut self, key: &PointKey, first_line: &[u8]) -> (Start, Option<String>) {
+    fn start_for(
+        &mut self,
+        key: &PointKey,
+        first_line: &[u8],
+        dl_on: bool,
+    ) -> (Start, Option<String>) {
         let point_ok = self.keep_point
             && self.g.is_some()
             && self
@@ -470,6 +493,9 @@ impl Engine {
         };
         let why = match s0.key.check_refresh(self.clock, first_line) {
             Err(why) => Some(why),
+            Ok(()) if s0.dl_on != dl_on => {
+                Some("the display list's source map is made in one run, not the other".into())
+            }
             Ok(()) => match s0.font_dirs {
                 None => None,
                 Some(d) => match self.fonts.as_mut().map(|f| f.dirs()) {
@@ -659,7 +685,8 @@ impl Engine {
             format_dir: spec.format_dir.clone(),
         };
         let t_check = std::time::Instant::now();
-        let (mut start, mut s0_note) = self.start_for(&key, &line);
+        let dl_on = spec.dl.is_some() && env_on("FLASHTEX_SOURCE_MAP");
+        let (mut start, mut s0_note) = self.start_for(&key, &line, dl_on);
         let check_ms = t_check.elapsed().as_secs_f64() * 1e3;
         let mut rewrite_failed = None;
         if start.in_body() {
@@ -674,6 +701,37 @@ impl Engine {
             start = Start::Format;
             s0_note = Some(e);
         }
+        // The output files a restore cuts back, as they are (a cancelled
+        // run puts them back: `Resident::guard`), and the bookkeeping of
+        // the last complete run, which a cancelled one leaves as it was.
+        let mut guard = Resident {
+            cancel: spec.cancel.clone(),
+            format_dir: None,
+            keep_point: false,
+            point: None,
+            want_s0: false,
+            s0: None,
+            pages_on: false,
+            pages: vec![],
+            opens: vec![],
+            guard: vec![],
+            fonts: Box::new(Unkept),
+        };
+        if start.in_body() {
+            let recs = self
+                .s0
+                .iter()
+                .map(|s| &s.rec)
+                .chain(self.pages.iter().map(|c| &c.rec));
+            for rec in recs {
+                for f in &rec.files {
+                    if let crate::system::Stream::Out { path, .. } = &f.stream {
+                        guard.guard_out(path);
+                    }
+                }
+            }
+        }
+        let before = (self.journal.clone(), self.opens.clone());
         // Put the kept state back: from a page, else S₀, else the format
         // point, else the start (a restore that fails -- a file it reopens
         // gone -- falls back to the next).
@@ -768,6 +826,7 @@ impl Engine {
             pages_on: want_pages && start.in_body(),
             pages: vec![],
             opens,
+            guard: guard.guard,
             fonts: self.fonts.take().unwrap_or_else(|| Box::new(Unkept)),
         });
         let mut out = (!c.no_pdf).then(|| {
@@ -784,7 +843,7 @@ impl Engine {
             // the pages before the restart point, sent again from the
             // checkpoint's document
             if let Some(snap) = &self.pages[i].out {
-                resumed = o.resume(snap);
+                resumed = o.resume(snap, self.g.as_ref().expect("restored"));
             }
         }
         let g = self.g.as_mut().expect("made above");
@@ -796,6 +855,10 @@ impl Engine {
         g.host.seed_pending = start == Start::Fresh;
         g.host.resident = Some(resident);
         g.host.out = out;
+        // the source map, when the display list is made (a restored state
+        // made it alike: `start_for`)
+        let mem_len = g.mem.len();
+        g.host.dl.set_on(dl_on, mem_len);
         system::set_no_pdf(g, c.no_pdf);
         // S₀ is armed by the run's first `big_switch` (`crate::ckpt`); a run
         // from S₀ or a page asks for no S₀
@@ -814,6 +877,13 @@ impl Engine {
             flashtex_engine::system::record_reads_into(Some(
                 journal.unwrap_or_else(ReadLog::keeping_content),
             ));
+        }
+        // the external effects (`\write18`) are the run's own: from the
+        // start or the format point, none yet (a run from S₀ or a page has
+        // its point's, `restore_record`); else one in a body would count against every
+        // later S₀ of the session
+        if !start.in_body() {
+            flashtex_engine::system::truncate_external_effects(0);
         }
         let ran = match resumed {
             Ok(()) => std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -873,12 +943,30 @@ impl Engine {
         let mut taken = None;
         let mut new_pages = vec![];
         let mut opens = vec![];
+        let mut restored_files = vec![];
         if let Some(r) = g.host.resident.take() {
             self.fonts = Some(r.fonts);
             kept = r.point;
             taken = r.s0;
             new_pages = r.pages;
             opens = r.opens;
+            if rep.cancelled {
+                // the output files as the last complete run left them
+                for (p, d) in r.guard {
+                    let _ = match d {
+                        Some(d) => std::fs::write(&p, d),
+                        None => std::fs::remove_file(&p),
+                    };
+                    restored_files.push(p);
+                }
+            }
+        }
+        if rep.cancelled && start.in_body() {
+            // the checkpoints of the last complete run up to the restart
+            // point stand (the files are its own again); this run's later
+            // ones and its journal do not
+            new_pages.clear();
+            (self.journal, opens) = before;
         }
         if rep.failure.is_some() || spec.lean {
             // a broken run's engine is not used again; Low Memory keeps none
@@ -892,7 +980,7 @@ impl Engine {
         // what the run wrote is the engine's (a restore cuts it back only
         // while no other program has changed it)
         let mut stamped = HashSet::new();
-        for p in &opens {
+        for p in restored_files.iter().chain(&opens) {
             if stamped.insert(p.as_str()) {
                 flashtex_engine::system::stamp_output(p);
             }
@@ -924,6 +1012,7 @@ impl Engine {
                         font_dirs: t.font_dirs,
                         reads,
                         opens: t.opens,
+                        dl_on,
                     })
                 }
                 Err(e) => rep.s0_note = Some(format!("no S0: {e}")),
@@ -936,7 +1025,9 @@ impl Engine {
         }
         if self.s0.is_some() {
             self.pages.extend(new_pages);
-            self.journal = journal;
+            if !(rep.cancelled && start.in_body()) {
+                self.journal = journal;
+            }
             // the user's files this run read for the first time
             if let Some(j) = &self.journal {
                 for f in &j.files {

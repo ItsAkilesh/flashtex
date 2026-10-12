@@ -821,3 +821,93 @@ fn an_edit_late_in_a_long_document_restarts_near_it() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A compile cancelled while it runs from S₀ or a page leaves the output
+/// files as the last complete run left them (`resident::Resident::guard`):
+/// the next compile still goes on from S₀ or a page (its `.aux` was cut
+/// back by the cancelled run, and S₀'s key reads it), and writes what a run
+/// of its own writes.
+#[test]
+fn a_cancelled_compile_leaves_the_next_one_incremental() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-cancelled-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let para = "Words and more words that fill the page, again and again, until the \
+                paragraph is long enough to break into several lines of text. ";
+    let mut body = String::new();
+    for i in 1..=40 {
+        body.push_str(&format!("\\section{{Part {i}}}\\label{{p{i}}}\n"));
+        for _ in 0..4 {
+            body.push_str(&para.repeat(3));
+            body.push_str("\n\n");
+        }
+    }
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\\begin{{document}}\n{body}See~\\ref{{p2}}.\n\\end{{document}}\n"
+    );
+    let first_edit = doc.replacen("Words and more", "Wards and more", 1);
+    let second_edit = doc.replacen("Words and more", "Wordz and more", 1);
+    let sub = dir.join("run");
+    let (proj, out) = project(&sub, &doc);
+    let h = start_with(
+        &sub,
+        &[("FLASHTEX_PIN_CLOCK", "1760000000.5")],
+        &sub.join("host.err"),
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    let compile = |c: &mut Client, id: i64, text: &str, cancel_after: Option<u64>| -> Json {
+        let mut r = request(id, &proj, &out);
+        r.buffers = vec![("main.tex".into(), text.to_string())];
+        c.compile(&r).unwrap();
+        if let Some(ms) = cancel_after {
+            std::thread::sleep(Duration::from_millis(ms));
+            c.cancel(id).unwrap();
+        }
+        events(c, id).1
+    };
+    compile(&mut c, 1, &doc, None);
+    compile(&mut c, 2, &doc, None);
+    let cancelled = compile(&mut c, 3, &first_edit, Some(40));
+    let done = compile(&mut c, 4, &second_edit, None);
+    let start = done
+        .get("starts")
+        .and_then(Json::as_array)
+        .and_then(|a| a.first())
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .to_string();
+    assert!(
+        start == "s0" || start == "page",
+        "after {cancelled:?}: {done:?}"
+    );
+    let o = Path::new(&out);
+    let got = (
+        std::fs::read(o.join("main.pdf")).unwrap(),
+        std::fs::read_to_string(o.join("main.aux")).unwrap(),
+    );
+    c.bye().unwrap();
+    drop(h);
+    // a run of its own on the same text
+    let h = start_with(
+        &sub,
+        &[
+            ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+            ("FLASHTEX_UNICODE_INPROCESS", "0"),
+        ],
+        &sub.join("host2.err"),
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    compile(&mut c, 1, &second_edit, None);
+    let want = (
+        std::fs::read(o.join("main.pdf")).unwrap(),
+        std::fs::read_to_string(o.join("main.aux")).unwrap(),
+    );
+    c.bye().unwrap();
+    drop(h);
+    assert!(got.0 == want.0, "the PDFs differ");
+    assert_eq!(got.1, want.1);
+    let _ = std::fs::remove_dir_all(&dir);
+}

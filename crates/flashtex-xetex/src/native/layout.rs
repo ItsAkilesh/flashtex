@@ -267,11 +267,15 @@ impl LayoutEngine {
     }
 
     /// `getDefaultDirection`: whether the script of the buffer (of the
-    /// last shaping) is written right to left.
+    /// last shaping) is written right to left. The script is the one
+    /// `layout_chars` kept (`last_script`), not the live buffer's: the
+    /// engine is shared with its checkpoints, and a restore puts the kept
+    /// one back (`shaping_state`), where the buffer would still hold the
+    /// old run's later shaping.
     pub fn default_rtl(&self) -> bool {
         // SAFETY: a pure function of the script.
         unsafe {
-            hb::hb_script_get_horizontal_direction(hb::hb_buffer_get_script(self.buffer))
+            hb::hb_script_get_horizontal_direction(self.last_script.load(Ordering::Relaxed))
                 == hb::HB_DIRECTION_RTL
         }
     }

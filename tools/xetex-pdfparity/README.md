@@ -33,7 +33,7 @@ objects.
 
 ## Runner
 
-For each case `.tex` (all of `tools/xetex-lockstep/latex-cases/`, l001-l010,
+For each case `.tex` (all of `tools/xetex-lockstep/latex-cases/`, l001-l011,
 referenced in place, plus `cases/`), each engine builds its own `xelatex.fmt`.
 It then runs the case in its own directory. Both steps import
 `tools/xetex-lockstep/latex.py` (`build_format`, `link`, `env_for`,
