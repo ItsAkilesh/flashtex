@@ -248,6 +248,7 @@ jobs:
               # (unicode.py exits 1 only for a mismatch, which needs --verify)
               python3 tools/incr-bench/unicode.py "$RUNNER_TEMP/bin/flashtex-host-unicode" "$doc" --doc "$name" \
                 --keys 3 --at "$at" --reopen --callgrind "$RUNNER_TEMP/cg" \
+                --host-env "FLASHTEX_S0_CACHE=$RUNNER_TEMP/s0-$name-$at" \
                 --out "$RUNNER_TEMP/lat/$name-$at.jsonl" > /dev/null 2> "$RUNNER_TEMP/lat/$name-$at.err" \
                 || { echo "::warning::$name ($at): unicode.py failed"; tail -5 "$RUNNER_TEMP/lat/$name-$at.err"; }
             done
@@ -278,8 +279,56 @@ jobs:
           path: ${{ runner.temp }}/lat
           retention-days: 30
 
+  # The persisted S0 (--s0-cache, #1805): tools/incr-bench/unicode_reopen.py's
+  # scenarios (unchanged, body edit, preamble edit, font file replaced while
+  # the document is closed), each reopen in a new host compared with a
+  # from-scratch compile. Red on any mismatch or a wrong start.
+  reopen:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: free disk (the TeX Live image and its copy take ~12 GB)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/texlive-2026
+        id: tl
+        with:
+          image: ${{ env.TEXLIVE_IMAGE }}
+          cache: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: sweeps-unicode-bin
+          path: ${{ runner.temp }}/bin
+      - name: reopen scenarios
+        run: |
+          set -euo pipefail
+          chmod +x "$RUNNER_TEMP"/bin/*
+          tl="$(dirname "$(dirname "${{ steps.tl.outputs.bin }}")")"
+          export FLASHTEX_FONT_DIRS="$tl/texmf-dist/fonts/opentype:$tl/texmf-dist/fonts/truetype"
+          export FLASHTEX_CACHE_DIR="$RUNNER_TEMP/flashtex-cache"
+          mkdir -p "$RUNNER_TEMP/reopen"
+          if [[ ! -f tools/incr-bench/unicode_reopen.py ]]; then
+            echo "no unicode_reopen.py at this ref" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          python3 tools/incr-bench/unicode_reopen.py "$RUNNER_TEMP/bin/flashtex-host-unicode" \
+            tools/incr-bench/unicode-corpus/*.tex tools/xetex-pdfparity/cases/*.tex \
+            tools/xetex-lockstep/latex-cases/*.tex tools/unicode-m3/cases/*.tex tools/unicode-m3/bench/*.tex \
+            --trials 1 --out "$RUNNER_TEMP/reopen/reopen.jsonl" 2>&1 | tee "$RUNNER_TEMP/reopen/reopen.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sweeps-unicode-reopen
+          path: ${{ runner.temp }}/reopen
+          retention-days: 14
+
   summary:
-    needs: [build, sweep]
+    needs: [build, sweep, reopen]
     if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -292,6 +341,7 @@ jobs:
         env:
           SHA: ${{ needs.build.outputs.sha }}
           SHARDS: ${{ needs.build.outputs.shards }}
+          REOPEN: ${{ needs.reopen.result }}
         run: |
           set -euo pipefail
           n=$(python3 -c 'import json,os; print(len(json.loads(os.environ["SHARDS"])))')
@@ -310,4 +360,5 @@ jobs:
             cat results/*/sweep.txt 2>/dev/null | grep -v '^TOTAL:' || true
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
-          [[ "$totals" == "$n" && "$bad" == 0 ]]
+          echo "- reopen scenarios: ${REOPEN}" | tee -a "$GITHUB_STEP_SUMMARY"
+          [[ "$totals" == "$n" && "$bad" == 0 && "$REOPEN" == success ]]
