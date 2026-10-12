@@ -135,7 +135,6 @@ dependencies = [
  "flashtex-project-manifest",
  "flashtex-xetex-fontlibs",
  "flashtex-xetex-teckit",
- "icu_locale_core",
  "icu_segmenter",
  "libc",
  "sha2",
