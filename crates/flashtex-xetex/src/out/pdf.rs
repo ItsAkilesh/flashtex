@@ -2264,8 +2264,8 @@ mod tests {
             "pdf:bxobj @pgfsmask5 width 20pt height 10pt depth 0pt",
         ));
         body.push(137); // put_rule inside the form
-        body.extend_from_slice(&(5 << 16i32).to_be_bytes());
-        body.extend_from_slice(&(10 << 16i32).to_be_bytes());
+        body.extend_from_slice(&(5i32 << 16).to_be_bytes());
+        body.extend_from_slice(&(10i32 << 16).to_be_bytes());
         body.extend(special(
             "pdf:exobj <</Group <</S/Transparency /CS/DeviceGray>> >>",
         ));
