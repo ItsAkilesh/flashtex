@@ -139,8 +139,6 @@ pub struct Host {
     /// XeTeXFontMgr's `sReqEngine`: the renderer the last font name asked
     /// for (`/AAT`, `/OT` or `/ICU`, `/GR`), or 0.
     pub req_engine: u8,
-    /// Whether text needing ICU's bidi analysis was reported (once).
-    pub bidi_warned: bool,
     /// XeTeX_ext.c's `brkIter` (the rules of the line break iterator,
     /// `crate::native::linebreak`) and `brkLocaleStrNum` (the string number
     /// of the locale it was opened for). Which iterator is open decides

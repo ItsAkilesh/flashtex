@@ -576,7 +576,7 @@ if [[ -n "$ENGINE_HOST_UNICODE" && -f "$ENGINE_HOST_UNICODE" ]]; then
     echo "== TECkit (used under the GNU LGPL 2.1 or later; third_party/teckit/TECkit-src/license) =="
     cat "$REPO_ROOT/third_party/teckit/TECkit-src/license/License_LGPLv21.txt"
     echo
-    echo "== ICU's line-break tables (third_party/icu) and ICU4X's segmenter and its data (Unicode License v3) =="
+    echo "== ICU's line-break tables and bidi algorithm (third_party/icu; the bidi port's notices are also in LICENSE-unicode) and ICU4X's segmenter and its data (Unicode License v3) =="
     cat "$REPO_ROOT/third_party/icu/LICENSE"
   } > "$RESOURCES_DIR/engine/THIRD-PARTY-NOTICES-unicode.txt"
   ENGINE_HOST_UNICODE_BUNDLED="$HELPERS_DIR/flashtex-host-unicode"

@@ -72,11 +72,17 @@ jobs:
           workspaces: |
             crates/flashtex-xetex -> target
             . -> target
-      - name: the port, its host, fonts_line, its tests; dl3-client
+      - name: the port, its host, fonts_line, its tests
         run: |
           set -euo pipefail
           (cd crates/flashtex-xetex && cargo build --release --locked --bins --example fonts_line \
              && cargo test --release --locked --test host --no-run)
+      - name: the port's unit tests (no TeX; ICU's bidi vectors among them)
+        working-directory: crates/flashtex-xetex
+        run: cargo test --release --locked --lib
+      - name: dl3-client; the binaries collected
+        run: |
+          set -euo pipefail
           cargo build --release --locked -p flashtex-display-list --bin dl3-client
           mkdir -p "$RUNNER_TEMP/bin"
           cp crates/flashtex-xetex/target/release/{flashtex-xetex,flashtex-host-unicode} \
