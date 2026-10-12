@@ -140,8 +140,8 @@ hyphen-welsh
 # What the M3 Unicode corpus (tools/unicode-m3/corpus.json, lane M3-BUNDLE) reads and
 # the bundle lacked: tools/unicode-m3/bundle_gaps.py over TeX Live's xelatex -recorder
 # and each XDV's native fonts, in the pinned tree (unicode-m3-bundle.yml, run
-# 38201654312). bidi, zhnumber, amiri, culmus, firamath and xits, which it also needs,
-# are #1786's (texbundle-tl2026-4). Licences are the tlpdb's (the packer checks them).
+# 38201654312; since texbundle-tl2026-4). bidi, zhnumber, amiri, culmus, firamath and xits,
+# which it also needs, are listed above. Licences are the tlpdb's (the packer checks them).
 # the thuthesis template: thuthesis (lppl1.3c), and the bibunits (lppl1.3) and
 # notoccite (pd) it loads
 thuthesis

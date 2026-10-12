@@ -59,6 +59,10 @@ Live's own `LICENSE.TL` and `LICENSE.CTAN`.
   xelatex documents built with no TeX Live) read and the bundle lacked: bidi (polyglossia's
   right-to-left languages), zhnumber (ctex), xltxtra with xunicode and realscripts, and the
   OpenType fonts documents name by file: CM Unicode, XITS, Fira Math, Amiri and Culmus.
+  Also what the M3 Unicode corpus (`tools/unicode-m3/corpus.json`) read beyond those, found
+  by `tools/unicode-m3/bundle_gaps.py` (unicode-m3-bundle.yml): thuthesis with bibunits and
+  notoccite, l3experimental (l3draw), showexpl, typogrid, Harano Aji, UnBatang
+  (unfonts-core), New Computer Modern, DejaVu and GFS Complutum.
 - Since `texbundle-tl2026-4`, one file of FlashTeX's own besides TeX Live's:
   `texmf-var/fonts/misc/flashtex/flashtex-xetex-fonts.json`, the names of the bundle's
   OpenType and TrueType faces, written at pack time (`--font-index-tool`) so that Unicode
