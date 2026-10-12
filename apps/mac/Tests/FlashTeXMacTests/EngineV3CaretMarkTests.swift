@@ -643,4 +643,29 @@ final class EngineV3CaretMarkTests: XCTestCase {
         pages.setAppearance(.dark)
         XCTAssertEqual(v.label.foregroundColor, NSColor(white: 0.7, alpha: 1).cgColor, "the dark page's label colour")
     }
+
+    /// DIAGNOSTIC (temporary): the label scenario many times, with the layer tree's state.
+    func testDiagLabelStress() async throws {
+        var bad = 0
+        for round in 0 ..< 25 {
+            let (model, pages, window) = try await pane()
+            let v = try XCTUnwrap(pages.heldPageView(1))
+            let frame = v.labelFrameInView
+            let shown = v.convertFromLayer(v.label.frame)
+            var chain: [String] = []
+            var l: CALayer? = v.layer
+            while let c = l { chain.append("\(type(of: c))(g=\(c.isGeometryFlipped),f=\(c.contentsAreFlipped()))"); l = c.superlayer }
+            var root: CALayer? = v.layer
+            while let s = root?.superlayer { root = s }
+            let rootIsWindow = root != nil && root === window.contentView?.layer
+            let ok = abs(shown.minY - frame.minY) < 0.5
+            if !ok { bad += 1 }
+            print("DIAG-LABEL round \(round) ok=\(ok) labelY=\(v.label.frame.minY) shownY=\(shown.minY) wantY=\(frame.minY) orderIns=\((v.layer as? EngineV3PageLayer)?.diagOrderIns ?? -1) rootIsWindow=\(rootIsWindow) placements=\(v.diagPlacements) chain=\(chain.joined(separator: " < "))")
+            try await Task.sleep(nanoseconds: 200_000_000)
+            let shown2 = v.convertFromLayer(v.label.frame)
+            print("DIAG-LABEL round \(round) after 0.2 s: labelY=\(v.label.frame.minY) shownY=\(shown2.minY) placements=\(v.diagPlacements.count) flip=\(v.layer?.contentsAreFlipped() ?? false)")
+            model.engineV3.stop(); window.contentView = nil
+        }
+        print("DIAG-LABEL bad \(bad) of 25")
+    }
 }

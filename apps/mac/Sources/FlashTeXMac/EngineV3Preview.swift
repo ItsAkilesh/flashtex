@@ -252,8 +252,9 @@ final class EngineV3PageLayer: CALayer {
     override init() { super.init() }
     override init(layer: Any) { super.init(layer: layer) }
     required init?(coder: NSCoder) { fatalError() }
+    var diagOrderIns = 0
     override func action(forKey event: String) -> CAAction? {
-        if event == kCAOnOrderIn { onOrderIn?() }
+        if event == kCAOnOrderIn { diagOrderIns += 1; onOrderIn?() }
         return super.action(forKey: event)
     }
 }
@@ -340,7 +341,9 @@ final class EngineV3PageView: NSView {
         var f = labelFrameInView
         if let l = layer, !l.contentsAreFlipped() { f.origin.y = bounds.height - f.maxY }
         label.frame = f
+        diagPlacements.append("[sup=\(layer?.superlayer != nil) win=\(window != nil) flip=\(layer?.contentsAreFlipped() ?? false) y=\(f.minY) h=\(bounds.height) supFlip=\(superview?.layer?.contentsAreFlipped() ?? false) supIsFlipped=\(superview?.isFlipped ?? false)]")
     }
+    var diagPlacements: [String] = []
     required init?(coder: NSCoder) { fatalError() }
 
     override func setFrameSize(_ newSize: NSSize) {
