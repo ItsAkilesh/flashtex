@@ -75,7 +75,7 @@ ap.add_argument('srcdir')
 ap.add_argument('--doc', default='main')
 ap.add_argument('--trials', type=int, default=0)
 ap.add_argument('--keys', type=int, default=0)
-ap.add_argument('--at', default='end')
+ap.add_argument('--at', default='end', help='end, mid, a fraction of the body, or a marker word in the text')
 ap.add_argument('--seed', type=int, default=1)
 ap.add_argument('--kinds', default='replace,insert,delete')
 ap.add_argument('--verify', action='store_true')
@@ -136,8 +136,12 @@ def read_frame(f):
 
 
 class Callgrind:
-    """A host under callgrind: its instructions between `begin` and `end`
-    (`callgrind_control -z`, then `-d` and the dump's total)."""
+    """A host under callgrind: its instructions between `begin` and `end`,
+    and up to each page. callgrind dumps its counts (and zeroes them) after
+    every call of the engine's `flashtex_page_sent` (`--dump-after`: the
+    page's frame is written, on the engine's own thread), so the count up
+    to the k-th page a compile sends is the sum of its first k dumps;
+    `end` dumps the rest (`callgrind_control -d`)."""
 
     def __init__(self, out_dir, tag):
         os.makedirs(out_dir, exist_ok=True)
@@ -145,51 +149,55 @@ class Callgrind:
         self.pid = None
         self.keep = a.callgrind_keep
         self.kept = []
+        self.seen = set()
 
     def argv(self):
         return ['valgrind', '--tool=callgrind', '--callgrind-out-file=' + self.base,
-                '--dump-instr=no', '--compress-strings=no']
+                '--dump-instr=no', '--compress-strings=no', '--dump-after=flashtex_page_sent']
 
     def ctl(self, *args):
         subprocess.run(['callgrind_control'] + list(args) + [str(self.pid)], check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
 
     def begin(self):
+        """From now (the counts zeroed; earlier dumps dropped)."""
+        self._take()
         self.ctl('-z')
-        self.dumps = []
         self.kept = []
 
-    def mark(self):
-        """A dump now: the instructions since the last one (callgrind
-        zeroes its counters at a dump), kept in `dumps`."""
-        before = set(self._dumps())
+    def from_start(self):
+        """From the process's start (nothing zeroed)."""
+        self.kept = []
+
+    def end(self):
+        """[the count in each dump since `begin`], the last one taken now."""
         self.ctl('-d')
-        new = sorted(set(self._dumps()) - before, key=os.path.getmtime)
-        total = None
+        return self._take()
+
+    def _take(self):
+        new = sorted((d for d in self._dumps() if d not in self.seen), key=self._num)
+        counts = []
         for d in new:
+            self.seen.add(d)
             # (a dump file gives its count twice, as `summary:` in its
             # header and `totals:` at its end: one of them)
-            got = None
+            got = 0
             with open(d, errors='replace') as f:
                 for line in f:
                     m = re.match(r'(?:summary|totals):\s+(\d+)', line)
                     if m:
                         got = int(m.group(1))
-            if got is not None:
-                total = (total or 0) + got
+            counts.append(got)
             if self.keep:
                 self.kept.append(d)
             else:
                 os.unlink(d)
-        self.dumps.append(total)
-        return total
+        return counts
 
-    def end(self):
-        """The instructions since `begin` (or the start): every dump's."""
-        self.mark()
-        if any(t is None for t in self.dumps):
-            return None
-        return sum(self.dumps)
+    @staticmethod
+    def _num(path):
+        m = re.search(r'\.(\d+)$', path)
+        return int(m.group(1)) if m else 0
 
     def _dumps(self):
         d = os.path.dirname(self.base)
@@ -232,18 +240,18 @@ class Host:
     def compile(self, root, main, prev=None):
         """One compile: (frames, done, timings). With callgrind and `prev`
         (the last compile's page hashes by number), the count is also taken
-        when the first page that differs from it arrives (`edited_ins`):
-        an upper bound, since the host runs on while the dump is asked for."""
+        when the engine has written the first page that differs from it
+        (`edited_ins`; callgrind's per-page dumps, `Callgrind`)."""
         self.n += 1
         req = {'id': self.n, 'root': os.path.join(root, 'src'), 'main': main, 'format': 'xelatex',
                'shell_escape': 'default', 'output_dir': os.path.join(root, 'out')}
         i0 = instructions(self.p.pid)
         if self.cg:
             if self.from_start and self.n == 1:
-                self.cg.dumps = []
+                self.cg.from_start()
             else:
                 self.cg.begin()
-        edited_ins = None
+        edited_idx = None
         n_page = 0
         t0 = time.time()
         write_frame(self.s, 0x02, json.dumps(req))
@@ -259,9 +267,9 @@ class Host:
                 page_times.append(time.time() - t0)
                 if first is None:
                     first = page_times[-1]
-                if self.cg and prev is not None and edited_ins is None \
+                if prev is not None and edited_idx is None \
                         and prev.get(n_page) != hashlib.sha256(b).hexdigest():
-                    edited_ins = self.cg.mark()
+                    edited_idx = n_page
                 n_page += 1
             if k == DONE:
                 d = json.loads(b)
@@ -271,14 +279,20 @@ class Host:
         done = time.time() - t0
         i1 = instructions(self.p.pid)
         ins = (i1 - i0) if i0 is not None and i1 is not None else None
+        edited_ins = first_ins = None
         if self.cg:
-            ins = self.cg.end()
-            if edited_ins is None:
-                edited_ins = ins
+            counts = self.cg.end()
+            ins = sum(counts)
+            # (the k-th page's dump is the k-th; the last page, when none
+            # differs)
+            k = edited_idx if edited_idx is not None else n_page - 1
+            edited_ins = sum(counts[:k + 1]) if 0 <= k < len(counts) else ins
+            first_ins = counts[0] if n_page and counts else ins
         if self.s0_cache and (d.get('starts') or [None])[0] in ('fresh', 'format'):
             self.wait_s0_saved()
         return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins,
-                               edited_instructions=edited_ins, footprint=footprint(self.p.pid),
+                               edited_instructions=edited_ins, first_instructions=first_ins,
+                               footprint=footprint(self.p.pid),
                                cg_dumps=list(self.cg.kept) if self.cg else [])
 
     def compile_cancelled(self, root, main, ms, between):
@@ -551,6 +565,8 @@ def main():
                  instructions_m=round(t['instructions'] / 1e6, 1) if t['instructions'] is not None else None,
                  edited_instructions_m=(round(t['edited_instructions'] / 1e6, 1)
                                         if t.get('edited_instructions') is not None else None),
+                 first_instructions_m=(round(t['first_instructions'] / 1e6, 1)
+                                       if t.get('first_instructions') is not None else None),
                  cg_dumps=t.get('cg_dumps') or None,
                  mode=d.get('mode'), starts=d.get('starts'),
                  footprint_mb=(t['footprint'] or (None, None))[0], peak_mb=(t['footprint'] or (None, None))[1],
@@ -603,6 +619,10 @@ def main():
         end = src.index(b'\\end{document}')
         if a.at == 'end':
             anchor = end
+        elif re.fullmatch(r'[A-Za-z]+', a.at) and a.at != 'mid':
+            # a marker in the text (the M3 bench's `EDITPOINT`): typed
+            # right after it, as tools/unicode-m3/latency.py edits
+            anchor = src.index(a.at.encode()) + len(a.at)
         else:
             frac = 0.5 if a.at == 'mid' else float(a.at)
             begin = src.index(b'\\begin{document}') + len(b'\\begin{document}')
