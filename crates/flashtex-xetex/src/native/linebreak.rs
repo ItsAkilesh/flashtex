@@ -26,7 +26,9 @@
 //! to ICU's dictionary engines (dictbe.cpp): a run of Thai, Lao, Myanmar or
 //! Khmer is cut into words. Those engines are not ported: a run is cut by
 //! ICU4X's dictionary segmenter (`icu_segmenter` 2.1, whose dictionaries
-//! are exported from ICU 78's), with ICU's minimum run lengths; an SA run of
+//! are exported from ICU 78's), with ICU's minimum run lengths and the Thai
+//! engine's MAI YAMOK rule (measured: without it, a break before `ๆ`); the
+//! rest of those engines' heuristics are not ported. An SA run of
 //! another script gets no breaks, as ICU's `UnhandledEngine` gives it none.
 //! Which characters make one run comes from Unicode 17's UCD
 //! (`linebreak_sa.rs`, tools/xetex-linebreak/gen_sa_runs.py).
@@ -447,6 +449,10 @@ fn dictionary_breaks(script: SaScript, run: &[u16]) -> Vec<usize> {
     LineSegmenter::new_dictionary(LineBreakOptions::default())
         .segment_utf16(run)
         .filter(|&b| b > 0 && b < run.len())
+        // ThaiBreakEngine's suffix rule: MAI YAMOK (U+0E46), where no
+        // dictionary word starts, joins the word before it unless that
+        // ends in MAI YAMOK too. (No Thai word starts with it.)
+        .filter(|&b| !(script == SaScript::Thai && run[b] == 0x0E46 && run[b - 1] != 0x0E46))
         .collect()
 }
 
