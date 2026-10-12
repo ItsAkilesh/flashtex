@@ -731,6 +731,67 @@ fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// S₀ is taken at the real `\begin{document}`, not where a package expanded
+/// `\document` into a new definition to patch it (bidi does, for
+/// polyglossia's right-to-left languages): an edit in the preamble after
+/// the patch runs from the format, a body edit goes on from S₀, and every
+/// compile writes what a run of its own writes.
+#[test]
+fn s0_is_not_taken_where_document_is_patched() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-patch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let doc = "\\documentclass{article}\n\\makeatletter\n\\expandafter\\def\\expandafter\\document\\expandafter{\\document\\relax}\n\\makeatother\n\\newcommand\\later{late}\n\\begin{document}\nA body, \\later.\n\\end{document}\n";
+    let texts = [
+        doc.to_string(),
+        doc.replace("A body", "The body"),
+        doc.replace("{late}", "{later}"),
+    ];
+    let run = |envs: &[(&str, &str)]| -> Vec<(Vec<u8>, String, String)> {
+        let sub = dir.join("run");
+        let _ = std::fs::remove_dir_all(&sub);
+        let (proj, out) = project(&sub, doc);
+        let mut e = vec![("FLASHTEX_PIN_CLOCK", "1760000000.5")];
+        e.extend_from_slice(envs);
+        let h = start_with(&sub, &e, &sub.join("host.err"));
+        let mut c = Client::connect(&h.sock).unwrap();
+        let mut outs = vec![];
+        for (i, text) in texts.iter().enumerate() {
+            let id = i as i64 + 1;
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.clone())];
+            c.compile(&r).unwrap();
+            let (_, done) = events(&mut c, id);
+            let o = Path::new(&out);
+            outs.push((
+                std::fs::read(o.join("main.pdf")).unwrap_or_default(),
+                std::fs::read_to_string(o.join("main.log")).unwrap_or_default(),
+                done.get("starts")
+                    .and_then(Json::as_array)
+                    .and_then(|a| a.first())
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            ));
+        }
+        c.bye().unwrap();
+        drop(h);
+        outs
+    };
+    let own = run(&[("FLASHTEX_UNICODE_INPROCESS", "0")]);
+    let got = run(&[]);
+    for (i, (a, b)) in got.iter().zip(&own).enumerate() {
+        assert!(a.0 == b.0, "compile {}: the PDFs differ", i + 1);
+        assert_eq!(a.1, b.1, "compile {}: the logs differ", i + 1);
+    }
+    let starts: Vec<&str> = got.iter().map(|o| o.2.as_str()).collect();
+    assert_eq!(starts, ["fresh", "s0", "format"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A persisted S₀ (`--s0-cache`, `crate::s0file`): a host saves the
 /// document's S₀ after its compile; a new host whose document was edited
 /// in its body while closed goes on from it (no format, no preamble), and
