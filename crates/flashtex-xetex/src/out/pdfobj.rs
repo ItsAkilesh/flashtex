@@ -9,6 +9,8 @@
 
 use std::fmt::Write as _;
 
+pub use super::num::{fmt_num, push_num};
+
 /// A PDF object, or a reference to a named object (`@name`).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Obj {
@@ -99,26 +101,10 @@ impl Obj {
     /// A number written with at most `digits` fraction digits, trailing
     /// zeros dropped (`-0` written `0`).
     pub fn num(v: f64, digits: usize) -> Obj {
-        Obj::Num(fmt_num(v, digits).into_bytes())
+        let mut out = Vec::new();
+        push_num(&mut out, v, digits);
+        Obj::Num(out)
     }
-}
-
-/// `v` with at most `digits` fraction digits, trailing zeros and a
-/// trailing point dropped; `-0` is `0`.
-pub fn fmt_num(v: f64, digits: usize) -> String {
-    let mut s = format!("{v:.digits$}");
-    if s.contains('.') {
-        while s.ends_with('0') {
-            s.pop();
-        }
-        if s.ends_with('.') {
-            s.pop();
-        }
-    }
-    if s == "-0" {
-        s = "0".into();
-    }
-    s
 }
 
 pub fn is_white(c: u8) -> bool {
