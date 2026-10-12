@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 /// checkpoints can share it. The mutex makes it Send + Sync (an engine may
 /// move between threads, `Globals` is `Send`); a mapping is used by one
 /// engine at a time, so it is never contended.
-pub struct Mapping(Mutex<Converter>);
+pub struct Mapping(Mutex<Converter>, pub Option<(String, bool)>);
 
 /// TECkit's converter pointer. TECkit keeps no thread-local or global state
 /// per converter, so it may be used from any one thread at a time.
@@ -55,7 +55,7 @@ impl Mapping {
                 &mut cnv,
             );
         }
-        (!cnv.is_null()).then(|| Mapping(Mutex::new(Converter(cnv))))
+        (!cnv.is_null()).then(|| Mapping(Mutex::new(Converter(cnv)), None))
     }
 
     /// XeTeX_ext.c's normalizer for `apply_normalization`: no mapping,
@@ -82,7 +82,7 @@ impl Mapping {
         if status != teckit::kStatus_NoError || cnv.is_null() {
             return Err(status);
         }
-        Ok(Mapping(Mutex::new(Converter(cnv))))
+        Ok(Mapping(Mutex::new(Converter(cnv)), None))
     }
 }
 

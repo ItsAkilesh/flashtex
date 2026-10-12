@@ -160,6 +160,26 @@ pdfTeX's own, each needing a XeTeX counterpart written against `xetex.web`:
    so the record keeps them and a restore puts them back. S₀ is refused
    when a page shipped before it (the output's state is not kept yet: step
    4), and when the preamble ran a shell command.
+   *Persisted (lane UNICODE-POLISH):* with `--s0-cache DIR` (or
+   `FLASHTEX_S0_CACHE`), a compile that took a new S₀ saves it to
+   `DIR/<hash of the command line and directories>.xs0` after its `DONE`
+   (`src/s0file.rs`; the engine thread copies the chunks out, a thread of
+   its own writes them through a temporary file and a rename; Low Memory
+   writes in place, with no copy). A host with no state for a document
+   opens it: the nonzero chunks are mapped copy-on-write (Classic's v5
+   layout), and the state outside the word space is made again: the handle
+   table's objects from their recipes (a layout engine from its font file,
+   face, size and options; a TECkit mapping from its file; glyph-info
+   arrays, pictures' paths and OpenType assemblies as data), the font
+   manager by making its lookups again over the catalog, the source map as
+   it was at S₀. It is refused unless the command line, directories and
+   format file are the same, S₀'s key holds (Classic's checks, the
+   arm-window reads included), the font directories are unchanged, and
+   every font and mapping file its objects are made from has the same
+   content. `tools/incr-bench/unicode_reopen.py` checks a reopen after an
+   edit in the body (from S₀), in the preamble and of a font file
+   (refused) against a from-scratch compile, and times a cold open against
+   a reopen.
 4. **L2 checkpoints** at `\shipout` with §4's state, `checkpoint.ch` for
    `xetex.web`.
    *Landed (lane XETEX-INCR, step 3), with L3's restart (not its

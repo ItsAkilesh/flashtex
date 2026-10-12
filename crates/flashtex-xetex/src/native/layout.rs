@@ -26,6 +26,9 @@ pub struct LayoutEngine {
     pub extend: f32,
     pub slant: f32,
     pub embolden: f32,
+    /// The language as `new` was given it (a persisted S₀ makes the
+    /// engine again from its fields, `crate::s0file`).
+    pub language_src: Option<Vec<u8>>,
     buffer: *mut hb::hb_buffer_t,
     /// XeTeXLayoutInterface.cpp's `sGlyphBoxes` for this font: glyph
     /// bounding boxes in points, for `\XeTeXuseglyphmetrics`. XeTeX keys
@@ -73,6 +76,7 @@ impl LayoutEngine {
         embolden: f32,
         req_engine: u8,
     ) -> LayoutEngine {
+        let language_src = language.map(<[u8]>::to_vec);
         let lang_c = language.map(|l| CString::new(l.to_vec()).unwrap_or_default());
         let lang_ptr = lang_c.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
         // SAFETY: HarfBuzz reads the NUL-terminated string (or NULL).
@@ -94,6 +98,7 @@ impl LayoutEngine {
             extend,
             slant,
             embolden,
+            language_src,
             // SAFETY: a new buffer, destroyed in Drop.
             buffer: unsafe { hb::hb_buffer_create() },
             bbox_cache: Mutex::new(HashMap::new()),

@@ -253,6 +253,109 @@ impl DlSource {
         bytes
     }
 
+    /// The source map as it was at snapshot `s`, for a persisted S₀
+    /// (`crate::s0file`): the side table's entries, the files and spans
+    /// named by then (the tables only grow), the rest as `s` has it.
+    pub(crate) fn enc_at(&self, s: &DlSnap, w: &mut Vec<u8>) {
+        use flashtex_engine::persist::Codec;
+        s.on.enc(w);
+        s.side.len.enc(w);
+        let mut entries: Vec<(u32, u64)> = vec![];
+        for (gi, g) in s.side.groups.iter().enumerate() {
+            let Some(g) = g else { continue };
+            for (li, l) in g.0.iter().enumerate() {
+                let Some(l) = l else { continue };
+                let base = (gi << (LEAF_SHIFT + GROUP_SHIFT)) | (li << LEAF_SHIFT);
+                for (k, &v) in l.iter().enumerate() {
+                    if v != 0 {
+                        entries.push(((base + k) as u32, v));
+                    }
+                }
+            }
+        }
+        entries.enc(w);
+        self.files[..s.files.min(self.files.len())].to_vec().enc(w);
+        let ids: Vec<(Vec<u8>, u32)> = self
+            .file_ids
+            .iter()
+            .filter(|(_, &id)| id as usize <= s.files)
+            .map(|(k, &id)| (k.clone(), id))
+            .collect();
+        ids.enc(w);
+        self.spans[..s.spans.min(self.spans.len())].to_vec().enc(w);
+        let ids: Vec<((u32, u32), u32)> = self
+            .span_ids
+            .iter()
+            .filter(|(_, &id)| id as usize <= s.spans)
+            .map(|(k, &id)| (*k, id))
+            .collect();
+        ids.enc(w);
+        s.last.enc(w);
+        s.file_level.enc(w);
+        s.not_a_node.enc(w);
+        s.col_cache.0.enc(w);
+        s.col_cache.1.enc(w);
+        s.col_cache.2.enc(w);
+        s.col_cache.3.enc(w);
+        s.col_cache.4.enc(w);
+        s.hyph.enc(w);
+        let markers: Vec<(u64, u32, u16)> =
+            s.markers.iter().map(|m| (m.pos, m.span, m.col)).collect();
+        markers.enc(w);
+        s.last_marked.enc(w);
+    }
+
+    /// A source map as [`enc_at`](Self::enc_at) wrote it.
+    pub(crate) fn dec(r: &mut flashtex_engine::persist::Reader) -> Result<DlSource, String> {
+        use flashtex_engine::persist::Codec;
+        let on = Option::<bool>::dec(r)?;
+        let len = usize::dec(r)?;
+        let mut side = Side::zeros(len);
+        for (i, v) in Vec::<(u32, u64)>::dec(r)? {
+            if i as usize >= len {
+                return Err("the source map's entry is outside mem".into());
+            }
+            side.set(i as usize, v);
+        }
+        let files = Vec::<String>::dec(r)?;
+        let file_ids: HashMap<Vec<u8>, u32> = Vec::<(Vec<u8>, u32)>::dec(r)?.into_iter().collect();
+        let spans = Vec::<(u32, u32)>::dec(r)?;
+        let span_ids: HashMap<(u32, u32), u32> =
+            Vec::<((u32, u32), u32)>::dec(r)?.into_iter().collect();
+        let last = <(i32, u32, u32)>::dec(r)?;
+        let file_level = usize::dec(r)?;
+        let not_a_node = bool::dec(r)?;
+        let col_cache = (
+            i32::dec(r)?,
+            i32::dec(r)?,
+            i32::dec(r)?,
+            usize::dec(r)?,
+            usize::dec(r)?,
+        );
+        let hyph = Option::<Loc>::dec(r)?;
+        let markers = Vec::<(u64, u32, u16)>::dec(r)?
+            .into_iter()
+            .map(|(pos, span, col)| Marker { pos, span, col })
+            .collect();
+        let last_marked = Loc::dec(r)?;
+        Ok(DlSource {
+            on,
+            side,
+            copied: 0,
+            files,
+            file_ids,
+            spans,
+            span_ids,
+            last,
+            file_level,
+            not_a_node,
+            col_cache,
+            hyph,
+            markers,
+            last_marked,
+        })
+    }
+
     /// A resident engine's run: the source map is made when its display
     /// list is (its host says so; a run of its own reads
     /// `FLASHTEX_DISPLAY_LIST`), over a `mem` of `mem_len` words.

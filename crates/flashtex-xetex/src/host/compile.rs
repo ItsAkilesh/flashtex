@@ -62,6 +62,8 @@ pub struct Job {
     /// TeX code run before the main file on the first line (`[fonts]`,
     /// `fonts.rs`); empty: the main file's name alone.
     pub preamble: String,
+    /// The document's persisted S₀ (`--s0-cache`, `crate::s0file`).
+    pub s0_file: Option<PathBuf>,
 }
 
 fn parse_key(h: &str) -> Option<[u8; 32]> {
@@ -161,7 +163,23 @@ impl Job {
             buffers,
             edits,
             preamble: String::new(),
+            s0_file: None,
         })
+    }
+
+    /// The name of this job's persisted S₀ in the S₀ cache: what its runs'
+    /// state at the document's start stands for (the command line, the
+    /// directories), hashed.
+    pub fn s0_name(&self) -> String {
+        let key = format!(
+            "{:?}\0{}\0{}\0{}",
+            self.argv(),
+            self.root.display(),
+            self.output_dir.display(),
+            self.format
+        );
+        let h = flashtex_engine::persist::hash128(key.as_bytes());
+        format!("{:016x}{:016x}.xs0", h[0], h[1])
     }
 
     /// Write the editor's buffers and apply the edits (spec §6.3), as
@@ -587,6 +605,8 @@ fn run_in_process(
         cancel: stop,
         retention,
         preview: !job.export,
+        // (an export is a run of its own: no persisted S₀)
+        s0_file: (!job.export).then(|| job.s0_file.clone()).flatten(),
     };
     let mut res = RunResult::default();
     let ran = sh.run(spec, || {

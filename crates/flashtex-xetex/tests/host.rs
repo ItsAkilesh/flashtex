@@ -731,6 +731,125 @@ fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A persisted S₀ (`--s0-cache`, `crate::s0file`): a host saves the
+/// document's S₀ after its compile; a new host whose document was edited
+/// in its body while closed goes on from it (no format, no preamble), and
+/// writes what a from-scratch compile of the same directory writes (the
+/// PDF, the log and the `.aux`, byte for byte); a font file the preamble
+/// loaded, changed while closed, refuses it (from the start), and the
+/// output is again a from-scratch compile's.
+#[test]
+fn a_reopened_document_goes_on_from_its_persisted_s0() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let find = |n: &str| {
+        flashtex_engine::system::find_file(n, flashtex_engine::resolver::Format::OpenType)
+            .expect("Latin Modern (TeX Live)")
+    };
+    let dir = std::env::temp_dir().join(format!("flashtex-host-reopen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let doc = "\\documentclass{article}\n\\usepackage{fontspec}\n\\font\\mine=\"[myfont.otf]\" at 11pt\n\\begin{document}\n\\section{One}\\label{one}\n{\\mine Our own font, ffi.} See section~\\ref{one}.\n\\end{document}\n";
+    let (proj, out) = project(&dir, doc);
+    std::fs::copy(find("lmroman10-regular.otf"), proj.join("myfont.otf")).unwrap();
+    let cache = dir.join("cache");
+    let cache_s = cache.to_string_lossy().into_owned();
+    let with_cache = [
+        ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+        ("FLASHTEX_S0_CACHE", cache_s.as_str()),
+    ];
+    let scratch = [
+        ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+        ("FLASHTEX_UNICODE_INPROCESS", "0"),
+    ];
+    let outs = |o: &Path| -> Vec<Vec<u8>> {
+        ["main.pdf", "main.log", "main.aux"]
+            .iter()
+            .map(|n| std::fs::read(o.join(n)).unwrap_or_default())
+            .collect()
+    };
+    // one compile by a new host; the host ends (and its S₀ is written)
+    let compile = |envs: &[(&str, &str)], tag: &str| -> (String, String, Vec<Vec<u8>>) {
+        let h = start_with(&dir, envs, &dir.join(format!("{tag}.err")));
+        let mut c = Client::connect(&h.sock).unwrap();
+        c.compile(&request(1, &proj, &out)).unwrap();
+        let (_, done) = events(&mut c, 1);
+        c.bye().unwrap();
+        let mut h = h;
+        let t = Instant::now();
+        while h.child.try_wait().unwrap().is_none() {
+            assert!(
+                t.elapsed() < Duration::from_secs(120),
+                "the host did not end"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let start = done
+            .get("starts")
+            .and_then(Json::as_array)
+            .and_then(|a| a.first())
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string();
+        (
+            done.str_field("status").unwrap_or("").to_string(),
+            start,
+            outs(Path::new(&out)),
+        )
+    };
+    // a compile by a host with the cache, and the same from scratch from
+    // the same output directory
+    let against_scratch = |what: &str| -> String {
+        let o = Path::new(&out);
+        let before: Vec<(PathBuf, Vec<u8>)> = std::fs::read_dir(o)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .map(|p| (p.clone(), std::fs::read(&p).unwrap()))
+            .collect();
+        let (status, start, got) = compile(&with_cache, what);
+        let _ = std::fs::remove_dir_all(o);
+        std::fs::create_dir_all(o).unwrap();
+        for (p, b) in &before {
+            std::fs::write(p, b).unwrap();
+        }
+        let (rstatus, _, want) = compile(&scratch, &format!("{what}-ref"));
+        assert_eq!(status, rstatus, "{what}: the status");
+        for (n, (a, b)) in ["PDF", "log", ".aux"].iter().zip(got.iter().zip(&want)) {
+            assert!(
+                a == b,
+                "{what}: the {n} differs from a from-scratch compile's"
+            );
+        }
+        start
+    };
+    let (status, _, _) = compile(&with_cache, "first");
+    assert_eq!(status, "ok");
+    let saved: Vec<_> = std::fs::read_dir(&cache)
+        .expect("the S0 cache")
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        saved.len() == 1 && saved[0].ends_with(".xs0"),
+        "one S0 saved: {saved:?}"
+    );
+    // edited in its body while closed: from S₀
+    std::fs::write(
+        proj.join("main.tex"),
+        doc.replace("See section", "Added while closed. See section"),
+    )
+    .unwrap();
+    assert_eq!(against_scratch("body"), "s0", "a body edit goes on from S0");
+    // its font file changed while closed: S₀ refused
+    std::fs::copy(find("lmroman12-regular.otf"), proj.join("myfont.otf")).unwrap();
+    assert_eq!(
+        against_scratch("font"),
+        "fresh",
+        "a changed font file refuses S0"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Page checkpoints (`crate::ckpt::PageCk`): an edit on a document's last
 /// page restarts after the pages before it, which are sent again from the
 /// checkpoint (`DONE.starts` `page`); an edit on its first page goes on

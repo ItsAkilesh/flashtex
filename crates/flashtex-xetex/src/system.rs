@@ -663,6 +663,69 @@ impl AlphaFile {
     }
 }
 
+// A persisted S₀ (`crate::s0file`) keeps the record's streams.
+flashtex_engine::codec_struct!(MemSink {
+    buf,
+    base,
+    written,
+    skip_until
+});
+
+impl flashtex_engine::persist::Codec for Stream {
+    fn enc(&self, w: &mut Vec<u8>) {
+        match self {
+            Stream::None => 0u8.enc(w),
+            Stream::Terminal => 1u8.enc(w),
+            Stream::In { path, offset } => {
+                2u8.enc(w);
+                path.enc(w);
+                offset.enc(w);
+            }
+            Stream::Out { path, len, prefix } => {
+                3u8.enc(w);
+                path.enc(w);
+                len.enc(w);
+                prefix.as_ref().map(|p| p.to_vec()).enc(w);
+            }
+            Stream::Mem(m) => {
+                4u8.enc(w);
+                m.enc(w);
+            }
+        }
+    }
+    fn dec(r: &mut flashtex_engine::persist::Reader) -> Result<Self, String> {
+        Ok(match u8::dec(r)? {
+            0 => Stream::None,
+            1 => Stream::Terminal,
+            2 => Stream::In {
+                path: String::dec(r)?,
+                offset: u64::dec(r)?,
+            },
+            3 => Stream::Out {
+                path: String::dec(r)?,
+                len: u64::dec(r)?,
+                prefix: Option::<Vec<u8>>::dec(r)?.map(std::sync::Arc::new),
+            },
+            4 => Stream::Mem(MemSink::dec(r)?),
+            t => return Err(format!("bad stream {t}")),
+        })
+    }
+}
+
+flashtex_engine::codec_struct!(FileSnap {
+    stream,
+    buf,
+    word,
+    err,
+    at_eof,
+    encoding_mode,
+    saved_char,
+    skip_next_lf,
+    pushback,
+    written,
+    path
+});
+
 impl FileSnap {
     /// Whether this file global is as `o` is but for its stream's place
     /// (the convergence test, `crate::conv`, compares the streams). A

@@ -104,6 +104,25 @@ impl RunState {
     }
 }
 
+// A persisted S₀ (`crate::s0file`) keeps its record.
+flashtex_engine::codec_struct!(RunState {
+    start,
+    terminating,
+    tex_input_type,
+    req_engine,
+    saved_mapping_name,
+    pictures
+});
+
+flashtex_engine::codec_struct!(Record {
+    files,
+    terminal,
+    terminal_len,
+    run,
+    effects,
+    engines
+});
+
 /// The state outside the word space at a checkpoint.
 #[derive(Clone, Debug)]
 pub struct Record {
@@ -513,6 +532,9 @@ impl Globals {
 pub struct Retention {
     pub budget: usize,
     pub dense: usize,
+    /// Low Memory: what the host does besides is done the leanest way (a
+    /// persisted S₀ is written without a copy of it).
+    pub low: bool,
 }
 
 /// Low Memory's budget for the Unicode engine's checkpoints. A page
@@ -541,6 +563,7 @@ impl Retention {
         Retention {
             budget,
             dense: p.dense,
+            low: mode == Mode::LowMemory,
         }
     }
 }
