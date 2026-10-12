@@ -206,7 +206,12 @@ class Host:
             os.unlink(self.sock)
         except OSError:
             pass
-        self.err = open(os.path.join(tempfile.gettempdir(), 'fxu-%d-%s.err' % (os.getpid(), tag)), 'w')
+        self.err_path = os.path.join(tempfile.gettempdir(), 'fxu-%d-%s.err' % (os.getpid(), tag))
+        self.err = open(self.err_path, 'w')
+        # a host with a persisted-S0 cache (--s0-cache, #1805) saves S0 after
+        # the DONE of a compile that took one: the next compile waits for it,
+        # so that its count is its own
+        self.s0_cache = bool(env.get('FLASHTEX_S0_CACHE'))
         self.p = subprocess.Popen((cg.argv() if cg else []) + [exe, '--socket', self.sock, '--once',
                                                                '--accept-timeout', '600'],
                                   stdout=subprocess.DEVNULL, stderr=self.err, env=env)
@@ -270,6 +275,8 @@ class Host:
             ins = self.cg.end()
             if edited_ins is None:
                 edited_ins = ins
+        if self.s0_cache and (d.get('starts') or [None])[0] in ('fresh', 'format'):
+            self.wait_s0_saved()
         return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins,
                                edited_instructions=edited_ins, footprint=footprint(self.p.pid),
                                cg_dumps=list(self.cg.kept) if self.cg else [])
@@ -294,11 +301,37 @@ class Host:
                 if d.get('id') == self.n:
                     return d
 
+    def saves(self):
+        try:
+            t = open(self.err_path, errors='replace').read()
+        except OSError:
+            return 0
+        return t.count('"saved_s0"') + t.count('saving S0:')
+
+    def wait_s0_saved(self, timeout=300):
+        """The S0 save this compile started has ended (its writer says so
+        on stderr); none is started for a compile whose S0 it already
+        holds, which the timeout bounds."""
+        self.err.flush()
+        want = getattr(self, 'saves_seen', 0) + 1
+        t = time.time()
+        while time.time() - t < timeout and self.saves() < want:
+            if self.p.poll() is not None:
+                break
+            time.sleep(0.05)
+        self.saves_seen = self.saves()
+
     def close(self):
         try:
             write_frame(self.s, 0x04, '{}')
         except OSError:
             pass
+        if self.s0_cache:
+            # (a host waits for its S0 writer before it exits)
+            try:
+                self.p.wait(timeout=600)
+            except subprocess.TimeoutExpired:
+                pass
         self.p.kill()
         self.p.wait()
         try:

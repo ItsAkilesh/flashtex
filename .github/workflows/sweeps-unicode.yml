@@ -53,6 +53,10 @@ on:
         description: "further unicode_sweep.py arguments (e.g. --interleave, --only u0)"
         required: false
         default: ""
+      jobs:
+        description: "which jobs: all, or a comma-separated list of sweep, latency, reopen"
+        required: false
+        default: all
   pull_request:
     types: [labeled]
 
@@ -113,6 +117,7 @@ jobs:
           retention-days: 3
 
   sweep:
+    if: github.event_name == 'pull_request' || inputs.jobs == 'all' || contains(inputs.jobs, 'sweep')
     name: sweep ${{ matrix.shard }}
     needs: build
     runs-on: ubuntu-latest
@@ -205,6 +210,7 @@ jobs:
 # callgrind is asked for the count) and to DONE. Informational: it never
 # makes the run red.
   latency:
+    if: github.event_name == 'pull_request' || inputs.jobs == 'all' || contains(inputs.jobs, 'latency')
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -273,6 +279,16 @@ jobs:
               emed = statistics.median(edited) if edited else None
               print(f'| {name} | {at} | {cold} | {", ".join(map(str, edited))} | {emed} | {med} | {reo} | {starts} |')
           EOF
+          # b4's restarts and convergence tests, with the host's notes
+          # (FLASHTEX_UNICODE_CONV_DEBUG; not under callgrind: the notes
+          # cost instructions of their own)
+          for at in end mid; do
+            rm -f /tmp/fxu-*.err
+            python3 tools/incr-bench/unicode.py "$RUNNER_TEMP/bin/flashtex-host-unicode" tools/unicode-m3/bench/b4-fontspec-pages.tex \
+              --doc b4-fontspec-pages --keys 3 --at "$at" --trials 4 --kinds replace,insert,sentence \
+              --host-env FLASHTEX_UNICODE_CONV_DEBUG=1 --out "$RUNNER_TEMP/lat/diag-b4-$at.jsonl.txt" > /dev/null 2>&1 || true
+            cat /tmp/fxu-*-m.err > "$RUNNER_TEMP/lat/diag-b4-$at.host.txt" 2>/dev/null || true
+          done
           # where b4's second keystroke goes, to its edited page and after (inclusive)
           python3 - "$RUNNER_TEMP/lat" <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
           import json, os, subprocess, sys
@@ -299,6 +315,7 @@ jobs:
   # the document is closed), each reopen in a new host compared with a
   # from-scratch compile. Red on any mismatch or a wrong start.
   reopen:
+    if: github.event_name == 'pull_request' || inputs.jobs == 'all' || contains(inputs.jobs, 'reopen')
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 180
@@ -344,7 +361,7 @@ jobs:
 
   summary:
     needs: [build, sweep, reopen]
-    if: always() && needs.build.result == 'success'
+    if: always() && needs.build.result == 'success' && needs.sweep.result != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -376,4 +393,4 @@ jobs:
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
           echo "- reopen scenarios: ${REOPEN}" | tee -a "$GITHUB_STEP_SUMMARY"
-          [[ "$totals" == "$n" && "$bad" == 0 && "$REOPEN" == success ]]
+          [[ "$totals" == "$n" && "$bad" == 0 && ( "$REOPEN" == success || "$REOPEN" == skipped ) ]]
