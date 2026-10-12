@@ -4,4 +4,4 @@
 # nothing is fetched before the user agrees. bundle-publish.yml publishes exactly
 # this digest at this URL, and refuses any other.
 url = "https://github.com/flash-tex/flashtex/releases/download/texbundle-tl2026-4/texlive2026.ttb"
-digest = "4af1c87918b8090ef4fe9cbb0fc48ad9a504f1d87af52a1abfeba2c857048aad"
+digest = "d27b99d9b2dd301bafa934a77ce2bf67e4cf646a0c071e313f19dd1d489650b1"
