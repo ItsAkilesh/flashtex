@@ -17,7 +17,12 @@
 % expansion LaTeX's \.{\\begin\{document\}} ends in); when |macro_call| pushes
 % its body, the input level is remembered, and when |pop_input| goes below
 % that level the body -- with everything it expanded to -- has been
-% consumed, and the next |big_switch| takes $S_0$. After each shipout, when
+% consumed, and the next |big_switch| takes $S_0$. A body consumed while
+% the scanner is not |normal| was not run but absorbed: a package that
+% patches \.{\\document} with \.{\\expandafter} (bidi, loaded by
+% polyglossia for a right-to-left language) expands it into a definition or
+% an argument in the preamble. That arms the control sequence again rather
+% than taking $S_0$ there, in the middle of the preamble. After each shipout, when
 % the host asks (|ckpt_on_shipout|), the next |big_switch| takes a page
 % checkpoint (section 5.2), from which a later run restarts near its edit.
 % None of this changes what
@@ -35,7 +40,9 @@
 @d pop_input==@t@> {leave an input level, re-enter the old}
   begin decr(input_ptr); cur_input:=input_stack[input_ptr];
   if input_ptr<ckpt_arm_level then
-    begin ckpt_arm_level:=0; ckpt_request:=2;
+    begin ckpt_arm_level:=0;
+    if scanner_status=normal then ckpt_request:=2
+    else ckpt_arm_cs:=ckpt_arm_again;
     end;
   end
 @z
@@ -45,7 +52,7 @@ begin_token_list(ref_count,macro); name:=warning_index; loc:=link(r);
 @y
 begin_token_list(ref_count,macro); name:=warning_index; loc:=link(r);
 if ckpt_arm_cs<>0 then if warning_index=ckpt_arm_cs then
-  begin ckpt_arm_level:=input_ptr; ckpt_arm_cs:=0;
+  begin ckpt_arm_level:=input_ptr; ckpt_arm_again:=ckpt_arm_cs; ckpt_arm_cs:=0;
   end;
 @z
 
@@ -81,6 +88,8 @@ so an engine that is not asked for checkpoints never calls the hook.
 @!ckpt_request:integer; {nonzero: call |flashtex_checkpoint_hook| at |big_switch|}
 @!ckpt_arm_cs:pointer; {expanding this control sequence arms the checkpoint (0: none)}
 @!ckpt_arm_level:integer; {|input_ptr| with the armed body on top, or 0}
+@!ckpt_arm_again:pointer; {the armed control sequence, armed again when its
+  body was absorbed into a definition or an argument rather than run}
 @!ckpt_resuming:boolean; {enter |main_control| at |big_switch|}
 @!ckpt_on_shipout:integer; {nonzero: request a checkpoint after each shipout}
 

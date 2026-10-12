@@ -2198,7 +2198,11 @@ impl Globals {
             if (self.input_ptr < self.ckpt_arm_level) {
                 {
                     self.ckpt_arm_level = 0i32;
-                    self.ckpt_request = 2i32;
+                    if (self.scanner_status == normal) {
+                        self.ckpt_request = 2i32;
+                    } else {
+                        self.ckpt_arm_cs = self.ckpt_arm_again;
+                    }
                 }
             }
         }
@@ -2332,7 +2336,11 @@ impl Globals {
             if (self.input_ptr < self.ckpt_arm_level) {
                 {
                     self.ckpt_arm_level = 0i32;
-                    self.ckpt_request = 2i32;
+                    if (self.scanner_status == normal) {
+                        self.ckpt_request = 2i32;
+                    } else {
+                        self.ckpt_arm_cs = self.ckpt_arm_again;
+                    }
                 }
             }
         }
@@ -3659,6 +3667,7 @@ impl Globals {
                 if (self.warning_index == self.ckpt_arm_cs) {
                     {
                         self.ckpt_arm_level = self.input_ptr;
+                        self.ckpt_arm_again = self.ckpt_arm_cs;
                         self.ckpt_arm_cs = 0i32;
                     }
                 }
