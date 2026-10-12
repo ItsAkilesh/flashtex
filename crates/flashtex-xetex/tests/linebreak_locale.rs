@@ -66,7 +66,8 @@ fn run_dir() -> PathBuf {
 #[test]
 fn locale_breaks_and_the_merged_word_match_xetex() {
     let dir = run_dir();
-    let font = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/mac/Fonts/lmroman10-regular.otf");
+    let font =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/mac/Fonts/lmroman10-regular.otf");
     std::fs::copy(&font, dir.join("lmroman10-regular.otf")).unwrap();
     std::fs::write(dir.join("lb.tex"), INPUT).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_flashtex-xetex"))
@@ -74,7 +75,13 @@ fn locale_breaks_and_the_merged_word_match_xetex() {
         .env("SOURCE_DATE_EPOCH", "0")
         .env("FORCE_SOURCE_DATE", "1")
         .env("FLASHTEX_RESOLVER", "cwd")
-        .args(["-ini", "-etex", "-no-pdf", "-interaction=nonstopmode", "lb.tex"])
+        .args([
+            "-ini",
+            "-etex",
+            "-no-pdf",
+            "-interaction=nonstopmode",
+            "lb.tex",
+        ])
         .output()
         .expect("run flashtex-xetex");
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -83,7 +90,9 @@ fn locale_breaks_and_the_merged_word_match_xetex() {
     assert_eq!(out.status.code(), Some(1), "stderr:\n{stderr}");
     let log = std::fs::read_to_string(dir.join("lb.log")).unwrap();
     let lines: Vec<&str> = log.lines().collect();
-    let starts: Vec<usize> = (0..lines.len()).filter(|&i| lines[i] == "> \\box0=").collect();
+    let starts: Vec<usize> = (0..lines.len())
+        .filter(|&i| lines[i] == "> \\box0=")
+        .collect();
     assert_eq!(starts.len(), 2, "log:\n{log}");
     for (k, want) in WANT.iter().enumerate() {
         let got = &lines[starts[k]..(starts[k] + want.len()).min(lines.len())];

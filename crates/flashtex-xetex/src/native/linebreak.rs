@@ -214,7 +214,7 @@ impl<'a> Trie<'a> {
     fn get(&self, c: i32) -> u16 {
         let c = c as u32;
         let fast_max = if self.fast { 0xFFFF } else { 0xFFF };
-        let i = if c <= fast_max {
+        let i: u32 = if c <= fast_max {
             self.ix(c >> 6) + (c & 0x3F)
         } else if c > 0x10FFFF {
             self.data_length - 1
@@ -222,7 +222,8 @@ impl<'a> Trie<'a> {
             self.data_length - 2
         } else {
             self.small_index(c)
-        } as usize;
+        };
+        let i = i as usize;
         match self.width {
             0 => u16_at(self.d, self.data + 2 * i),
             1 => u32_at(self.d, self.data + 4 * i) as u16,
@@ -285,7 +286,12 @@ impl<'a> Rbbi<'a> {
     /// `RuleBasedBreakIterator::handleNext` from `pos`: the next boundary
     /// and how many dictionary characters the match read
     /// (`fDictionaryCharCount`), or `None` (`UBRK_DONE`) at the end.
-    fn handle_next(&self, text: &[u16], pos: usize, look_ahead: &mut [i32]) -> Option<(usize, u32)> {
+    fn handle_next(
+        &self,
+        text: &[u16],
+        pos: usize,
+        look_ahead: &mut [i32],
+    ) -> Option<(usize, u32)> {
         #[derive(PartialEq)]
         enum Mode {
             Start,
@@ -571,11 +577,19 @@ mod tests {
             let got = boundaries(rules_for_locale(f[0].as_bytes()), &unescape(f[1]));
             n += 1;
             if got != want {
-                bad.push(format!("{} {:?}: xetex {:?}, here {:?}", f[0], f[1], want, got));
+                bad.push(format!(
+                    "{} {:?}: xetex {:?}, here {:?}",
+                    f[0], f[1], want, got
+                ));
             }
         }
         assert!(n >= 30, "{n} fixture lines");
-        assert!(bad.is_empty(), "{} of {n} differ:\n{}", bad.len(), bad.join("\n"));
+        assert!(
+            bad.is_empty(),
+            "{} of {n} differ:\n{}",
+            bad.len(),
+            bad.join("\n")
+        );
         assert_eq!(boundaries(Rules::Line, &[]), Vec::<i32>::new());
         assert_eq!(boundaries(Rules::LineCj, &u("ab")), vec![2]);
         // a lone surrogate is one character
