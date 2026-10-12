@@ -75,7 +75,7 @@ fn is_pua_or_presentation(u: u32) -> bool {
 
 /// `UC_is_valid`.
 fn uc_is_valid(u: i32) -> bool {
-    !(u < 0 || u > 0x10FFFF || (0xD800..=0xDFFF).contains(&u))
+    (0..=0x10FFFF).contains(&u) && !(0xD800..=0xDFFF).contains(&u)
 }
 
 /// `cmap_plat_encs[]`.
