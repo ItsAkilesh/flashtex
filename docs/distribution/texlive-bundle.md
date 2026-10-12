@@ -116,8 +116,8 @@ names its tag, version and the SHA-512 of each TeX Live container; `tools/bundle
 checks them and that the bundle's tree has the same biber version, so it agrees with
 biblatex): per platform (`universal-darwin`, `x86_64-linux`, `aarch64-linux`, `windows`) the
 executable, unmodified, gzipped; the source container; and a notice (Artistic License 2.0). The
-lock pins each asset (`biber_url_<arch>`, `biber_sha256_<arch>`, `biber_size_<arch>`, the
-lines the pack job prints). The first time a document needs biber (its run wrote a `.bcf`)
+lock pins each asset (`biber_url_<arch>`, `biber_sha256_<arch>`, `biber_size_<arch>`, with `_` for `-` in
+`<arch>`: the lines the pack job prints). The first time a document needs biber (its run wrote a `.bcf`)
 the host skips it with "FlashTeX will download biber (~70 MB) to build this bibliography";
 the app asks, and a yes restarts the host with `FLASHTEX_BIBER_ALLOW_FETCH=<sha256>@<url>`
 for exactly the pinned asset. The host (`bundle::biber::ensure`, both hosts) then fetches it,

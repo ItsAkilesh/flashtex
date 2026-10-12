@@ -7,10 +7,10 @@ final class EngineV3BiberTests: XCTestCase {
     let lock = """
     url = "https://example.org/texlive2026.ttb"
     digest = "\(String(repeating: "0", count: 64))"
-    biber_url_universal-darwin = "https://example.org/biber-universal-darwin.gz"
-    biber_sha256_universal-darwin = "\(String(repeating: "AB", count: 32))"
-    biber_size_universal-darwin = "72119597"
-    biber_url_x86_64-linux = "https://example.org/biber-x86_64-linux.gz"
+    biber_url_universal_darwin = "https://example.org/biber-universal-darwin.gz"
+    biber_sha256_universal_darwin = "\(String(repeating: "AB", count: 32))"
+    biber_size_universal_darwin = "72119597"
+    biber_url_x86_64_linux = "https://example.org/biber-x86_64-linux.gz"
     """
 
     func testThePinIsThisMacs() {

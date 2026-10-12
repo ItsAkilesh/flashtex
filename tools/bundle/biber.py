@@ -130,7 +130,8 @@ def cmd_fetch(a):
         assets[name] = {"arch": arch, "revision": rev, "container_sha512": sha, "sha256": h, "size": len(gz),
                         "program_sha256": hashlib.sha256(program).hexdigest()}
         url = f"https://github.com/{REPO}/releases/download/{pins['tag']}/{name}"
-        lock += [f'biber_url_{arch} = "{url}"', f'biber_sha256_{arch} = "{h}"', f'biber_size_{arch} = "{len(gz)}"']
+        k = arch.replace("-", "_")  # lock keys are words (texbundle.py read_lock)
+        lock += [f'biber_url_{k} = "{url}"', f'biber_sha256_{k} = "{h}"', f'biber_size_{k} = "{len(gz)}"']
     rev, sha = pins["source"]
     src = checked(f"{a.mirror}/archive/biber.source.r{rev}.tar.xz", sha)
     src_name = f"biber-{pins['version']}-source.tar.xz"

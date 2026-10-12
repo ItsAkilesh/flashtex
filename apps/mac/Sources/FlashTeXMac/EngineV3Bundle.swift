@@ -248,8 +248,8 @@ struct EngineV3BundleSheet: View {
 
 /// biber with no TeX Live (#1782; the engine's `bundle::biber`). biblatex's
 /// default backend is TeX Live's biber, which FlashTeX does not port; the
-/// lock pins TeX Live's biber for this Mac (`biber_url_universal-darwin`,
-/// `biber_sha256_universal-darwin`), mirrored unmodified with its source.
+/// lock pins TeX Live's biber for this Mac (`biber_url_universal_darwin`,
+/// `biber_sha256_universal_darwin`), mirrored unmodified with its source.
 /// Nothing is downloaded until the user agrees, the first time a document
 /// needs it: the host then skips biber with a reason containing
 /// `consentText`, the window asks, and a yes restarts the host with
@@ -259,7 +259,7 @@ enum EngineV3Biber {
     static let consentKey = "FlashTeX.EngineV3.biberConsent"
     static let allowEnv = "FLASHTEX_BIBER_ALLOW_FETCH"
     /// TeX Live's name for this Mac's platform, as the lock pins biber.
-    static let arch = "universal-darwin"
+    static let arch = "universal_darwin"
 
     struct Pin: Equatable { var url: String; var sha256: String }
 

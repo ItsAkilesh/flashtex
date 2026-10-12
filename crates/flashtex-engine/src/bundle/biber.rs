@@ -7,7 +7,8 @@
 //! each platform, unmodified (the executable, gzipped), with its source and
 //! licence (Artistic 2.0), as release assets; `flashtex-bundle.lock` pins
 //! each one (`biber_url_<arch>`, `biber_sha256_<arch>`, `biber_size_<arch>`,
-//! `<arch>` TeX Live's name for the platform). Nothing is fetched before the
+//! `<arch>` TeX Live's name for the platform with `_` for `-`, as lock keys
+//! are words: `biber_url_universal_darwin`). Nothing is fetched before the
 //! user agrees: the app passes `FLASHTEX_BIBER_ALLOW_FETCH=<sha256>@<url>`
 //! (as `FLASHTEX_BUNDLE_ALLOW_FETCH` for the bundle). The first time a
 //! document needs biber (the run wrote a `.bcf`), [`ensure`] fetches the
@@ -54,6 +55,7 @@ pub fn spec_from_lock(text: &str, arch: &str) -> Option<BiberSpec> {
     let mut url = None;
     let mut sha = None;
     let mut size = None;
+    let key_arch = arch.replace('-', "_");
     for l in text.lines() {
         let l = l.trim();
         let Some((k, v)) = l.split_once('=') else {
@@ -69,7 +71,7 @@ pub fn spec_from_lock(text: &str, arch: &str) -> Option<BiberSpec> {
         };
         match k
             .trim()
-            .strip_suffix(arch)
+            .strip_suffix(key_arch.as_str())
             .and_then(|k| k.strip_suffix('_'))
         {
             Some("biber_url") => url = Some(v.to_string()),
@@ -167,10 +169,10 @@ mod tests {
     const LOCK: &str = r#"
 url = "https://example.org/b.ttb"
 digest = "0000000000000000000000000000000000000000000000000000000000000000"
-biber_url_universal-darwin = "https://example.org/biber-universal-darwin.gz"
-biber_sha256_universal-darwin = "ABababababababababababababababababababababababababababababababab"
-biber_size_universal-darwin = "123"
-biber_url_x86_64-linux = "https://example.org/biber-x86_64-linux.gz" # a comment
+biber_url_universal_darwin = "https://example.org/biber-universal-darwin.gz"
+biber_sha256_universal_darwin = "ABababababababababababababababababababababababababababababababab"
+biber_size_universal_darwin = "123"
+biber_url_x86_64_linux = "https://example.org/biber-x86_64-linux.gz" # a comment
 "#;
 
     #[test]
