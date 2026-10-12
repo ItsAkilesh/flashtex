@@ -9,7 +9,9 @@
 //! * a `third_party/<lib>/README.md` pins another version;
 //! * any vendored file differs from its `SHA256SUMS` entry, or a file of the
 //!   vendored tree is missing from `SHA256SUMS`;
-//! * a declared FFI function does not link.
+//! * a declared FFI function does not link;
+//! * ICU's bidi sources (third_party/icu, which src/native/ubidi ports and
+//!   does not link) are not 78.2's.
 //!
 //! An upgrade changes all of these together, in a lane of its own with a
 //! lockstep run against the TeX Live that ships the new versions.
@@ -31,6 +33,8 @@ use sha2::{Digest, Sha256};
 const HARFBUZZ: &str = "12.3.2";
 const FREETYPE: (i32, i32, i32) = (2, 14, 1);
 const TECKIT: &str = "2.5.13";
+/// ICU, whose bidi algorithm src/native/ubidi ports (not linked).
+const ICU: &str = "78.2";
 
 fn third_party() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../third_party")
@@ -77,6 +81,7 @@ fn readmes_pin_the_same_versions() {
     let (a, b, c) = FREETYPE;
     assert_eq!(readme_version("freetype"), format!("{a}.{b}.{c}"));
     assert_eq!(readme_version("teckit"), TECKIT);
+    assert_eq!(readme_version("icu"), ICU);
 }
 
 #[test]
@@ -319,4 +324,13 @@ fn shapes_office_with_the_ffi_ligature() {
         ft::FT_Done_Face(face);
         ft::FT_Done_FreeType(lib);
     }
+}
+
+#[test]
+fn vendored_icu_matches_sha256sums() {
+    check_sums("icu", &["icu-src"], 11);
+    let uvernum =
+        std::fs::read_to_string(third_party().join("icu/icu-src/source/common/unicode/uvernum.h"))
+            .unwrap();
+    assert!(uvernum.contains(&format!("#define U_ICU_VERSION \"{ICU}\"")));
 }
