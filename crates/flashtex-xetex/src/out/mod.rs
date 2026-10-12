@@ -526,6 +526,18 @@ fn send_page(
     if !ok || dl.w.flush().is_err() {
         out.dl = None;
     }
+    flashtex_page_sent();
+}
+
+/// A page's frame has been written to the display-list sink. It does
+/// nothing: it is a marker at which a profiler can take its counts
+/// (`tools/incr-bench/unicode.py --callgrind` runs the host under callgrind
+/// with `--dump-after=flashtex_page_sent`, so the instructions up to each
+/// page are known exactly, on the engine's own thread).
+#[no_mangle]
+#[inline(never)]
+pub extern "C" fn flashtex_page_sent() {
+    std::hint::black_box(());
 }
 
 fn send_resources(

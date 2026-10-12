@@ -196,7 +196,7 @@ pub fn round_num(v: f64, digits: usize) -> f64 {
 
 /// The reference: `std`'s fixed-point text, trimmed. [`push_num`] gives
 /// the same bytes; it falls back to this outside its fast path.
-fn fmt_num_std(v: f64, digits: usize) -> String {
+pub(crate) fn fmt_num_std(v: f64, digits: usize) -> String {
     let mut s = format!("{v:.digits$}");
     if s.contains('.') {
         while s.ends_with('0') {
