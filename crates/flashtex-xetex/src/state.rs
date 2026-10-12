@@ -141,6 +141,17 @@ pub struct Host {
     pub req_engine: u8,
     /// Whether text needing ICU's bidi analysis was reported (once).
     pub bidi_warned: bool,
+    /// XeTeX_ext.c's `brkIter` (the rules of the line break iterator,
+    /// `crate::native::linebreak`) and `brkLocaleStrNum` (the string number
+    /// of the locale it was opened for). Which iterator is open decides
+    /// later answers, so a checkpoint saves both.
+    pub brk_iter: Option<crate::native::linebreak::Rules>,
+    pub brk_locale_str_num: i32,
+    /// The iterator's text, as the boundaries `ubrk_next` returns for it, and
+    /// how many it has returned. `do_locale_linebreaks` reads them all
+    /// within one command, so a checkpoint does not save them.
+    pub brk_boundaries: Vec<i32>,
+    pub brk_next: usize,
     /// XeTeX_ext.c's `saved_mapping_name`: the `:mapping=` of the TFM font
     /// being loaded, from `check_for_tfm_font_mapping` to
     /// `load_tfm_font_mapping`, both within one `\font`. Each check
@@ -203,6 +214,8 @@ struct Saved {
     full_name_of_file: Option<String>,
     protrusion: Protrusion,
     handles: Handles,
+    brk_iter: Option<crate::native::linebreak::Rules>,
+    brk_locale_str_num: i32,
 }
 
 impl Globals {
@@ -218,6 +231,8 @@ impl Globals {
             full_name_of_file: self.host.full_name_of_file.clone(),
             protrusion: self.host.protrusion.clone(),
             handles: self.host.handles.clone(),
+            brk_iter: self.host.brk_iter,
+            brk_locale_str_num: self.host.brk_locale_str_num,
         };
         self.host.checkpoints.insert(id, saved);
         id
@@ -240,6 +255,8 @@ impl Globals {
         self.host.full_name_of_file = saved.full_name_of_file;
         self.host.protrusion = saved.protrusion;
         self.host.handles = saved.handles;
+        self.host.brk_iter = saved.brk_iter;
+        self.host.brk_locale_str_num = saved.brk_locale_str_num;
         Ok(())
     }
 

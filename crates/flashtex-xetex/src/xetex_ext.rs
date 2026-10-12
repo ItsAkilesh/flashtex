@@ -186,11 +186,40 @@ impl Globals {
         0
     }
     pub fn gr_print_font_name(&mut self, _what: i32, _engine: i32, _p1: i32, _p2: i32) {}
-    /// `linebreak_start`/`linebreak_next` (ICU's line breaker): reached only
-    /// with a native font.
-    pub fn linebreak_start(&mut self, _f: i32, _locale: i32, _s: i32, _len: i32) {}
+    /// XeTeX_ext.c's `linebreakstart`: ICU's line break iterator for the
+    /// locale of pool string `locale` (`\XeTeXlinebreaklocale`), given
+    /// `native_text[s..s+len]` (`crate::native::linebreak`). Reached only
+    /// with a native font. The Graphite branch (locale `G` and a Graphite
+    /// font) is never taken: no font here is Graphite.
+    ///
+    /// As in the C, the iterator is kept between calls and opened again only
+    /// when the locale's string number differs from the one it was opened
+    /// for (`brkLocaleStrNum`), so the string's text is read once per
+    /// number.
+    pub fn linebreak_start(&mut self, _f: i32, locale: i32, s: i32, len: i32) {
+        if locale != self.host.brk_locale_str_num || self.host.brk_iter.is_none() {
+            let name = crate::system::tex_string_utf8(self, locale);
+            self.host.brk_iter = Some(crate::native::linebreak::rules_for_locale(&name));
+            self.host.brk_locale_str_num = locale;
+        }
+        let rules = self.host.brk_iter.expect("opened above");
+        let text: Vec<u16> = (0..len.max(0))
+            .map(|i| self.native_text[crate::ix::U((s + i) as usize)])
+            .collect();
+        self.host.brk_boundaries = crate::native::linebreak::boundaries(rules, &text);
+        self.host.brk_next = 0;
+    }
+
+    /// XeTeX_ext.c's `linebreaknext`: `ubrk_next`, the next boundary of the
+    /// text `linebreak_start` set, or `UBRK_DONE` (-1) after the last.
     pub fn linebreak_next(&mut self) -> i32 {
-        -1
+        match self.host.brk_boundaries.get(self.host.brk_next) {
+            Some(&b) => {
+                self.host.brk_next += 1;
+                b
+            }
+            None => -1,
+        }
     }
 
     // ---- TECkit mappings (XeTeX_ext.c) -------------------------------------

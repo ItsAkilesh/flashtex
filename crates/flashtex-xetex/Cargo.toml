@@ -54,6 +54,13 @@ flashtex-display-list = { path = "../display-list-v3" }
 flashtex-pdf = { path = "../pdf" }
 # The project manifest (MIT): `[fonts]` in Unicode mode (src/host/fonts.rs).
 flashtex-project-manifest = { path = "../project-manifest" }
+# ICU's line breaker for `\XeTeXlinebreaklocale` (src/native/linebreak.rs):
+# ICU4X's segmenter (Unicode-3.0), its line data exported from ICU 78 (TeX
+# Live 2026's xetex is built with ICU 78.2), with the Thai, Lao, Khmer and
+# Myanmar dictionaries and no LSTM models (ICU4C's default data has none).
+# Pinned: a line-break change is a lockstep run against the matching xetex.
+icu_segmenter = { version = "=2.1.2", default-features = false, features = ["compiled_data"] }
+icu_locale_core = "~2.1.1"
 
 # The host's children (src/host/proc.rs): process groups, the lifeline pipe.
 [target.'cfg(unix)'.dependencies]
