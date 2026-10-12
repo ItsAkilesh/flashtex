@@ -219,6 +219,9 @@ def main(argv=None):
                     help="take the cases from DIR (repeatable) instead of latex-cases/")
     ap.add_argument("--json", help="write every case's result here")
     a = ap.parse_args(argv)
+    # the XDV comparison's own checks, before it is relied on
+    X._self_test_normalise_xdv()
+    X._self_test_font_files()
     if not X.check_reference(a.reference):
         print("reference %s is not %s" % (a.reference, X.PINNED_REFERENCE))
         return 2
