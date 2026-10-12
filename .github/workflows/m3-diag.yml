@@ -59,24 +59,11 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq fontconfig || true
           tl="$(dirname "$(dirname "${{ steps.tl.outputs.bin }}")")"
-          cat > "$RUNNER_TEMP/fonts.conf" <<EOF
-          <?xml version="1.0"?>
-          <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
-          <fontconfig>
-            <dir>$tl/texmf-dist/fonts/opentype</dir>
-            <dir>$tl/texmf-dist/fonts/truetype</dir>
-            <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
-            <cachedir>$RUNNER_TEMP/fc-cache</cachedir>
-          </fontconfig>
-          EOF
-          {
-            echo "FONTCONFIG_FILE=$RUNNER_TEMP/fonts.conf"
-            echo "FLASHTEX_FONT_DIRS=$tl/texmf-dist/fonts/opentype:$tl/texmf-dist/fonts/truetype"
-            echo "FLASHTEX_CACHE_DIR=$RUNNER_TEMP/flashtex-cache"
-          } >> "$GITHUB_ENV"
+          # one file per font name in both engines (tools/unicode-m3/fontconfig.py)
+          python3 tools/unicode-m3/fontconfig.py --texlive "$tl" --out "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          export FONTCONFIG_FILE="$RUNNER_TEMP/fonts.conf"
           FONTCONFIG_FILE="$RUNNER_TEMP/fonts.conf" fc-cache -f >/dev/null 2>&1 || true
-          # the order fontconfig lists duplicates in, under this order and the old one
-          echo "== texmf first"; FONTCONFIG_FILE="$RUNNER_TEMP/fonts.conf" fc-list "DejaVu Sans Mono:style=Bold" file || true
+          fc-list "DejaVu Sans Mono:style=Bold" file || true
           cat > "$RUNNER_TEMP/fonts-old.conf" <<EOF
           <?xml version="1.0"?>
           <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
