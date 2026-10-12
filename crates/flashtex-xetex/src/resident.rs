@@ -758,7 +758,16 @@ impl Engine {
         let before = (self.journal.clone(), self.opens.clone());
         let mut conv: Option<crate::conv::Old> = None;
         // the convergence measurement: the edits and what changed
-        let measure = crate::conv::enabled() && start.in_body() && !c.no_pdf;
+        // (no test where a jump could save fewer than two pages,
+        // `conv::Globals::conv_test`: then nothing is kept for one)
+        let (from, newest) = match start {
+            Start::Page(i) => (self.pages[i].pages, self.pages.last().map(|c| c.pages)),
+            _ => (0, self.pages.last().map(|c| c.pages)),
+        };
+        let measure = crate::conv::enabled()
+            && start.in_body()
+            && !c.no_pdf
+            && newest.is_some_and(|n| n >= from + 3);
         let mut conv_changes = None;
         if measure {
             if let Some(now) = texts_then.as_ref() {
