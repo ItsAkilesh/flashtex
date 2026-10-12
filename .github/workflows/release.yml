@@ -6,8 +6,10 @@
 # The engine host (flashtex-host, GPL-2.0-or-later, a separate program) and
 # the new CLI (flashtex-v3) ship in the app and the macOS CLI tarball, and a
 # release without them fails (app-parity row D5). There is no dry run: a
-# manual run publishes; scripts/tests/package-cli.test.sh checks the
-# packaging without one.
+# manual run publishes; scripts/tests/package-cli.test.sh and
+# packaging-full.yml check the packaging without one. Release notes written
+# ahead of the tag live in docs/release/<tag>-notes.md (checklist:
+# docs/release/<tag>.md) and head the published notes.
 name: Release
 
 on:
@@ -367,6 +369,12 @@ jobs:
             echo "FlashTeX.dmg sha256: \`${{ steps.assets.outputs.dmg_sha }}\`"
             echo
           } > notes.md
+          # The release's own notes, written before the tag (docs/release/),
+          # go first; GitHub's generated PR list (--generate-notes) follows.
+          if [ -f "docs/release/$TAG-notes.md" ]; then
+            { cat "docs/release/$TAG-notes.md"; echo; cat notes.md; } > notes.full.md
+            mv notes.full.md notes.md
+          fi
           cat notes.md
       - name: Create or update the GitHub release
         run: |
