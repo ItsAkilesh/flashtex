@@ -438,14 +438,15 @@ impl<'a> UBiDi<'a> {
         (dir, get_index(start), length)
     }
 
-    /// `ubidi_getLevelAt` for a paragraph object (tests).
+    /// `ubidi_getLevels` for a paragraph object (tests): the levels up to
+    /// `trailingWSStart`, then `paraLevel` (the first paragraph's level,
+    /// even when there are several: ICU's own comment assumes a line).
     #[cfg(test)]
-    fn level_at(&self, i: i32) -> u8 {
-        if self.direction != Direction::Mixed || i >= self.trailing_ws_start {
-            self.get_paralevel(i)
-        } else {
-            self.levels[i as usize]
-        }
+    fn get_levels(&self) -> Vec<u8> {
+        let start = self.trailing_ws_start as usize;
+        let mut v = self.levels[..start].to_vec();
+        v.resize(self.length as usize, self.para_level);
+        v
     }
 
     /// `GET_PARALEVEL`.

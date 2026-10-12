@@ -1,8 +1,8 @@
 //! The port against ICU itself: `testdata/icu-vectors.txt` holds what ICU's
 //! `ubidi_setPara` (paragraph levels `UBIDI_DEFAULT_LTR` and
 //! `UBIDI_DEFAULT_RTL`), `ubidi_getDirection`, `ubidi_getLevels`,
-//! `ubidi_countRuns` and `ubidi_getVisualRun` return for 1,053 texts: the
-//! words and edge cases below and 1,000 random strings over every bidi class
+//! `ubidi_countRuns` and `ubidi_getVisualRun` return for 1,052 texts: the
+//! words and edge cases of its `HAND` list and 1,000 random strings over every bidi class
 //! (explicit embeddings, overrides and isolates, brackets, numbers and
 //! separators, paragraph separators, surrogate pairs). `icu_oracle.py`
 //! wrote it through ctypes from macOS's system ICU, 78.1, whose bidi
@@ -12,7 +12,7 @@ use super::*;
 
 /// `ubidi_getLevels` on a paragraph object.
 fn levels(b: &UBiDi) -> Vec<u8> {
-    (0..b.length).map(|i| b.level_at(i)).collect()
+    b.get_levels()
 }
 
 fn hex_units(s: &str) -> Vec<u16> {
