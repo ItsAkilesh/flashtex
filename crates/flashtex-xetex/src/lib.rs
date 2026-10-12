@@ -50,11 +50,13 @@ pub mod fontmgr;
 pub mod generated;
 #[cfg(unix)]
 pub mod host;
+pub mod iso;
 pub mod native;
 pub mod out;
 pub mod pic;
 pub mod resident;
 pub mod state;
+pub mod statediff;
 pub mod system;
 pub mod xetex_ext;
 
