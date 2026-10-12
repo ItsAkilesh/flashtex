@@ -909,14 +909,40 @@ fn an_s0_saved_after_a_keystroke_is_the_one_saved_at_once() {
         );
         std::fs::read(&files[0]).unwrap()
     };
+    // where two files differ: the header's length, the first differing
+    // byte, and the differing 16 KiB blocks after the header
+    let diff = |a: &[u8], b: &[u8]| -> String {
+        let head = u64::from_le_bytes(a[..8].try_into().unwrap()) as usize + 8;
+        let first = a.iter().zip(b).position(|(x, y)| x != y);
+        let blocks: Vec<usize> = (0..a.len().min(b.len()).div_ceil(16384))
+            .filter(|&k| {
+                let r = k * 16384..((k + 1) * 16384).min(a.len()).min(b.len());
+                a[r.clone()] != b[r]
+            })
+            .collect();
+        format!(
+            "{} and {} bytes, header {head} bytes, first difference at {first:?}, {} blocks differ: {:?}",
+            a.len(),
+            b.len(),
+            blocks.len(),
+            &blocks[..blocks.len().min(20)]
+        )
+    };
     let at_once = saved(&dir.join("cache-a"), &[doc], "at-once");
+    // (two hosts that save at once write the same file: the comparison
+    // below is the deferral's)
+    let again = saved(&dir.join("cache-c"), &[doc], "at-once-again");
+    assert!(
+        at_once == again,
+        "two hosts' S0 files differ: {}",
+        diff(&at_once, &again)
+    );
     let edited = doc.replace("Some words", "Some more words");
     let later = saved(&dir.join("cache-b"), &[doc, &edited], "later");
     assert!(
         at_once == later,
-        "the S0 saved after a keystroke differs from the one saved at once ({} and {} bytes)",
-        at_once.len(),
-        later.len()
+        "the S0 saved after a keystroke differs from the one saved at once: {}",
+        diff(&at_once, &later)
     );
     let log = std::fs::read_to_string(dir.join("later.err")).unwrap_or_default();
     assert!(log.contains("\"saved_s0\""), "the save was made: {log}");

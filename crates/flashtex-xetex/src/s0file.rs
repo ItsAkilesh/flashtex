@@ -379,7 +379,16 @@ fn header(g: &mut Globals, id: CheckpointId, meta: &Meta) -> Result<Vec<u8>, Str
         g.saved_at(id).ok_or("no host state saved with S0")?;
     mgr.map(|m| m.lookups.clone()).enc(&mut head);
     full_name.enc(&mut head);
-    protrusion.enc(&mut head);
+    // (in key order, which the HashMap's own encoding is not: the same S₀
+    // makes the same file, whichever process writes it; read back as the
+    // map it was)
+    let mut codes: Vec<(&(i32, u32, i32), &i32)> = protrusion.iter().collect();
+    codes.sort_unstable();
+    codes.len().enc(&mut head);
+    for (k, v) in codes {
+        k.enc(&mut head);
+        v.enc(&mut head);
+    }
     let mut made: Vec<Made> = vec![];
     let mut objects = vec![];
     handles.enc_with(&mut objects, &mut |o, w| enc_object(o, w, &mut made))?;
