@@ -781,14 +781,37 @@ impl Globals {
     /// `FLASHTEX_LOADED_STATE=PATH` (verification only): the state when the
     /// format file is closed, after `load_fmt_file`, written to PATH as one
     /// line per 64 KiB block of the word space (the scalars spilled into
-    /// it): the block's array, its offset and an FNV-1a hash of its bytes.
+    /// it): the block's array, its offset and an FNV-1a hash of its bytes;
+    /// and first one line per scalar global (`scalar N`, the Nth in
+    /// `visit_scalars`' order) with its hash.
     /// Two runs whose files are equal are in the same state there, so
     /// everything after it is the same (changes/virtex.ch's
     /// `initex_tables`, tools/unicode-m3/identical.py `--loaded-state`).
     fn write_loaded_state(&mut self, path: &Path) {
+        /// Each scalar global's hash, in `visit_scalars`' order.
+        struct Each(Vec<u64>);
+        impl flashtex_engine::arena::Visit for Each {
+            fn pod<T: Copy>(&mut self, x: &mut T) {
+                let n = std::mem::size_of::<T>();
+                // SAFETY: as `arena::Spill`: the engine's scalars are plain
+                // data without padding.
+                let b = unsafe { std::slice::from_raw_parts(x as *const T as *const u8, n) };
+                let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+                for &c in b {
+                    h = (h ^ u64::from(c)).wrapping_mul(0x0000_0100_0000_01b3);
+                }
+                self.0.push(h);
+            }
+        }
+        let mut each = Each(Vec::new());
+        self.visit_scalars(&mut each);
         self.spill_scalars();
         let bytes = self.arena.bytes();
         let mut out = String::new();
+        // `scalar N`: the Nth `v.pod`/`v.arr_len` of `visit_scalars`
+        for (i, h) in each.0.iter().enumerate() {
+            out.push_str(&format!("scalar {i}\t-\t{h:016x}\n"));
+        }
         for (i, block) in bytes.chunks(1 << 16).enumerate() {
             let off = i << 16;
             let mut h: u64 = 0xcbf2_9ce4_8422_2325;

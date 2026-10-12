@@ -45,6 +45,12 @@ import latex as L  # noqa: E402
 
 PDF_ARGS = [a for a in L.RUN_ARGS if a != "-no-pdf"]
 
+# Scalars INITEX's part of the main program sets and the format load does
+# not, which every run sets again before reading them: the clock, which
+# xetex.web §1337 reads (`fix_date_and_time`) right after the load, in INITEX
+# and production runs alike.
+LATER_SET = {"sys_time", "sys_day", "sys_month", "sys_year"}
+
 
 def digest(p):
     if not os.path.exists(p):
@@ -159,8 +165,29 @@ def loaded_state(binary, fmt, tmp):
     if None in states or not states[0]:
         return {"error": "no state written"}
     a, b = states
-    diff = sorted({x.split("\t")[0] for x, y in zip(a, b) if x != y})
-    return {"blocks": len(a), "same_length": len(a) == len(b), "arrays_differ": diff}
+    names = scalar_names()
+    diff, scalars = set(), []
+    for x, y in zip(a, b):
+        if x == y:
+            continue
+        key = x.split("\t")[0]
+        if key.startswith("scalar "):
+            i = int(key.split()[1])
+            scalars.append(names[i] if i < len(names) else key)
+        elif key != "(scalars)":  # the spilled scalars, named above
+            diff.add(key)
+    return {"blocks": len(a), "same_length": len(a) == len(b), "arrays_differ": sorted(diff),
+            "scalars_differ": scalars}
+
+
+def scalar_names():
+    """The scalar globals in `visit_scalars`' order (src/generated/globals.rs)."""
+    src = os.path.join(os.path.dirname(os.path.dirname(HERE)), "crates", "flashtex-xetex", "src",
+                       "generated", "globals.rs")
+    text = open(src).read()
+    body = text[text.index("pub fn visit_scalars"):]
+    body = body[:body.index("\n    }\n")]
+    return re.findall(r"v\.(?:pod|arr_len)\(&mut self\.(\w+)\)", body)
 
 
 def main(argv=None):
@@ -225,8 +252,9 @@ def main(argv=None):
     nonnull = sum(1 for r in res.values() if r["head"]["pdf"])
     print("\n%d cases, %d with a PDF; %d identical, %d differ%s" % (
         len(res), nonnull, len(res) - len(bad), len(bad), (": " + ", ".join(bad)) if bad else ""))
-    state_bad = state is not None and (state.get("error") or state["arrays_differ"]
-                                       or not state["same_length"])
+    state_bad = state is not None and (
+        state.get("error") or state["arrays_differ"] or not state["same_length"]
+        or set(state["scalars_differ"]) - LATER_SET)
     if state is not None:
         print("loaded state: %s" % ("SAME" if not state_bad else "DIFFERS %s" % json.dumps(state)))
     if a.json:
