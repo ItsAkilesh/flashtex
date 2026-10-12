@@ -45,11 +45,17 @@ import latex as L  # noqa: E402
 
 PDF_ARGS = [a for a in L.RUN_ARGS if a != "-no-pdf"]
 
-# Scalars INITEX's part of the main program sets and the format load does
-# not, which every run sets again before reading them: the clock, which
-# xetex.web §1337 reads (`fix_date_and_time`) right after the load, in INITEX
-# and production runs alike.
-LATER_SET = {"sys_time", "sys_day", "sys_month", "sys_year"}
+# Scalars INITEX's code sets and the format load does not (run 38211022101
+# found exactly these):
+# * the clock (`sys_*`, and `epochseconds`/`microseconds`, the random
+#   seed's and \pdfelapsedtime's base): xetex.web §1337 reads it again
+#   (`fix_date_and_time`) right after the load, in every run;
+# * what `init_prim` leaves: `prim_used` (read only by `primitive`, which
+#   only INITEX calls) and `cur_val` (the last primitive's location). A
+#   production run of web2c's xetex never runs `init_prim` and starts with
+#   both at 0, as this port's production runs now do.
+LATER_SET = {"sys_time", "sys_day", "sys_month", "sys_year", "epochseconds", "microseconds",
+             "prim_used", "cur_val"}
 
 
 def digest(p):

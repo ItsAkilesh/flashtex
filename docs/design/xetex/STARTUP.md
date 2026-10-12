@@ -81,11 +81,14 @@ kpathsea is not a cost here (15 M): `ls-R` is read lazily.
    directly: `FLASHTEX_INITEX_TABLES=1` makes a production run set the
    tables up anyway, `FLASHTEX_LOADED_STATE=PATH` writes the word space
    (64 KiB blocks, and each scalar global) when the format file is closed,
-   and `identical.py --loaded-state` compares the two. Run 38208817371:
-   every array's every block is equal; only scalars differ, which the
-   follow-up run names (the expected ones are the clock, `sys_time`,
-   `sys_day`, `sys_month`, `sys_year`, which §1337 reads again right after
-   the load).
+   and `identical.py --loaded-state` compares the two. Runs 38208817371 and
+   38211022101: every block of every array is equal (5,348 blocks); the
+   scalars that differ are the clock (`sys_day`, `sys_month`, `sys_year`,
+   `epochseconds`, `microseconds`), which §1337 reads again right after the
+   load in every run, and what `init_prim` leaves (`prim_used`, read only
+   by `primitive`, which only INITEX calls, and `cur_val`). web2c's
+   production runs never call `init_prim` and start with both at 0, as
+   the port's now do.
 2. **The format is read whole** (`system.rs`): `get_word` indexes a byte
    vector instead of a buffered reader's `read_exact`. `load_fmt_file`
    286.8 → 269.4 M.
