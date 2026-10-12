@@ -201,7 +201,9 @@ jobs:
 
   # The M3 latency rows' instruction counts (§1.2: edit, reopen), which do not
   # depend on the runner's load: unicode.py --callgrind on the M3 bench
-  # documents. Informational: it never makes the run red.
+  # documents, to the edited page (an upper bound: the host runs on while
+# callgrind is asked for the count) and to DONE. Informational: it never
+# makes the run red.
   latency:
     needs: build
     runs-on: ubuntu-latest
@@ -253,18 +255,21 @@ jobs:
           python3 - "$RUNNER_TEMP/lat" <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
           import glob, json, os, statistics, sys
           print('### Unicode edit and reopen, instructions (callgrind, M)\n')
-          print('| document | edit at | cold | keystrokes (each) | keystroke median | reopen | starts |')
-          print('|---|---|---:|---|---:|---:|---|')
+          print('| document | edit at | cold | keystrokes to the edited page (each) | to the edited page, median | to DONE, median | reopen | starts |')
+          print('|---|---|---:|---|---:|---:|---:|---|')
           for f in sorted(glob.glob(os.path.join(sys.argv[1], '*.jsonl'))):
               rows = [json.loads(l) for l in open(f)]
               by = {r['tag']: r for r in rows}
               keys = [r['instructions_m'] for r in rows if r['tag'].startswith('key') and r.get('instructions_m') is not None]
+              edited = [r['edited_instructions_m'] for r in rows
+                        if r['tag'].startswith('key') and r.get('edited_instructions_m') is not None]
               name, at = os.path.basename(f)[:-6].rsplit('-', 1)
               cold = by.get('cold', {}).get('instructions_m')
               reo = by.get('reopen', {}).get('instructions_m')
               starts = ' '.join(str((r.get('starts') or ['?'])[0]) for r in rows if r['tag'].startswith('key'))
               med = statistics.median(keys) if keys else None
-              print(f'| {name} | {at} | {cold} | {", ".join(map(str, keys))} | {med} | {reo} | {starts} |')
+              emed = statistics.median(edited) if edited else None
+              print(f'| {name} | {at} | {cold} | {", ".join(map(str, edited))} | {emed} | {med} | {reo} | {starts} |')
           EOF
       - uses: actions/upload-artifact@v4
         if: always()

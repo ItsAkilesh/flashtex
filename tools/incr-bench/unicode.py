@@ -142,22 +142,31 @@ class Callgrind:
 
     def begin(self):
         self.ctl('-z')
+        self.dumps = []
 
-    def end(self):
+    def mark(self):
+        """A dump now: the instructions since the last one (callgrind
+        zeroes its counters at a dump), kept in `dumps`."""
         before = set(self._dumps())
         self.ctl('-d')
         new = sorted(set(self._dumps()) - before, key=os.path.getmtime)
-        if not new:
-            return None
         total = None
-        with open(new[-1], errors='replace') as f:
-            for line in f:
-                m = re.match(r'(?:summary|totals):\s+(\d+)', line)
-                if m:
-                    total = int(m.group(1))
         for d in new:
+            with open(d, errors='replace') as f:
+                for line in f:
+                    m = re.match(r'(?:summary|totals):\s+(\d+)', line)
+                    if m:
+                        total = (total or 0) + int(m.group(1))
             os.unlink(d)
+        self.dumps.append(total)
         return total
+
+    def end(self):
+        """The instructions since `begin` (or the start): every dump's."""
+        self.mark()
+        if any(t is None for t in self.dumps):
+            return None
+        return sum(self.dumps)
 
     def _dumps(self):
         d = os.path.dirname(self.base)
@@ -192,14 +201,22 @@ class Host:
         read_frame(self.f)
         self.n = 0
 
-    def compile(self, root, main):
-        """One compile: (frames, done, timings)."""
+    def compile(self, root, main, prev=None):
+        """One compile: (frames, done, timings). With callgrind and `prev`
+        (the last compile's page hashes by number), the count is also taken
+        when the first page that differs from it arrives (`edited_ins`):
+        an upper bound, since the host runs on while the dump is asked for."""
         self.n += 1
         req = {'id': self.n, 'root': os.path.join(root, 'src'), 'main': main, 'format': 'xelatex',
                'shell_escape': 'default', 'output_dir': os.path.join(root, 'out')}
         i0 = instructions(self.p.pid)
-        if self.cg and not (self.from_start and self.n == 1):
-            self.cg.begin()
+        if self.cg:
+            if self.from_start and self.n == 1:
+                self.cg.dumps = []
+            else:
+                self.cg.begin()
+        edited_ins = None
+        n_page = 0
         t0 = time.time()
         write_frame(self.s, 0x02, json.dumps(req))
         frames = []
@@ -214,6 +231,10 @@ class Host:
                 page_times.append(time.time() - t0)
                 if first is None:
                     first = page_times[-1]
+                if self.cg and prev is not None and edited_ins is None \
+                        and prev.get(n_page) != hashlib.sha256(b).hexdigest():
+                    edited_ins = self.cg.mark()
+                n_page += 1
             if k == DONE:
                 d = json.loads(b)
                 if d.get('id') == self.n:
@@ -224,7 +245,10 @@ class Host:
         ins = (i1 - i0) if i0 is not None and i1 is not None else None
         if self.cg:
             ins = self.cg.end()
-        return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins)
+            if edited_ins is None:
+                edited_ins = ins
+        return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins,
+                               edited_instructions=edited_ins)
 
     def compile_cancelled(self, root, main, ms, between):
         """A compile cancelled `ms` milliseconds after it is sent, with
@@ -296,6 +320,30 @@ def comparable(frames, fix=lambda b: b):
             b = json.dumps(j, sort_keys=True).encode()
         out.append((k, b))
     return out
+
+
+ACCOUNTING_BLOCK = b"Here is how much of TeX's memory you used:"
+
+
+def pt1(b):
+    """A log with DESIGN.md §1.1's P-T1 normalisation (ruled 2026-09-29):
+    the end-of-run memory block, `\\tracingstats` memory-usage lines and the
+    output's byte count are accounting, compared apart (non-gating)."""
+    out, skip = [], False
+    for line in b.split(b'\n'):
+        if line.startswith(ACCOUNTING_BLOCK):
+            skip = True
+            out.append(line)
+            continue
+        if skip:
+            if line.startswith(b' '):
+                continue
+            skip = False
+        if line.startswith(b'Memory usage before') or b'still untouched' in line:
+            continue
+        line = re.sub(rb'(Output written on .* \(\d+ pages?), \d+ bytes\)', rb'\1)', line)
+        out.append(line)
+    return b'\n'.join(out)
 
 
 def done_fields(d):
@@ -424,7 +472,7 @@ def main():
         nonlocal prev_pages
         open(os.path.join(work, 'src', main_tex), 'wb').write(content)
         pre = snapshot(work)
-        frames, d, t = host.compile(work, main_tex)
+        frames, d, t = host.compile(work, main_tex, prev_pages)
         pages = [b for k, b in frames if k == PAGE]
         n = d.get('pages') or 0
         last = pages[-n:] if n else []
@@ -444,6 +492,8 @@ def main():
                  first_ms=round(1e3 * (t['first'] or 0), 1), edited_ms=round(1e3 * edited, 1),
                  done_ms=round(1e3 * t['done'], 1),
                  instructions_m=round(t['instructions'] / 1e6, 1) if t['instructions'] is not None else None,
+                 edited_instructions_m=(round(t['edited_instructions'] / 1e6, 1)
+                                        if t.get('edited_instructions') is not None else None),
                  mode=d.get('mode'), starts=d.get('starts'),
                  sources=sum(1 for k, _ in frames if k == SOURCES))
         if refhost is not None:
@@ -452,8 +502,14 @@ def main():
             rframes, rd, _ = refhost.compile(ref, main_tex)
             want = {n: as_work(b) for n, b in snapshot(ref).items()}
             bad = []
+            accounting = []
             for name in sorted(set(got) | set(want)):
-                if got.get(name) != want.get(name):
+                a, b = got.get(name), want.get(name)
+                if a != b and name.endswith('.log') and a is not None and b is not None \
+                        and pt1(a) == pt1(b):
+                    accounting.append(name)
+                    continue
+                if a != b:
                     bad.append(name)
                     os.makedirs(os.path.join(base, 'mm'), exist_ok=True)
                     safe = re.sub(r'[^A-Za-z0-9_.-]', '_', tag)
@@ -471,6 +527,8 @@ def main():
             if done_fields(d) != done_fields(rd):
                 bad.append('done %s vs %s' % (done_fields(d), done_fields(rd)))
             r['mismatch'] = bad
+            if accounting:
+                r['accounting'] = accounting
         results.append(r)
         line = json.dumps(r)
         print(line, flush=True)
@@ -534,7 +592,8 @@ def main():
         refhost.close()
     summary = dict(doc=a.srcdir, compiles=len(results),
                    verified=sum(1 for r in results if r.get('mismatch') == []),
-                   mismatches=sum(1 for r in results if r.get('mismatch')))
+                   mismatches=sum(1 for r in results if r.get('mismatch')),
+                   accounting=sum(1 for r in results if r.get('accounting')))
     print(json.dumps(summary), flush=True)
     if not a.keep and summary['mismatches'] == 0:
         shutil.rmtree(base)
