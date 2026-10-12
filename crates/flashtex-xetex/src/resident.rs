@@ -124,6 +124,9 @@ pub struct Resident {
     /// A run from S₀ or a page: the last complete run's later state, for
     /// the convergence test (`crate::conv`).
     pub(crate) conv: Option<crate::conv::Old>,
+    /// Retention during the run (`ckpt::thin`), when it takes page
+    /// checkpoints.
+    pub(crate) thinning: Option<crate::ckpt::Thinning>,
     fonts: Box<dyn Fonts>,
 }
 
@@ -139,6 +142,11 @@ impl Resident {
             return;
         }
         self.guard.push((path.to_string(), std::fs::read(p).ok()));
+    }
+
+    /// The point after the format load this run took, if any.
+    pub(crate) fn point(&self) -> Option<CheckpointId> {
+        self.point.as_ref().map(|p| p.0)
     }
 
     /// The fonts' catalog for a lookup by name.
@@ -208,6 +216,26 @@ type FormatFile = (String, Ident);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Ident(u64, i128, i128, u64, u64);
 
+impl flashtex_engine::persist::Codec for Ident {
+    fn enc(&self, w: &mut Vec<u8>) {
+        self.0.enc(w);
+        (self.1 as u128 as u64, (self.1 as u128 >> 64) as u64).enc(w);
+        (self.2 as u128 as u64, (self.2 as u128 >> 64) as u64).enc(w);
+        self.3.enc(w);
+        self.4.enc(w);
+    }
+    fn dec(r: &mut flashtex_engine::persist::Reader) -> Result<Self, String> {
+        let i128_of = |(lo, hi): (u64, u64)| ((hi as u128) << 64 | lo as u128) as i128;
+        Ok(Ident(
+            u64::dec(r)?,
+            i128_of(<(u64, u64)>::dec(r)?),
+            i128_of(<(u64, u64)>::dec(r)?),
+            u64::dec(r)?,
+            u64::dec(r)?,
+        ))
+    }
+}
+
 impl Ident {
     fn of(path: &str) -> Option<Ident> {
         let m = std::fs::metadata(path).ok()?;
@@ -228,6 +256,39 @@ struct PointKey {
     format_dir: Option<PathBuf>,
 }
 
+impl PointKey {
+    /// The key and `format` as a persisted S₀ keeps them.
+    fn enc(&self, format: &Option<FormatFile>) -> Vec<u8> {
+        use flashtex_engine::persist::Codec;
+        let mut w = vec![];
+        self.run.enc(&mut w);
+        self.first_line.enc(&mut w);
+        self.no_pdf.enc(&mut w);
+        self.root.to_string_lossy().into_owned().enc(&mut w);
+        self.format_dir
+            .as_ref()
+            .map(|d| d.to_string_lossy().into_owned())
+            .enc(&mut w);
+        format.enc(&mut w);
+        w
+    }
+
+    fn dec(b: &[u8]) -> Result<(PointKey, Option<FormatFile>), String> {
+        use flashtex_engine::persist::Codec;
+        let r = &mut flashtex_engine::persist::Reader::new(b);
+        Ok((
+            PointKey {
+                run: String::dec(r)?,
+                first_line: Codec::dec(r)?,
+                no_pdf: bool::dec(r)?,
+                root: PathBuf::from(String::dec(r)?),
+                format_dir: Option::<String>::dec(r)?.map(PathBuf::from),
+            },
+            Codec::dec(r)?,
+        ))
+    }
+}
+
 struct Point {
     key: PointKey,
     id: CheckpointId,
@@ -238,12 +299,20 @@ struct Point {
 impl Point {
     /// The format file is the one a run would load now, unchanged.
     fn format_holds(&self) -> bool {
-        let Some((path, id)) = &self.format else {
+        format_holds(&self.key, &self.format)
+    }
+}
+
+/// The format file `format` is the one a run of `key` would load now,
+/// unchanged.
+fn format_holds(key: &PointKey, format: &Option<FormatFile>) -> bool {
+    {
+        let Some((path, id)) = format else {
             return false;
         };
         // found in the format directory then: still there; found on the
         // default path: none in the format directory now
-        if let Some(dir) = &self.key.format_dir {
+        if let Some(dir) = &key.format_dir {
             let name = Path::new(path).file_name();
             let in_dir = name.map(|n| dir.join(n));
             match &in_dir {
@@ -271,11 +340,14 @@ pub struct Spec {
     pub font_formats: Option<HashSet<String>>,
     /// The host sets it to stop the run.
     pub cancel: Arc<AtomicBool>,
-    /// Keep nothing after the run (Low Memory): the engine's memory goes
-    /// back, and the next run starts from the start.
-    pub lean: bool,
+    /// How much of the checkpoints is kept (the connection's performance
+    /// mode: Low Memory's budget is tight).
+    pub retention: crate::ckpt::Retention,
     /// A preview: the PDF's streams are stored, not compressed.
     pub preview: bool,
+    /// The document's persisted S₀ (`crate::s0file`): a run with no kept
+    /// state for its command starts from it when it holds.
+    pub s0_file: Option<PathBuf>,
 }
 
 /// Where a run started.
@@ -369,6 +441,19 @@ pub struct Engine {
     /// restored.
     last_pages: Vec<Arc<crate::out::doc::Built>>,
     eqtb_pointers: HashMap<CheckpointId, Arc<Vec<i32>>>,
+    /// Where the user edits (the retention's cursor, `ckpt::thin`): the
+    /// pages before the last restart point of a run in the body.
+    cursor: usize,
+    /// S₀ opened from its file (`crate::s0file`): the command and format it
+    /// stands for, in place of a point after the format load.
+    opened: Option<(PointKey, Option<FormatFile>)>,
+    /// The S₀ already in its file (saved or opened).
+    s0_saved: Option<CheckpointId>,
+    /// The S₀ writers still running.
+    writers: Vec<std::thread::JoinHandle<()>>,
+    /// The last run was in Low Memory: S₀ is written on the engine thread,
+    /// from the engine (no copy of it).
+    lean_save: bool,
 }
 
 /// Resets every file of the engine: closed, as at the start of a run.
@@ -465,6 +550,18 @@ impl Engine {
             font_cache: Arc::default(),
             last_pages: vec![],
             eqtb_pointers: HashMap::new(),
+            cursor: 0,
+            opened: None,
+            s0_saved: None,
+            writers: vec![],
+            lean_save: false,
+        }
+    }
+
+    /// Wait for the S₀ writers (a host about to end).
+    pub fn flush_writes(&mut self) {
+        for w in self.writers.drain(..) {
+            let _ = w.join();
         }
     }
 
@@ -474,9 +571,204 @@ impl Engine {
         self.pages.clear();
         self.s0 = None;
         self.point = None;
+        self.opened = None;
+        self.s0_saved = None;
         self.journal = None;
         self.opens.clear();
         self.g = None;
+    }
+
+    /// Open the document's persisted S₀ at `path` (`crate::s0file`) for a
+    /// run of `key` (first line `line`), in place of what the engine kept:
+    /// it must be for the same command, directory and unchanged format, its
+    /// key must hold (what the run read before S₀, the clock, the first
+    /// line, the arm-window reads), the font directories must be as they
+    /// were, and every font and mapping file its objects are made from.
+    /// The note to report.
+    fn open_s0(
+        &mut self,
+        path: &Path,
+        key: &PointKey,
+        line: &[u8],
+        dl_on: bool,
+    ) -> Result<String, String> {
+        let t = std::time::Instant::now();
+        let pinned = flashtex_engine::host::pin_clock_from_env();
+        let mut fonts = self.fonts.take();
+        let dirs_now = fonts.as_mut().map(|f| f.dirs());
+        let mut found = None;
+        let r = crate::s0file::open(
+            &path.to_string_lossy(),
+            &mut |m| {
+                let (k, f) = PointKey::dec(&m.point)?;
+                if k != *key {
+                    return Err("it is for another command line or directory".into());
+                }
+                if !format_holds(&k, &f) {
+                    return Err("the format file changed".into());
+                }
+                if pinned.is_some_and(|c| c != m.key.clock) {
+                    return Err("the pinned clock is another".into());
+                }
+                if m.dl_on != dl_on {
+                    return Err(
+                        "the display list's source map is made in one run, not the other".into(),
+                    );
+                }
+                m.key.check(m.key.clock, line)?;
+                m.key.check_arm()?;
+                if let Some(d) = m.font_dirs {
+                    match dirs_now {
+                        Some(now) if now == d => {}
+                        Some(_) => return Err("the font directories changed".into()),
+                        None => return Err("the font directories are not watched".into()),
+                    }
+                }
+                found = Some((k, f));
+                Ok(())
+            },
+            &mut || match fonts.as_mut() {
+                Some(f) => f.catalog(),
+                None => Arc::new(FontCatalog::system_cached(None)),
+            },
+        );
+        self.fonts = fonts;
+        let o = r?;
+        let (k, f) = found.ok_or("not checked")?;
+        self.clear();
+        let m = o.meta;
+        self.clock = m.key.clock;
+        self.opens = m.opens;
+        self.texts = m.texts.into_iter().map(|(p, b)| (p, Arc::new(b))).collect();
+        self.s0 = Some(S0 {
+            id: o.id,
+            rec: m.rec,
+            key: m.key,
+            font_dirs: m.font_dirs,
+            reads: (0, 0, 0),
+            opens: self.opens.len(),
+            dl_on: m.dl_on,
+        });
+        self.s0_saved = Some(o.id);
+        self.opened = Some((k, f));
+        self.g = Some(o.g);
+        Ok(format!(
+            "S0 opened from {} in {:.1} ms ({} pages mapped)",
+            path.display(),
+            t.elapsed().as_secs_f64() * 1e3,
+            o.mapped_pages
+        ))
+    }
+
+    /// Persist S₀ to `path` (`crate::s0file`) if it is not there yet: the
+    /// engine thread takes it out of the engine, a thread of its own writes
+    /// it (through a temporary file and a rename). The note to report.
+    pub fn save_s0(&mut self, path: &Path, root: &Path) -> Result<Option<String>, String> {
+        let Some(s0) = self.s0.as_ref() else {
+            return Ok(None);
+        };
+        if self.s0_saved == Some(s0.id) {
+            return Ok(None);
+        }
+        let (k, f) = match (&self.point, &self.opened) {
+            (Some(p), _) => (p.key.clone(), p.format.clone()),
+            (None, Some(o)) => o.clone(),
+            _ => return Ok(None),
+        };
+        // (the engine's document is still this one: another document's
+        // run may have come between its compile and this save; the paths
+        // it read are relative to its directory)
+        if k.root != root || std::env::set_current_dir(root).is_err() {
+            return Ok(None);
+        }
+        let Some(g) = self.g.as_mut() else {
+            return Ok(None);
+        };
+        let t = std::time::Instant::now();
+        let texts = s0
+            .rec
+            .files
+            .iter()
+            .filter_map(|f| match &f.stream {
+                crate::system::Stream::In { path, .. } => {
+                    self.texts.get(path).map(|b| (path.clone(), b.to_vec()))
+                }
+                _ => None,
+            })
+            .collect();
+        let meta = crate::s0file::Meta {
+            point: k.enc(&f),
+            key: s0.key.clone(),
+            font_dirs: s0.font_dirs,
+            dl_on: s0.dl_on,
+            rec: s0.rec.clone(),
+            opens: self.opens[..s0.opens.min(self.opens.len())].to_vec(),
+            texts,
+        };
+        if self.lean_save {
+            // (Low Memory: no copy of the chunks; written here)
+            if let Some(d) = path.parent() {
+                let _ = std::fs::create_dir_all(d);
+            }
+            let bytes = crate::s0file::write_in_place(g, s0.id, &meta, &path.to_string_lossy())?;
+            self.s0_saved = Some(s0.id);
+            eprintln!(
+                "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{:.1},\"in_place\":true}}",
+                path.display().to_string(),
+                t.elapsed().as_secs_f64() * 1e3
+            );
+            return Ok(None);
+        }
+        let image = crate::s0file::prepare(g, s0.id, &meta)?;
+        self.s0_saved = Some(s0.id);
+        let prepare_ms = t.elapsed().as_secs_f64() * 1e3;
+        let held = image.bytes();
+        let p = path.to_path_buf();
+        self.writers.retain(|w| !w.is_finished());
+        let w = std::thread::Builder::new()
+            .name("unicode-s0-write".into())
+            .spawn(move || {
+                if let Some(d) = p.parent() {
+                    let _ = std::fs::create_dir_all(d);
+                }
+                let t = std::time::Instant::now();
+                match image.write(&p.to_string_lossy()) {
+                    Ok(bytes) => eprintln!(
+                        "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{prepare_ms:.1},\"write_ms\":{:.1}}}",
+                        p.display().to_string(),
+                        t.elapsed().as_secs_f64() * 1e3
+                    ),
+                    Err(e) => eprintln!("flashtex-host-unicode: saving S0: {e}"),
+                }
+            })
+            .map_err(|e| format!("the S0 writer: {e}"))?;
+        self.writers.push(w);
+        Ok(Some(format!(
+            "S0 taken out in {prepare_ms:.1} ms ({} MB), being written",
+            held >> 20
+        )))
+    }
+
+    /// Retention after a run (`ckpt::thin`): the checkpoints kept are the
+    /// format point, S₀ and the page checkpoints, within `r`'s budget; any
+    /// other goes (one a convergence jump left behind), and so does the
+    /// host state of every checkpoint no longer in the word space.
+    fn retain(&mut self, r: crate::ckpt::Retention) {
+        let Some(g) = self.g.as_mut() else { return };
+        let pinned: HashSet<CheckpointId> = self
+            .point
+            .iter()
+            .map(|p| p.id)
+            .chain(self.s0.iter().map(|s| s.id))
+            .chain(self.pages.last().map(|c| c.id))
+            .collect();
+        let pages: HashMap<CheckpointId, usize> =
+            self.pages.iter().map(|c| (c.id, c.pages)).collect();
+        crate::ckpt::thin(g, r, self.cursor, &pinned, &pages);
+        g.prune_saved();
+        let ids: HashSet<CheckpointId> = g.arena.checkpoint_ids().iter().copied().collect();
+        self.pages.retain(|c| ids.contains(&c.id));
+        self.eqtb_pointers.retain(|k, _| ids.contains(k));
     }
 
     /// Where this run can start, and why not from S₀ when one is kept.
@@ -493,14 +785,27 @@ impl Engine {
                 .point
                 .as_ref()
                 .is_some_and(|p| p.key == *key && p.format_holds());
-        if !point_ok {
+        // (an S₀ opened from its file has no point before it: a run that
+        // cannot go on from it starts from the start)
+        let opened_ok = self.keep_point
+            && self.g.is_some()
+            && self
+                .opened
+                .as_ref()
+                .is_some_and(|(k, f)| k == key && format_holds(k, f));
+        if !point_ok && !opened_ok {
             self.s0 = None;
             self.pages.clear();
             return (Start::Fresh, None);
         }
+        let no_s0 = if point_ok {
+            Start::Format
+        } else {
+            Start::Fresh
+        };
         let Some(s0) = self.s0.as_mut() else {
             self.pages.clear();
-            return (Start::Format, None);
+            return (no_s0, None);
         };
         let why = match s0.key.check_refresh(self.clock, first_line) {
             Err(why) => Some(why),
@@ -519,7 +824,7 @@ impl Engine {
         if let Some(w) = why {
             self.s0 = None;
             self.pages.clear();
-            return (Start::Format, Some(w));
+            return (no_s0, Some(w));
         }
         match now.and_then(|now| self.restart_page(now)) {
             Some(i) => (Start::Page(i), None),
@@ -675,6 +980,8 @@ impl Engine {
 
     /// Run the engine once, as `spec` asks.
     pub fn run(&mut self, spec: Spec) -> Report {
+        let retention = spec.retention;
+        self.lean_save = retention.low;
         if let Err(e) = std::env::set_current_dir(&spec.root) {
             return Report {
                 failure: Some(format!("{}: {e}", spec.root.display())),
@@ -700,8 +1007,24 @@ impl Engine {
         // edit is looked for now, and the next run's (read once, before
         // the restore reopens a file: an edit saved while this run reads
         // is a change from them the next run sees).
+        // no kept state for this command: the document's S₀ from its file
+        let mut opened_note = None;
+        if let Some(p) = &spec.s0_file {
+            let kept = self.g.is_some()
+                && (self.point.as_ref().is_some_and(|p| p.key == key)
+                    || self.opened.as_ref().is_some_and(|(k, _)| *k == key));
+            if !kept && self.keep_point && self.keep_s0 && p.is_file() {
+                opened_note = Some(match self.open_s0(p, &key, &line, dl_on) {
+                    Ok(n) => n,
+                    Err(e) => format!("the persisted S0 is not used: {e}"),
+                });
+            }
+        }
         let texts_then = self.keep_pages.then(|| self.texts_now());
         let (mut start, mut s0_note) = self.start_for(&key, &line, dl_on, texts_then.as_ref());
+        if s0_note.is_none() {
+            s0_note = opened_note;
+        }
         // (tests: a pause between where the edit was looked for and the
         // restore, for an edit saved in between)
         if let Some(ms) = std::env::var("FLASHTEX_UNICODE_TEST_START_PAUSE_MS")
@@ -721,7 +1044,11 @@ impl Engine {
         if let Some(e) = rewrite_failed {
             self.s0 = None;
             self.pages.clear();
-            start = Start::Format;
+            start = if self.point.is_some() {
+                Start::Format
+            } else {
+                Start::Fresh
+            };
             s0_note = Some(e);
         }
         // The output files a restore cuts back, as they are (a cancelled
@@ -739,6 +1066,7 @@ impl Engine {
             opens: vec![],
             guard: vec![],
             conv: None,
+            thinning: None,
             fonts: Box::new(Unkept),
         };
         if start.in_body() {
@@ -918,7 +1246,7 @@ impl Engine {
                     s0_note = Some(format!("the kept state ({}): {e}", start.name()));
                     start = match start {
                         Start::Page(_) => Start::S0,
-                        Start::S0 => {
+                        Start::S0 if self.point.is_some() => {
                             self.s0 = None;
                             Start::Format
                         }
@@ -933,8 +1261,30 @@ impl Engine {
         // (a cancelled run puts back the last complete run's: its page
         // checkpoints stand, and an edit saved since is a change to them)
         let texts_before = texts_then.map(|t| std::mem::replace(&mut self.texts, t));
-        let want_s0 = self.keep_s0 && self.keep_point && !spec.lean && !start.in_body();
-        let want_pages = self.keep_pages && self.keep_s0 && self.keep_point && !spec.lean;
+        let want_s0 = self.keep_s0 && self.keep_point && !start.in_body();
+        let want_pages = self.keep_pages && self.keep_s0 && self.keep_point;
+        // the retention's cursor: where this edit is (a later pass, from
+        // the format point, does not move it)
+        match start {
+            Start::Page(i) => self.cursor = self.pages.get(i).map_or(0, |c| c.pages),
+            Start::S0 => self.cursor = 0,
+            _ => {}
+        }
+        let thinning = want_pages.then(|| crate::ckpt::Thinning {
+            knobs: retention,
+            cursor: self.cursor,
+            pinned: self
+                .point
+                .iter()
+                .map(|p| p.id)
+                .chain(self.s0.iter().map(|s| s.id))
+                .chain(match start {
+                    Start::Page(i) => self.pages.get(i).map(|c| c.id),
+                    _ => None,
+                })
+                .collect(),
+            earlier: self.pages.iter().map(|c| (c.id, c.pages)).collect(),
+        });
         // the journal and the output opens up to where the run starts
         let (journal, opens) = match start {
             Start::Page(i) => (
@@ -956,7 +1306,7 @@ impl Engine {
         let resident = Box::new(Resident {
             cancel: spec.cancel.clone(),
             format_dir: spec.format_dir.clone(),
-            keep_point: self.keep_point && start == Start::Fresh && !spec.lean,
+            keep_point: self.keep_point && start == Start::Fresh,
             point: None,
             want_s0,
             s0: None,
@@ -965,6 +1315,7 @@ impl Engine {
             opens,
             guard: guard.guard,
             conv,
+            thinning,
             fonts: self.fonts.take().unwrap_or_else(|| Box::new(Unkept)),
         });
         let mut out = (!c.no_pdf).then(|| {
@@ -1139,13 +1490,9 @@ impl Engine {
                 .collect();
             self.eqtb_pointers.retain(|k, _| ids.contains(k));
         }
-        if rep.failure.is_some() || spec.lean {
-            // a broken run's engine is not used again; Low Memory keeps none
-            // (nor the fonts' files)
+        if rep.failure.is_some() {
+            // a broken run's engine is not used again
             self.clear();
-            if spec.lean {
-                self.font_cache = Arc::default();
-            }
             return rep;
         }
         // what the run wrote is the engine's (a restore cuts it back only
@@ -1216,6 +1563,33 @@ impl Engine {
         } else {
             self.pages.clear();
             self.journal = None;
+        }
+        self.retain(retention);
+        if start == Start::Fresh {
+            // the pages `initialize` cleared and the format left empty
+            // (the pdfTeX engine's host gives them back at its idle trim;
+            // 77 MB of 277 on a fontspec book, in 14 ms)
+            if let Some(g) = self.g.as_mut() {
+                g.arena.release_zero_pages();
+            }
+        }
+        // (`FLASHTEX_UNICODE_MEMSTAT=1`: what the engine holds after each
+        // run, and each thinning pass, `ckpt::thin`, on standard error)
+        if std::env::var_os("FLASHTEX_UNICODE_MEMSTAT").is_some() {
+            if let Some(g) = self.g.as_ref() {
+                let st: Vec<String> = g
+                    .arena
+                    .mem_stats(None)
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect();
+                eprintln!(
+                    "[memstat] pages={} saved={} {}",
+                    self.pages.len(),
+                    g.saved_len(),
+                    st.join(" ")
+                );
+            }
         }
         rep
     }

@@ -62,6 +62,8 @@ pub struct Job {
     /// TeX code run before the main file on the first line (`[fonts]`,
     /// `fonts.rs`); empty: the main file's name alone.
     pub preamble: String,
+    /// The document's persisted S₀ (`--s0-cache`, `crate::s0file`).
+    pub s0_file: Option<PathBuf>,
 }
 
 fn parse_key(h: &str) -> Option<[u8; 32]> {
@@ -161,7 +163,23 @@ impl Job {
             buffers,
             edits,
             preamble: String::new(),
+            s0_file: None,
         })
+    }
+
+    /// The name of this job's persisted S₀ in the S₀ cache: what its runs'
+    /// state at the document's start stands for (the command line, the
+    /// directories), hashed.
+    pub fn s0_name(&self) -> String {
+        let key = format!(
+            "{:?}\0{}\0{}\0{}",
+            self.argv(),
+            self.root.display(),
+            self.output_dir.display(),
+            self.format
+        );
+        let h = flashtex_engine::persist::hash128(key.as_bytes());
+        format!("{:016x}{:016x}.xs0", h[0], h[1])
     }
 
     /// Write the editor's buffers and apply the edits (spec §6.3), as
@@ -415,7 +433,16 @@ pub fn run_once(
     std::fs::create_dir_all(&job.output_dir)
         .map_err(|e| format!("{}: {e}", job.output_dir.display()))?;
     if let Some(sh) = inproc {
-        return run_in_process(sh, format_dir, job, accept, out, running, t0, spares.lean());
+        return run_in_process(
+            sh,
+            format_dir,
+            job,
+            accept,
+            out,
+            running,
+            t0,
+            spares.retention(),
+        );
     }
     // an export is a run of its own: it neither takes nor ends the spare
     let spare = (spares.enabled() && !job.export)
@@ -533,8 +560,8 @@ pub fn run_once(
 }
 
 /// Run the engine once for `job` in this process (`inproc`), streaming its
-/// pages to `out` as a child's run would (unless an export). `lean` (Low
-/// Memory): the engine is not kept after the run.
+/// pages to `out` as a child's run would (unless an export). `retention`: how
+/// much of its checkpoints the engine keeps (the connection's mode).
 #[allow(clippy::too_many_arguments)]
 fn run_in_process(
     sh: &super::inproc::Shared,
@@ -544,7 +571,7 @@ fn run_in_process(
     out: &Out,
     running: &Arc<Mutex<Running>>,
     t0: Instant,
-    lean: bool,
+    retention: crate::ckpt::Retention,
 ) -> Result<RunResult, String> {
     let stop = super::inproc::cancel_flag();
     {
@@ -579,8 +606,10 @@ fn run_in_process(
         // a child's `FLASHTEX_DISPLAY_LIST_FONT_FORMATS` (`font_formats`)
         font_formats: Some(job.font_formats.clone()),
         cancel: stop,
-        lean,
+        retention,
         preview: !job.export,
+        // (an export is a run of its own: no persisted S₀)
+        s0_file: (!job.export).then(|| job.s0_file.clone()).flatten(),
     };
     let mut res = RunResult::default();
     let ran = sh.run(spec, || {

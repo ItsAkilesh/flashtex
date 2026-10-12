@@ -55,6 +55,7 @@ pub mod native;
 pub mod out;
 pub mod pic;
 pub mod resident;
+pub mod s0file;
 pub mod state;
 pub mod statediff;
 pub mod system;

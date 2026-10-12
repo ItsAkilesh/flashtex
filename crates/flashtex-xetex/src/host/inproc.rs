@@ -27,10 +27,16 @@ pub fn enabled() -> bool {
     std::env::var("FLASHTEX_UNICODE_INPROCESS").map_or(true, |v| v != "0")
 }
 
-/// One run for the engine thread, and where its report goes.
-struct Req {
-    spec: Spec,
-    reply: mpsc::Sender<Report>,
+/// Work for the engine thread: one run, and where its report goes; or a
+/// save of S₀ to its file (`Engine::save_s0`).
+enum Req {
+    Run {
+        spec: Spec,
+        reply: mpsc::Sender<Report>,
+    },
+    SaveS0(PathBuf, PathBuf),
+    /// Wait for the S₀ writers, then answer.
+    Flush(mpsc::Sender<()>),
 }
 
 /// The engine thread, which every connection shares.
@@ -138,8 +144,21 @@ impl Shared {
                 let clock = flashtex_engine::host::pin_clock_from_env();
                 let mut engine = Engine::new(clock, Some(Box::new(KeptFonts::default())));
                 for req in rx {
-                    let rep = engine.run(req.spec);
-                    let _ = req.reply.send(rep);
+                    match req {
+                        Req::Run { spec, reply } => {
+                            let rep = engine.run(spec);
+                            let _ = reply.send(rep);
+                        }
+                        Req::SaveS0(p, root) => match engine.save_s0(&p, &root) {
+                            Ok(Some(n)) if debug() => eprintln!("flashtex-host-unicode: {n}"),
+                            Ok(_) => {}
+                            Err(e) => eprintln!("flashtex-host-unicode: saving S0: {e}"),
+                        },
+                        Req::Flush(done) => {
+                            engine.flush_writes();
+                            let _ = done.send(());
+                        }
+                    }
                 }
             })
             .map_err(|e| format!("the engine thread: {e}"))?;
@@ -153,7 +172,7 @@ impl Shared {
         let _turn = self.turn.lock().unwrap_or_else(|p| p.into_inner());
         let tx = self.sender()?;
         let (reply, rx) = mpsc::channel();
-        tx.send(Req { spec, reply })
+        tx.send(Req::Run { spec, reply })
             .map_err(|_| "the engine thread has ended".to_string())?;
         let t = during();
         let rep = rx
@@ -161,6 +180,32 @@ impl Shared {
             .map_err(|_| "the engine thread has ended".to_string())?;
         Ok((rep, t))
     }
+}
+
+/// Save the engine's S₀ to `path` if it is new (`Engine::save_s0`), after
+/// the runs queued before it.
+impl Shared {
+    pub fn save_s0(&self, path: PathBuf, root: PathBuf) {
+        if let Ok(tx) = self.sender() {
+            let _ = tx.send(Req::SaveS0(path, root));
+        }
+    }
+
+    /// Wait until every S₀ asked to be saved is written (a host about to
+    /// end: its process takes the writers with it).
+    pub fn flush(&self) {
+        let Some(tx) = self.tx.lock().unwrap().clone() else {
+            return;
+        };
+        let (done, rx) = mpsc::channel();
+        if tx.send(Req::Flush(done)).is_ok() {
+            let _ = rx.recv();
+        }
+    }
+}
+
+fn debug() -> bool {
+    std::env::var_os("FLASHTEX_UNICODE_DEBUG").is_some()
 }
 
 /// A new run's cancel flag.

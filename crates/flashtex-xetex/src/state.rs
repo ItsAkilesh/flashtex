@@ -23,6 +23,7 @@
 //! handles as the run that made it.
 
 use crate::generated::Globals;
+use flashtex_engine::arena::CheckpointId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -73,6 +74,9 @@ pub struct Handles {
     other: Vec<Option<Object>>,
     other_free: Vec<i32>,
 }
+
+/// How a persisted S₀ writes an object of the table (`crate::s0file`).
+pub(crate) type EncObject<'a> = dyn FnMut(&Object, &mut Vec<u8>) -> Result<(), String> + 'a;
 
 /// The first handle of the objects other than glyph-info arrays.
 pub const OTHER_BASE: i32 = 1 << 30;
@@ -149,6 +153,56 @@ impl Handles {
             .enumerate()
             .filter_map(|(i, o)| o.as_ref().map(|o| (OTHER_BASE + i as i32, o)));
         glyphs.chain(other)
+    }
+
+    /// Write the table for a persisted S₀ (`crate::s0file`), each object
+    /// by `obj`.
+    pub(crate) fn enc_with(&self, w: &mut Vec<u8>, obj: &mut EncObject) -> Result<(), String> {
+        use flashtex_engine::persist::Codec;
+        for v in [&self.table, &self.other] {
+            v.len().enc(w);
+            for o in v {
+                match o {
+                    None => 0u8.enc(w),
+                    Some(o) => {
+                        1u8.enc(w);
+                        obj(o, w)?;
+                    }
+                }
+            }
+        }
+        self.free.enc(w);
+        self.other_free.enc(w);
+        Ok(())
+    }
+
+    /// A table as [`enc_with`](Self::enc_with) wrote it, each object made
+    /// again by `obj`.
+    pub(crate) fn dec_with(
+        r: &mut flashtex_engine::persist::Reader,
+        obj: &mut dyn FnMut(&mut flashtex_engine::persist::Reader) -> Result<Object, String>,
+    ) -> Result<Handles, String> {
+        use flashtex_engine::persist::Codec;
+        let mut slots =
+            |r: &mut flashtex_engine::persist::Reader| -> Result<Vec<Option<Object>>, String> {
+                let n = usize::dec(r)?;
+                let mut v = Vec::with_capacity(n.min(1 << 20));
+                for _ in 0..n {
+                    v.push(match u8::dec(r)? {
+                        0 => None,
+                        _ => Some(obj(r)?),
+                    });
+                }
+                Ok(v)
+            };
+        let table = slots(r)?;
+        let other = slots(r)?;
+        Ok(Handles {
+            table,
+            other,
+            free: Vec::dec(r)?,
+            other_free: Vec::dec(r)?,
+        })
     }
 
     /// How many handles refer to an object.
@@ -263,6 +317,9 @@ pub struct Host {
     /// the host, its terminal is captured.
     /// `None` for a run that is a process of its own.
     pub resident: Option<Box<crate::resident::Resident>>,
+    /// The side table bytes only checkpoints held, and the side table's
+    /// copy count, at the last [`Globals::kept_bytes`].
+    pub kept_walk: (usize, usize),
 }
 
 /// `-no-pdf`, true unless set otherwise.
@@ -363,6 +420,80 @@ impl Globals {
         self.host.handles = saved.handles;
         self.host.dl.restore(&saved.dl);
         Ok(b)
+    }
+
+    /// The host state saved with checkpoint `id` (a persisted S₀,
+    /// `crate::s0file`): the font manager, `full_name_of_file`, the
+    /// protrusion codes, the handle table and the source map.
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn saved_at(
+        &self,
+        id: CheckpointId,
+    ) -> Option<(
+        Option<&crate::fontmgr::FontMgr>,
+        &Option<String>,
+        &Protrusion,
+        &Handles,
+        &crate::dlsource::DlSnap,
+    )> {
+        let s = self.host.checkpoints.get(&id)?;
+        Some((
+            s.font_mgr.as_deref(),
+            &s.full_name_of_file,
+            &s.protrusion,
+            &s.handles,
+            &s.dl,
+        ))
+    }
+
+    /// How many checkpoints' host states are kept.
+    pub(crate) fn saved_len(&self) -> usize {
+        self.host.checkpoints.len()
+    }
+
+    /// What the checkpoints hold, counted exactly: the word space's undo
+    /// and redo logs, and the source map's side table copies that only
+    /// checkpoints hold (a walk of their tables, a few milliseconds).
+    pub(crate) fn kept_bytes(&mut self) -> usize {
+        let held = self
+            .host
+            .dl
+            .held_bytes(self.host.checkpoints.values().map(|s| &s.dl));
+        self.host.kept_walk = (held, self.host.dl.copied);
+        self.arena.log_bytes() + held
+    }
+
+    /// [`kept_bytes`](Self::kept_bytes) without the walk: an upper bound
+    /// (every side table copy made since the last walk counts as held).
+    pub(crate) fn kept_estimate(&self) -> usize {
+        let (held, copied) = self.host.kept_walk;
+        self.arena.log_bytes() + held + self.host.dl.copied.saturating_sub(copied)
+    }
+
+    /// Drop every checkpoint of the word space's live chain that `keep`
+    /// rejects (but the newest; their logs merge into their predecessors',
+    /// `Arena::retain`), and the host state saved with each.
+    pub(crate) fn retain_checkpoints(
+        &mut self,
+        keep: &dyn Fn(flashtex_engine::arena::CheckpointId) -> bool,
+    ) {
+        let before = self.arena.checkpoint_ids().to_vec();
+        self.arena.retain(keep);
+        let after: std::collections::HashSet<_> =
+            self.arena.checkpoint_ids().iter().copied().collect();
+        for id in before {
+            if !after.contains(&id) {
+                self.host.checkpoints.remove(&id);
+            }
+        }
+    }
+
+    /// Forget the host state of every checkpoint not in the word space's
+    /// live chain (a dropped branch's).
+    pub(crate) fn prune_saved(&mut self) {
+        let ids: std::collections::HashSet<_> =
+            self.arena.checkpoint_ids().iter().copied().collect();
+        self.host.checkpoints.retain(|k, _| ids.contains(k));
     }
 
     /// Whether the host state of checkpoint `id` is kept.

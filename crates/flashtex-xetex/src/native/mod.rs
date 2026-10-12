@@ -191,7 +191,7 @@ fn read_rgb_a(s: &[u8]) -> (u32, usize) {
 
 impl Globals {
     /// The FreeType library of this engine, made on first use.
-    fn ft_library(&mut self) -> Arc<FtLibrary> {
+    pub(crate) fn ft_library(&mut self) -> Arc<FtLibrary> {
         self.host
             .ft_library
             .get_or_insert_with(FtLibrary::new)
@@ -660,9 +660,15 @@ impl Globals {
         let (mapping, warning) = match flashtex_engine::system::find_file(&file, Format::MiscFonts)
         {
             Some(path) => {
+                // (the file it was made from: a persisted S₀ makes it
+                // again, `crate::s0file`)
                 let mapping = std::fs::read(&path)
                     .ok()
-                    .and_then(|tec| crate::xetex_ext::Mapping::new(tec, byte_mapping));
+                    .and_then(|tec| crate::xetex_ext::Mapping::new(tec, byte_mapping))
+                    .map(|mut m| {
+                        m.1 = Some((path.clone(), byte_mapping));
+                        m
+                    });
                 let warning = if mapping.is_none() {
                     Some(2)
                 } else if self.get_tracing_fonts_state() > 1 {

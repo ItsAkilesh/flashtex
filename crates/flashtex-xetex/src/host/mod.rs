@@ -30,8 +30,13 @@
 //! ```text
 //! flashtex-host-unicode --socket PATH [--format NAME]... [--once [--accept-timeout SECONDS]]
 //!     [--external-tools off|auto] [--tool-timeout SECONDS]
-//!     [--profile low-memory|balanced|high-performance] [--no-warm]
+//!     [--profile low-memory|balanced|high-performance] [--no-warm] [--s0-cache DIR]
 //! ```
+//!
+//! `--s0-cache DIR` (or `FLASHTEX_S0_CACHE`): each document's S₀ is saved
+//! in `DIR` after a compile that took a new one, and a host that has no
+//! state for a document opens it from there (`crate::s0file`): a reopened
+//! document runs only its body.
 //!
 //! Invoked as `xetex` or `xelatex` (`argv[0]`), it is the engine itself.
 
@@ -69,9 +74,12 @@ pub struct Opts {
     /// `--profile`, else `FLASHTEX_PROFILE`, else Balanced: each
     /// connection's mode until its `HELLO` or a `PROFILE` names another.
     pub profile: Mode,
+    /// `--s0-cache DIR`, else `FLASHTEX_S0_CACHE`: where documents' S₀s are
+    /// persisted (`crate::s0file`).
+    pub s0_cache: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: flashtex-host-unicode --socket PATH [--format NAME]... [--once [--accept-timeout SECONDS]] [--external-tools off|auto] [--tool-timeout SECONDS] [--profile low-memory|balanced|high-performance] [--no-warm]";
+const USAGE: &str = "usage: flashtex-host-unicode --socket PATH [--format NAME]... [--once [--accept-timeout SECONDS]] [--external-tools off|auto] [--tool-timeout SECONDS] [--profile low-memory|balanced|high-performance] [--no-warm] [--s0-cache DIR]";
 
 impl Opts {
     pub fn parse(args: &[String]) -> Result<Opts, String> {
@@ -83,6 +91,9 @@ impl Opts {
             external_tools: false,
             tool_timeout: Duration::from_secs(120),
             profile: Mode::from_env(),
+            s0_cache: std::env::var_os("FLASHTEX_S0_CACHE")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from),
         };
         let mut i = 0;
         while i < args.len() {
@@ -112,10 +123,10 @@ impl Opts {
                 }
                 // the pdfTeX host's warm-up has nothing to warm here
                 "--no-warm" => {}
-                // the resident pdfTeX host's S0 cache and checkpoint
-                // interval (the app passes them to either host): a cold
-                // host keeps neither
-                "--s0-cache" | "--timed" => {
+                "--s0-cache" => o.s0_cache = Some(PathBuf::from(val()?)),
+                // the resident pdfTeX host's checkpoint interval (the app
+                // passes it to either host)
+                "--timed" => {
                     val()?;
                 }
                 _ => return Err(format!("unknown option {a}")),
@@ -296,6 +307,7 @@ fn serve(
         slots: Arc::new(spare::Slots::from_env()),
         profile: opts.profile,
         engine: inproc::enabled().then(inproc::Shared::default),
+        s0_cache: opts.s0_cache.clone(),
     });
     let _ = listener.set_nonblocking(opts.once);
     let mut n = 0u64;
@@ -325,6 +337,10 @@ fn serve(
         if opts.once {
             connection(&h, conn, n);
             let _ = std::fs::remove_file(&opts.socket);
+            // the S₀ being written goes to its file before the process ends
+            if let Some(e) = h.engine.as_ref() {
+                e.flush();
+            }
             return 0;
         }
         std::thread::spawn(move || connection(&h, conn, n));
@@ -347,6 +363,8 @@ struct Host {
     /// The engine thread of compiles run in this process (`inproc`), or
     /// `None` when each run is a child process.
     engine: Option<inproc::Shared>,
+    /// Where documents' S₀s are persisted (`--s0-cache`).
+    s0_cache: Option<PathBuf>,
 }
 
 impl Host {
@@ -701,6 +719,18 @@ fn run_job(
         };
         &with_fonts
     };
+    // the document's persisted S₀ (in-process runs only)
+    let with_s0;
+    let job = match (&host.s0_cache, &host.engine) {
+        (Some(dir), Some(_)) if !job.export => {
+            with_s0 = Job {
+                s0_file: Some(dir.join(job.s0_name())),
+                ..job.clone()
+            };
+            &with_s0
+        }
+        _ => job,
+    };
     let auto = job
         .external_tools
         .as_deref()
@@ -738,6 +768,10 @@ fn run_job(
         done(out, job, &o, t0, cause);
         if job.export || o.status == "cancelled" || o.status == "failed" {
             break;
+        }
+        // a new S₀ goes to its file, after the compile's DONE
+        if let (Some(e), Some(p)) = (host.engine.as_ref(), job.s0_file.as_ref()) {
+            e.save_s0(p.clone(), job.root.clone());
         }
         let (ran, changed) = tools::after_compile(
             job,
