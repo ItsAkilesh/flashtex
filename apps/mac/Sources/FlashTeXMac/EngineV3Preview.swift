@@ -274,6 +274,8 @@ final class EngineV3PageView: NSView {
         wantsLayer = true
         tiles.container.frame = l.bounds
         l.addSublayer(tiles.container)
+        // Tiles are framed for the page layer's flip on screen, as the label is.
+        tiles.pageShownFlipped = { [weak self] in self?.layerShownFlipped ?? true }
         // "page N" at the bottom right, over the page (the v2 pane's label, gap C17).
         label.fontSize = 11
         label.font = NSFont.systemFont(ofSize: 11)
