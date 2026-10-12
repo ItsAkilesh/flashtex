@@ -24,7 +24,8 @@
 # --wait` using a keychain profile created by `xcrun notarytool
 # store-credentials <profile>`, then staples the app (and the DMG with --dmg).
 # --version <x.y.z> (or the APP_VERSION environment variable) sets
-# CFBundleShortVersionString; the default below is the last released version.
+# CFBundleShortVersionString; the default below is the release being prepared
+# (docs/release/), for local builds only.
 # CI passes the tag (.github/workflows/release.yml), so cutting a release never
 # edits this script.
 # --source-sha <key>=<sha> declares the source revision of a helper built
@@ -66,7 +67,7 @@ MAC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$MAC_DIR/../.." && pwd)"
 RESOURCES_SRC="$MAC_DIR/Resources"
 
-DEFAULT_APP_VERSION="0.1.1"
+DEFAULT_APP_VERSION="0.2.0"
 APP_VERSION="${APP_VERSION:-$DEFAULT_APP_VERSION}"
 BUNDLE_ID="tech.jay3332.flashtex.mac"
 
