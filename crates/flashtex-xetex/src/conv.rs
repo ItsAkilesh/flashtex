@@ -92,6 +92,11 @@ pub struct Old {
     pub old_terminal: Arc<Vec<u8>>,
     /// Where the jump went: (the claim's page, the page it went on from).
     pub jumped: Option<(usize, usize)>,
+    /// Why the claim's jump was not made, if it was not.
+    pub refused: Option<String>,
+    /// The read journal's lengths at the restore target (files, lookups,
+    /// outputs).
+    pub from_reads: (usize, usize, usize),
     /// The user's files' edits, and every file read since S₀ that changed
     /// (an edit's or another's).
     pub edits: Vec<Edit>,
@@ -111,6 +116,20 @@ pub struct Old {
 }
 
 impl Old {
+    /// Where a jump from the old page checkpoint `i` goes on from: the
+    /// newest old page checkpoint with its output opens and external
+    /// effects (both only grow). The old run's later reads, lookups and
+    /// opens run live again, so the test reads only up to there.
+    pub fn target(&self, i: usize) -> usize {
+        let op = &self.pages[i];
+        (i..self.pages.len())
+            .rev()
+            .find(|&j| {
+                self.pages[j].opens == op.opens && self.pages[j].rec.effects == op.rec.effects
+            })
+            .unwrap_or(i)
+    }
+
     pub fn summary(&self) -> String {
         let ms: f64 = self.tests.iter().map(|t| t.2).sum();
         let fails: Vec<String> = self
@@ -185,6 +204,7 @@ impl Globals {
                                 if on() {
                                     eprintln!("[conv] no jump at page {pages}: {e}");
                                 }
+                                c.refused = Some(e);
                             }
                         }
                     }
@@ -270,10 +290,7 @@ impl Globals {
         let op = &c.pages[i];
         // `L`: the newest old page checkpoint with the convergence point's
         // output opens and external effects
-        let j = (i..c.pages.len())
-            .rev()
-            .find(|&j| c.pages[j].opens == op.opens && c.pages[j].rec.effects == op.rec.effects)
-            .unwrap_or(i);
+        let j = c.target(i);
         if j == i {
             return Err("no later page checkpoint to go on from".into());
         }
@@ -564,23 +581,61 @@ impl Globals {
             ));
         }
         // 2. the reads
-        if c.lookup.is_some_and(|l| l >= op.reads.1) {
+        // (up to the jump's target, `Old::target`)
+        let last = c.pages[c.target(i)].reads;
+        if c.lookup.is_some_and(|l| l >= op.reads.1 && l < last.1) {
             return Err("the old run makes a lookup later whose answer changed".into());
         }
-        let last = c.pages.last().map_or(op.reads.0, |p| p.reads.0);
+        // (only reads before the jump's target: the jump goes on from
+        // there, and later reads run live again)
+        let norm = |p: &str| p.strip_prefix("./").unwrap_or(p).to_string();
         if let Some(j) = &c.journal {
-            let written: HashSet<&str> = j.outputs.iter().map(String::as_str).collect();
+            let written: HashSet<String> = j.outputs.iter().map(|p| norm(p)).collect();
             let later = &j.files[op.reads.0.min(j.files.len())
-                ..last.min(j.files.len()).max(op.reads.0.min(j.files.len()))];
+                ..last.0.min(j.files.len()).max(op.reads.0.min(j.files.len()))];
+            // A file the runs write that the old run reads later (a
+            // `\tableofcontents` at the document's end reads the `.toc`
+            // the last run's `\end{document}` wrote) is no barrier where
+            // neither run opened it for output since the restore target,
+            // and it holds now the bytes the old run read: then this run
+            // reads it as the old run did (the pdfTeX engine's #1729 bound,
+            // with its `written_same`).
+            let mut opened: Option<HashSet<String>> = None;
             for f in later {
                 if c.changed.contains(&f.path) {
                     return Err(format!("the old run reads the changed {} later", f.path));
                 }
-                if written.contains(f.path.as_str()) {
-                    return Err(format!(
-                        "the old run reads {} later, which the runs write",
-                        f.path
-                    ));
+                let p = norm(&f.path);
+                if written.contains(&p) {
+                    let opened = opened.get_or_insert_with(|| {
+                        let lo = c.from_reads.2.min(j.outputs.len());
+                        let mut o: HashSet<String> = j.outputs
+                            [lo..last.2.min(j.outputs.len()).max(lo)]
+                            .iter()
+                            .map(|p| norm(p))
+                            .collect();
+                        if let Some(n) = flashtex_engine::system::record_reads_into(None) {
+                            let lo = c.from_reads.2.min(n.outputs.len());
+                            o.extend(n.outputs[lo..].iter().map(|p| norm(p)));
+                            flashtex_engine::system::record_reads_into(Some(n));
+                        }
+                        for r in [&op.rec, new] {
+                            for s in &r.files {
+                                if let Stream::Out { path, .. } = &s.stream {
+                                    o.insert(norm(path));
+                                }
+                            }
+                        }
+                        o
+                    });
+                    let same = !opened.contains(&p)
+                        && flashtex_engine::hashcache::hash_file(&f.path).ok() == Some(f.hash);
+                    if !same {
+                        return Err(format!(
+                            "the old run reads {} later, which the runs write",
+                            f.path
+                        ));
+                    }
                 }
             }
         } else {
@@ -979,13 +1034,27 @@ pub fn truth(
     }
     let verdict = match c.claim {
         None => "no claim".to_string(),
-        Some((k, _)) => {
-            if new.len() != old.len() {
+        Some((k, i)) => {
+            let lp = c.pages[c.target(i)].pages;
+            let held = new.len() == old.len()
+                && (k..lp.min(new.len())).all(|m| frame(&new[m]) == frame(&old[m]));
+            if from > k && c.jumped.is_none() && c.refused.is_some() {
+                // (a refused jump's claim: the old run's pages after it can
+                // differ where the jump checks what the test does not, as
+                // the source map's numbering)
+                format!(
+                    "claim at page {k}, jump refused ({}); the pages from {from} are not the old run's",
+                    c.refused.as_deref().unwrap_or("")
+                )
+            } else if new.len() != old.len() {
                 format!(
                     "UNSOUND: claim at page {k}, but {} pages vs the old run's {}",
                     new.len(),
                     old.len()
                 )
+            } else if held {
+                // (pages after the jump's target are typeset live again)
+                format!("claim at page {k} holds (to page {lp})")
             } else if from <= k {
                 format!("claim at page {k} holds")
             } else {

@@ -806,6 +806,10 @@ impl Engine {
                 Start::Page(_) | Start::S0 | Start::Fresh => {
                     // (the old run's later state kept as a branch: the
                     // convergence test, `crate::conv`)
+                    let from_reads = match start {
+                        Start::Page(i) => self.pages[i].reads,
+                        _ => self.s0.as_ref().map_or((0, 0, 0), |s| s.reads),
+                    };
                     let (id, rec, base, later) = match start {
                         Start::Page(i) => (
                             self.pages[i].id,
@@ -874,6 +878,8 @@ impl Engine {
                                         old_files,
                                         old_terminal: Arc::new(self.terminal.clone()),
                                         jumped: None,
+                                        refused: None,
+                                        from_reads,
                                         pages: old,
                                         edits,
                                         changed,
