@@ -1008,3 +1008,73 @@ fn an_edit_saved_while_a_cancelled_compile_runs_is_seen() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The bundle's fonts by name (#1783) in both kinds of run: in the host's
+/// own process (`crate::resident`'s kept catalog, the app's default) and in
+/// a process of its own. Opt-in: `FLASHTEX_TEST_FONT_BUNDLE=<digest>@<url>`
+/// names a bundle with the font-name index (texbundle-tl2026-4 or later, or
+/// one `texbundle.py pack --font-index-tool` made); the resolver is forced
+/// to it, so TeX Live's fonts are not what is found.
+#[test]
+fn bundle_fonts_are_found_by_name_resident_or_not() {
+    let Some((digest, url)) = std::env::var("FLASHTEX_TEST_FONT_BUNDLE")
+        .ok()
+        .and_then(|v| {
+            v.split_once('@')
+                .map(|(d, u)| (d.to_string(), u.to_string()))
+        })
+    else {
+        eprintln!("skipped: FLASHTEX_TEST_FONT_BUNDLE is not set");
+        return;
+    };
+    let doc = "\\documentclass{article}\n\\usepackage{fontspec}\n\
+               \\setmainfont{TeX Gyre Pagella}\n\\begin{document}\nHello, \\textbf{bold}.\n\\end{document}\n";
+    // short: the bundle's paths stay well under XDV's 255 bytes
+    let cache = PathBuf::from(format!("/tmp/ftxbfi-{}", std::process::id()));
+    for inproc in ["1", "0"] {
+        let dir =
+            std::env::temp_dir().join(format!("flashtex-bfi-{}-{inproc}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (proj, out) = project(&dir, doc);
+        let allow = format!("{digest}@{url}");
+        let envs = [
+            ("FLASHTEX_UNICODE_INPROCESS", inproc),
+            ("FLASHTEX_RESOLVER", "bundle"),
+            ("FLASHTEX_BUNDLE_URL", url.as_str()),
+            ("FLASHTEX_BUNDLE_DIGEST", digest.as_str()),
+            ("FLASHTEX_BUNDLE_ALLOW_FETCH", allow.as_str()),
+            ("FLASHTEX_BUNDLE_CACHE_DIR", cache.to_str().unwrap()),
+        ];
+        let h = start_with(&dir, &envs, &dir.join("err.txt"));
+        let mut c = Client::connect(&h.sock).unwrap();
+        // twice: the second run of a resident engine reuses its kept catalog
+        for id in [1, 2] {
+            c.compile(&request(id, &proj, &out)).unwrap();
+            let (ev, done) = events(&mut c, id);
+            assert_eq!(
+                done.str_field("status"),
+                Some("ok"),
+                "inproc={inproc} run {id}: {done:?}"
+            );
+            let fonts: Vec<_> = ev
+                .iter()
+                .filter_map(|e| match e {
+                    Event::Font(f) => Some(f.info.str_field("ps_name").unwrap_or("").to_string()),
+                    _ => None,
+                })
+                .collect();
+            if id == 1 {
+                for want in ["TeXGyrePagella-Regular", "TeXGyrePagella-Bold"] {
+                    assert!(
+                        fonts.iter().any(|p| p == want),
+                        "inproc={inproc}: {fonts:?}"
+                    );
+                }
+            }
+        }
+        c.bye().unwrap();
+        drop(h);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    let _ = std::fs::remove_dir_all(&cache);
+}
