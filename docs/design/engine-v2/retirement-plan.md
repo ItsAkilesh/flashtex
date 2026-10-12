@@ -56,15 +56,15 @@
 |---|---|---|---|---|---|---|---|
 | 1 | **S0** vendor/ retired | #1183 (`e1e17d8f6`) | — | — | — | — | ✔ done |
 | 2 | **S1** Decouple | #1400 (`cba6c3470`): paragraph-layout tests into compiler tests; bridge reads an MIT features table; the bundle verifier and its manifest move to `apps/mac/scripts/`; licence check E. `supported-latex.json` is excluded (RQ5). | No behaviour change | mac-claude-a | — | — | ✔ done |
-| 3 | **S1b** S1 follow-ups | Check E's four false negatives, with CI running the boundary self-tests; a host field in the parity baseline (RQ8); remove the stale `crates/<crate>/target` probes in `ShellModel`; check `review-workflow.json`'s `/tmp/flashtex-compiler` path (§1.5); S1(c) **only after RQ5** | Same as S1 | Commander assigns | — | S1; RQ5 for S1(c) | not started |
+| 3 | **S1b** S1 follow-ups | Check E's four false negatives, with CI running the boundary self-tests; a host field in the parity baseline (RQ8); remove the stale `crates/<crate>/target` probes in `ShellModel`; check `review-workflow.json`'s `/tmp/flashtex-compiler` path (§1.5); S1(c) **only after RQ5** | Same as S1 | kabir-claude (RETIRE-S3r) | — | S1; RQ5 for S1(c) | **partly**: check E's four false negatives closed (`ec909da7e`) and its self-tests in CI's `checks` job; the `ShellModel` probes removed; `review-workflow.json`'s unused `provenance` removed (RETIRE-S3r). Open: the RQ8 host field; S1(c) after RQ5 |
 | 4 | **S2** No-consumer cleanup (ruling 1) | Delete the 9 §1.2 crates, `tests/test_rendering_v2.py` and `scripts/check_rendering_v2.py`. Fix every live reference in the same PR: `gate.sh` L607–610, `rust-test-exclude.txt` L10, `SUPPLEMENTARY-FACES.json` L7, the `verify_bundle_resources.py` docstring, `docs/INDEX.md`, the `rendering-v2.schema.json` description and the root `Cargo.toml` count. Add a reference check with a named allowlist (§4.6). | `gate.sh pr`; CI green on both OSes; `packaging-selftest.sh` (fast); the §4.6 reference check finds nothing outside its allowlist | kabir-claude (P5-RETIREMENT) | **yes** | S1 ✔; #1120 closed ✔ | **✔ landed** #1610 (`28855c698`, 2026-10-06; −164,986 lines). Re-checked on `6b97bae22`: the nine crates and both rendering-v2 files are gone, every listed reference is fixed, `tools/parity/retirement_refs.py` runs in `gate.sh` L641 and ci.yml L579 and reports 0 problems. |
 | 5 | **S3** Per-document engine choice | #1421, #1427: the choice per document, a window override, the app setting, records, a lazy migration of the global key, fallback blockers with a banner | Built; `EngineChoiceTests` (29 tests) | mac-claude-a | — | — | **partly landed** |
 | 6 | **S3r** S3 remainder | (a) `CaptureFeatures` per engine (§1.5); (b) an engine label on `FlashTeXLog` lines at open and compile, and an `engine` field in the §1.8 attribution tools | `mac-app`; named tests (§4.4) | kabir-claude | — | S3 | not started |
-| 7 | **S4** Gates P5 needs | (a) the #1299 board on a hosted fallback leg, and a complete run; (b) T4 on the board (#1461 ✔ baseline FINAL; #1598 board row); (c) T2 completing green on main (#1574 fixed the harness); (d) the no-TeX-Live gate scheduled and green (#1563 ✔ weekly; first run pending); (e) T7 by Q1 (#1605, #1609; a reference run on main); (f) parity fixtures on the engine; (g) T0 in `CI required` ✔ (#1336); (h) **the row → test check** (§4.4) | 10 consecutive green `merge_group` runs with the new jobs; 3 consecutive complete nightly boards; one T7 reference run on main | Commander (workflows); (h) kabir-claude | — | — | partly |
-| 8 | **S5** Flip: new documents default to the new engine | `EngineChoice.defaultForNewDocuments = .new` (EngineChoice.swift L130, one line); nightly `parity-corpus` and parity fixtures default to the engine; `baseline-fixtures.json` re-recorded on its host. **Existing documents do not change** (§5.3). | **Decision 3's gate as confirmed** (§4.2); the S5 rows (§4.4); one shipped release carries #1421/#1427's records (§5.3); T1 with 0 new differences; T7 meeting §1.2 | Commander (one-line flip) | — (flip back) | S3, S3r, S4; the modes lane's interim fontspec fallback (§4.4) | — |
+| 7 | **S4** Gates P5 needs | (a) the #1299 board on a hosted fallback leg, and a complete run; (b) T4 on the board (#1461 ✔ baseline FINAL; #1598 board row); (c) T2 completing green on main (#1574 fixed the harness); (d) the no-TeX-Live gate scheduled and green (#1563 ✔ weekly; first run pending); (e) T7 by Q1 (#1605, #1609; a reference run on main); (f) parity fixtures on the engine; (g) T0 in `CI required` ✔ (#1336); (h) **the row → test check** (§4.4) | 10 consecutive green `merge_group` runs with the new jobs; 3 consecutive complete nightly boards (hosted `-hosted` reports from #1774 count, DESIGN §13 2026-10-11); one T7 reference run on main | Commander (workflows); (h) kabir-claude | — | — | partly |
+| 8 | **S5** Flip: new documents default to the new engine | `EngineChoice.defaultForNewDocuments = .new` (EngineChoice.swift L130, one line); nightly `parity-corpus` and parity fixtures default to the engine; `baseline-fixtures.json` re-recorded on its host. **Existing documents do not change** (§5.3). | **Decision 3's gate as confirmed** (§4.2); the S5 rows (§4.4); one shipped release carries #1421/#1427's records (§5.3; app v0.2.0, which the Commander may publish after 3 consecutive complete green P5 boards, DESIGN §13 2026-10-11); T1 with 0 new differences; T7 meeting §1.2 | Commander (one-line flip) | — (flip back) | S3, S3r, S4; the modes lane's interim fontspec fallback (§4.4) | — |
 | 9 | **S6a** Shared types to v3 files | Move `V2PageText`'s line builder, `DisplayListLinks`'s URI policy and `MathHoverPreview`'s `padding` / `MathPreviewView` into v3-owned files (§1.4), as a rename with no behaviour change. Rewrite the v2-parity assertions in `EngineV3LinksTests`. | `swift build`; `EngineV3LinksTests`, `EngineV3AccessibilityTests`, `EngineV3SearchTests` and `EngineV3MathHoverTests` pass, not skipped | Commander assigns | — (a move) | S5 | — |
-| 10 | **S6** App old route out | Delete the §1.4 Swift, the helper rows, menus, attach commands, user docs and the §5.5 defaults; retarget the tools (§1.8); remove the `.previous` engine, its blockers and banner from `EngineChoice` and rewrite their tests; `packaging-selftest.sh` must fail on a missing helper | **The S6 rows** (§4.4); the §6 licence preconditions (RQ19); RQ6 ruled; **the Unicode mode's M3 gate passed** (modes Q1) | Commander assigns | **yes** | S5, S6a, M3 | — |
-| 11 | **S7** Old engine deleted at once | One PR deletes the compiler, render-pipeline, the old `flashtex-cli`, perf-bench and every §1.3 orphan, with their CI, scripts, generated entries and env (§1.7, §1.8) | Full tier; `check-generated.py`; a release.yml dry-run; the §4.6 check; T7 has gated for ≥ 10 runs; RQ5 ruled; 0 open old-path PRs | Commander assigns | **yes** | S6, queued as soon as it lands | — |
+| 10 | **S6** App old route out | Delete the §1.4 Swift, the helper rows, menus, attach commands, user docs and the §5.5 defaults; retarget the tools (§1.8); remove the `.previous` engine, its blockers and banner from `EngineChoice` and rewrite their tests; `packaging-selftest.sh` must fail on a missing helper | **The S6 rows** (§4.4); the §6 licence preconditions (RQ19 closed 2026-10-11: the About and release-notes link, #1806); RQ6 ruled ✔; **the Unicode mode's M3 gate passed** (modes Q1) | Commander assigns | **yes** | S5, S6a, M3 | — |
+| 11 | **S7** Old engine deleted at once | One PR deletes the compiler, render-pipeline, the old `flashtex-cli`, perf-bench and every §1.3 orphan, with their CI, scripts, generated entries and env (§1.7, §1.8) | Full tier; `check-generated.py`; a release.yml dry-run; the §4.6 check; T7 has gated for ≥ 10 runs; RQ5 ruled ✔ (the generator script replaces `sync-supported-latex.sh` in this PR); RQ6 ✔ (`flashtex-v3` renamed to `flashtex` and packaged in this PR); 0 open old-path PRs | Commander assigns | **yes** | S6, queued as soon as it lands | — |
 | 12 | **S8** Oracles to `tests/`, final sweep | Move the §2 crates to `tests/oracles/` (RQ4); `license` fields (R5); the `gate.sh` mapping; docs | Full tier; the §4.6 check | Commander assigns | **yes** | S7 | — |
 
 ### Owner decisions
@@ -74,8 +74,8 @@
 | RQ17 | P5 thresholds (Q3) | **Decided** 2026-10-05 (DESIGN §13 L1201): P-T2 ≥ 99 %, P-T1 ≥ 98 %, zero crashes on T4, new ≥ old on every tier. §4.2 applies it. |
 | RQ18 | T7 reference host (Q1) | **Decided** 2026-10-05 (L1200): a manual T7 run on an idle, plugged-in Apple-Silicon Mac, plus a nightly non-blocking trend. `scripts/t7-reference.sh` is #1609. |
 | RQ15 | Drop the `[fonts]` roles? | **Superseded** by Q-new-1 / 3A (L1202): the Unicode mode carries project and system fonts in P5. A9 is a P5 row (§4.4). |
-| RQ19 | The §3 legal review and the source offer | Open; blocks S6 |
-| RQ5 | Where `supported-latex.json` comes from | Open; blocks S1(c) and S7 |
+| RQ19 | The §3 legal review and the source offer | **Decided** 2026-10-11 (DESIGN §13): publish source. The GPL source stays public in this repository, linked from the About box and the release notes (#1806). No longer blocks S6. |
+| RQ5 | Where `supported-latex.json` comes from | **Ruled** 2026-10-11 (DESIGN §13, Commander under the owner's delegation): generated after S7 from the new engine's measured package support (package-smoke tier, oracle-verified), an MIT app-owned data file regenerated by a script, replacing `sync-supported-latex.sh`'s old-compiler source. |
 
 ### For the Commander: please confirm
 
@@ -85,7 +85,7 @@
 4. **"Gates, not a soak"** (revision 2's question): S4's three consecutive boards and S5's T7 requirement are gates. Q1 and Q3 being decided removes their dependency on an open question.
 5. **Ruling 4 at S6** (§5.3): a document still recorded as `previous` gets a one-time sheet that must be acknowledged.
 6. **§10's TFM wording** (§2): only `math-layout/src/tfm.rs` survives, in place.
-7. **The Commander's open RQs:** RQ3, RQ6, RQ7 and RQ10 (§7).
+7. **The Commander's open RQs:** RQ3, RQ7 and RQ10 (§7). RQ6 was ruled on 2026-10-11.
 
 ---
 
@@ -263,6 +263,9 @@ The iPad companion has no engine code (D14), and no iPad Swift retires.
   path. The file is loaded by `PadModel.swift` and `FlashTeXPadKit/ReviewedProposal.swift`.
   S1b checks whether the path field is used. If it is not, S1b removes the field;
   otherwise S6 retargets it. Either way the iPad build stays free of engine code.
+  *Checked (S1b): `ReviewedProposal.decodeWorkflowFixture` decodes only `kind`,
+  `provider_called`, `source_mutated` and `steps`, so the `provenance` block (the
+  `/tmp` compiler path and a `/home` helper path) was unused and is removed.*
 - The bridge feature list (§1.3) is another compiler-derived input to the iPad capture
   flow. S1 keeps it byte-identical.
 - **`apps/mac/Sources/FlashTeXMac/CaptureFeatures.swift`** (81 lines, MIT) is the Mac's own pinned `supported_features` list. It is sent with every `capture_convert` (transfer-v1), but **`flashtex-bridge` does not forward it** (VERIFIED, review N1 of revision 3): `crates/bridge/src/main.rs` L36–44 accepts the field and ignores it, and L154–157 always gives the provider the bridge's own table, `features::supported_features()`, which S1 derived from the old compiler's `COMMAND_GLYPHS` (issues #51/#23 chose a bridge-owned list over a caller's).
@@ -756,8 +759,8 @@ executable: this is aggregation, and check E refuses any link. Before S6 lands:
 | RQ2 | Retire the §1.3 orphans | Commander | **Ruled:** retire (S7) |
 | RQ3 | §10's "three math layout copies" means copies #1 and #2; math-layout stays | Commander | Open (§10 wording) |
 | RQ4 | Move the oracles under `tests/` | Commander | **Ruled:** move (S8) |
-| **RQ5** | Where `supported-latex.json` comes from | **Owner** | Open; blocks S1(c) and S7 |
-| RQ6 | Release artifacts, and the CLI's name and packaging. #1436's `flashtex-v3` is the successor (D5 partial); what remains is the rename to `flashtex`, release.yml packaging and the source offer. | Commander, then owner | Open; blocks S7 |
+| **RQ5** | Where `supported-latex.json` comes from | Commander (owner-delegated) | **Ruled** 2026-10-11: generated from the new engine's measured package support (package-smoke tier, oracle-verified); an MIT data file owned by the app, regenerated by a script; replaces `sync-supported-latex.sh`'s old-compiler source after S7. No longer blocks S1(c) or S7. |
+| RQ6 | Release artifacts, and the CLI's name and packaging. #1436's `flashtex-v3` is the successor (D5 partial); what remains is the rename to `flashtex`, release.yml packaging and the source offer. | Commander, then owner | **Ruled** 2026-10-11: `flashtex-v3` is renamed to `flashtex` and becomes the packaged CLI at S7; the source offer is RQ19's. No longer blocks S7. |
 | RQ7 | preview-controller after S6: retire it, or keep it for ledger and history (row E5) | Commander | Open; blocks S6 |
 | RQ8 | Host field in the parity baseline | — | S1b |
 | RQ10 | Open old-path PRs before S7 | Commander | **0 open** (#1120 closed 2026-10-06); must stay 0 at S7 |
@@ -765,7 +768,7 @@ executable: this is aggregation, and check E refuses any link. Before S6 lands:
 | RQ16 | Bundle-mode BibTeX: reuse `bibtex-bst`? | Commander | **Proposed: no.** DESIGN §13 decision 4 (O4) ports `bibtex.web` through web2rust, so S2 deletes bibtex-bst. To be confirmed. |
 | RQ17 | P5 thresholds (Q3) | Owner | **Decided** 2026-10-05 (§4.2) |
 | RQ18 | T7 reference host (Q1) | Owner | **Decided** 2026-10-05: `scripts/t7-reference.sh` (#1609) |
-| **RQ19** | The §3 legal review and the source offer | **Owner** | Open; blocks S6 |
+| **RQ19** | The §3 legal review and the source offer | **Owner** | **Closed** 2026-10-11: publish source; the GPL source stays public in this repository, linked from the About box and the release notes (#1806). No longer blocks S6. |
 | RQ20 (new) | What a declined bundle download does when no old engine is left (row A17 at S6) | Owner | Open; blocks S6 |
 
 RQ9 is superseded by RQ18. RQ11–RQ14 were never used.

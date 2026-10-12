@@ -414,7 +414,8 @@ def main():
 
     src = open(os.path.join(work, 'src', main_tex), 'rb').read()
     one(src, 'cold')
-    if a.keys:
+    # (a main file whose body is in other files gets no keystrokes)
+    if a.keys and b'\\begin{document}' in src and b'\\end{document}' in src:
         end = src.index(b'\\end{document}')
         if a.at == 'end':
             anchor = end
