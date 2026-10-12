@@ -89,6 +89,8 @@ pub struct Image {
     head: Vec<u8>,
     chunks: Vec<u32>,
     data: Vec<u8>,
+    /// Milliseconds taken by the header, S₀'s view and the copy.
+    pub ms: [f64; 3],
 }
 
 /// A file an object of the handle table is made from, with its content's
@@ -299,8 +301,19 @@ pub fn prepare(
     touched: &[u64],
     stop: &dyn Fn() -> bool,
 ) -> Result<Option<Image>, String> {
+    if stop() {
+        return Ok(None);
+    }
+    let t = std::time::Instant::now();
     let head = header(g, id, meta)?;
+    let t_head = t.elapsed().as_secs_f64() * 1e3;
+    if stop() {
+        return Ok(None);
+    }
+    let t = std::time::Instant::now();
     let view = g.arena.view_at(id)?;
+    let t_view = t.elapsed().as_secs_f64() * 1e3;
+    let t = std::time::Instant::now();
     let mut chunks = vec![];
     let mut data = vec![];
     for c in 0..g.arena.chunks() {
@@ -316,7 +329,13 @@ pub fn prepare(
             data.extend_from_slice(d);
         }
     }
-    Ok(Some(Image { head, chunks, data }))
+    let ms = [t_head, t_view, t.elapsed().as_secs_f64() * 1e3];
+    Ok(Some(Image {
+        head,
+        chunks,
+        data,
+        ms,
+    }))
 }
 
 /// Write S₀ to `path` from the engine itself, with no copy of its chunks
@@ -387,7 +406,9 @@ impl Image {
     /// header, the nonzero chunks' list and their pages' list, then those
     /// pages whole, `S0_PAGE`-aligned. Returns the file's bytes.
     pub fn write(self, path: &str) -> Result<u64, String> {
-        let Image { head, chunks, data } = self;
+        let Image {
+            head, chunks, data, ..
+        } = self;
         write_file(
             head,
             &chunks,

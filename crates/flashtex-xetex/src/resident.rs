@@ -785,6 +785,10 @@ impl Engine {
                 stop,
             )?
             else {
+                eprintln!(
+                    "flashtex-host-unicode: the S0 save stopped for a request ({:.1} ms in)",
+                    t.elapsed().as_secs_f64() * 1e3
+                );
                 self.pending_save = Some(p);
                 return Ok(None);
             };
@@ -797,11 +801,16 @@ impl Engine {
             return Ok(None);
         }
         let Some(image) = crate::s0file::prepare(g, p.id, &p.meta, &p.touched, stop)? else {
+            eprintln!(
+                "flashtex-host-unicode: the S0 save stopped for a request ({:.1} ms in)",
+                t.elapsed().as_secs_f64() * 1e3
+            );
             self.pending_save = Some(p);
             return Ok(None);
         };
         self.s0_saved = Some(p.id);
         let prepare_ms = t.elapsed().as_secs_f64() * 1e3;
+        let [head_ms, view_ms, copy_ms] = image.ms;
         let held = image.bytes();
         let path = p.path;
         self.writers.retain(|w| !w.is_finished());
@@ -814,7 +823,7 @@ impl Engine {
                 let t = std::time::Instant::now();
                 match image.write(&path.to_string_lossy()) {
                     Ok(bytes) => eprintln!(
-                        "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{prepare_ms:.1},\"after_ms\":{waited_ms:.1},\"write_ms\":{:.1}}}",
+                        "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{prepare_ms:.1},\"header_ms\":{head_ms:.1},\"view_ms\":{view_ms:.1},\"copy_ms\":{copy_ms:.1},\"after_ms\":{waited_ms:.1},\"write_ms\":{:.1}}}",
                         path.display().to_string(),
                         t.elapsed().as_secs_f64() * 1e3
                     ),
