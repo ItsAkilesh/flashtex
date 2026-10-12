@@ -366,6 +366,11 @@ jobs:
             echo
             echo "FlashTeX.dmg sha256: \`${{ steps.assets.outputs.dmg_sha }}\`"
             echo
+            # GPL source offer (#1806); the app's About panel shows the same line (AboutPanel.swift).
+            echo "## Source"
+            echo
+            echo "Source code for the FlashTeX engine (GPL-2.0-or-later): https://github.com/flash-tex/flashtex (this release: https://github.com/flash-tex/flashtex/tree/$TAG)"
+            echo
           } > notes.md
           cat notes.md
       - name: Create or update the GitHub release
