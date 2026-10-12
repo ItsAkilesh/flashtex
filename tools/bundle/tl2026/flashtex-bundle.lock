@@ -4,7 +4,7 @@
 # nothing is fetched before the user agrees. bundle-publish.yml publishes exactly
 # this digest at this URL, and refuses any other.
 url = "https://github.com/flash-tex/flashtex/releases/download/texbundle-tl2026-4/texlive2026.ttb"
-digest = "d27b99d9b2dd301bafa934a77ce2bf67e4cf646a0c071e313f19dd1d489650b1"
+digest = "bc9f57f9dcbbb4635327640fabde6a01f140d9ea4503164892295ccbfacb1a8f"
 # biber with no TeX Live (#1782/#1798, crates/flashtex-engine/src/bundle/biber.rs): TeX Live
 # 2026's biber 2.22 per platform, unmodified, gzipped (tools/bundle/biber.py, tl2026/biber.txt),
 # in its own release; fetched only after the user agrees, checked against these SHA-256s.
