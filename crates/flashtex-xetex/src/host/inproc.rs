@@ -95,7 +95,7 @@ impl Fonts for KeptFonts {
                 return c.clone();
             }
         }
-        let c = Arc::new(FontCatalog::system_cached(None));
+        let c = Arc::new(FontCatalog::for_lookup());
         self.kept = Some((dirs, c.clone()));
         c
     }
