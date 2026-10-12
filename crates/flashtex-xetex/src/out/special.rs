@@ -585,7 +585,7 @@ impl<M: Metrics> Builder<'_, M> {
                 let line = trim(p.rest()).to_vec();
                 self.doc.fonts.map_line(&line);
             }
-            b"tounicode" | b"mapfile" | b"encrypt" | b"nolink" | b"link" => {
+            b"tounicode" | b"mapfile" | b"encrypt" => {
                 self.doc.ignored_special(&format!("pdf:{}", lossy(&cmd)));
             }
             _ => self.doc.unknown_special(&format!("pdf:{}", lossy(&cmd))),
