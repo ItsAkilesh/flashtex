@@ -62,7 +62,7 @@ fn catalog_source() -> CatalogSource {
                 return c.clone();
             }
         }
-        let c = Arc::new(FontCatalog::system_cached(None));
+        let c = Arc::new(FontCatalog::for_lookup());
         kept = Some((dirs, c.clone()));
         c
     })

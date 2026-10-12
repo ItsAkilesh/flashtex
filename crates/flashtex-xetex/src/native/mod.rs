@@ -8,15 +8,19 @@
 //! here names the C routine it ports. A font's layout engine is a handle
 //! of `Host::handles` (`changes/ext.ch`), so a checkpoint keeps it.
 //!
+//! A native word's direction runs come from ICU's bidirectional algorithm
+//! ([`ubidi`], a port of the ICU TeX Live 2026 builds xetex with), as in
+//! XeTeX.
+//!
 //! Not in S1: AAT (Core Text) shaping, out of scope by the Commander's
 //! ruling (PLAN.md §3.1): a font XeTeX on macOS would shape with AAT is
-//! shaped with HarfBuzz; Graphite (S2); OpenType math (S2); ICU's
-//! bidirectional analysis, for which text that needs it is reported (see
-//! [`needs_bidi`]) and laid out left to right.
+//! shaped with HarfBuzz; Graphite (S2); OpenType math (S2).
 
 pub mod font_inst;
 pub mod layout;
+pub mod linebreak;
 pub mod otmath;
+pub mod ubidi;
 
 use crate::fontlibs::hb;
 use crate::generated::consts::otgr_font_flag;
@@ -185,33 +189,6 @@ fn read_rgb_a(s: &[u8]) -> (u32, usize) {
     (rgb, cp)
 }
 
-/// Whether text needs ICU's bidirectional analysis: it holds a character
-/// of a right-to-left script, an Arabic number, or an explicit embedding,
-/// override or isolate. Text without any is one left-to-right run for
-/// `ubidi` (its direction is `UBIDI_LTR`), which is all phase S1 lays out.
-pub fn needs_bidi(text: &[u16]) -> bool {
-    let mut i = 0;
-    while i < text.len() {
-        let mut c = text[i] as u32;
-        if (0xD800..0xDC00).contains(&c) && i + 1 < text.len() {
-            let lo = text[i + 1] as u32;
-            if (0xDC00..0xE000).contains(&lo) {
-                c = 0x10000 + ((c - 0xD800) << 10) + (lo - 0xDC00);
-                i += 1;
-            }
-        }
-        i += 1;
-        if matches!(c,
-            0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF
-            | 0x10800..=0x10FFF | 0x1E800..=0x1EFFF
-            | 0x200F | 0x202A..=0x202E | 0x2066..=0x2069)
-        {
-            return true;
-        }
-    }
-    false
-}
-
 impl Globals {
     /// The FreeType library of this engine, made on first use.
     fn ft_library(&mut self) -> Arc<FtLibrary> {
@@ -374,7 +351,7 @@ impl Globals {
             // directories are unchanged (`crate::resident`)
             let catalog = match self.host.resident.as_mut() {
                 Some(r) => r.font_catalog(),
-                None => std::sync::Arc::new(crate::fontmgr::FontCatalog::system_cached(None)),
+                None => std::sync::Arc::new(crate::fontmgr::FontCatalog::for_lookup()),
             };
             self.host.font_mgr = Some(Arc::new(crate::fontmgr::FontMgr::new(catalog)));
         }
@@ -384,6 +361,12 @@ impl Globals {
             return 0;
         };
         self.host.req_engine = located.req_engine;
+        // A bundle face (`fontmgr::catalog::bundle_faces`) not fetched yet.
+        if std::fs::metadata(&located.path).map_or(true, |m| m.len() == 0) {
+            if let Some(base) = std::path::Path::new(&located.path).file_name() {
+                crate::fontmgr::catalog::fetch_bundle_font(&base.to_string_lossy());
+            }
+        }
         if self.get_tracing_fonts_state() > 0 {
             // XeTeXFontMgr::findFont's diagnostic.
             self.begin_diagnostic();
@@ -805,29 +788,74 @@ impl Globals {
             std::process::exit(3);
         };
         let text = self.node_text(p);
-        if needs_bidi(&text) && !self.host.bidi_warned {
-            self.host.bidi_warned = true;
-            eprintln!(
-                "flashtex-xetex: right-to-left or bidirectional text needs ICU's bidi \
-                 analysis, which phase S1 does not have; it is laid out left to right"
-            );
-        }
-        let _ = engine.default_rtl();
-        let n = engine.layout_chars(&text, 0, text.len(), false);
-        let glyphs = engine.glyphs();
-        let advances = engine.glyph_advances();
-        let positions = engine.glyph_positions();
+        let txt_len = text.len();
+
+        // need to find direction runs within the text, and call layoutChars
+        // separately for each
+        let para_level = if engine.default_rtl() {
+            ubidi::UBIDI_DEFAULT_RTL
+        } else {
+            ubidi::UBIDI_DEFAULT_LTR
+        };
+        let mut bidi = ubidi::UBiDi::set_para(&text, para_level);
+        let dir = bidi.direction();
         let mut width = 0f64;
         let mut info = GlyphInfo::default();
         let mut glyph_advances: Vec<i32> = vec![];
-        if n > 0 {
-            for i in 0..n {
-                info.ids.push(glyphs[i] as u16);
-                glyph_advances.push(d2fix(advances[i] as f64));
-                info.locations
-                    .push((d2fix(positions[i].0 as f64), d2fix(positions[i].1 as f64)));
+        if dir == ubidi::Direction::Mixed {
+            // XeTeX does the layout twice here, once to count glyphs and
+            // then again to get them
+            let n_runs = bidi.count_runs();
+            let mut total_glyph_count = 0;
+            for run_index in 0..n_runs {
+                let (dir, logical_start, length) = bidi.get_visual_run(run_index);
+                total_glyph_count += engine.layout_chars(
+                    &text,
+                    logical_start as usize,
+                    length as usize,
+                    dir == ubidi::Direction::Rtl,
+                );
             }
-            width = positions[n].0 as f64;
+            if total_glyph_count > 0 {
+                let (mut x, mut y) = (0f64, 0f64);
+                for run_index in 0..n_runs {
+                    let (dir, logical_start, length) = bidi.get_visual_run(run_index);
+                    let n_glyphs = engine.layout_chars(
+                        &text,
+                        logical_start as usize,
+                        length as usize,
+                        dir == ubidi::Direction::Rtl,
+                    );
+                    let glyphs = engine.glyphs();
+                    let advances = engine.glyph_advances();
+                    let positions = engine.glyph_positions();
+                    for i in 0..n_glyphs {
+                        info.ids.push(glyphs[i] as u16);
+                        info.locations.push((
+                            d2fix(positions[i].0 as f64 + x),
+                            d2fix(positions[i].1 as f64 + y),
+                        ));
+                        glyph_advances.push(d2fix(advances[i] as f64));
+                    }
+                    x += positions[n_glyphs].0 as f64;
+                    y += positions[n_glyphs].1 as f64;
+                }
+                width = x;
+            }
+        } else {
+            let n = engine.layout_chars(&text, 0, txt_len, dir == ubidi::Direction::Rtl);
+            let glyphs = engine.glyphs();
+            let advances = engine.glyph_advances();
+            let positions = engine.glyph_positions();
+            if n > 0 {
+                for i in 0..n {
+                    info.ids.push(glyphs[i] as u16);
+                    glyph_advances.push(d2fix(advances[i] as f64));
+                    info.locations
+                        .push((d2fix(positions[i].0 as f64), d2fix(positions[i].1 as f64)));
+                }
+                width = positions[n].0 as f64;
+            }
         }
         self.mem[(p + 1) as usize].set_int(d2fix(width));
 
@@ -1318,13 +1346,5 @@ mod tests {
         assert_eq!(read_rgb_a(b"00FF0080"), (0x00FF0080, 8));
         assert_eq!(read_rgb_a(b"12"), (0xFF, 2));
         assert_eq!(read_double(b" -1.25x", 0), (-1.25, 6));
-    }
-
-    #[test]
-    fn bidi_detection() {
-        let u = |s: &str| s.encode_utf16().collect::<Vec<u16>>();
-        assert!(!needs_bidi(&u("office — naïve 123")));
-        assert!(needs_bidi(&u("abc \u{05D0}")));
-        assert!(needs_bidi(&u("\u{202E}x")));
     }
 }

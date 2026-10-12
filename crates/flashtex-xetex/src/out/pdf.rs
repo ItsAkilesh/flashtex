@@ -216,35 +216,67 @@ impl<'a> Writer<'a> {
         for i in 0..doc.pages.len() {
             self.page(i)?;
         }
-        // Forms, images and fonts the pages used (forms may use forms).
+        // Forms, images and fonts the pages used (forms may use forms), then
+        // the catalog, then named objects (anything above may have
+        // referenced them). A named object may itself refer to a form or an
+        // image no page draws: pgf's soft mask, `/SMask <</G @pgfsmask5>>`
+        // in `@pgfextgs`. So the round repeats until nothing new was
+        // referenced; a form only a named object names is written too.
         let mut done_forms = BTreeSet::new();
+        let mut done_images = BTreeSet::new();
+        let mut done_fonts = BTreeSet::new();
+        let mut catalog = false;
         loop {
-            let todo: Vec<u32> = self
-                .forms
-                .keys()
-                .copied()
-                .filter(|f| !done_forms.contains(f))
+            let mut wrote = false;
+            loop {
+                let todo: Vec<u32> = self
+                    .forms
+                    .keys()
+                    .copied()
+                    .filter(|f| !done_forms.contains(f))
+                    .collect();
+                if todo.is_empty() {
+                    break;
+                }
+                for f in todo {
+                    done_forms.insert(f);
+                    self.form(f)?;
+                }
+                wrote = true;
+            }
+            let imgs: Vec<(u32, u32)> = self
+                .images
+                .iter()
+                .filter(|(k, _)| !done_images.contains(*k))
+                .map(|(&k, &v)| (k, v))
                 .collect();
-            if todo.is_empty() {
+            for (id, num) in imgs {
+                done_images.insert(id);
+                self.image(id, num)?;
+                wrote = true;
+            }
+            let fonts: Vec<(u16, u32)> = self
+                .fonts
+                .iter()
+                .filter(|(k, _)| !done_fonts.contains(*k))
+                .map(|(&k, &v)| (k, v))
+                .collect();
+            for (id, num) in fonts {
+                done_fonts.insert(id);
+                self.font(id, num)?;
+                wrote = true;
+            }
+            if !catalog {
+                catalog = true;
+                self.catalog_and_tree()?;
+            }
+            while let Some(name) = self.named_queue.pop() {
+                self.named_object(&name);
+                wrote = true;
+            }
+            if !wrote {
                 break;
             }
-            for f in todo {
-                done_forms.insert(f);
-                self.form(f)?;
-            }
-        }
-        let imgs: Vec<(u32, u32)> = self.images.iter().map(|(&k, &v)| (k, v)).collect();
-        for (id, num) in imgs {
-            self.image(id, num)?;
-        }
-        let fonts: Vec<(u16, u32)> = self.fonts.iter().map(|(&k, &v)| (k, v)).collect();
-        for (id, num) in fonts {
-            self.font(id, num)?;
-        }
-        self.catalog_and_tree()?;
-        // Named objects, last: anything above may have referenced them.
-        while let Some(name) = self.named_queue.pop() {
-            self.named_object(&name);
         }
         Ok(())
     }
@@ -2214,5 +2246,59 @@ mod tests {
             ..FaceInfo::default()
         };
         assert!(!editable.embedding_forbidden());
+    }
+
+    /// A form that only a named object refers to is written: pgf's soft
+    /// mask is a `pdf:bxobj @pgfsmask5` form that no page draws, named
+    /// only by `pdf:put @pgfextgs << /pgfsmask5 << /SMask << /G @pgfsmask5
+    /// >> >> >>` (beamer's shadowed title block, u11-beamer-fontspec in
+    /// the M3 export gate). It was referenced but written as `null`.
+    #[test]
+    fn a_form_only_a_named_object_names_is_written() {
+        use super::super::page::tests::{page_bytes, special, NoTfm};
+        use super::super::page::Builder;
+        let mut doc = Doc::new();
+        let mut body = special("pdf:obj @pgfextgs <<>>");
+        body.extend(special("pdf:put @resources << /ExtGState @pgfextgs >>"));
+        body.extend(special(
+            "pdf:bxobj @pgfsmask5 width 20pt height 10pt depth 0pt",
+        ));
+        body.push(137); // put_rule inside the form
+        body.extend_from_slice(&(5i32 << 16).to_be_bytes());
+        body.extend_from_slice(&(10i32 << 16).to_be_bytes());
+        body.extend(special(
+            "pdf:exobj <</Group <</S/Transparency /CS/DeviceGray>> >>",
+        ));
+        body.extend(special(
+            "pdf:put @pgfextgs << /pgfsmask5 << /SMask << /S /Luminosity /G @pgfsmask5>> >> >>",
+        ));
+        body.extend(special("pdf:code /pgfsmask5 gs"));
+        let built = Builder::page(&mut doc, &NoTfm, 1000, 1, &page_bytes(&body)).unwrap();
+        doc.pages.push(built);
+        let opts = Options {
+            producer: "test".into(),
+            date: None,
+            compress: false,
+        };
+        let bytes = write(&doc, &opts).unwrap().0;
+        let text = String::from_utf8_lossy(&bytes);
+        let at = text.find("/G ").expect("the soft mask's /G");
+        let num: String = text[at + 3..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        assert!(text[at + 3 + num.len()..].starts_with(" 0 R"), "{text}");
+        let obj = text
+            .find(&format!("\n{num} 0 obj\n"))
+            .map(|i| &text[i..])
+            .expect("the form's object");
+        let body = &obj[..obj.find("endobj").unwrap()];
+        assert!(
+            body.contains("/Subtype /Form") || body.contains("/Subtype/Form"),
+            "{body}"
+        );
+        assert!(body.contains("/Transparency"), "{body}");
+        let pdf = PdfFile::parse(&bytes).unwrap();
+        assert_eq!(pdf.pages().unwrap().len(), 1);
     }
 }

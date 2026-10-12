@@ -188,7 +188,7 @@ pub fn wait(g: &mut crate::Globals, fd: RawFd) {
     // the directories it was made from, read first
     let fonts = (g.host.child_env.fonts && g.host.font_mgr.is_none()).then(|| {
         let dirs = font_dirs();
-        let catalog = crate::fontmgr::FontCatalog::system_cached(None);
+        let catalog = crate::fontmgr::FontCatalog::for_lookup();
         (dirs, crate::fontmgr::FontMgr::new(Arc::new(catalog)))
     });
     // SAFETY: the descriptor was inherited for this wait alone.

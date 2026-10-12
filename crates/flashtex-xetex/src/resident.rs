@@ -76,7 +76,7 @@ impl Resident {
     pub(crate) fn font_catalog(&mut self) -> Arc<FontCatalog> {
         match self.catalog.as_mut() {
             Some(f) => f(),
-            None => Arc::new(FontCatalog::system_cached(None)),
+            None => Arc::new(FontCatalog::for_lookup()),
         }
     }
 }
@@ -381,14 +381,17 @@ impl Engine {
                 system::set_first_line(g, l);
             }
         }
-        let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if reuse {
-                g.run_after_format();
-            } else {
-                g.tex_body();
-            }
-            system::final_end(g)
-        }));
+        // (the result's type is spelled out: a closure ending in `!` is
+        // otherwise inferred as returning `()` by the toolchain CI pins)
+        let ran: std::thread::Result<std::convert::Infallible> =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if reuse {
+                    g.run_after_format();
+                } else {
+                    g.tex_body();
+                }
+                system::final_end(g)
+            }));
         let mut rep = Report {
             from_format: reuse,
             ..Report::default()
