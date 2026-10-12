@@ -425,6 +425,12 @@ NO_LICENCE_RECORDED = {
                 "its header, and TeX Live distributes them as free software",
     "latexconfig": "TeX Live's own configuration files for the LaTeX formats (part of TeX Live's "
                    "infrastructure, under TeX Live's licensing, LICENSE.TL)",
+    "glyphlist": "glyph-name lists with no CTAN catalogue entry (checked against the files of "
+                 "TeX Live 2026's glyphlist r54074, 2026-10-12): glyphlist.txt is the Adobe Glyph "
+                 "List, whose header licenses it under the Apache License 2.0; texglyphlist.txt is "
+                 "lcdf-typetools' (GPL-2.0-or-later, its header names it); pdfglyphlist.txt is a "
+                 "subset of the Adobe Glyph List's entries (PDF character sets), distributed by "
+                 "TeX Live as free software",
 }
 
 

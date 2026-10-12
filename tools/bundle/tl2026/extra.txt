@@ -161,3 +161,8 @@ newcomputermodern
 # GFS Complutum (Greek, ofl)
 dejavu
 gfscomplutum
+# Since texbundle-tl2026-5: Adobe's glyph list (glyphlist.txt, texglyphlist.txt), which
+# the PDF writer reads to map glyph names to Unicode for ToUnicode (M3 export lane).
+# The tlpdb records no licence: Apache-2.0 (Adobe), GPL-2.0+ (lcdf-typetools); see
+# texbundle.py NO_LICENCE_RECORDED
+glyphlist
