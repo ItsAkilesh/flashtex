@@ -346,12 +346,16 @@ impl Globals {
         {
             self.host.child_env.named_fonts = true;
         }
-        let mgr = self.host.font_mgr.get_or_insert_with(|| {
-            Arc::new(crate::fontmgr::FontMgr::new(std::sync::Arc::new(
-                crate::fontmgr::FontCatalog::system_cached(None)
-                    .with_faces(crate::fontmgr::catalog::bundle_faces()),
-            )))
-        });
+        if self.host.font_mgr.is_none() {
+            // a resident engine's catalog outlives its runs while the font
+            // directories are unchanged (`crate::resident`)
+            let catalog = match self.host.resident.as_mut() {
+                Some(r) => r.font_catalog(),
+                None => std::sync::Arc::new(crate::fontmgr::FontCatalog::for_lookup()),
+            };
+            self.host.font_mgr = Some(Arc::new(crate::fontmgr::FontMgr::new(catalog)));
+        }
+        let mgr = self.host.font_mgr.as_mut().expect("made above");
         let located = Arc::make_mut(mgr).locate(&String::from_utf8_lossy(&full), scaled_size);
         let Some(located) = located else {
             return 0;

@@ -61,6 +61,10 @@ pub struct Output {
     pub pdf: Option<std::fs::File>,
     pub pdf_name: String,
     dl: Option<DlSink>,
+    /// A resident engine's run: the output's reports (`FlashTeX output:
+    /// ...` lines), which a run in a process of its own writes to its
+    /// standard error.
+    pub reports: Option<Vec<String>>,
 }
 
 /// Where display-list frames go, and what has been sent there.
@@ -106,6 +110,27 @@ impl Output {
                 }
             },
         };
+        Output::with_sink(dl)
+    }
+
+    /// The output of a resident engine's run (`crate::resident`): the
+    /// display list goes to `w` (none: no display list), the programs of
+    /// fonts in `formats` only (`None`: all), and the output's reports are
+    /// kept ([`Output::reports`]) instead of going to the standard error.
+    pub fn to_writer(w: Option<Box<dyn Write + Send>>, formats: Option<HashSet<String>>) -> Output {
+        let dl = w.map(|w| DlSink {
+            w,
+            fonts: HashSet::new(),
+            images: HashSet::new(),
+            forms: 0,
+            formats,
+        });
+        let mut o = Output::with_sink(dl);
+        o.reports = Some(Vec::new());
+        o
+    }
+
+    fn with_sink(dl: Option<DlSink>) -> Output {
         let mut doc = Doc::new();
         doc.default_paper = default_paper();
         Output {
@@ -113,6 +138,16 @@ impl Output {
             pdf: None,
             pdf_name: String::new(),
             dl,
+            reports: None,
+        }
+    }
+
+    /// A report of the output: kept (a resident engine's run), else on the
+    /// standard error, where the host that started the run reads it.
+    fn report(&mut self, line: String) {
+        match self.reports.as_mut() {
+            Some(r) => r.push(line),
+            None => eprintln!("{line}"),
         }
     }
 }
@@ -179,6 +214,7 @@ impl page::Metrics for EngineMetrics<'_> {
 /// `ship_out` has written a page (its `fflush`): read it into the
 /// display list.
 pub fn page_done(g: &mut Globals, f: &mut ByteFile) {
+    g.resident_poll();
     let Some(mut out) = g.host.out.take() else {
         return;
     };
@@ -252,37 +288,41 @@ pub fn finish(g: &mut Globals) -> i32 {
             out.dl = None;
         }
     }
+    let mut reports = vec![];
     for (what, n) in &out.doc.unknown {
-        eprintln!("FlashTeX output: {n} unknown special(s) `{what}'");
+        reports.push(format!("FlashTeX output: {n} unknown special(s) `{what}'"));
     }
     for d in &out.doc.diagnostics {
-        eprintln!("FlashTeX output: {d}");
+        reports.push(format!("FlashTeX output: {d}"));
     }
     for e in &out.doc.errors {
-        eprintln!("! FlashTeX output: {e}");
+        reports.push(format!("! FlashTeX output: {e}"));
         rc = 1;
     }
     if let Some(mut file) = out.pdf.take() {
         let opts = pdf::Options {
             producer: format!("FlashTeX (Unicode mode, {})", crate::system::BANNER),
-            date: pdf_date(),
+            date: pdf_date(g.host.clock.map(|c| c.0)),
             compress: true,
         };
         match pdf::write(&out.doc, &opts) {
             Ok((bytes, warnings)) => {
                 for w in warnings {
-                    eprintln!("FlashTeX output: {w}");
+                    reports.push(format!("FlashTeX output: {w}"));
                 }
                 if let Err(e) = file.write_all(&bytes).and_then(|_| file.flush()) {
-                    eprintln!("FlashTeX output: writing {}: {e}", out.pdf_name);
+                    reports.push(format!("FlashTeX output: writing {}: {e}", out.pdf_name));
                     rc = 1;
                 }
             }
             Err(e) => {
-                eprintln!("FlashTeX output: {e}");
+                reports.push(format!("FlashTeX output: {e}"));
                 rc = 1;
             }
         }
+    }
+    for r in reports {
+        out.report(r);
     }
     g.host.out = Some(out);
     rc
@@ -290,11 +330,12 @@ pub fn finish(g: &mut Globals) -> i32 {
 
 /// `D:YYYYMMDDHHmmSSZ` of `SOURCE_DATE_EPOCH` when it is set (with
 /// `FORCE_SOURCE_DATE` or not: the PDF's dates are the output's), else of
-/// now.
-fn pdf_date() -> Option<String> {
+/// `session` (the pinned clock, `Host::clock`), else of now.
+fn pdf_date(session: Option<i64>) -> Option<String> {
     let secs = std::env::var("SOURCE_DATE_EPOCH")
         .ok()
         .and_then(|v| v.trim().parse::<i64>().ok())
+        .or(session)
         .unwrap_or_else(|| {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

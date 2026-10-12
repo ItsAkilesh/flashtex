@@ -50,6 +50,7 @@ pub mod host;
 pub mod native;
 pub mod out;
 pub mod pic;
+pub mod resident;
 pub mod state;
 pub mod system;
 pub mod xetex_ext;

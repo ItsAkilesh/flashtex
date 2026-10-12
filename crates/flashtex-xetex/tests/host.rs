@@ -207,17 +207,32 @@ fn deadline(pid: u32, secs: u64) -> std::sync::mpsc::Sender<()> {
 /// Every cancel ends its compile, whenever it comes (the review's race:
 /// a cancel between the check and the engine's start found nothing to
 /// kill, and the engine looped for ever), and a newer COMPILE supersedes
-/// a running one the same way.
+/// a running one the same way: runs in the host's own process (they stop
+/// at their next poll, `crate::resident`) and runs in processes of their
+/// own (killed).
 #[test]
 fn cancels_are_never_lost() {
     if !texlive() {
         eprintln!("skipped: no TeX Live");
         return;
     }
-    let dir = std::env::temp_dir().join(format!("flashtex-host-cancel-{}", std::process::id()));
+    for inproc in ["1", "0"] {
+        cancels_are_never_lost_in(inproc);
+    }
+}
+
+fn cancels_are_never_lost_in(inproc: &str) {
+    let dir = std::env::temp_dir().join(format!(
+        "flashtex-host-cancel-{}-{inproc}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     let (proj, out) = project(&dir, LOOP);
-    let h = start(&dir);
+    let h = start_with(
+        &dir,
+        &[("FLASHTEX_UNICODE_INPROCESS", inproc)],
+        &dir.join("host.err"),
+    );
     let alarm = deadline(h.child.id(), 600);
     let mut c = Client::connect(&h.sock).unwrap();
     for i in 0..60i64 {
@@ -305,7 +320,9 @@ fn a_late_cancel_does_not_cancel_a_later_compile() {
 }
 
 /// However the host ends, its engine does not outlive it: the engine
-/// watches the host's lifeline (`host/proc.rs`) and kills its group.
+/// watches the host's lifeline (`host/proc.rs`) and kills its group. (Runs
+/// in processes of their own: an engine in the host's own process ends
+/// with it.)
 #[test]
 fn no_engine_outlives_the_host() {
     if !texlive() {
@@ -317,7 +334,11 @@ fn no_engine_outlives_the_host() {
             std::env::temp_dir().join(format!("flashtex-host-orphan-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (proj, out) = project(&dir, LOOP);
-        let h = start(&dir);
+        let h = start_with(
+            &dir,
+            &[("FLASHTEX_UNICODE_INPROCESS", "0")],
+            &dir.join("host.err"),
+        );
         let mut c = Client::connect(&h.sock).unwrap();
         c.compile(&request(1, &proj, &out)).unwrap();
         let t = Instant::now();
@@ -483,6 +504,7 @@ fn spares_stand_for_runs_only_while_what_they_read_is_unchanged() {
         let h = start_with(
             &sub,
             &[
+                ("FLASHTEX_UNICODE_INPROCESS", "0"),
                 ("FLASHTEX_UNICODE_SPARES", spares),
                 ("FLASHTEX_UNICODE_SPARE_DEBUG", "1"),
             ],
@@ -551,7 +573,14 @@ fn low_memory_keeps_no_spare() {
     let _ = std::fs::remove_dir_all(&dir);
     let (proj, out) = project(&dir, DOC);
     let err = dir.join("host.err");
-    let h = start_with(&dir, &[("FLASHTEX_UNICODE_SPARE_DEBUG", "1")], &err);
+    let h = start_with(
+        &dir,
+        &[
+            ("FLASHTEX_UNICODE_INPROCESS", "0"),
+            ("FLASHTEX_UNICODE_SPARE_DEBUG", "1"),
+        ],
+        &err,
+    );
     let mut c = Client::connect_with(&h.sock, &[], Some("low-memory")).unwrap();
     let knobs = c.hello.get("profile").cloned().unwrap();
     assert_eq!(knobs.str_field("mode"), Some("low-memory"));
@@ -594,5 +623,76 @@ fn low_memory_keeps_no_spare() {
     }
     c.bye().unwrap();
     drop(h);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Compiles in the host's own process (`crate::resident`; from the second
+/// run on, from the state kept where the format is loaded) write what runs
+/// in processes of their own write, byte for byte: the PDF, the log and the
+/// `.aux`, over two passes, an edit, an error, a fatal error (the engine
+/// recovers from it) and an edit back; the same in Low Memory, which keeps
+/// no engine between compiles, and without the kept state
+/// (`FLASHTEX_UNICODE_FORMAT_POINT=0`).
+#[test]
+fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-inproc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let texts = [
+        DOC.to_string(),
+        DOC.replace("See section", "Look at section"),
+        DOC.replace("See section", "\\undefinedmacro See"),
+        DOC.replace("See section", "\\input{no-such-file} See"),
+        DOC.to_string(),
+    ];
+    type Outs = Vec<(String, Vec<u8>, String, String)>;
+    let run = |envs: &[(&str, &str)], profile: Option<&str>| -> Outs {
+        // the same paths every time: the log names them
+        let sub = dir.join("run");
+        let _ = std::fs::remove_dir_all(&sub);
+        let (proj, out) = project(&sub, DOC);
+        let mut e = vec![("FLASHTEX_PIN_CLOCK", "1760000000.5")];
+        e.extend_from_slice(envs);
+        let h = start_with(&sub, &e, &sub.join("host.err"));
+        let mut c = Client::connect_with(&h.sock, &[], profile).unwrap();
+        let mut outs = vec![];
+        for (i, text) in texts.iter().enumerate() {
+            let id = i as i64 + 1;
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.clone())];
+            c.compile(&r).unwrap();
+            let (_, done) = events(&mut c, id);
+            let o = Path::new(&out);
+            outs.push((
+                done.str_field("status").unwrap_or("").to_string(),
+                std::fs::read(o.join("main.pdf")).unwrap_or_default(),
+                std::fs::read_to_string(o.join("main.log")).unwrap(),
+                std::fs::read_to_string(o.join("main.aux")).unwrap_or_default(),
+            ));
+        }
+        c.bye().unwrap();
+        drop(h);
+        outs
+    };
+    let own = run(&[("FLASHTEX_UNICODE_INPROCESS", "0")], None);
+    let statuses: Vec<&str> = own.iter().map(|o| o.0.as_str()).collect();
+    assert_eq!(statuses, ["ok", "ok", "error", "error", "ok"]);
+    let no_point = [("FLASHTEX_UNICODE_FORMAT_POINT", "0")];
+    for (what, envs, profile) in [
+        ("in process", &[][..], None),
+        ("in process, Low Memory", &[][..], Some("low-memory")),
+        ("in process, no kept state", &no_point[..], None),
+    ] {
+        let got = run(envs, profile);
+        for (i, (a, b)) in got.iter().zip(&own).enumerate() {
+            assert_eq!(a.0, b.0, "{what}: compile {}: the status", i + 1);
+            assert!(a.1 == b.1, "{what}: compile {}: the PDFs differ", i + 1);
+            assert_eq!(a.2, b.2, "{what}: compile {}: the logs differ", i + 1);
+            assert_eq!(a.3, b.3, "{what}: compile {}: the .aux differs", i + 1);
+        }
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }

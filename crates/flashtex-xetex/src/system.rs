@@ -77,6 +77,9 @@ pub struct AlphaFile {
     pushback: Option<u8>,
     /// The end of the file was seen (Pascal's `eof`).
     at_eof: bool,
+    /// The terminal of a resident engine (`crate::resident`): what is
+    /// written goes here instead of to the standard output.
+    captured: Option<Vec<u8>>,
 }
 
 impl Default for AlphaFile {
@@ -94,13 +97,43 @@ impl Default for AlphaFile {
             skip_next_lf: false,
             pushback: None,
             at_eof: true,
+            captured: None,
         }
     }
 }
 
 impl AlphaFile {
+    /// A terminal whose output is kept (a resident engine's, `rewrite_char`
+    /// keeps it so).
+    pub fn captured_terminal() -> AlphaFile {
+        AlphaFile {
+            captured: Some(Vec::new()),
+            err: 0,
+            ..AlphaFile::default()
+        }
+    }
+
+    /// What a captured terminal holds, emptied.
+    pub fn take_captured(&mut self) -> Vec<u8> {
+        self.captured
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
+    /// An input file that is at its end (a resident engine's terminal:
+    /// nothing can be typed).
+    pub fn empty_input() -> AlphaFile {
+        AlphaFile {
+            encoding_mode: UTF8,
+            ..AlphaFile::default()
+        }
+    }
+
     fn put_byte(&mut self, b: u8) {
-        if self.to_stdout {
+        if let Some(c) = self.captured.as_mut() {
+            c.push(b);
+        } else if self.to_stdout {
             let _ = std::io::stdout().write_all(&[b]);
         } else if let Some(w) = self.output.as_mut() {
             let _ = w.write_all(&[b]);
@@ -236,7 +269,8 @@ impl PasFile for AlphaFile {
         self.at_eof
     }
     fn flush(&mut self) {
-        if self.to_stdout {
+        if self.captured.is_some() {
+        } else if self.to_stdout {
             let _ = std::io::stdout().flush();
         } else if let Some(w) = self.output.as_mut() {
             let _ = w.flush();
@@ -418,10 +452,13 @@ pub fn pas_round(r: f64) -> i32 {
     }
 }
 
-/// `t_open_out` — `rewrite(term_out,'TTY:','/O')`.
+/// `t_open_out` — `rewrite(term_out,'TTY:','/O')`. A captured terminal (a
+/// resident engine's, [`AlphaFile::captured_terminal`]) stays captured.
 pub fn rewrite_char(f: &mut AlphaFile, _name: &str, _mode: &str) {
+    let captured = f.captured.take();
     *f = AlphaFile::default();
-    f.to_stdout = true;
+    f.to_stdout = captured.is_none();
+    f.captured = captured;
     f.err = 0;
 }
 
@@ -472,16 +509,24 @@ pub fn final_end(g: &mut Globals) -> ! {
     exit_process(g, code)
 }
 
-/// C's `exit(code)`: every stdio stream is flushed first.
+/// C's `exit(code)`: every stdio stream is flushed first. A resident
+/// engine's run (`crate::resident`) returns to its host instead: it unwinds
+/// with [`crate::resident::EngineExit`] (`resume_unwind` calls no panic
+/// hook, so nothing is printed).
 pub fn exit_process(g: &mut Globals, code: i32) -> ! {
     #[cfg(unix)]
     crate::host::spare::hints(g);
-    let _ = std::io::stdout().flush();
+    if g.host.resident.is_none() {
+        let _ = std::io::stdout().flush();
+    }
     g.log_file.flush();
     for f in g.write_file.iter_mut() {
         f.flush();
     }
     g.dvi_file.flush();
+    if g.host.resident.is_some() {
+        std::panic::resume_unwind(Box::new(crate::resident::EngineExit(code)));
+    }
     std::process::exit(code)
 }
 
@@ -636,7 +681,13 @@ impl Globals {
         }
         let (found, searched) = match found {
             Some(p) => (p, false),
-            None => (lookup(&s, format, must_exist)?, true),
+            // a resident engine's format directory, as a child's
+            // `TEXFORMATS=DIR:` searches it: that directory, then the
+            // default path
+            None => match self.resident_format(format, &s) {
+                Some(p) => (p, true),
+                None => (lookup(&s, format, must_exist)?, true),
+            },
         };
         self.host.full_name_of_file = Some(found.clone());
         let shown = match found.strip_prefix("./") {
@@ -916,6 +967,7 @@ impl Globals {
     /// with trailing spaces (and CRs and LFs) removed; false at the end of
     /// the file. `bypass_eoln` is not needed: lines are read whole.
     pub fn input_ln(&mut self, f: &mut AlphaFile, _bypass_eoln: bool) -> bool {
+        self.resident_poll();
         let buf_size = crate::generated::consts::buf_size;
         self.last = self.first;
         let mut i = self.get_uni_c(f);
@@ -969,11 +1021,18 @@ impl Globals {
     /// `tex.web` §37 with texmfmp.c's `topenin`: the command line, decoded
     /// from UTF-8, is the first line; else the terminal is asked.
     pub fn init_terminal(&mut self) -> bool {
-        let mut term = AlphaFile {
-            input: Some(TextIn::Stdin),
-            at_eof: false,
-            encoding_mode: UTF8,
-            ..Default::default()
+        // a resident engine's terminal has nothing to read (its runs are
+        // `-interaction=nonstopmode`; one that asks gets the end of the
+        // file, as a run whose standard input is /dev/null)
+        let mut term = if self.host.resident.is_some() {
+            AlphaFile::empty_input()
+        } else {
+            AlphaFile {
+                input: Some(TextIn::Stdin),
+                at_eof: false,
+                encoding_mode: UTF8,
+                ..Default::default()
+            }
         };
         self.buffer[self.first as usize] = 0;
         if let Some(line) = self.host.first_line.take() {
