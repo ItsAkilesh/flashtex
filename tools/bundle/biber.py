@@ -20,6 +20,8 @@ Standard library only. Prints the lock lines (`biber_url_<arch>`,
 
 import argparse
 import gzip
+import struct
+import zlib
 import hashlib
 import io
 import json
@@ -70,6 +72,17 @@ def tlpdb_entries(text):
     return out
 
 
+def gzip_member(data):
+    """One gzip member, the same bytes on every host: level 9, no name, mtime
+    0, OS byte 3 (Unix), as the bundle's members (bundle/gz.rs). Python's
+    gzip.compress lets zlib write the OS byte of the host it runs on."""
+    c = zlib.compressobj(9, zlib.DEFLATED, -15)
+    body = c.compress(data) + c.flush()
+    head = b"\x1f\x8b\x08\x00" + b"\x00\x00\x00\x00" + b"\x02\x03"
+    tail = struct.pack("<II", zlib.crc32(data) & 0xFFFFFFFF, len(data) & 0xFFFFFFFF)
+    return head + body + tail
+
+
 def get(url):
     """The bytes at url, through curl; up to 5 tries, as CTAN's redirector
     sends each try to another mirror (some serve an incomplete certificate
@@ -109,7 +122,7 @@ def cmd_fetch(a):
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as t:
             m = t.getmember(exe)
             program = t.extractfile(m).read()
-        gz = gzip.compress(program, 9, mtime=0)
+        gz = gzip_member(program)
         name = f"biber-{arch}.gz"
         with open(os.path.join(a.out, name), "wb") as f:
             f.write(gz)
