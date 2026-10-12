@@ -153,6 +153,15 @@ def reference_xdv(binary, fmt_dir, d, name, timeout, src=None):
     return xdv if os.path.exists(xdv) else None
 
 
+def first_error(d, name):
+    """The first TeX error line (`! ...`) of a run's log, or None."""
+    logp = os.path.join(d, name + ".log")
+    if not os.path.exists(logp):
+        return None
+    e = next((ln for ln in open(logp, errors="replace") if ln.startswith("! ")), None)
+    return e.strip() if e else None
+
+
 def run_case(name, src, engines, fmts, tmp, opt, timeout, keep, xdv_check=None, gate_xdv=True):
     res = {"case": name}
     dirs = {w: os.path.join(tmp, name, w) for w in ("reference", "candidate")}
@@ -164,22 +173,32 @@ def run_case(name, src, engines, fmts, tmp, opt, timeout, keep, xdv_check=None, 
     ra = os.path.join(dirs["reference"], name + ".pdf")
     ca = os.path.join(dirs["candidate"], name + ".pdf")
     msgs = []
+    # R1 (the Commander, 2026-10-12): xelatex's own TeX error does not fail a
+    # case whose candidate ends in the same one; P-T1 counts such a case
+    # as equal too (tools/xetex-lockstep/latex.py). These messages are then
+    # notes (see the end of this function).
+    oracle = []
     if rc != cc:
         msgs.append("exit status reference=%s candidate=%s" % (rc, cc))
+    first = {w: first_error(dirs[w], name) for w in ("reference", "candidate")}
     if rc != 0:
-        msgs.append("the reference exits %s: the case is broken (see its .log)" % rc)
-        logp = os.path.join(dirs["reference"], name + ".log")
-        if os.path.exists(logp):
-            e = next((ln for ln in open(logp, errors="replace") if ln.startswith("! ")), None)
-            if e:
-                msgs.append("reference's first error: %s" % e.strip()[:200])
+        oracle.append("the reference exits %s: the case is broken (see its .log)" % rc)
+        if first["reference"]:
+            oracle.append("reference's first error: %s" % first["reference"][:200])
+    same_error = rc != 0 and rc == cc and first["reference"] == first["candidate"]
+    if rc != 0 and not same_error:
+        msgs.extend(oracle)
+        if first["candidate"] != first["reference"]:
+            msgs.append("candidate's first error: %s" % (first["candidate"] or "none")[:200])
     for fn in sorted(os.listdir(dirs["candidate"])):
         if fn.startswith(".stderr-"):
             for ln in open(os.path.join(dirs["candidate"], fn), errors="replace"):
                 if "panicked" in ln:
                     msgs.append("candidate stderr: %s" % ln.strip()[:300])
     if not os.path.exists(ra):
-        res.update(ok=False, error="the reference wrote no PDF", messages=msgs)
+        # R1: nothing to compare with; listed, and left out of the count
+        res.update(ok=False, error="the reference wrote no PDF", messages=msgs + oracle,
+                   excluded=True)
         return res
     if not os.path.exists(ca):
         res.update(ok=False, error="the candidate wrote no PDF", messages=msgs)
@@ -196,7 +215,8 @@ def run_case(name, src, engines, fmts, tmp, opt, timeout, keep, xdv_check=None, 
     res["text"] = rep.text("    ")
     if xdv_check is not None:
         if xdv is None:
-            msgs.append("no reference XDV for the position check")
+            # R1: where xelatex wrote no XDV, the position check is not made
+            (oracle if same_error else msgs).append("no reference XDV for the position check")
         else:
             x = P.xdv_check(rep.models[1], xdv, xdv_check, examples=opt.examples)
             res["xdv"] = x
@@ -206,6 +226,9 @@ def run_case(name, src, engines, fmts, tmp, opt, timeout, keep, xdv_check=None, 
                 msgs.append("%d glyphs without a position in the XDV" % x["unpaired_pdf"])
     res["messages"] = msgs
     res["ok"] = rep.ok() and not msgs
+    if same_error:
+        res["notes"] = oracle
+        res["r1"] = "the reference exits %s; the candidate ends in the same error" % rc
     if keep:
         res["dirs"] = dirs
     return res
@@ -367,6 +390,7 @@ def main(argv=None):
             fmts[who] = d
     results = []
     ok = 0
+    excluded = 0
     totals = {"structural": 0, "visual": 0}
     with ThreadPoolExecutor(max_workers=a.jobs) as ex:
         # In the self-test the candidate is xdvipdfmx's PDF: the XDV check
@@ -393,6 +417,7 @@ def main(argv=None):
             if not a.keep:
                 shutil.rmtree(os.path.join(tmp, r["case"]), ignore_errors=True)
             ok += bool(r.get("ok"))
+            excluded += bool(r.get("excluded"))
             if "report" in r:
                 totals["structural"] += r["report"]["structural_differences"]
                 totals["visual"] += r["report"]["visual_pixels"]
@@ -412,6 +437,10 @@ def main(argv=None):
                     print("      " + e)
             for m in r.get("messages", []):
                 print("    " + m)
+            if r.get("r1"):
+                print("    R1: %s (counted: %s)" % (r["r1"], "; ".join(r.get("notes", []))))
+            if r.get("excluded"):
+                print("    R1: the reference wrote no PDF: listed, not counted")
             if r.get("text"):
                 print(r["text"])
             bl = r.get("baseline")
@@ -424,26 +453,31 @@ def main(argv=None):
             for tag, v in (r.get("rewrites") or {}).items():
                 print("    vs qpdf %s rewrite: %s" % (tag, v.get("error") or "%d structural, %d px%s" % (
                     v["structural"], v["visual"], ("\n" + v["text"]) if v["text"] else "")))
-    print("%d cases, %d pass, %d fail; %d structural differences, %d differing pixels at %gx" % (
-        len(names), ok, len(names) - ok, totals["structural"], totals["visual"], opt.scale))
+    counted = len(names) - excluded
+    print("%d cases, %d pass, %d fail%s; %d structural differences, %d differing pixels at %gx" % (
+        counted, ok, counted - ok,
+        " (%d more listed, not counted: the reference wrote no PDF)" % excluded if excluded else "",
+        totals["structural"], totals["visual"], opt.scale))
     if "xdv_over" in totals:
         print("XDV check: %d glyphs more than %g bp from TeX's positions, max %.6f bp (%.6f em)%s" % (
             totals["xdv_over"], a.xdv_tol, totals["xdv_max_bp"], totals["xdv_max_em"],
             " (xdvipdfmx's error: not gating in the self-test)" if a.self_test else ""))
     if base is not None:
-        print("baseline %s: %d of %d cases pass" % (a.baseline, ok, len(names)))
+        print("baseline %s: %d of %d cases pass" % (a.baseline, ok, counted))
     if a.write_baseline:
         write_baseline(a.write_baseline, results, a, opt, engine)
     if a.json:
         with open(a.json, "w") as f:
             json.dump({"engine": engine, "reference": a.reference, "self_test": a.self_test,
                        "tol": opt.tol, "rel_tol": opt.rel_tol, "scale": opt.scale,
-                       "cases": results, "totals": totals}, f, indent=1, default=str)
+                       "cases": results, "totals": totals, "counted": counted, "passed": ok,
+                       "excluded": [r["case"] for r in results if r.get("excluded")]},
+                      f, indent=1, default=str)
     if a.keep:
         print("kept:", tmp)
     else:
         shutil.rmtree(tmp, ignore_errors=True)
-    return 0 if ok == len(names) else 1
+    return 0 if ok == counted else 1
 
 
 if __name__ == "__main__":
