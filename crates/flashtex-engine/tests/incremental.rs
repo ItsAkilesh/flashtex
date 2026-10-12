@@ -3527,7 +3527,9 @@ fn preamble_patch_title_keystrokes_equal_scratch_runs() {
 
 /// PREAMBLE-PATCH: what holds a title keystroke back from the old run, a
 /// case each; every compile equals scratch runs. `true`: it went on from
-/// the old run (from the second keystroke on).
+/// the old run (from the second keystroke on); `false`: it compared and
+/// did not, and the next keystroke on the line does not compare (`null`,
+/// `incr::PRE_PATCH_RETRY`).
 /// * the title read in `\AtBeginDocument` (written to the log): the restart
 ///   is before the hook, which reads the new title (`true`);
 /// * the title read in the preamble after the comparison point: not before
@@ -3567,7 +3569,7 @@ fn preamble_patch_stops_where_the_old_run_differs() {
         (
             "preamble",
             Box::new(|t: &str| patch_doc(t, pre, "", "Saved: \\savedtitle.", false)),
-            vec![("t1", "null"), ("t12", "false"), ("t1", "false")],
+            vec![("t1", "null"), ("t12", "false"), ("t1", "null")],
         ),
         (
             "register",
@@ -3578,7 +3580,7 @@ fn preamble_patch_stops_where_the_old_run_differs() {
                     1,
                 )
             }),
-            vec![("t1", "null"), ("t12", "false"), ("t1", "false")],
+            vec![("t1", "null"), ("t12", "false"), ("t1", "null")],
         ),
         (
             "toks",
@@ -3589,7 +3591,7 @@ fn preamble_patch_stops_where_the_old_run_differs() {
                     1,
                 )
             }),
-            vec![("t1", "null"), ("t12", "false"), ("t1", "false")],
+            vec![("t1", "null"), ("t12", "false"), ("t1", "null")],
         ),
     ];
     for (name, doc, keys) in cases {

@@ -3018,6 +3018,11 @@ pub struct Session {
     /// PREAMBLE-PATCH (`PrePatch`): the first lookup of the journal whose
     /// answer changed, as `preamble_restart` found it.
     pre_bad: Option<usize>,
+    /// The line of the last comparison that failed, and how many more
+    /// keystrokes there skip one (a document that reads the title before
+    /// `\begin{document}`'s end, as beamer's `pdftitle` does, fails them
+    /// all; every [`PRE_PATCH_RETRY`]th keystroke tries again).
+    pre_patch_miss: Option<(i32, u32)>,
     /// The last compile's first pass was stopped by newer work before it
     /// shipped a changed page: the next one is protected (`Obs::protect_edit`).
     starved: bool,
@@ -3138,6 +3143,7 @@ impl Session {
             midline_refill: None,
             stale_midline: vec![],
             pre_bad: None,
+            pre_patch_miss: None,
             starved: false,
             lookup_dirs: vec![],
             changed_lookup_last: None,
@@ -5927,6 +5933,7 @@ impl Session {
                 && fixed_writes.is_empty()
                 && self.pass == 1
                 && self.pre_bad.is_none()
+                && !Self::pre_patch_skips(&mut self.pre_patch_miss, line)
                 && self.changed_lookup_last.is_none()
             {
                 let pending = g.pending_ids();
@@ -5974,6 +5981,7 @@ impl Session {
                 let (edits, changed) = pre_again.ok_or("no edits")?;
                 match (status == STOPPED, outcome) {
                     (true, Some(Ok(jump))) => {
+                        self.pre_patch_miss = None;
                         let rep = self.pre_patch_jump(
                             t0, o, jump, old_anchor, edits, changed, stop_at, find_s,
                         );
@@ -5986,6 +5994,9 @@ impl Session {
                     }
                     (_, outcome) => {
                         preamble_patched = outcome.map(|r| r.is_ok());
+                        if preamble_patched == Some(false) {
+                            self.pre_patch_miss = q_line.map(|l| (l, PRE_PATCH_RETRY - 1));
+                        }
                         g.layer().observer = Some(o);
                     }
                 }
@@ -6101,6 +6112,18 @@ impl Session {
         };
         self.after_run(t0, status, &mut rep)?;
         Ok(rep)
+    }
+
+    /// PREAMBLE-PATCH: whether this keystroke on `line` skips the
+    /// comparison (`Session::pre_patch_miss`, `miss`), counting it.
+    fn pre_patch_skips(miss: &mut Option<(i32, u32)>, line: i32) -> bool {
+        match miss.as_mut() {
+            Some((l, n)) if *l == line && *n > 0 => {
+                *n -= 1;
+                true
+            }
+            _ => false,
+        }
     }
 
     /// PREAMBLE-PATCH (`PrePatch`): the run from the preamble restart,
@@ -6767,6 +6790,10 @@ impl Session {
         }
     }
 }
+
+/// After a PREAMBLE-PATCH comparison failed, the keystrokes on its line
+/// try one again every this many (`Session::pre_patch_miss`).
+const PRE_PATCH_RETRY: u32 = 8;
 
 /// PREAMBLE-PATCH is on (`FLASHTEX_PREAMBLE_PATCH=off`: not).
 fn pre_patch_enabled() -> bool {
