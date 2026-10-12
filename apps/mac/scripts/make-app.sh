@@ -321,7 +321,8 @@ if [[ -n "$ENGINE_HOST_UNICODE" ]]; then
   [[ -f "$ENGINE_HOST_UNICODE" ]] || die "--engine-host-unicode: no file at $ENGINE_HOST_UNICODE"
   for f in "$XETEX_CRATE/LICENSE" "$REPO_ROOT/third_party/harfbuzz/harfbuzz-src/COPYING" \
            "$REPO_ROOT/third_party/freetype/freetype-src/LICENSE.TXT" "$REPO_ROOT/third_party/freetype/freetype-src/docs/FTL.TXT" \
-           "$REPO_ROOT/third_party/teckit/TECkit-src/license/License_LGPLv21.txt"; do
+           "$REPO_ROOT/third_party/teckit/TECkit-src/license/License_LGPLv21.txt" \
+           "$REPO_ROOT/third_party/icu/LICENSE"; do
     [[ -f "$f" ]] || die "flashtex-host-unicode: its licence or a notice is missing: $f"
   done
   echo "==> Unicode engine host: $ENGINE_HOST_UNICODE"
@@ -574,6 +575,9 @@ if [[ -n "$ENGINE_HOST_UNICODE" && -f "$ENGINE_HOST_UNICODE" ]]; then
     echo
     echo "== TECkit (used under the GNU LGPL 2.1 or later; third_party/teckit/TECkit-src/license) =="
     cat "$REPO_ROOT/third_party/teckit/TECkit-src/license/License_LGPLv21.txt"
+    echo
+    echo "== ICU's line-break tables (third_party/icu) and ICU4X's segmenter and its data (Unicode License v3) =="
+    cat "$REPO_ROOT/third_party/icu/LICENSE"
   } > "$RESOURCES_DIR/engine/THIRD-PARTY-NOTICES-unicode.txt"
   ENGINE_HOST_UNICODE_BUNDLED="$HELPERS_DIR/flashtex-host-unicode"
   echo "    bundled flashtex-host-unicode from $ENGINE_HOST_UNICODE (+ Resources/engine/LICENSE-unicode, THIRD-PARTY-NOTICES-unicode.txt)"

@@ -16,6 +16,7 @@
 
 pub mod font_inst;
 pub mod layout;
+pub mod linebreak;
 pub mod otmath;
 
 use crate::fontlibs::hb;
