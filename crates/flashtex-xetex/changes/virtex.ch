@@ -20,9 +20,11 @@
 %   * "init...tini is dynamic" (tex.ch [1.8], its |Init|...|Tini|): the
 %     table entries that INITEX sets up (|mem|'s static part, all of
 %     |eqtb|, the hash's frozen entries, the trie's) are set only when
-%     |ini_version|. A production run gets every one of them from the format
-%     it loads (|load_fmt_file|), as web2c's does; for XeTeX's
-%     Unicode-sized |eqtb| this is most of a run's start-up.
+%     |ini_version|, and so are the main program's string pool and
+%     primitives (tex.ch [51.1332]), which need them. A production run gets
+%     every one of them from the format it loads (|load_fmt_file|), as
+%     web2c's does, and reads the clock after the load ([51.1337]); for
+%     XeTeX's Unicode-sized |eqtb| this is most of a run's start-up.
 %     |initex_tables| is |ini_version|, or true when
 %     FLASHTEX_INITEX_TABLES=1 asks for the tables anyway (system.rs), which
 %     is how the state after the format load is shown to be the same.
@@ -86,6 +88,20 @@ pack_default_format_name; {|dump_name| with \.{.fmt} (system.rs)}
 format_ident:=" (INITEX)";
 @y
 if ini_version then format_ident:=" (INITEX)";
+@z
+
+@x xetex.web l.29312 - tex.ch [51.1332]: init...tini is dynamic
+@!init if not get_strings_started then goto final_end;
+init_prim; {call |primitive| for each primitive}
+init_str_ptr:=str_ptr; init_pool_ptr:=pool_ptr; fix_date_and_time;
+tini@/
+@y
+@!init if initex_tables then
+  begin if not get_strings_started then goto final_end;
+  init_prim; {call |primitive| for each primitive}
+  init_str_ptr:=str_ptr; init_pool_ptr:=pool_ptr; fix_date_and_time;
+  end;
+tini@/
 @z
 
 @x xetex.web l.30797 - pdftex.ch: `-etex' enters extended mode without `*'
