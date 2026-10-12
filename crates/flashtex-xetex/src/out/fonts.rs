@@ -205,7 +205,7 @@ pub enum ResKind {
 }
 
 /// The fonts of one run.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Fonts {
     /// By DVI font number.
     pub defined: HashMap<i32, Loaded>,

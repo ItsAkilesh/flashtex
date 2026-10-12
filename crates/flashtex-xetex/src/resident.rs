@@ -20,6 +20,10 @@
 //!   edit after the preamble -- restores S₀ and runs only the document's
 //!   body (`resume_main_control`); otherwise it runs from the format point
 //!   and takes a new S₀.
+//! * **Pages.** After S₀, a run takes a checkpoint after each shipout
+//!   (`crate::ckpt::PageCk`); a compile whose S₀ holds restarts from the
+//!   newest one that what changed leaves valid ([`Engine::restart_page`]),
+//!   sends the pages before it again and runs on to the end.
 //! * **Exits return.** `final_end` and the other exits unwind to [`Engine::run`]
 //!   with [`EngineExit`] instead of ending the process (`system::exit_process`).
 //! * **The terminal is captured** (no standard input: a run that asks for a
@@ -42,13 +46,14 @@
 //! journal per thread), so a process runs one resident engine at a time, on
 //! one thread; R2 makes it per engine (PLAN.md §3.3).
 
-use crate::ckpt::{RunState, Taken, REQ_LOOKUP, S0};
+use crate::ckpt::{PageCk, RunState, Taken, REQ_LOOKUP, REQ_PAGE, S0};
 use crate::fontmgr::FontCatalog;
 use crate::generated::Globals;
 use crate::system::{self, AlphaFile, ByteFile, FileVisit, WordFile};
 use flashtex_engine::arena::CheckpointId;
 use flashtex_engine::resolver::Format;
-use std::collections::HashSet;
+use flashtex_engine::system::{ReadLog, StatSig};
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -103,10 +108,36 @@ pub struct Resident {
     pub(crate) want_s0: bool,
     /// S₀ as this run took it, or why it could not.
     pub(crate) s0: Option<Result<Taken, String>>,
+    /// Take page checkpoints (after S₀: this run's, or the one it started
+    /// from).
+    pub(crate) pages_on: bool,
+    /// The page checkpoints this run took.
+    pub(crate) pages: Vec<PageCk>,
+    /// The output files the runs opened, in order (`system`'s
+    /// `open_output_file`).
+    pub(crate) opens: Vec<String>,
+    /// The output files this run cut back or created, with what they held
+    /// before (`None`: no file): a cancelled run puts them back, so that
+    /// the next compile reads the `.aux` the last complete run wrote, as
+    /// S₀'s key and the page checkpoints expect.
+    pub(crate) guard: Vec<(String, Option<Vec<u8>>)>,
     fonts: Box<dyn Fonts>,
 }
 
 impl Resident {
+    /// Keep what output file `path` holds before this run first writes it
+    /// (not the PDF, which a run writes at its end, nor the log, which no
+    /// run reads).
+    pub(crate) fn guard_out(&mut self, path: &str) {
+        let p = Path::new(path);
+        if p.extension().is_some_and(|e| e == "pdf" || e == "log")
+            || self.guard.iter().any(|(q, _)| q == path)
+        {
+            return;
+        }
+        self.guard.push((path.to_string(), std::fs::read(p).ok()));
+    }
+
     /// The fonts' catalog for a lookup by name.
     pub(crate) fn font_catalog(&mut self) -> Arc<FontCatalog> {
         self.fonts.catalog()
@@ -240,6 +271,8 @@ pub struct Spec {
     /// Keep nothing after the run (Low Memory): the engine's memory goes
     /// back, and the next run starts from the start.
     pub lean: bool,
+    /// A preview: the PDF's streams are stored, not compressed.
+    pub preview: bool,
 }
 
 /// Where a run started.
@@ -252,6 +285,8 @@ pub enum Start {
     Format,
     /// From S₀: the document's body only.
     S0,
+    /// From the page checkpoint after this many pages.
+    Page(usize),
 }
 
 impl Start {
@@ -260,7 +295,13 @@ impl Start {
             Start::Fresh => "fresh",
             Start::Format => "format",
             Start::S0 => "s0",
+            Start::Page(_) => "page",
         }
+    }
+
+    /// The run continues an earlier run's document: from S₀ or a page.
+    fn in_body(self) -> bool {
+        matches!(self, Start::S0 | Start::Page(_))
     }
 }
 
@@ -283,16 +324,30 @@ pub struct Report {
     /// Why S₀ was not used (`start` is not S₀ though one was kept), or why
     /// the run took none.
     pub s0_note: Option<String>,
-    /// How long deciding where to start took (S₀'s key check).
+    /// How long deciding where to start took (S₀'s key check, the changed
+    /// files and the restart page).
     pub check_ms: f64,
+    /// A run from a page checkpoint: the pages before it, not re-typeset.
+    pub restart_page: Option<usize>,
 }
 
 /// A resident engine: the engine kept between runs, the point where its
-/// format is loaded, and S₀.
+/// format is loaded, S₀, and the page checkpoints after it.
 pub struct Engine {
     g: Option<Box<Globals>>,
     point: Option<Point>,
     s0: Option<S0>,
+    /// The page checkpoints after S₀, in page order.
+    pages: Vec<PageCk>,
+    /// The last run's read journal (its prefix up to where the run
+    /// started is the earlier runs'), with the user's files' contents.
+    journal: Option<ReadLog>,
+    /// The output files the runs opened, in order (as `journal`).
+    opens: Vec<String>,
+    /// The user's input files as the last run read them.
+    texts: HashMap<String, Arc<Vec<u8>>>,
+    /// The last run's terminal: a page checkpoint keeps its length only.
+    terminal: Vec<u8>,
     /// The session's clock (DESIGN.md §4.5).
     pub clock: (i64, i32),
     fonts: Option<Box<dyn Fonts>>,
@@ -301,6 +356,9 @@ pub struct Engine {
     pub keep_point: bool,
     /// Take and use S₀ (`FLASHTEX_UNICODE_S0=0` turns it off).
     pub keep_s0: bool,
+    /// Take and use page checkpoints (`FLASHTEX_UNICODE_PAGES=0` turns them
+    /// off).
+    pub keep_pages: bool,
     /// The output's font map index and font programs, kept across runs.
     font_cache: Arc<crate::out::fonts::FontCache>,
 }
@@ -324,6 +382,53 @@ fn env_on(name: &str) -> bool {
     std::env::var(name).map_or(true, |v| v != "0")
 }
 
+/// The journal `j` cut to its first `n` (files, lookups, outputs), to go on
+/// recording into (the pdfTeX engine's `incr::truncate_journal`): every
+/// path it keeps is marked read, so that a later read of one is listed
+/// again; the lookups' directories have no signature, so the next check
+/// makes them again.
+fn truncate_journal(j: &ReadLog, n: (usize, usize, usize)) -> ReadLog {
+    let mut out = ReadLog::keeping_content();
+    out.files = j.files[..n.0.min(j.files.len())].to_vec();
+    out.lookups = j.lookups[..n.1.min(j.lookups.len())].to_vec();
+    out.outputs = j.outputs[..n.2.min(j.outputs.len())].to_vec();
+    out.barriers = j.barriers.clone();
+    out.dirs = j
+        .dirs
+        .iter()
+        .map(|(d, _)| (d.clone(), StatSig::default()))
+        .collect();
+    let paths: Vec<String> = out.files.iter().map(|f| f.path.clone()).collect();
+    for p in &paths {
+        out.mark_seen(p);
+    }
+    out
+}
+
+/// The length of the common prefix of `a` and `b`.
+fn common_prefix(a: &[u8], b: &[u8]) -> usize {
+    const BLOCK: usize = 256;
+    let n = a.len().min(b.len());
+    let mut i = 0;
+    while i + BLOCK <= n && a[i..i + BLOCK] == b[i..i + BLOCK] {
+        i += BLOCK;
+    }
+    i + a[i..n]
+        .iter()
+        .zip(&b[i..n])
+        .take_while(|(x, y)| x == y)
+        .count()
+}
+
+/// What changed since the last run, of what its document's body read: each
+/// changed file with the first byte that differs (for the user's files,
+/// whose contents are kept; `None`: somewhere), and the first lookup (by its
+/// index in the journal) that finds something else now.
+struct Changes {
+    files: HashMap<String, Option<u64>>,
+    lookup: Option<usize>,
+}
+
 impl Engine {
     /// A resident engine whose session clock is `clock` (`None`: now) and
     /// whose runs get the fonts' catalog from `fonts` (`None`: made at every
@@ -339,19 +444,28 @@ impl Engine {
             g: None,
             point: None,
             s0: None,
+            pages: vec![],
+            journal: None,
+            opens: vec![],
+            texts: HashMap::new(),
+            terminal: vec![],
             clock,
             fonts,
             keep_point: env_on("FLASHTEX_UNICODE_FORMAT_POINT"),
             keep_s0: env_on("FLASHTEX_UNICODE_S0"),
+            keep_pages: env_on("FLASHTEX_UNICODE_PAGES"),
             font_cache: Arc::default(),
         }
     }
 
-    /// Forget the engine, its point and S₀ (memory back; the next run
-    /// starts from the start).
+    /// Forget the engine, its point, S₀ and the pages (memory back; the
+    /// next run starts from the start).
     pub fn clear(&mut self) {
+        self.pages.clear();
         self.s0 = None;
         self.point = None;
+        self.journal = None;
+        self.opens.clear();
         self.g = None;
     }
 
@@ -361,6 +475,7 @@ impl Engine {
         key: &PointKey,
         first_line: &[u8],
         dl_on: bool,
+        now: Option<&HashMap<String, Arc<Vec<u8>>>>,
     ) -> (Start, Option<String>) {
         let point_ok = self.keep_point
             && self.g.is_some()
@@ -370,9 +485,11 @@ impl Engine {
                 .is_some_and(|p| p.key == *key && p.format_holds());
         if !point_ok {
             self.s0 = None;
+            self.pages.clear();
             return (Start::Fresh, None);
         }
         let Some(s0) = self.s0.as_mut() else {
+            self.pages.clear();
             return (Start::Format, None);
         };
         let why = match s0.key.check_refresh(self.clock, first_line) {
@@ -389,13 +506,161 @@ impl Engine {
                 },
             },
         };
-        match why {
+        if let Some(w) = why {
+            self.s0 = None;
+            self.pages.clear();
+            return (Start::Format, Some(w));
+        }
+        match now.and_then(|now| self.restart_page(now)) {
+            Some(i) => (Start::Page(i), None),
             None => (Start::S0, None),
-            Some(w) => {
-                self.s0 = None;
-                (Start::Format, Some(w))
+        }
+    }
+
+    /// The user's files, as they are now, of those the last run read
+    /// (its journal's contents) or kept (`texts`).
+    fn texts_now(&self) -> HashMap<String, Arc<Vec<u8>>> {
+        let mut paths: Vec<&str> = self.texts.keys().map(String::as_str).collect();
+        if let Some(j) = &self.journal {
+            paths.extend(
+                j.files
+                    .iter()
+                    .filter(|f| f.content.is_some())
+                    .map(|f| f.path.as_str()),
+            );
+        }
+        paths.sort_unstable();
+        paths.dedup();
+        paths
+            .into_iter()
+            .filter_map(|p| Some((p.to_string(), Arc::new(std::fs::read(p).ok()?))))
+            .collect()
+    }
+
+    /// What changed of what the body read in the last run (after S₀):
+    /// `now` is the user's files as they are.
+    fn changes(&self, now: &HashMap<String, Arc<Vec<u8>>>) -> Option<Changes> {
+        let j = self.journal.as_ref()?;
+        let s0 = self.s0.as_ref()?;
+        let mut files: HashMap<String, Option<u64>> = HashMap::new();
+        let mut seen = HashSet::new();
+        // every file read since S₀, and those open at S₀ (the main file)
+        let open_at_s0 = s0.rec.files.iter().filter_map(|f| match &f.stream {
+            crate::system::Stream::In { path, .. } => Some(path.as_str()),
+            _ => None,
+        });
+        let read = j.files[s0.reads.0.min(j.files.len())..]
+            .iter()
+            .map(|f| f.path.as_str());
+        for p in open_at_s0.chain(read) {
+            if !seen.insert(p) {
+                continue;
+            }
+            let old = self.texts.get(p).cloned().or_else(|| {
+                j.files
+                    .iter()
+                    .find(|f| f.path == p)
+                    .and_then(|f| f.content.clone())
+            });
+            let change = match old {
+                // the user's file: where it changed
+                Some(old) => match now.get(p) {
+                    Some(new) if new[..] == old[..] => None,
+                    Some(new) => Some(Some(common_prefix(&old, new) as u64)),
+                    None => Some(None),
+                },
+                // another file: whether it changed (its signature, else its
+                // content's hash)
+                None => {
+                    let f = j.files.iter().find(|f| f.path == p)?;
+                    let same = StatSig::of(p).is_some_and(|s| s == f.stat)
+                        || flashtex_engine::hashcache::hash_file(p).ok() == Some(f.hash);
+                    (!same).then_some(None)
+                }
+            };
+            if let Some(c) = change {
+                files.insert(p.to_string(), c);
             }
         }
+        // the first lookup since S₀ that finds something else now (of
+        // those before the newest page checkpoint: the later ones are
+        // made again whatever the restart)
+        let upto = self.pages.iter().map(|c| c.reads.1).max().unwrap_or(0);
+        let lookup = j.lookups[s0.reads.1.min(j.lookups.len())
+            ..upto
+                .min(j.lookups.len())
+                .max(s0.reads.1.min(j.lookups.len()))]
+            .iter()
+            .position(|l| flashtex_engine::system::lookup_again(l) != l.found)
+            .map(|i| s0.reads.1 + i);
+        Some(Changes { files, lookup })
+    }
+
+    /// The newest page checkpoint the edit leaves valid: everything the run
+    /// had read by then is as it is now (a file still open there, read up
+    /// to before its first changed byte), no lookup it made finds another
+    /// file, and its output files are as the runs left them and not opened
+    /// again later.
+    fn restart_page(&self, now: &HashMap<String, Arc<Vec<u8>>>) -> Option<usize> {
+        if self.pages.is_empty() {
+            return None;
+        }
+        let ch = self.changes(now)?;
+        let j = self.journal.as_ref()?;
+        'pages: for (i, ck) in self.pages.iter().enumerate().rev() {
+            if ch.lookup.is_some_and(|l| l < ck.reads.1) {
+                continue;
+            }
+            for (p, first) in &ch.files {
+                let reads: Vec<&flashtex_engine::system::FileRead> = j.files
+                    [..ck.reads.0.min(j.files.len())]
+                    .iter()
+                    .filter(|f| f.path == *p)
+                    .collect();
+                if reads.is_empty() {
+                    continue;
+                }
+                let open = ck.rec.files.iter().find_map(|f| match &f.stream {
+                    crate::system::Stream::In { path, offset } if path == p => Some(*offset),
+                    _ => None,
+                });
+                let ok = match (open, first) {
+                    (Some(off), Some(d)) => {
+                        off <= *d && reads.len() == 1 && reads[0].closed_at.is_none()
+                    }
+                    _ => false,
+                };
+                if !ok {
+                    continue 'pages;
+                }
+            }
+            // no external command between S₀ and it (`\write18` in the body:
+            // a run from scratch runs it again, and what it does is no
+            // input the journal knows)
+            if self
+                .s0
+                .as_ref()
+                .is_some_and(|s0| ck.rec.effects > s0.rec.effects)
+            {
+                continue;
+            }
+            // the output files: open there, as the runs left them; none
+            // opened before it opened again after it
+            let before = &self.opens[..ck.opens.min(self.opens.len())];
+            let after = &self.opens[ck.opens.min(self.opens.len())..];
+            if after.iter().any(|p| before.contains(p)) {
+                continue;
+            }
+            for f in &ck.rec.files {
+                if let crate::system::Stream::Out { path, .. } = &f.stream {
+                    if flashtex_engine::system::outside_change(path).is_some() {
+                        continue 'pages;
+                    }
+                }
+            }
+            return Some(i);
+        }
+        None
     }
 
     /// Run the engine once, as `spec` asks.
@@ -421,10 +686,23 @@ impl Engine {
         };
         let t_check = std::time::Instant::now();
         let dl_on = spec.dl.is_some() && env_on("FLASHTEX_SOURCE_MAP");
-        let (mut start, mut s0_note) = self.start_for(&key, &line, dl_on);
+        // The user's files as they are before the run reads any: where the
+        // edit is looked for now, and the next run's (read once, before
+        // the restore reopens a file: an edit saved while this run reads
+        // is a change from them the next run sees).
+        let texts_then = self.keep_pages.then(|| self.texts_now());
+        let (mut start, mut s0_note) = self.start_for(&key, &line, dl_on, texts_then.as_ref());
+        // (tests: a pause between where the edit was looked for and the
+        // restore, for an edit saved in between)
+        if let Some(ms) = std::env::var("FLASHTEX_UNICODE_TEST_START_PAUSE_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+        {
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+        }
         let check_ms = t_check.elapsed().as_secs_f64() * 1e3;
         let mut rewrite_failed = None;
-        if start == Start::S0 {
+        if start.in_body() {
             // the files the run wrote and closed before S₀, as it left them
             if let Err(e) = self.s0.as_ref().expect("checked").key.rewrite_outputs() {
                 rewrite_failed = Some(e);
@@ -432,11 +710,43 @@ impl Engine {
         }
         if let Some(e) = rewrite_failed {
             self.s0 = None;
+            self.pages.clear();
             start = Start::Format;
             s0_note = Some(e);
         }
-        // Put the kept state back: from S₀, else from the format point,
-        // else from the start (a restore that fails -- a file it reopens
+        // The output files a restore cuts back, as they are (a cancelled
+        // run puts them back: `Resident::guard`), and the bookkeeping of
+        // the last complete run, which a cancelled one leaves as it was.
+        let mut guard = Resident {
+            cancel: spec.cancel.clone(),
+            format_dir: None,
+            keep_point: false,
+            point: None,
+            want_s0: false,
+            s0: None,
+            pages_on: false,
+            pages: vec![],
+            opens: vec![],
+            guard: vec![],
+            fonts: Box::new(Unkept),
+        };
+        if start.in_body() {
+            let recs = self
+                .s0
+                .iter()
+                .map(|s| &s.rec)
+                .chain(self.pages.iter().map(|c| &c.rec));
+            for rec in recs {
+                for f in &rec.files {
+                    if let crate::system::Stream::Out { path, .. } = &f.stream {
+                        guard.guard_out(path);
+                    }
+                }
+            }
+        }
+        let before = (self.journal.clone(), self.opens.clone());
+        // Put the kept state back: from a page, else S₀, else the format
+        // point, else the start (a restore that fails -- a file it reopens
         // gone -- falls back to the next).
         loop {
             if start == Start::Fresh {
@@ -454,30 +764,71 @@ impl Engine {
                         p.state.put(g);
                     })
                 }
+                Start::Page(i) => {
+                    let ck = &self.pages[i];
+                    g.restore(ck.id).and_then(|()| {
+                        g.term_out = AlphaFile::captured_terminal();
+                        g.restore_record(&ck.rec, Some(&self.terminal))
+                    })
+                }
                 _ => {
                     let s0 = self.s0.as_ref().expect("checked");
                     g.restore(s0.id).and_then(|()| {
                         // (the record puts the terminal back: captured, as
                         // S₀'s run had it)
                         g.term_out = AlphaFile::captured_terminal();
-                        g.restore_record(&s0.rec)
+                        g.restore_record(&s0.rec, None)
                     })
                 }
             };
             match restored {
-                Ok(()) => break,
+                Ok(()) => {
+                    // the checkpoints after the one restored are gone
+                    match start {
+                        Start::Page(i) => self.pages.truncate(i + 1),
+                        _ => self.pages.clear(),
+                    }
+                    break;
+                }
                 Err(e) => {
                     s0_note = Some(format!("the kept state ({}): {e}", start.name()));
-                    self.s0 = None;
-                    start = if start == Start::S0 {
-                        Start::Format
-                    } else {
-                        Start::Fresh
+                    start = match start {
+                        Start::Page(_) => Start::S0,
+                        Start::S0 => {
+                            self.s0 = None;
+                            Start::Format
+                        }
+                        _ => Start::Fresh,
                     };
+                    self.pages.clear();
                 }
             }
         }
-        let want_s0 = self.keep_s0 && self.keep_point && !spec.lean && start != Start::S0;
+        // the user's files as this run reads them (where the next run's
+        // edit is looked for)
+        // (a cancelled run puts back the last complete run's: its page
+        // checkpoints stand, and an edit saved since is a change to them)
+        let texts_before = texts_then.map(|t| std::mem::replace(&mut self.texts, t));
+        let want_s0 = self.keep_s0 && self.keep_point && !spec.lean && !start.in_body();
+        let want_pages = self.keep_pages && self.keep_s0 && self.keep_point && !spec.lean;
+        // the journal and the output opens up to where the run starts
+        let (journal, opens) = match start {
+            Start::Page(i) => (
+                self.journal
+                    .as_ref()
+                    .map(|j| truncate_journal(j, self.pages[i].reads)),
+                self.opens[..self.pages[i].opens.min(self.opens.len())].to_vec(),
+            ),
+            Start::S0 => {
+                let s0 = self.s0.as_ref().expect("checked");
+                (
+                    self.journal.as_ref().map(|j| truncate_journal(j, s0.reads)),
+                    self.opens[..s0.opens.min(self.opens.len())].to_vec(),
+                )
+            }
+            _ => (None, vec![]),
+        };
+        let record = want_s0 || want_pages;
         let resident = Box::new(Resident {
             cancel: spec.cancel.clone(),
             format_dir: spec.format_dir.clone(),
@@ -485,17 +836,31 @@ impl Engine {
             point: None,
             want_s0,
             s0: None,
+            pages_on: want_pages && start.in_body(),
+            pages: vec![],
+            opens,
+            guard: guard.guard,
             fonts: self.fonts.take().unwrap_or_else(|| Box::new(Unkept)),
         });
-        let out = (!c.no_pdf).then(|| {
-            Box::new(crate::out::Output::to_writer(
+        let mut out = (!c.no_pdf).then(|| {
+            let mut o = crate::out::Output::to_writer(
                 spec.dl,
                 spec.font_formats,
                 Some(self.font_cache.clone()),
-            ))
+            );
+            o.compress = !spec.preview;
+            Box::new(o)
         });
+        let mut resumed = Ok(());
+        if let (Start::Page(i), Some(o)) = (start, out.as_mut()) {
+            // the pages before the restart point, sent again from the
+            // checkpoint's document
+            if let Some(snap) = &self.pages[i].out {
+                resumed = o.resume(snap, self.g.as_ref().expect("restored"));
+            }
+        }
         let g = self.g.as_mut().expect("made above");
-        if start != Start::S0 {
+        if !start.in_body() {
             g.term_out = AlphaFile::captured_terminal();
         }
         g.host.clock = Some(self.clock);
@@ -509,9 +874,10 @@ impl Engine {
         g.host.dl.set_on(dl_on, mem_len);
         system::set_no_pdf(g, c.no_pdf);
         // S₀ is armed by the run's first `big_switch` (`crate::ckpt`); a run
-        // from S₀ asks for nothing
+        // from S₀ or a page asks for no S₀
         g.ckpt_request = if want_s0 { REQ_LOOKUP } else { 0 };
-        if start != Start::S0 {
+        g.ckpt_on_shipout = if want_pages { REQ_PAGE } else { 0 };
+        if !start.in_body() {
             g.ckpt_arm_cs = 0;
             g.ckpt_arm_level = 0;
         }
@@ -520,34 +886,46 @@ impl Engine {
                 system::set_first_line(g, l);
             }
         }
-        if want_s0 {
-            flashtex_engine::system::record_reads(true);
+        if record {
+            flashtex_engine::system::record_reads_into(Some(
+                journal.unwrap_or_else(ReadLog::keeping_content),
+            ));
         }
         // the external effects (`\write18`) are the run's own: from the
-        // start or the format point, none yet (a run from S₀ has S₀'s,
-        // `restore_record`); else one in a body would count against every
+        // start or the format point, none yet (a run from S₀ or a page has
+        // its point's, `restore_record`); else one in a body would count against every
         // later S₀ of the session
-        if start != Start::S0 {
+        if !start.in_body() {
             flashtex_engine::system::truncate_external_effects(0);
         }
         // (the result's type is spelled out: a closure ending in `!` is
         // otherwise inferred as returning `()` by the toolchain CI pins)
-        let ran: std::thread::Result<std::convert::Infallible> =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let ran: std::thread::Result<std::convert::Infallible> = match resumed {
+            Ok(()) => std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 match start {
                     Start::Fresh => g.tex_body(),
                     Start::Format => g.run_after_format(),
-                    Start::S0 => g.resume_main_control(),
+                    Start::S0 | Start::Page(_) => g.resume_main_control(),
                 }
                 system::final_end(g)
-            }));
-        if want_s0 {
-            flashtex_engine::system::record_reads(false);
-        }
+            })),
+            Err(e) => {
+                Err(Box::new(format!("resuming the output: {e}")) as Box<dyn std::any::Any + Send>)
+            }
+        };
+        let journal = if record {
+            flashtex_engine::system::record_reads(false)
+        } else {
+            None
+        };
         let mut rep = Report {
             start,
             s0_note,
             check_ms,
+            restart_page: match start {
+                Start::Page(i) => self.pages.get(i).map(|c| c.pages),
+                _ => None,
+            },
             ..Report::default()
         };
         match ran {
@@ -578,10 +956,35 @@ impl Engine {
         g.visit_files(&mut CloseFiles);
         let mut kept = None;
         let mut taken = None;
+        let mut new_pages = vec![];
+        let mut opens = vec![];
+        let mut restored_files = vec![];
         if let Some(r) = g.host.resident.take() {
             self.fonts = Some(r.fonts);
             kept = r.point;
             taken = r.s0;
+            new_pages = r.pages;
+            opens = r.opens;
+            if rep.cancelled {
+                // the output files as the last complete run left them
+                for (p, d) in r.guard {
+                    let _ = match d {
+                        Some(d) => std::fs::write(&p, d),
+                        None => std::fs::remove_file(&p),
+                    };
+                    restored_files.push(p);
+                }
+            }
+        }
+        if rep.cancelled && start.in_body() {
+            // the checkpoints of the last complete run up to the restart
+            // point stand (the files are its own again); this run's later
+            // ones and its journal do not
+            new_pages.clear();
+            (self.journal, opens) = before;
+            if let Some(t) = texts_before {
+                self.texts = t;
+            }
         }
         if rep.failure.is_some() || spec.lean {
             // a broken run's engine is not used again; Low Memory keeps none
@@ -591,6 +994,20 @@ impl Engine {
                 self.font_cache = Arc::default();
             }
             return rep;
+        }
+        // what the run wrote is the engine's (a restore cuts it back only
+        // while no other program has changed it)
+        let mut stamped = HashSet::new();
+        for p in restored_files.iter().chain(&opens) {
+            if stamped.insert(p.as_str()) {
+                flashtex_engine::system::stamp_output(p);
+            }
+        }
+        self.opens = opens;
+        // (the page checkpoints' records are cut from the last complete
+        // run's terminal)
+        if !(rep.cancelled && start.in_body()) {
+            self.terminal = rep.terminal.clone();
         }
         if let Some((id, state, format)) = kept {
             self.point = Some(Point {
@@ -605,11 +1022,18 @@ impl Engine {
         match taken {
             Some(Ok(t)) => match crate::ckpt::make_key(&t, self.clock, &line) {
                 Ok(k) => {
+                    let reads = (
+                        t.reads.files.len(),
+                        t.reads.lookups.len(),
+                        t.reads.outputs.len(),
+                    );
                     self.s0 = Some(S0 {
                         id: t.id,
                         rec: t.rec,
                         key: k,
                         font_dirs: t.font_dirs,
+                        reads,
+                        opens: t.opens,
                         dl_on,
                     })
                 }
@@ -620,6 +1044,25 @@ impl Engine {
                 rep.s0_note = Some("no S0: the document's start was not reached".into())
             }
             None => {}
+        }
+        if self.s0.is_some() {
+            self.pages.extend(new_pages);
+            if !(rep.cancelled && start.in_body()) {
+                self.journal = journal;
+            }
+            // the user's files this run read for the first time
+            if let Some(j) = &self.journal {
+                for f in &j.files {
+                    if let Some(c) = &f.content {
+                        self.texts
+                            .entry(f.path.clone())
+                            .or_insert_with(|| c.clone());
+                    }
+                }
+            }
+        } else {
+            self.pages.clear();
+            self.journal = None;
         }
         rep
     }

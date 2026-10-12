@@ -34,6 +34,7 @@ ap.add_argument('--kinds', default='replace,insert,delete,sentence')
 ap.add_argument('--only')
 ap.add_argument('--out')
 ap.add_argument('--host-env', action='append', default=[])
+ap.add_argument('--interleave', action='store_true', help='sweep D: cancel each edit\'s compile with a second edit saved meanwhile (unicode.py --interleave)')
 ap.add_argument('--cases-dir', action='append', default=[])
 ap.add_argument('--shard')
 a = ap.parse_args()
@@ -54,6 +55,8 @@ if a.shard:
 def one(doc):
     cmd = [sys.executable, os.path.join(HERE, 'unicode.py'), a.host, doc, '--verify', '--keys', str(a.keys),
            '--trials', str(a.trials), '--kinds', a.kinds, '--at', 'mid']
+    if a.interleave:
+        cmd.append('--interleave')
     if os.path.isdir(doc):
         cmd += ['--doc', os.path.basename(doc)]
     for kv in a.host_env:
@@ -78,9 +81,10 @@ with concurrent.futures.ThreadPoolExecutor(a.j) as ex:
         keys = [l for l in lines if str(l.get('tag', '')).startswith('key')]
         med = sorted(l['edited_ms'] for l in keys)[len(keys) // 2] if keys else None
         ins = sorted(l['instructions_m'] for l in keys if l.get('instructions_m') is not None)
-        s0 = sum(1 for l in lines[:-1] if (l.get('starts') or [None])[0] == 's0')
-        print('%-40s %3d compiles (%d from S0), %d mismatches; keystroke edited page p50 %s ms, %s M instr'
-              % (name, summary['compiles'], s0, summary['mismatches'], med, ins[len(ins) // 2] if ins else None),
+        first = [(l.get('starts') or [None])[0] for l in lines[:-1]]
+        s0, page = first.count('s0'), first.count('page')
+        print('%-40s %3d compiles (%d from S0, %d from a page), %d mismatches; keystroke edited page p50 %s ms, %s M instr'
+              % (name, summary['compiles'], s0, page, summary['mismatches'], med, ins[len(ins) // 2] if ins else None),
               flush=True)
         for m in mism:
             print('    %s: %s' % (m['tag'], m['mismatch']), flush=True)

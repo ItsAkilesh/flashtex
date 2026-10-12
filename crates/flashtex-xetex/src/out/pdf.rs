@@ -2234,13 +2234,15 @@ mod tests {
                 col: flashtex_display_list::page::NO_COLUMN,
             },
         ];
-        doc.pages.push(Built {
+        doc.pages.push(std::sync::Arc::new(Built {
             dl: p,
             sup: Supplement::default(),
             fonts: vec![res],
             images: vec![],
             forms: vec![],
-        });
+            frame: std::sync::OnceLock::new(),
+            forms_at: 0,
+        }));
         let opts = Options {
             producer: "test".into(),
             date: None,
@@ -2438,7 +2440,7 @@ mod tests {
         ));
         body.extend(special("pdf:code /pgfsmask5 gs"));
         let built = Builder::page(&mut doc, &NoTfm, 1000, 1, &page_bytes(&body)).unwrap();
-        doc.pages.push(built);
+        doc.pages.push(std::sync::Arc::new(built));
         let opts = Options {
             producer: "test".into(),
             date: None,

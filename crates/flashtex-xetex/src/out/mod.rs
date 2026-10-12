@@ -66,6 +66,11 @@ pub struct Output {
     /// ...` lines), which a run in a process of its own writes to its
     /// standard error.
     pub reports: Option<Vec<String>>,
+    /// Compress the PDF's streams: not for a host's preview compiles
+    /// (`FLASHTEX_UNICODE_PREVIEW=1`, `resident::Spec::preview`), whose PDF is the
+    /// preview's, its streams stored, as the pdfTeX host's (spec §6.3);
+    /// an export's is compressed.
+    pub compress: bool,
 }
 
 /// Where display-list frames go, and what has been sent there.
@@ -116,7 +121,9 @@ impl Output {
                 }
             },
         };
-        Output::with_sink(dl)
+        let mut o = Output::with_sink(dl);
+        o.compress = std::env::var("FLASHTEX_UNICODE_PREVIEW").map_or(true, |v| v != "1");
+        o
     }
 
     /// The output of a resident engine's run (`crate::resident`): the
@@ -152,7 +159,37 @@ impl Output {
             pdf_name: String::new(),
             dl,
             reports: None,
+            compress: true,
         }
+    }
+
+    /// A resident run restarted from a page checkpoint
+    /// (`crate::ckpt::PageCk`): the document as it was there, its PDF file
+    /// open again if it was, and its pages and forms sent again to the
+    /// display list, in order (each compile's pages are the client's anew).
+    pub fn resume(
+        &mut self,
+        snap: &crate::ckpt::OutSnap,
+        g: &crate::generated::Globals,
+    ) -> Result<(), String> {
+        let cache = self.doc.fonts.cache.take();
+        self.doc = snap.doc.clone();
+        self.doc.fonts.cache = cache;
+        self.pdf_name = snap.pdf_name.clone();
+        if snap.pdf_open {
+            let f = std::fs::File::create(&self.pdf_name)
+                .map_err(|e| format!("{}: {e}", self.pdf_name))?;
+            self.pdf = Some(f);
+        }
+        let pages = self.doc.pages.clone();
+        for b in &pages {
+            // with the source map's files and spans (the engine's map is
+            // the checkpoint's, which holds all those of these pages)
+            send_page(self, b, |spans, sent, files| {
+                g.dl_sources(spans, sent, files)
+            });
+        }
+        Ok(())
     }
 
     /// A report of the output: kept (a resident engine's run), else on the
@@ -290,11 +327,12 @@ pub fn page_done(g: &mut Globals, f: &mut ByteFile) {
         }
     };
     match built {
-        Ok(b) => {
+        Ok(mut b) => {
+            b.forms_at = out.doc.forms.len();
             send_page(&mut out, &b, |spans, sent, files| {
                 g.dl_sources(spans, sent, files)
             });
-            out.doc.pages.push(b);
+            out.doc.pages.push(std::sync::Arc::new(b));
         }
         Err(e) => out.doc.errors.push(format!("page {page_no}: {e}")),
     }
@@ -328,7 +366,7 @@ pub fn finish(g: &mut Globals) -> i32 {
         let opts = pdf::Options {
             producer: format!("FlashTeX (Unicode mode, {})", crate::system::BANNER),
             date: pdf_date(g.host.clock.map(|c| c.0)),
-            compress: true,
+            compress: out.compress,
         };
         match pdf::write(&out.doc, &opts) {
             Ok((bytes, warnings)) => {
@@ -387,7 +425,10 @@ fn pdf_date(session: Option<i64>) -> Option<String> {
 }
 
 /// Send a page, and the forms and resources it needs first, to the
-/// display-list sink.
+/// display-list sink: the forms made since the last page, which were
+/// `b.forms_at` when it shipped (a page sent again by `Output::resume`
+/// comes after the forms it came after), and before them the source map's
+/// files and spans they use (`sources`: `Globals::dl_sources`).
 fn send_page(
     out: &mut Output,
     b: &Built,
@@ -399,8 +440,10 @@ fn send_page(
     let doc = &out.doc;
     // The source map's spans of the page and of the forms sent with it,
     // declared before them (spec §5.3).
-    let mut spans: Vec<u32> = doc.forms[dl.forms.min(doc.forms.len())..]
+    let forms_to = b.forms_at.min(doc.forms.len());
+    let mut spans: Vec<u32> = doc.forms[dl.forms.min(forms_to)..forms_to]
         .iter()
+        .map(|f| &**f)
         .chain(std::iter::once(b))
         .flat_map(|x| x.dl.items.iter())
         .filter_map(|it| match it {
@@ -421,7 +464,7 @@ fn send_page(
         send(kind::SOURCES, &src, &mut dl.w);
     }
     // Forms made since the last page.
-    while dl.forms < doc.forms.len() {
+    while dl.forms < b.forms_at.min(doc.forms.len()) {
         let form = &doc.forms[dl.forms];
         dl.forms += 1;
         send_resources(dl, doc, form, &mut send);
@@ -477,13 +520,18 @@ fn send_resources(
     }
 }
 
-/// A built page's or form's `PAGE`/`FORM` body, with its content hash.
+/// A built page's or form's `PAGE`/`FORM` body, with its content hash
+/// (made once a page: `Built::frame`).
 pub fn encode(doc: &Doc, b: &Built) -> Vec<u8> {
-    let mut page = b.dl.clone();
-    // The rules as FlashTeX's PDF draws them (spec §4.4).
-    page.rule_geometry = pdf::rule_geometry(&page);
-    let font_key = |id: u16| doc.fonts.resource(id).map_or([0; 32], |r| r.key);
-    let image_key = |id: u32| doc.images.get(id).map_or([0; 32], |i| i.key);
-    page.hash = page.content_hash(&font_key, &image_key);
-    page.encode()
+    b.frame
+        .get_or_init(|| {
+            let mut page = b.dl.clone();
+            // The rules as FlashTeX's PDF draws them (spec §4.4).
+            page.rule_geometry = pdf::rule_geometry(&page);
+            let font_key = |id: u16| doc.fonts.resource(id).map_or([0; 32], |r| r.key);
+            let image_key = |id: u32| doc.images.get(id).map_or([0; 32], |i| i.key);
+            page.hash = page.content_hash(&font_key, &image_key);
+            page.encode()
+        })
+        .clone()
 }

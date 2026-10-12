@@ -46,7 +46,7 @@ pub struct Image {
     pub info: Json,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Images {
     /// By id - 1.
     pub res: Vec<Image>,

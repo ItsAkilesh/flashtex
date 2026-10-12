@@ -832,7 +832,7 @@ fn done(out: &Out, job: &Job, o: &compile::Outcome, t0: Instant, cause: Option<&
             // document's body
             js(if job.export {
                 "export"
-            } else if o.starts.first() == Some(&"s0") {
+            } else if matches!(o.starts.first(), Some(&"s0" | &"page")) {
                 "incremental"
             } else {
                 "cold"

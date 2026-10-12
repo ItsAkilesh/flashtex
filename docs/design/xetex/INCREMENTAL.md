@@ -162,6 +162,22 @@ pdfTeX's own, each needing a XeTeX counterpart written against `xetex.web`:
    4), and when the preamble ran a shell command.
 4. **L2 checkpoints** at `\shipout` with §4's state, `checkpoint.ch` for
    `xetex.web`.
+   *Landed (lane XETEX-INCR, step 3), with L3's restart (not its
+   convergence):* after S₀, a checkpoint at the first `big_switch` after
+   each shipout (`ckpt::PageCk`). It keeps the output's document (pages
+   and forms shared, `Arc`), output files by length only (a restore cuts
+   them back while `system::outside_change` says the engine's last write
+   is what is there, and while no file open before the checkpoint was
+   opened again after it), and the terminal by length. A compile whose S₀
+   key holds restarts from the newest page checkpoint before what changed
+   (`resident::Engine::restart_page`): every file read by then unchanged,
+   but a file still open there may have changed after the bytes consumed
+   (the edit's place against the user's files as the last run read them),
+   and no lookup finds another file. The pages before it are sent again
+   from the checkpoint's document (each page's frame made once, kept in
+   its `Built`), then the run goes on to the end: no convergence yet, so
+   the pages after the edit are typeset again (`done` grows with the
+   document), but the edited page comes after a page or two.
 5. **L3 restart and converge**: `iso.rs` for XeTeX's nodes, the dead-word
    rules from `xetex.web`, line shifting; a soundness case for every rule and
    the soundness sweep (incremental equal to cold, frame by frame).

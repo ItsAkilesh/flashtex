@@ -284,6 +284,8 @@ impl Stream {
             fonts: self.fonts,
             images: self.images,
             forms: self.forms,
+            frame: std::sync::OnceLock::new(),
+            forms_at: 0,
         }
     }
 }
@@ -1113,10 +1115,10 @@ impl<'a, M: Metrics> Builder<'a, M> {
             f.sup.form_dict.merge(&d);
         }
         let name = f.form_name.clone().unwrap_or_default();
-        let built = f.finish();
-        self.doc.forms.push(built);
-        let id = self.doc.forms.len() as u32;
-        self.doc.forms[id as usize - 1].dl.index = id;
+        let mut built = f.finish();
+        let id = self.doc.forms.len() as u32 + 1;
+        built.dl.index = id;
+        self.doc.forms.push(std::sync::Arc::new(built));
         self.doc.named.insert(name, super::doc::Named::Form(id));
     }
 

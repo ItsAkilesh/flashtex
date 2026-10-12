@@ -17,7 +17,10 @@
 % expansion LaTeX's \.{\\begin\{document\}} ends in); when |macro_call| pushes
 % its body, the input level is remembered, and when |pop_input| goes below
 % that level the body -- with everything it expanded to -- has been
-% consumed, and the next |big_switch| takes $S_0$. None of this changes what
+% consumed, and the next |big_switch| takes $S_0$. After each shipout, when
+% the host asks (|ckpt_on_shipout|), the next |big_switch| takes a page
+% checkpoint (section 5.2), from which a later run restarts near its edit.
+% None of this changes what
 % the program computes: the new variables are read only by these tests and by
 % the hook, and the hook itself only reads the state. (XeTeX's |null| is not
 % zero, so ``no control sequence armed'' is 0, which no control sequence is.)
@@ -46,6 +49,17 @@ if ckpt_arm_cs<>0 then if warning_index=ckpt_arm_cs then
   end;
 @z
 
+@x l.15632 of the merged WEB - a checkpoint after every shipout, when asked (section 5.2)
+update_terminal; {progress report}
+@<Flush the box from memory, showing statistics if requested@>;
+end;
+@y
+update_terminal; {progress report}
+@<Flush the box from memory, showing statistics if requested@>;
+if ckpt_on_shipout<>0 then ckpt_request:=ckpt_on_shipout;
+end;
+@z
+
 @x l.24680 of the merged WEB - checkpoints are taken, and resumed, at |big_switch|
 begin if every_job<>null then begin_token_list(every_job,every_job_text);
 big_switch: flashtex_poll; get_x_token;@/
@@ -68,6 +82,7 @@ so an engine that is not asked for checkpoints never calls the hook.
 @!ckpt_arm_cs:pointer; {expanding this control sequence arms the checkpoint (0: none)}
 @!ckpt_arm_level:integer; {|input_ptr| with the armed body on top, or 0}
 @!ckpt_resuming:boolean; {enter |main_control| at |big_switch|}
+@!ckpt_on_shipout:integer; {nonzero: request a checkpoint after each shipout}
 
 @ A run restored from a checkpoint taken at |big_switch| goes on from there
 to the end, as the main program does after |main_control|.
