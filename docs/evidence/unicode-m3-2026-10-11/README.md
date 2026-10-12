@@ -183,6 +183,21 @@ or `tools/xetex-pdfparity/run.py --engine … --cases-dir C --no-visual`.
    PDF are absent from FlashTeX's (3 pages), and FlashTeX writes 3 links
    xelatex has not. They are pgf-drawn icons inside `\hyperlink`. Repro:
    u11-beamer-fontspec.
+   **Fixed by lane M3-LINKS** (2026-10-12, PR #1809). u11 now passes
+   structurally, with 0 differences against the 67 recorded above. That
+   makes 24 of 49 cases equal in the export run
+   [38211798848](https://github.com/flash-tex/flashtex/actions/runs/38211798848);
+   no other case changed. There were three causes:
+   - **Phantom links were dropped.** hyperref's `hdvipdfmx` writes
+     `dvipdfmx:catch_phantom`, which FlashTeX ignored. dvipdfmx widens a
+     link by the kerns inside it, so 60 links had no rectangle. The 3
+     footline links were 1.07 bp short.
+   - **A soft mask's form was never written.** Only a named object
+     (`/SMask <</G @pgfsmask5>>`) referred to it, so it was written as
+     `null`.
+   - **The comparator was too strict about soft masks.** It compared a
+     mask's group by its content-stream tokens; it now compares what the
+     group draws, as it does for other forms.
 4. **The bundle lacks what the corpus reads** (criterion 5's list).
    Owner: BUNDLE-PUBLISH (`tools/bundle/tl2026/extra.txt`).
 5. **`ToUnicode` for `.notdef` is U+FFFF where xelatex writes none** (Fira
