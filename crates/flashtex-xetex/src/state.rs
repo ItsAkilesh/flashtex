@@ -94,6 +94,14 @@ impl Handles {
         }
     }
 
+    /// Every handle that refers to an object, with it.
+    pub fn objects(&self) -> impl Iterator<Item = (i32, &Object)> {
+        self.table
+            .iter()
+            .enumerate()
+            .filter_map(|(i, o)| o.as_ref().map(|o| (i as i32 + 1, o)))
+    }
+
     /// How many handles refer to an object.
     pub fn live(&self) -> usize {
         self.table.iter().filter(|s| s.is_some()).count()
@@ -179,6 +187,9 @@ pub struct Host {
     /// The paths `find_pic_file` found, for the output (`crate::out`), which
     /// takes them from here at each page.
     pub pictures: std::collections::BTreeSet<String>,
+    /// The display list's source map (`crate::dlsource`): node positions,
+    /// spans and the markers of the page being shipped.
+    pub dl: crate::dlsource::DlSource,
     /// A hot spare's go-ahead (`crate::host::spare`): the descriptor the
     /// run waits on after the format is loaded, taken at that wait. `None`
     /// for every other run.
@@ -225,6 +236,9 @@ struct Saved {
     full_name_of_file: Option<String>,
     protrusion: Protrusion,
     handles: Handles,
+    /// The display list's source map (`crate::dlsource`): its side table
+    /// is indexed like `mem`, so it goes back with the word space.
+    dl: crate::dlsource::DlSnap,
     brk_iter: Option<crate::native::linebreak::Rules>,
     brk_locale_str_num: i32,
 }
@@ -242,6 +256,7 @@ impl Globals {
             full_name_of_file: self.host.full_name_of_file.clone(),
             protrusion: self.host.protrusion.clone(),
             handles: self.host.handles.clone(),
+            dl: self.host.dl.snapshot(),
             brk_iter: self.host.brk_iter,
             brk_locale_str_num: self.host.brk_locale_str_num,
         };
@@ -266,6 +281,7 @@ impl Globals {
         self.host.full_name_of_file = saved.full_name_of_file;
         self.host.protrusion = saved.protrusion;
         self.host.handles = saved.handles;
+        self.host.dl.restore(&saved.dl);
         self.host.brk_iter = saved.brk_iter;
         self.host.brk_locale_str_num = saved.brk_locale_str_num;
         Ok(())

@@ -17,12 +17,77 @@
 //! resource with a `problem` (spec §5.1), and the pages using it are
 //! flagged INCOMPLETE.
 
-use super::fontmap::{parse_enc, FontMap};
+use super::fontmap::{parse_enc, FontMap, MapIndex};
 use flashtex_display_list::json::Json;
 use flashtex_display_list::sha256::{hex, sha256, Sha256};
 use flashtex_engine::resolver::Format;
-use std::collections::HashMap;
-use std::sync::Arc;
+use flashtex_engine::system::StatSig;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
+
+/// What the runs of a resident engine (`crate::resident`) share of their
+/// fonts' output: the font map's index (46,000 lines of `pdftex.map`, a
+/// third of a one-page article's keystroke when each run indexed it again)
+/// and the font programs read, each kept while its file is unchanged (a
+/// stat signature taken before it was read and still the same after; a
+/// racy one, within the file system's time tick, keeps nothing).
+#[derive(Default)]
+pub struct FontCache {
+    map: Mutex<Option<(String, StatSig, Arc<MapIndex>)>>,
+    programs: Mutex<HashMap<String, Program>>,
+}
+
+/// A font file's signature when read, its bytes and their SHA-256.
+type Program = (StatSig, Arc<Vec<u8>>, [u8; 32]);
+
+impl FontCache {
+    /// The index of the map file at `path`.
+    fn map_index(&self, path: &str) -> Option<Arc<MapIndex>> {
+        let sig = StatSig::of(path);
+        let mut kept = self.map.lock().unwrap_or_else(|e| e.into_inner());
+        if let (Some((p, s, i)), Some(sig)) = (kept.as_ref(), sig.as_ref()) {
+            if p == path && s == sig {
+                return Some(i.clone());
+            }
+        }
+        let index = Arc::new(MapIndex::from_vec(std::fs::read(path).ok()?));
+        *kept = match sig {
+            Some(s) if Some(s) == StatSig::of(path) => Some((path.to_string(), s, index.clone())),
+            _ => None,
+        };
+        Some(index)
+    }
+
+    /// The bytes of the font file at `path`, and their SHA-256.
+    fn program(&self, path: &str) -> Option<(Arc<Vec<u8>>, [u8; 32])> {
+        let sig = StatSig::of(path);
+        let mut kept = self.programs.lock().unwrap_or_else(|e| e.into_inner());
+        if let (Some((s, d, h)), Some(sig)) = (kept.get(path), sig.as_ref()) {
+            if s == sig {
+                return Some((d.clone(), *h));
+            }
+        }
+        let data = Arc::new(std::fs::read(path).ok()?);
+        let sha = sha256(&data);
+        match sig {
+            Some(s) if Some(s) == StatSig::of(path) => {
+                kept.insert(path.to_string(), (s, data.clone(), sha));
+            }
+            _ => {
+                kept.remove(path);
+            }
+        }
+        Some((data, sha))
+    }
+
+    /// Keep only the programs of `used` (the last run's fonts).
+    pub fn retain(&self, used: &HashSet<String>) {
+        self.programs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|p, _| used.contains(p));
+    }
+}
 
 /// `define_native_font`'s flags (XeTeX_ext.h).
 pub const XDV_FLAG_VERTICAL: u16 = 0x0100;
@@ -155,6 +220,8 @@ pub struct Fonts {
     /// TFM fonts' character widths by resource and code, in thousandths
     /// of the font's size (the PDF's `/Widths`), as the pages use them.
     pub widths: HashMap<u16, std::collections::BTreeMap<u16, f64>>,
+    /// A resident engine's runs' shared cache.
+    pub cache: Option<Arc<FontCache>>,
 }
 
 impl Fonts {
@@ -237,8 +304,14 @@ impl Fonts {
         if let Some(p) = self.programs.get(path) {
             return Some(p.clone());
         }
-        let data = Arc::new(std::fs::read(path).ok()?);
-        let sha = sha256(&data);
+        let (data, sha) = match &self.cache {
+            Some(c) => c.program(path)?,
+            None => {
+                let data = Arc::new(std::fs::read(path).ok()?);
+                let sha = sha256(&data);
+                (data, sha)
+            }
+        };
         self.programs.insert(path.to_string(), (data.clone(), sha));
         Some((data, sha))
     }
@@ -308,16 +381,24 @@ impl Fonts {
 
     fn font_map(&mut self) -> &FontMap {
         if self.map.is_none() {
-            let mut m = flashtex_engine::system::find_file("pdftex.map", Format::Map)
-                .and_then(|p| std::fs::read(p).ok())
-                .map(FontMap::from_vec)
-                .unwrap_or_default();
+            let path = flashtex_engine::system::find_file("pdftex.map", Format::Map);
+            let mut m = match (&self.cache, path) {
+                (Some(c), Some(p)) => c.map_index(&p).map(FontMap::over),
+                (None, Some(p)) => std::fs::read(p).ok().map(FontMap::from_vec),
+                (_, None) => None,
+            }
+            .unwrap_or_default();
             for l in std::mem::take(&mut self.pending_lines) {
                 m.apply_line(&l);
             }
             self.map = Some(m);
         }
         self.map.as_ref().expect("just set")
+    }
+
+    /// The font files this run read.
+    pub fn programs_read(&self) -> HashSet<String> {
+        self.programs.keys().cloned().collect()
     }
 
     fn load_tfm(&mut self, t: &TfmDef) -> Loaded {

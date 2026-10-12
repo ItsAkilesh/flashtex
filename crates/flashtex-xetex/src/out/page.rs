@@ -119,6 +119,8 @@ pub struct Stream {
     pub height: Fx,
     /// The glyph matrix the reader has (`u32::MAX`: none yet, spec §4.3).
     told_matrix: u32,
+    /// The span the reader has (spec §4.3 `SPAN`; 0: none yet).
+    told_span: u32,
     pub fonts: Vec<u16>,
     pub images: Vec<u32>,
     pub forms: Vec<u32>,
@@ -141,6 +143,7 @@ impl Stream {
             coords: Vec::new(),
             height,
             told_matrix: u32::MAX,
+            told_span: 0,
             fonts: Vec::new(),
             images: Vec::new(),
             forms: Vec::new(),
@@ -230,7 +233,20 @@ impl Stream {
         }
     }
 
+    /// The source map: what follows is at `span` (spec §4.3 `SPAN`).
+    fn sync_span(&mut self, span: u32) {
+        if span != 0 && span != self.told_span {
+            self.push(Item::Span(span));
+            self.told_span = span;
+        }
+    }
+
     fn sync_glyph_matrix(&mut self, m: [f64; 4]) {
+        // The text matrix as the PDF writer writes it (six decimals, `Tf`
+        // size or `Tm`, src/out/pdf.rs), so that the preview draws each glyph
+        // at the PDF's very size: 14.346195662749 against the PDF's
+        // 14.346196 changed single pixels of section headings.
+        let m = m.map(|v| super::pdfobj::fmt_num(v, 6).parse::<f64>().unwrap_or(v));
         let n = self.matrix([m[0], m[1], m[2], m[3], 0.0, 0.0]);
         if n != self.told_matrix {
             self.push(Item::Matrix(n));
@@ -303,6 +319,12 @@ pub struct Builder<'a, M: Metrics> {
     pub page_no: u32,
     pub page_width: Fx,
     pub page_height: Fx,
+    /// The source map's markers of this page (`crate::dlsource`): from
+    /// byte offset `.0` of the page on, what is drawn is at span `.1`,
+    /// column `.2`; the next one to take, and the position now.
+    marks: Vec<(u32, u32, u16)>,
+    mark_next: usize,
+    here: (u32, u16),
 }
 
 /// dvipdfmx's default page origin: one inch from the left and from the
@@ -318,6 +340,18 @@ impl<'a, M: Metrics> Builder<'a, M> {
         page_no: u32,
         bytes: &[u8],
     ) -> Result<Built, String> {
+        Self::page_marked(doc, metrics, mag, page_no, bytes, Vec::new())
+    }
+
+    /// [`Builder::page`] with the source map's markers of the page.
+    pub fn page_marked(
+        doc: &'a mut Doc,
+        metrics: &'a M,
+        mag: i32,
+        page_no: u32,
+        bytes: &[u8],
+        marks: Vec<(u32, u32, u16)>,
+    ) -> Result<Built, String> {
         let (w, h) = page_size(doc, bytes);
         let mut b = Builder {
             doc,
@@ -330,6 +364,9 @@ impl<'a, M: Metrics> Builder<'a, M> {
             page_no,
             page_width: w,
             page_height: h,
+            marks,
+            mark_next: 0,
+            here: (0, NO_COLUMN),
         };
         // dvipdfmx's MediaBox is the size to 0.01 bp; its content starts
         // with `q 1 0 0 1 72 H-72 cm`, H the size itself (measured).
@@ -429,6 +466,11 @@ impl<'a, M: Metrics> Builder<'a, M> {
             Ok(v)
         };
         while i < b.len() {
+            while self.mark_next < self.marks.len() && self.marks[self.mark_next].0 as usize <= i {
+                let m = self.marks[self.mark_next];
+                self.here = (m.1, m.2);
+                self.mark_next += 1;
+            }
             let op = b[i];
             i += 1;
             match op {
@@ -637,18 +679,20 @@ impl<'a, M: Metrics> Builder<'a, M> {
             let size = self.dvi_to_bp(t.size);
             let m = self.glyph_matrix(size, 1.0, 0.0);
             let (x, y) = self.stream_point();
+            let here = self.here;
             let s = self.cur();
             s.sync_fill(None, None);
             s.sync_text_render(0);
             s.sync_glyph_matrix(m);
             s.use_font(l.res);
+            s.sync_span(here.0);
             let (px, py) = s.to_page(x, y);
             s.push(Item::Glyph {
                 font: l.res,
                 code: c.min(0xFFFF) as u16,
                 x: px,
                 y: py,
-                col: NO_COLUMN,
+                col: here.1,
             });
         }
         self.track(0, wd, ht, dp);
@@ -712,6 +756,7 @@ impl<'a, M: Metrics> Builder<'a, M> {
             );
             let (rx, ry) = self.rel(ux, uy);
             let (x, y) = self.cur_ref().gs.ctm.apply(rx, ry);
+            let here = self.here;
             let s = self.cur();
             match &color {
                 Some((c, a)) => s.sync_fill(Some(c), Some(*a)),
@@ -730,13 +775,14 @@ impl<'a, M: Metrics> Builder<'a, M> {
             }
             s.sync_glyph_matrix(m);
             s.use_font(l.res);
+            s.sync_span(here.0);
             let (px, py) = s.to_page(x, y);
             s.push(Item::Glyph {
                 font: l.res,
                 code: g,
                 x: px,
                 y: py,
-                col: NO_COLUMN,
+                col: here.1,
             });
             if self.doc.tracking.is_some() {
                 // dvipdfmx's box for a native glyph: its advance, and the
@@ -774,7 +820,9 @@ impl<'a, M: Metrics> Builder<'a, M> {
         } else {
             (RuleKind::Fill, false)
         };
+        let here = self.here;
         let s = self.cur();
+        s.sync_span(here.0);
         if stroke {
             s.sync_stroke();
         } else {

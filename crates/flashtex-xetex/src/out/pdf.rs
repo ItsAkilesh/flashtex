@@ -2014,6 +2014,114 @@ fn cal_space(col: &PngColor, n: u8) -> Option<String> {
     ))
 }
 
+/// What this writer draws each RULE of `p` with (spec §4.4
+/// `RULE_GEOMETRY`), in item order: the numbers [`Writer::content`] writes
+/// (five decimals), read back, with no CTM translation. The preview then
+/// strokes a fraction bar on the PDF's own coordinates (from sp, a 0.68 bp
+/// rule's end column differed by one coverage level at 4 px/pt).
+pub fn rule_geometry(p: &Page) -> Vec<[f64; 7]> {
+    let h = p.pdf_box[3];
+    let r = |v: f64| n(v, 5).parse::<f64>().unwrap_or(v);
+    p.items
+        .iter()
+        .filter_map(|it| {
+            let Item::Rule {
+                kind,
+                x,
+                y,
+                w,
+                h: rh,
+            } = it
+            else {
+                return None;
+            };
+            let (l, t) = (*x as f64 / K, h - *y as f64 / K);
+            let (wb, hb) = (*w as f64 / K, *rh as f64 / K);
+            let b = t - hb;
+            Some(match kind {
+                RuleKind::Fill => [0.0, 0.0, r(l), r(b), r(wb), r(hb), 0.0],
+                RuleKind::StrokeH => {
+                    let ym = b + hb / 2.0;
+                    [0.0, 0.0, r(l), r(ym), r(l + wb), r(ym), r(hb)]
+                }
+                RuleKind::StrokeV => {
+                    let xm = l + wb / 2.0;
+                    [0.0, 0.0, r(xm), r(b), r(xm), r(t), r(wb)]
+                }
+            })
+        })
+        .collect()
+}
+
+/// The colour space this writer gives a raster image's samples, for the
+/// `IMAGE` resource's `color_space` (spec §5.2), so that the preview draws
+/// the samples as the PDF does: `{"type": "icc"}` (the profile the file
+/// embeds: a PNG's `iCCP`, a JPEG's `ICC_PROFILE`), or `{"type": "calgray"
+/// | "calrgb", "gamma", "white_point", "matrix"}` (a PNG's `sRGB`, or its
+/// `gAMA`/`cHRM`), read from the very array [`cal_space`] writes, with
+/// `intent` when the PDF names one. None: the Device space of the samples
+/// (pdfTeX's rule, and this writer's for every other image).
+pub fn image_color_space(kind: Kind, data: &[u8]) -> Option<flashtex_display_list::json::Json> {
+    use flashtex_display_list::json::Json;
+    let icc = || Some(Json::Obj(vec![("type".into(), Json::Str("icc".into()))]));
+    match kind {
+        Kind::Png => {
+            let p = png_passthrough(data)?;
+            if p.color.icc.is_some() {
+                return icc();
+            }
+            let space = cal_space(&p.color, p.n_base)?;
+            // `[/CalGray <</Gamma g /WhitePoint [x y z]>>]` or `[/CalRGB
+            // <</Gamma [g g g] /Matrix [9] /WhitePoint [x y z]>>]`
+            let mut key = "";
+            let mut nums: Vec<(&str, f64)> = vec![];
+            for tok in space.split(|c: char| c.is_whitespace() || "[]<>".contains(c)) {
+                if let Some(k) = tok.strip_prefix('/') {
+                    key = k;
+                } else if let Ok(v) = tok.parse::<f64>() {
+                    nums.push((key, v));
+                }
+            }
+            let of = |k: &str| -> Vec<Json> {
+                nums.iter()
+                    .filter(|e| e.0 == k)
+                    .map(|e| Json::Num(e.1))
+                    .collect()
+            };
+            let rgb = space.starts_with("[/CalRGB");
+            let mut kv = vec![
+                (
+                    "type".into(),
+                    Json::Str(if rgb { "calrgb" } else { "calgray" }.into()),
+                ),
+                ("gamma".into(), of("Gamma").into_iter().next()?),
+                ("white_point".into(), Json::Arr(of("WhitePoint"))),
+            ];
+            if rgb {
+                kv.push(("matrix".into(), Json::Arr(of("Matrix"))));
+            }
+            if let Some(i) = p.color.srgb_intent {
+                let name = [
+                    "Perceptual",
+                    "RelativeColorimetric",
+                    "Saturation",
+                    "AbsoluteColorimetric",
+                ]
+                .get(i as usize)
+                .copied()
+                .unwrap_or("Perceptual");
+                kv.push(("intent".into(), Json::Str(name.into())));
+            }
+            Some(Json::Obj(kv))
+        }
+        Kind::Jpeg => {
+            jpeg_icc(data)?;
+            icc()
+        }
+        _ => None,
+    }
+}
+
 /// dvipdfmx's numbers: 5 decimals, no leading zero (`.95046`).
 fn n_dot(v: f64) -> String {
     let s = n(v, 5);
@@ -2246,6 +2354,62 @@ mod tests {
             ..FaceInfo::default()
         };
         assert!(!editable.embedding_forbidden());
+    }
+
+    /// A grey PNG with an `sRGB` chunk: the IMAGE's `color_space` is the
+    /// `CalGray` the PDF writes, number for number, with its `/Intent`.
+    #[test]
+    fn image_color_space_is_the_pdfs() {
+        let chunk = |kind: &[u8], body: &[u8]| {
+            let mut c = (body.len() as u32).to_be_bytes().to_vec();
+            c.extend_from_slice(kind);
+            c.extend_from_slice(body);
+            c.extend_from_slice(&[0; 4]);
+            c
+        };
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        png.extend(chunk(b"IHDR", &[0, 0, 0, 2, 0, 0, 0, 2, 8, 0, 0, 0, 0]));
+        png.extend(chunk(b"sRGB", &[0]));
+        png.extend(chunk(b"IDAT", &[0x78, 0x9C]));
+        png.extend(chunk(b"IEND", &[]));
+        let p = png_passthrough(&png).unwrap();
+        assert_eq!(
+            cal_space(&p.color, p.n_base).unwrap(),
+            "[/CalGray <</Gamma 2.2 /WhitePoint [.95046 1 1.08906]>>]"
+        );
+        let cs = image_color_space(Kind::Png, &png).unwrap();
+        assert_eq!(
+            cs.to_string(),
+            r#"{"type":"calgray","gamma":2.2,"white_point":[0.95046,1,1.08906],"intent":"Perceptual"}"#
+        );
+        // a PNG without colour chunks, and a JPEG without a profile: Device
+        let mut plain = png.clone();
+        let s = plain.windows(4).position(|w| w == b"sRGB").unwrap() - 4;
+        plain.drain(s..s + 13);
+        assert!(image_color_space(Kind::Png, &plain).is_none());
+        assert!(image_color_space(Kind::Jpeg, &[0xFF, 0xD8, 0xFF, 0xD9]).is_none());
+    }
+
+    /// RULE_GEOMETRY is the numbers the content stream draws each rule with.
+    #[test]
+    fn rule_geometry_is_what_the_content_stream_draws() {
+        let mut p = Page::new(StreamKind::Page, 0);
+        p.pdf_box = [0.0, 0.0, 612.0, 792.0];
+        let (x, y, w, h) = (21851747, 22122140, 2095109, 44560);
+        for kind in [RuleKind::Fill, RuleKind::StrokeH, RuleKind::StrokeV] {
+            p.items.push(Item::Rule { kind, x, y, w, h });
+        }
+        let g = rule_geometry(&p);
+        assert_eq!(g.len(), 3);
+        let (l, t) = (x as f64 / K, 792.0 - y as f64 / K);
+        let (wb, hb) = (w as f64 / K, h as f64 / K);
+        let r = |v: f64| n(v, 5).parse::<f64>().unwrap();
+        assert_eq!(g[0], [0.0, 0.0, r(l), r(t - hb), r(wb), r(hb), 0.0]);
+        let ym = t - hb + hb / 2.0;
+        assert_eq!(g[1], [0.0, 0.0, r(l), r(ym), r(l + wb), r(ym), r(hb)]);
+        assert_eq!(g[1][2], 332.1855);
+        let xm = l + wb / 2.0;
+        assert_eq!(g[2], [0.0, 0.0, r(xm), r(t - hb), r(xm), r(t), r(wb)]);
     }
 
     /// A form that only a named object refers to is written: pgf's soft

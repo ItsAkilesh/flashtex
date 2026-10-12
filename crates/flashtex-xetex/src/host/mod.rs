@@ -9,7 +9,10 @@
 //! `COMPILE` runs the engine on an engine thread of this process, from the
 //! state kept where the format is loaded (the first run loads it), so a
 //! compile does not wait for a process start, kpathsea's start-up or the
-//! format's undump; its pages stream to the client as they are shipped. A
+//! format's undump; and an edit after the preamble runs from S₀, the state
+//! at the document's start (`crate::ckpt`), so it re-runs only the body
+//! (`DONE.mode` `incremental`, `DONE.starts` each pass's start). Its pages
+//! stream to the client as they are shipped. A
 //! run that changed the `.aux` (or another file LaTeX reads back) is
 //! followed by another, up to five passes, each pass's pages replacing the
 //! previous (spec §6.4); then the external tools (`tools`) and their
@@ -33,6 +36,7 @@
 //! Invoked as `xetex` or `xelatex` (`argv[0]`), it is the engine itself.
 
 pub mod compile;
+pub mod diag;
 pub mod fonts;
 pub mod format;
 pub mod inproc;
@@ -420,6 +424,9 @@ fn connection(host: &Arc<Host>, conn: UnixStream, n: u64) {
         line_state: accepted
             .iter()
             .any(|a| a == flashtex_display_list::accept::LINE_STATE),
+        diag: accepted
+            .iter()
+            .any(|a| a == flashtex_display_list::diag::CAPABILITY),
     };
     let caps = [
         "compile",
@@ -434,6 +441,7 @@ fn connection(host: &Arc<Host>, conn: UnixStream, n: u64) {
         "buffers",
         "edits",
         flashtex_display_list::PROFILE_CAPABILITY,
+        flashtex_display_list::diag::CAPABILITY,
     ];
     // a mode the host does not know is ignored (protocol §6.9)
     let mode = hello
@@ -613,7 +621,7 @@ fn compile_thread(
         };
         if superseded {
             let _ = job.apply_files();
-            done(out, &job, "cancelled", None, 0, 0, 0, None, t0, None);
+            done(out, &job, &compile::Outcome::none("cancelled"), t0, None);
             continue;
         }
         run_job(
@@ -653,7 +661,7 @@ fn run_job(
                 ("message", js(e)),
             ]),
         );
-        done(out, job, "failed", None, 0, 0, 0, None, t0, None);
+        done(out, job, &compile::Outcome::none("failed"), t0, None);
         return;
     }
     let fmt_dir = match host.format_dir(&job.format) {
@@ -668,7 +676,7 @@ fn run_job(
                     ("message", js(e)),
                 ]),
             );
-            done(out, job, "failed", None, 0, 0, 0, None, t0, None);
+            done(out, job, &compile::Outcome::none("failed"), t0, None);
             return;
         }
     };
@@ -727,18 +735,7 @@ fn run_job(
             spares,
             host.engine.as_ref(),
         );
-        done(
-            out,
-            job,
-            o.status,
-            o.exit_code,
-            o.pages,
-            o.diagnostics,
-            o.passes,
-            o.first_page_ms,
-            t0,
-            cause,
-        );
+        done(out, job, &o, t0, cause);
         if job.export || o.status == "cancelled" || o.status == "failed" {
             break;
         }
@@ -794,19 +791,15 @@ fn started(out: &Out, job: &Job, exe: &Path) {
     );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn done(
-    out: &Out,
-    job: &Job,
-    status: &str,
-    exit_code: Option<i32>,
-    pages: u32,
-    diagnostics: usize,
-    passes: usize,
-    first_page_ms: Option<f64>,
-    t0: Instant,
-    cause: Option<&str>,
-) {
+fn done(out: &Out, job: &Job, o: &compile::Outcome, t0: Instant, cause: Option<&str>) {
+    let (status, exit_code, pages, diagnostics, passes, first_page_ms) = (
+        o.status,
+        o.exit_code,
+        o.pages,
+        o.diagnostics,
+        o.passes,
+        o.first_page_ms,
+    );
     let pdf = job.output_dir.join(format!("{}.pdf", job.jobname));
     let log = job.output_dir.join(format!("{}.log", job.jobname));
     let ms = |v: f64| Json::Num((v * 10.0).round() / 10.0);
@@ -835,7 +828,19 @@ fn done(
         ("log".to_string(), js(log.to_string_lossy().into_owned())),
         (
             "mode".to_string(),
-            js(if job.export { "export" } else { "cold" }),
+            // a compile whose first run went on from S₀ re-ran only the
+            // document's body
+            js(if job.export {
+                "export"
+            } else if o.starts.first() == Some(&"s0") {
+                "incremental"
+            } else {
+                "cold"
+            }),
+        ),
+        (
+            "starts".to_string(),
+            Json::Arr(o.starts.iter().map(|s| js(*s)).collect()),
         ),
         ("passes".to_string(), Json::Int(passes as i64)),
         ("typeset_pages".to_string(), Json::Int(pages as i64)),

@@ -78,8 +78,9 @@ with concurrent.futures.ThreadPoolExecutor(a.j) as ex:
         keys = [l for l in lines if str(l.get('tag', '')).startswith('key')]
         med = sorted(l['edited_ms'] for l in keys)[len(keys) // 2] if keys else None
         ins = sorted(l['instructions_m'] for l in keys if l.get('instructions_m') is not None)
-        print('%-40s %3d compiles, %d mismatches; keystroke edited page p50 %s ms, %s M instr'
-              % (name, summary['compiles'], summary['mismatches'], med, ins[len(ins) // 2] if ins else None),
+        s0 = sum(1 for l in lines[:-1] if (l.get('starts') or [None])[0] == 's0')
+        print('%-40s %3d compiles (%d from S0), %d mismatches; keystroke edited page p50 %s ms, %s M instr'
+              % (name, summary['compiles'], s0, summary['mismatches'], med, ins[len(ins) // 2] if ins else None),
               flush=True)
         for m in mism:
             print('    %s: %s' % (m['tag'], m['mismatch']), flush=True)

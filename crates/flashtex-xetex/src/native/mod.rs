@@ -223,6 +223,9 @@ impl Globals {
         point_size: i32,
     ) -> Option<FontInst> {
         let lib = self.ft_library();
+        // the read journal's entry (a resident engine's S0 is keyed by it;
+        // a font found by name was found without the resolver)
+        flashtex_engine::system::note_file(&String::from_utf8_lossy(path));
         // A Type 1 font's AFM file is not attached: the pdfTeX engine's
         // resolver has no `afm` format, and S1's corpus has no Type 1
         // native fonts (their kerns come from the AFM in XeTeX).
@@ -788,6 +791,9 @@ impl Globals {
             std::process::exit(3);
         };
         let text = self.node_text(p);
+        // The display list's source map: a native word's column is its
+        // first character's (`crate::dlsource`).
+        self.dl_native_word(p, &text);
         let txt_len = text.len();
 
         // need to find direction runs within the text, and call layoutChars

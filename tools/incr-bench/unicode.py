@@ -33,7 +33,8 @@ forms, pages, diagnostics), in order. Both hosts pin the clock
 (`FLASHTEX_PIN_CLOCK`). As the app lays a project out, the sources are in
 `DIR/src` and the output in `DIR/out`; the reference's DIR is another of
 the same length, and its path is read as the measured one's in what it
-wrote (the logs name it). A mismatch's files go to BASE/mm/.
+wrote (the logs name it). The source map (`SOURCES` frames) is also
+compared on its own (`source-map`). A mismatch's files go to BASE/mm/.
 
 Prints one JSON line per compile (and to --out), then a summary line.
 """
@@ -71,7 +72,7 @@ ap.add_argument('--clock', default='1760000000.5')
 ap.add_argument('--host-env', action='append', default=[], help='K=V for the measured host')
 a = ap.parse_args()
 
-PAGE, FONT, IMAGE, FORM, DIAG, DONE, STARTED, TOOL = 0x45, 0x43, 0x44, 0x46, 0x48, 0x49, 0x42, 0x4C
+PAGE, FONT, IMAGE, FORM, DIAG, DONE, STARTED, TOOL, SOURCES = 0x45, 0x43, 0x44, 0x46, 0x48, 0x49, 0x42, 0x4C, 0x47
 
 _libproc = ctypes.CDLL('/usr/lib/libproc.dylib') if sys.platform == 'darwin' else None
 
@@ -239,7 +240,50 @@ def prose_positions(src):
     return cands
 
 
-def make_edit(kind, src, p, rng):
+def paragraph_starts(src):
+    body = src.find(b'\\begin{document}')
+    end = src.rfind(b'\\end{document}')
+    return [m.start() + 1 for m in re.finditer(rb'\n\n(?=[A-Z])', src) if body < m.start() < end]
+
+
+def word_end(src, p):
+    while p < len(src) and chr(src[p]).isalpha():
+        p += 1
+    return p
+
+
+def structural(kind, src, p, i, rng):
+    """incr_bench.py's structural edits near p (None where none applies)."""
+    if kind == 'section':
+        starts = paragraph_starts(src)
+        if not starts:
+            return None
+        q = min(starts, key=lambda s: abs(s - p))
+        return src[:q] + ('\\section{Inserted %d}\\label{sec:ins%d}\n\n' % (i, i)).encode() + src[q:]
+    if kind == 'label':
+        q = word_end(src, p)
+        return src[:q] + ('\\label{lab:new%d}' % i).encode() + src[q:]
+    if kind == 'footnote':
+        q = word_end(src, p)
+        return src[:q] + ('\\footnote{An inserted note %d.}' % i).encode() + src[q:]
+    if kind == 'ref':
+        labs = re.findall(rb'\\label\{([^}]*)\}', src)
+        if not labs:
+            return None
+        q = word_end(src, p)
+        how = rng.choice(['ref', 'pageref'])
+        return src[:q] + (' (see \\%s{%s})' % (how, rng.choice(labs).decode())).encode() + src[q:]
+    if kind in ('unlabel', 'unsection'):
+        pat = rb'\\label\{[^}]*\}' if kind == 'unlabel' else rb'\\section\{[^}\n]*\}'
+        ms = list(re.finditer(pat, src))
+        if not ms:
+            return None
+        m = min(ms, key=lambda m: abs(m.start() - p))
+        return src[:m.start()] + src[m.end():]
+    return None
+
+
+def make_edit(kind, src, p, rng, i=0):
     if kind == 'replace':
         c = src[p]
         return src[:p] + bytes([rng.choice([x for x in b'abcdefghijklmnopqrstuvwxyz' if x != c])]) + src[p + 1:]
@@ -249,6 +293,8 @@ def make_edit(kind, src, p, rng):
         return src[:p] + src[p + 1:]
     if kind == 'sentence':
         return src[:p] + b' lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor' + src[p:]
+    if kind in edits.STRUCTURAL_KINDS:
+        return structural(kind, src, p, i, rng)
     if kind in edits.ALL_KINDS and hasattr(edits, kind):
         return edits.apply(kind, src, p)
     return None
@@ -307,7 +353,8 @@ def main():
                  first_ms=round(1e3 * (t['first'] or 0), 1), edited_ms=round(1e3 * edited, 1),
                  done_ms=round(1e3 * t['done'], 1),
                  instructions_m=round(t['instructions'] / 1e6, 1) if t['instructions'] is not None else None,
-                 mode=d.get('mode'))
+                 mode=d.get('mode'), starts=d.get('starts'),
+                 sources=sum(1 for k, _ in frames if k == SOURCES))
         if refhost is not None:
             got = snapshot(work)
             restore(ref, pre)
@@ -322,6 +369,12 @@ def main():
                     for side, snap in (('got', got), ('ref', want)):
                         if name in snap:
                             open(os.path.join(base, 'mm', '%s.%s.%s' % (safe, side, name.replace('/', '_'))), 'wb').write(snap[name])
+            # the source map on its own (each page's spans and columns are
+            # in its PAGE frame; the files and lines in the SOURCES before)
+            src = [b for k, b in comparable(frames) if k == SOURCES]
+            rsrc = [b for k, b in comparable(rframes, as_work) if k == SOURCES]
+            if src != rsrc:
+                bad.append('source-map')
             if comparable(frames) != comparable(rframes, as_work):
                 bad.append('display-list')
             if done_fields(d) != done_fields(rd):
@@ -360,7 +413,7 @@ def main():
                 break
             p = rng.choice(cands)
             kind = rng.choice(kinds)
-            new = make_edit(kind, src, p, rng)
+            new = make_edit(kind, src, p, rng, i)
             if new is None:
                 continue
             one(new, '%d:%s@%d' % (i, kind, p))

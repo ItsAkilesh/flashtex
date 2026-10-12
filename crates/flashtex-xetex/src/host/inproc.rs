@@ -16,7 +16,7 @@
 //! instead, with hot spares (`spare.rs`), as before.
 
 use crate::fontmgr::FontCatalog;
-use crate::resident::{CatalogSource, Engine, Report, Spec};
+use crate::resident::{Engine, Fonts, Report, Spec};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
@@ -49,23 +49,55 @@ impl Default for Shared {
     }
 }
 
+type Dirs = Vec<(PathBuf, Option<super::spare::Ident>)>;
+
 /// The fonts' catalog, kept while the font directories are unchanged (the
 /// rule `spare.rs` keeps a spare's catalog by, which is fontconfig's own):
 /// the directories are read first, then the catalog made from them.
-fn catalog_source() -> CatalogSource {
-    type Dirs = Vec<(PathBuf, Option<super::spare::Ident>)>;
-    let mut kept: Option<(Dirs, Arc<FontCatalog>)> = None;
-    Box::new(move || {
-        let dirs = super::spare::font_dirs();
-        if let Some((d, c)) = &kept {
+///
+/// The directories are walked once, and after that each one's identity is
+/// checked (`spare::font_dirs_unchanged`: a status call a directory, no
+/// listing): the walk itself took 4-12 ms on macOS, at every keystroke of a
+/// document that names a font.
+#[derive(Default)]
+struct KeptFonts {
+    /// The last walk of the directories.
+    walked: Option<Dirs>,
+    /// The catalog made from them, and the walk it was made after.
+    kept: Option<(Dirs, Arc<FontCatalog>)>,
+}
+
+impl KeptFonts {
+    /// The font directories as they are now.
+    fn now(&mut self) -> &Dirs {
+        let same = self
+            .walked
+            .as_ref()
+            .is_some_and(|w| super::spare::font_dirs_unchanged(w));
+        if !same {
+            self.walked = Some(super::spare::font_dirs());
+        }
+        self.walked.as_ref().expect("walked above")
+    }
+}
+
+impl Fonts for KeptFonts {
+    fn catalog(&mut self) -> Arc<FontCatalog> {
+        let dirs = self.now().clone();
+        if let Some((d, c)) = &self.kept {
             if *d == dirs {
                 return c.clone();
             }
         }
         let c = Arc::new(FontCatalog::for_lookup());
-        kept = Some((dirs, c.clone()));
+        self.kept = Some((dirs, c.clone()));
         c
-    })
+    }
+
+    fn dirs(&mut self) -> [u64; 2] {
+        let d = format!("{:?}", self.now());
+        flashtex_engine::persist::hash128(d.as_bytes())
+    }
 }
 
 /// The engine thread's scheduling: as the pdfTeX host's engine thread
@@ -104,7 +136,7 @@ impl Shared {
             .spawn(move || {
                 interactive_qos();
                 let clock = flashtex_engine::host::pin_clock_from_env();
-                let mut engine = Engine::new(clock, Some(catalog_source()));
+                let mut engine = Engine::new(clock, Some(Box::new(KeptFonts::default())));
                 for req in rx {
                     let rep = engine.run(req.spec);
                     let _ = req.reply.send(rep);
