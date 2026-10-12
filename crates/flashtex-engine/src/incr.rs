@@ -7249,7 +7249,8 @@ struct Reloc {
 /// checkpoint's state, which every restore of it gives back the same (the
 /// corrections touch no name), and on the read-set's events up to it: for
 /// the same checkpoint, the same corrections and the same events, the bytes
-/// it changed are written again. A few checkpoints are kept (typing restores
+/// it changed are written again (and the same segments: it takes the last
+/// one's, `readset::ReadSet`). A few checkpoints are kept (typing restores
 /// one again and again). The events are kept and compared whole (a hash
 /// of them could collide: an FNV-1a hash cancels two changes in the same
 /// top bit). `FLASHTEX_VERIFY_RELOC` rebuilds every time and compares.
@@ -7263,13 +7264,21 @@ struct SeenKept {
     id: CheckpointId,
     /// Corrections composed (`Reloc::count`).
     count: usize,
+    /// Where the read-set's last segment begins.
+    seg: usize,
     events: Vec<crate::readset::Event>,
     diff: Vec<(u32, u8)>,
 }
 
 impl SeenKept {
-    fn matches(&self, id: CheckpointId, count: usize, events: &[crate::readset::Event]) -> bool {
-        self.id == id && self.count == count && self.events == events
+    fn matches(
+        &self,
+        id: CheckpointId,
+        count: usize,
+        seg: usize,
+        events: &[crate::readset::Event],
+    ) -> bool {
+        self.id == id && self.count == count && self.seg == seg && self.events == events
     }
 }
 
@@ -7277,9 +7286,10 @@ impl SeenMemo {
     const KEEP: usize = 8;
 
     fn rebuild(&mut self, g: &mut Globals, id: CheckpointId, count: usize) {
+        let seg = g.layer().rs.seg();
         let hit = {
             let ev = crate::readset::events(g);
-            self.kept.iter().position(|e| e.matches(id, count, ev))
+            self.kept.iter().position(|e| e.matches(id, count, seg, ev))
         };
         if let Some(i) = hit {
             if verify_reloc() {
@@ -7306,6 +7316,7 @@ impl SeenMemo {
         self.kept.push(SeenKept {
             id,
             count,
+            seg,
             events,
             diff,
         });
@@ -7598,13 +7609,15 @@ mod tests {
         let kept = super::SeenKept {
             id: 3,
             count: 2,
+            seg: 0,
             events: a.clone(),
             diff: vec![(7, 1)],
         };
-        assert!(kept.matches(3, 2, &a));
-        assert!(!kept.matches(3, 2, &b));
-        assert!(!kept.matches(3, 1, &a));
-        assert!(!kept.matches(4, 2, &a));
+        assert!(kept.matches(3, 2, 0, &a));
+        assert!(!kept.matches(3, 2, 0, &b));
+        assert!(!kept.matches(3, 1, 0, &a));
+        assert!(!kept.matches(4, 2, 0, &a));
+        assert!(!kept.matches(3, 2, 1, &a));
     }
 
     use super::diff_edit;
