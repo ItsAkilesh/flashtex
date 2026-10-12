@@ -696,9 +696,13 @@ impl<'a, M: Metrics> Builder<'a, M> {
             }
         });
         let m = self.glyph_matrix(size, extend, slant);
+        // A coloured font's RGB with 3 decimals, as dvipdfmx writes colour
+        // components (measured, xeCJK's `mathblock` example: 36/255 is
+        // `.141`, as for a `color` special's, `read_color`); the alpha as is.
         let color = n.rgba.map(|c| {
             let ch = |s: u32| ((c >> s) & 0xFF) as f64 / 255.0;
-            (Col(vec![ch(24), ch(16), ch(8)]), ch(0))
+            let rgb = |s: u32| (ch(s) * 1000.0).round() / 1000.0;
+            (Col(vec![rgb(24), rgb(16), rgb(8)]), ch(0))
         });
         let upm = l.upm.max(1) as f64;
         for (&(dx, dy), &g) in xy.iter().zip(gids) {
