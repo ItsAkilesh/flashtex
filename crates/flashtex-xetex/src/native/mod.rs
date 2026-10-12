@@ -10,10 +10,10 @@
 //!
 //! Not in S1: AAT (Core Text) shaping, out of scope by the Commander's
 //! ruling (PLAN.md §3.1): a font XeTeX on macOS would shape with AAT is
-//! shaped with HarfBuzz; Graphite (S2); OpenType math (S2); ICU's
-//! bidirectional analysis, for which text that needs it is reported (see
-//! [`needs_bidi`]) and laid out left to right.
+//! shaped with HarfBuzz; Graphite (S2); OpenType math (S2). ICU's
+//! bidirectional analysis of `measure_native_node` is [`bidi`].
 
+pub mod bidi;
 pub mod font_inst;
 pub mod layout;
 pub mod otmath;
@@ -187,8 +187,8 @@ fn read_rgb_a(s: &[u8]) -> (u32, usize) {
 
 /// Whether text needs ICU's bidirectional analysis: it holds a character
 /// of a right-to-left script, an Arabic number, or an explicit embedding,
-/// override or isolate. Text without any is one left-to-right run for
-/// `ubidi` (its direction is `UBIDI_LTR`), which is all phase S1 lays out.
+/// override or isolate. Text without any, in a left-to-right default, is
+/// one left-to-right run for `ubidi` (`UBIDI_LTR`): no analysis needed.
 pub fn needs_bidi(text: &[u16]) -> bool {
     let mut i = 0;
     while i < text.len() {
@@ -808,29 +808,49 @@ impl Globals {
             std::process::exit(3);
         };
         let text = self.node_text(p);
-        if needs_bidi(&text) && !self.host.bidi_warned {
-            self.host.bidi_warned = true;
-            eprintln!(
-                "flashtex-xetex: right-to-left or bidirectional text needs ICU's bidi \
-                 analysis, which phase S1 does not have; it is laid out left to right"
-            );
-        }
-        let _ = engine.default_rtl();
-        let n = engine.layout_chars(&text, 0, text.len(), false);
-        let glyphs = engine.glyphs();
-        let advances = engine.glyph_advances();
-        let positions = engine.glyph_positions();
+        // The display list's source map: a native word's column is its
+        // first character's (`crate::dlsource`).
+        self.dl_native_word(p, &text);
+        // ubidi_setPara(text, getDefaultDirection(engine)): the direction
+        // runs, laid out each in its direction, in visual order (`bidi`).
+        // Text without a right-to-left character, an Arabic number or an
+        // explicit control in a left-to-right default is `UBIDI_LTR`.
+        let default_rtl = engine.default_rtl();
+        let layout = if default_rtl || needs_bidi(&text) {
+            bidi::analyse(&text, default_rtl)
+        } else {
+            bidi::Layout::Whole { rtl: false }
+        };
+        let runs = match layout {
+            bidi::Layout::Whole { rtl } => vec![(0, text.len(), rtl)],
+            bidi::Layout::Runs(r) => r,
+        };
         let mut width = 0f64;
         let mut info = GlyphInfo::default();
         let mut glyph_advances: Vec<i32> = vec![];
-        if n > 0 {
+        // `UBIDI_MIXED`: each run's glyphs follow the previous runs' advance
+        // (XeTeX's x and y, doubles); a single run is the same with x = y = 0.
+        let (mut x, mut y) = (0f64, 0f64);
+        for (start, len, rtl) in runs {
+            let n = engine.layout_chars(&text, start, len, rtl);
+            let glyphs = engine.glyphs();
+            let advances = engine.glyph_advances();
+            let positions = engine.glyph_positions();
             for i in 0..n {
                 info.ids.push(glyphs[i] as u16);
                 glyph_advances.push(d2fix(advances[i] as f64));
-                info.locations
-                    .push((d2fix(positions[i].0 as f64), d2fix(positions[i].1 as f64)));
+                info.locations.push((
+                    d2fix(positions[i].0 as f64 + x),
+                    d2fix(positions[i].1 as f64 + y),
+                ));
             }
-            width = positions[n].0 as f64;
+            if let Some(end) = positions.get(n) {
+                x += end.0 as f64;
+                y += end.1 as f64;
+            }
+        }
+        if !info.ids.is_empty() {
+            width = x;
         }
         self.mem[(p + 1) as usize].set_int(d2fix(width));
 

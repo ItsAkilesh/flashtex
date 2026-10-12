@@ -356,7 +356,12 @@ impl Engine {
     }
 
     /// Where this run can start, and why not from S₀ when one is kept.
-    fn start_for(&mut self, key: &PointKey, first_line: &[u8]) -> (Start, Option<String>) {
+    fn start_for(
+        &mut self,
+        key: &PointKey,
+        first_line: &[u8],
+        dl_on: bool,
+    ) -> (Start, Option<String>) {
         let point_ok = self.keep_point
             && self.g.is_some()
             && self
@@ -372,6 +377,9 @@ impl Engine {
         };
         let why = match s0.key.check_refresh(self.clock, first_line) {
             Err(why) => Some(why),
+            Ok(()) if s0.dl_on != dl_on => {
+                Some("the display list's source map is made in one run, not the other".into())
+            }
             Ok(()) => match s0.font_dirs {
                 None => None,
                 Some(d) => match self.fonts.as_mut().map(|f| f.dirs()) {
@@ -412,7 +420,8 @@ impl Engine {
             format_dir: spec.format_dir.clone(),
         };
         let t_check = std::time::Instant::now();
-        let (mut start, mut s0_note) = self.start_for(&key, &line);
+        let dl_on = spec.dl.is_some() && env_on("FLASHTEX_SOURCE_MAP");
+        let (mut start, mut s0_note) = self.start_for(&key, &line, dl_on);
         let check_ms = t_check.elapsed().as_secs_f64() * 1e3;
         let mut rewrite_failed = None;
         if start == Start::S0 {
@@ -494,6 +503,10 @@ impl Engine {
         g.host.seed_pending = start == Start::Fresh;
         g.host.resident = Some(resident);
         g.host.out = out;
+        // the source map, when the display list is made (a restored state
+        // made it alike: `start_for`)
+        let mem_len = g.mem.len();
+        g.host.dl.set_on(dl_on, mem_len);
         system::set_no_pdf(g, c.no_pdf);
         // S₀ is armed by the run's first `big_switch` (`crate::ckpt`); a run
         // from S₀ asks for nothing
@@ -509,6 +522,13 @@ impl Engine {
         }
         if want_s0 {
             flashtex_engine::system::record_reads(true);
+        }
+        // the external effects (`\write18`) are the run's own: from the
+        // start or the format point, none yet (a run from S₀ has S₀'s,
+        // `restore_record`); else one in a body would count against every
+        // later S₀ of the session
+        if start != Start::S0 {
+            flashtex_engine::system::truncate_external_effects(0);
         }
         let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             match start {
@@ -587,6 +607,7 @@ impl Engine {
                         rec: t.rec,
                         key: k,
                         font_dirs: t.font_dirs,
+                        dl_on,
                     })
                 }
                 Err(e) => rep.s0_note = Some(format!("no S0: {e}")),

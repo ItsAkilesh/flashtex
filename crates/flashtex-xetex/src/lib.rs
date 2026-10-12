@@ -43,6 +43,7 @@ pub use flashtex_xetex_fontlibs as fontlibs;
 pub use flashtex_xetex_teckit as teckit;
 
 pub mod ckpt;
+pub mod dlsource;
 pub mod driver;
 pub mod fontmgr;
 pub mod generated;

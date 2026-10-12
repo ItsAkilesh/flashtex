@@ -48,7 +48,6 @@ pub struct RunState {
     terminating: bool,
     tex_input_type: bool,
     req_engine: u8,
-    bidi_warned: bool,
     saved_mapping_name: Option<Vec<u8>>,
     pictures: std::collections::BTreeSet<String>,
 }
@@ -61,7 +60,6 @@ impl RunState {
             terminating: h.terminating,
             tex_input_type: h.tex_input_type,
             req_engine: h.req_engine,
-            bidi_warned: h.bidi_warned,
             saved_mapping_name: h.saved_mapping_name.clone(),
             pictures: h.pictures.clone(),
         }
@@ -73,7 +71,6 @@ impl RunState {
         h.terminating = self.terminating;
         h.tex_input_type = self.tex_input_type;
         h.req_engine = self.req_engine;
-        h.bidi_warned = self.bidi_warned;
         h.saved_mapping_name = self.saved_mapping_name.clone();
         h.pictures = self.pictures.clone();
         h.first_line = None;
@@ -119,6 +116,10 @@ pub struct S0 {
     /// taken, if the run looked a font up by name before it: a font added,
     /// removed or renamed changes what a name finds.
     pub font_dirs: Option<[u64; 2]>,
+    /// The run made the display list's source map (`crate::dlsource`): a
+    /// run that makes it cannot go on from an S₀ whose nodes have no
+    /// positions, nor the other way.
+    pub dl_on: bool,
 }
 
 struct SnapFiles {

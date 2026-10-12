@@ -330,10 +330,13 @@ pub fn glyph_text(
             out.insert(g, t.clone());
         }
     }
-    let Some(gsub) = table(data, index, b"GSUB") else {
-        return out;
-    };
-    let subs = substitutions(gsub);
+    // `.notdef`, when it is drawn: U+FFFF (measured)
+    if used.contains(&0) {
+        out.insert(0, vec!['\u{FFFF}']);
+    }
+    let subs = table(data, index, b"GSUB")
+        .map(substitutions)
+        .unwrap_or_default();
     // ligatures: from the components' cmap text, over the cmap's own
     let mut lig_done = BTreeSet::new();
     for (comps, lig) in &subs {
@@ -354,10 +357,6 @@ pub fn glyph_text(
             out.insert(*lig, t);
             lig_done.insert(*lig);
         }
-    }
-    // `.notdef`, when it is drawn: U+FFFF (measured)
-    if used.contains(&0) {
-        out.insert(0, vec!['\u{FFFF}']);
     }
     let mut known: BTreeMap<u16, Vec<char>> = base.clone();
     // single and alternate substitutions, to a fixed point
@@ -394,5 +393,131 @@ pub fn glyph_text(
             e.insert(t.clone());
         }
     }
+    // the rest: their `post` names, as xdvipdfmx reads glyph names (an AAT
+    // font's contextual forms have neither `cmap` nor `GSUB`: Geeza Pro's
+    // `u0627.final.alef` is U+0627)
+    if used.iter().any(|g| !out.contains_key(g)) {
+        let names = post_names(data, index);
+        for &g in used {
+            if out.contains_key(&g) {
+                continue;
+            }
+            if let Some(t) = names.get(g as usize).and_then(|n| name_text(n)) {
+                out.insert(g, t);
+            }
+        }
+    }
     out
+}
+
+/// The glyph names of a `post` table of format 2.0 (custom names only: a
+/// glyph with one of the 258 standard Macintosh names, or none, is "").
+fn post_names(data: &[u8], index: u32) -> Vec<String> {
+    let Some(p) = table(data, index, b"post") else {
+        return vec![];
+    };
+    if rd32(p, 0) != Some(0x0002_0000) {
+        return vec![];
+    }
+    let n = rd16(p, 32).unwrap_or(0) as usize;
+    let idx: Vec<u16> = (0..n).filter_map(|i| rd16(p, 34 + 2 * i)).collect();
+    let mut custom = vec![];
+    let mut o = 34 + 2 * n;
+    while let Some(&len) = p.get(o) {
+        let Some(s) = p.get(o + 1..o + 1 + len as usize) else {
+            break;
+        };
+        custom.push(String::from_utf8_lossy(s).into_owned());
+        o += 1 + len as usize;
+    }
+    idx.iter()
+        .map(|&k| {
+            k.checked_sub(258)
+                .and_then(|k| custom.get(k as usize).cloned())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+/// A glyph name's text as dvipdfmx's AGL reader gives it: the name up to
+/// its first `.`, its `_`-separated components each `uniXXXX…` or
+/// `uXXXX`–`uXXXXXX`, or a single letter or digit; a component that is
+/// none of these is U+FFFD. **One deliberate difference:** dvipdfmx takes
+/// upper-case hex only, as the AGL specification says, so Geeza Pro's
+/// `u064a_u0646.final.yehNoon` is U+FFFD U+0646 in xelatex's PDF (measured)
+/// and every yeh of an Arabic text is lost to copy and search; here
+/// lower-case hex is read too (U+064A U+0646).
+fn name_text(name: &str) -> Option<Vec<char>> {
+    let base = name.split('.').next().unwrap_or("");
+    if base.is_empty() {
+        return None;
+    }
+    let hex = |h: &str| -> Option<u32> {
+        if h.bytes().all(|b| b.is_ascii_hexdigit()) {
+            u32::from_str_radix(h, 16).ok()
+        } else {
+            None
+        }
+    };
+    let mut out = vec![];
+    for comp in base.split('_') {
+        let mut text = None;
+        if let Some(h) = comp.strip_prefix("uni") {
+            if !h.is_empty() && h.len() % 4 == 0 {
+                text = (0..h.len() / 4)
+                    .map(|i| hex(&h[4 * i..4 * i + 4]).and_then(char::from_u32))
+                    .collect::<Option<Vec<char>>>();
+            }
+        }
+        if text.is_none() {
+            if let Some(h) = comp.strip_prefix('u') {
+                if (4..=6).contains(&h.len()) {
+                    text = hex(h).and_then(char::from_u32).map(|c| vec![c]);
+                }
+            }
+        }
+        if text.is_none() && comp.len() == 1 && comp.as_bytes()[0].is_ascii_alphanumeric() {
+            text = Some(vec![comp.as_bytes()[0] as char]);
+        }
+        out.extend(text.unwrap_or_else(|| vec!['\u{FFFD}']));
+    }
+    Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glyph_names_read_as_dvipdfmx_reads_them() {
+        assert_eq!(name_text("u0627.final.alef"), Some(vec!['\u{627}']));
+        assert_eq!(
+            name_text("uni06440627.lamAlef"),
+            Some(vec!['\u{644}', '\u{627}'])
+        );
+        // lower-case hex: read (dvipdfmx gives U+FFFD)
+        assert_eq!(
+            name_text("u064a_u0646.final.yehNoon"),
+            Some(vec!['\u{64A}', '\u{646}'])
+        );
+        assert_eq!(name_text("f_i"), Some(vec!['f', 'i']));
+        assert_eq!(name_text("final.dotlessYeh"), Some(vec!['\u{FFFD}']));
+        assert_eq!(name_text(".notdef"), None);
+    }
+
+    /// Geeza Pro (an AAT font: contextual forms in `morx`, no `GSUB`): the
+    /// forms Arabic text uses get their letters from their `post` names.
+    #[test]
+    fn an_aat_fonts_contextual_forms_have_text() {
+        let Ok(data) = std::fs::read("/System/Library/Fonts/GeezaPro.ttc") else {
+            return;
+        };
+        let base = cmap_reverse(&data, 0);
+        let used: BTreeSet<u16> = [0, 241, 243, 207].into_iter().collect();
+        let t = glyph_text(&data, 0, &base, &used);
+        assert_eq!(t.get(&241), Some(&vec!['\u{627}']), "u0627.final.alef");
+        assert_eq!(t.get(&243), Some(&vec!['\u{628}']), "u0628.initial.beh");
+        assert_eq!(t.get(&207), Some(&vec!['\u{64A}', '\u{646}']));
+        assert_eq!(t.get(&0), Some(&vec!['\u{FFFF}']), ".notdef, as xdvipdfmx");
+    }
 }

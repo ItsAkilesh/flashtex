@@ -852,13 +852,13 @@ pub struct Globals {
     pub eight_bit_p: bool,
     // §1717
     pub translate_filename_p: bool,
-    // §1726
+    // §1727
     pub ckpt_request: i32,
-    // §1726
+    // §1727
     pub ckpt_arm_cs: halfword,
-    // §1726
+    // §1727
     pub ckpt_arm_level: i32,
-    // §1726
+    // §1727
     pub ckpt_resuming: bool,
     /// The word space every `Arr` above lives in (crates/flashtex-engine/src/arena.rs).
     pub arena: crate::arena::Arena,

@@ -33,7 +33,8 @@ forms, pages, diagnostics), in order. Both hosts pin the clock
 (`FLASHTEX_PIN_CLOCK`). As the app lays a project out, the sources are in
 `DIR/src` and the output in `DIR/out`; the reference's DIR is another of
 the same length, and its path is read as the measured one's in what it
-wrote (the logs name it). A mismatch's files go to BASE/mm/.
+wrote (the logs name it). The source map (`SOURCES` frames) is also
+compared on its own (`source-map`). A mismatch's files go to BASE/mm/.
 
 Prints one JSON line per compile (and to --out), then a summary line.
 """
@@ -71,7 +72,7 @@ ap.add_argument('--clock', default='1760000000.5')
 ap.add_argument('--host-env', action='append', default=[], help='K=V for the measured host')
 a = ap.parse_args()
 
-PAGE, FONT, IMAGE, FORM, DIAG, DONE, STARTED, TOOL = 0x45, 0x43, 0x44, 0x46, 0x48, 0x49, 0x42, 0x4C
+PAGE, FONT, IMAGE, FORM, DIAG, DONE, STARTED, TOOL, SOURCES = 0x45, 0x43, 0x44, 0x46, 0x48, 0x49, 0x42, 0x4C, 0x47
 
 _libproc = ctypes.CDLL('/usr/lib/libproc.dylib') if sys.platform == 'darwin' else None
 
@@ -352,7 +353,8 @@ def main():
                  first_ms=round(1e3 * (t['first'] or 0), 1), edited_ms=round(1e3 * edited, 1),
                  done_ms=round(1e3 * t['done'], 1),
                  instructions_m=round(t['instructions'] / 1e6, 1) if t['instructions'] is not None else None,
-                 mode=d.get('mode'), starts=d.get('starts'))
+                 mode=d.get('mode'), starts=d.get('starts'),
+                 sources=sum(1 for k, _ in frames if k == SOURCES))
         if refhost is not None:
             got = snapshot(work)
             restore(ref, pre)
@@ -367,6 +369,12 @@ def main():
                     for side, snap in (('got', got), ('ref', want)):
                         if name in snap:
                             open(os.path.join(base, 'mm', '%s.%s.%s' % (safe, side, name.replace('/', '_'))), 'wb').write(snap[name])
+            # the source map on its own (each page's spans and columns are
+            # in its PAGE frame; the files and lines in the SOURCES before)
+            src = [b for k, b in comparable(frames) if k == SOURCES]
+            rsrc = [b for k, b in comparable(rframes, as_work) if k == SOURCES]
+            if src != rsrc:
+                bad.append('source-map')
             if comparable(frames) != comparable(rframes, as_work):
                 bad.append('display-list')
             if done_fields(d) != done_fields(rd):
