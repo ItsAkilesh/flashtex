@@ -20,6 +20,11 @@ and the format line (`(preloaded format=xelatex 2026.10.12)`, its build
 date) is dropped. The pinned clock (SOURCE_DATE_EPOCH=0,
 FORCE_SOURCE_DATE=1) makes the rest reproducible. Exit status 1 when any
 output differs.
+
+`--loaded-state`: also the state of `--head`'s word space right after the
+format load (`FLASHTEX_LOADED_STATE`), with INITEX's table entries set up
+first and without (changes/virtex.ch); the two must be equal block for
+block, so a run is the same from there on.
 """
 import argparse
 import hashlib
@@ -134,6 +139,30 @@ def host_cases(host, client, srcs, root):
         p.wait()
 
 
+def loaded_state(binary, fmt, tmp):
+    """The state after the format load (FLASHTEX_LOADED_STATE, system.rs)
+    of a production run of `binary`, with INITEX's table entries set up
+    first (FLASHTEX_INITEX_TABLES=1, as before changes/virtex.ch's
+    `initex_tables`) and without (as web2c's production runs): the arrays
+    whose blocks differ, an empty list when the two are the same."""
+    d = os.path.join(tmp, "loaded-state")
+    os.makedirs(d, exist_ok=True)
+    exe = L.link(binary, os.path.join(d, ".bin"), "xelatex")
+    states = []
+    for tables in ("1", "0"):
+        out = os.path.join(d, "state-%s.txt" % tables)
+        env = L.env_for(fmt)
+        env.update(FLASHTEX_LOADED_STATE=out, FLASHTEX_INITEX_TABLES=tables)
+        subprocess.run([exe] + L.RUN_ARGS + ["\\csname @@end\\endcsname"], cwd=d, env=env,
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        states.append(open(out).read().splitlines() if os.path.exists(out) else None)
+    if None in states or not states[0]:
+        return {"error": "no state written"}
+    a, b = states
+    diff = sorted({x.split("\t")[0] for x, y in zip(a, b) if x != y})
+    return {"blocks": len(a), "same_length": len(a) == len(b), "arrays_differ": diff}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--base", required=True)
@@ -144,6 +173,9 @@ def main(argv=None):
     ap.add_argument("--cases-dir", action="append", required=True)
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--timeout", type=float, default=1800)
+    ap.add_argument("--loaded-state", action="store_true",
+                    help="also compare --head's state after the format load with and without "
+                         "INITEX's table entries")
     ap.add_argument("--json")
     a = ap.parse_args(argv)
     srcs = L.find_cases(a.cases_dir)
@@ -158,6 +190,11 @@ def main(argv=None):
         if code != 0:
             return 2
         fmts[who] = d
+    state = None
+    if a.loaded_state:
+        state = loaded_state(builds["head"], fmts["head"], tmp)
+        print("state after the format load, INITEX tables against none: %s" % json.dumps(state),
+              flush=True)
     res = {}
     with ThreadPoolExecutor(a.jobs) as ex:
         futs = {(n, who): ex.submit(engine_case, n, srcs[n], builds[who], fmts[who],
@@ -188,11 +225,15 @@ def main(argv=None):
     nonnull = sum(1 for r in res.values() if r["head"]["pdf"])
     print("\n%d cases, %d with a PDF; %d identical, %d differ%s" % (
         len(res), nonnull, len(res) - len(bad), len(bad), (": " + ", ".join(bad)) if bad else ""))
+    state_bad = state is not None and (state.get("error") or state["arrays_differ"]
+                                       or not state["same_length"])
+    if state is not None:
+        print("loaded state: %s" % ("SAME" if not state_bad else "DIFFERS %s" % json.dumps(state)))
     if a.json:
         with open(a.json, "w") as f:
-            json.dump(res, f, indent=1)
+            json.dump({"cases": res, "loaded_state": state}, f, indent=1)
     shutil.rmtree(tmp, ignore_errors=True)
-    return 1 if bad else 0
+    return 1 if bad or state_bad else 0
 
 
 if __name__ == "__main__":

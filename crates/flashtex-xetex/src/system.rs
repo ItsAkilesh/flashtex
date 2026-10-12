@@ -200,11 +200,21 @@ impl MemSink {
 #[derive(Default)]
 pub struct WordFile {
     pub buf: memory_word,
-    input: Option<BufReader<File>>,
+    /// A file being read (the format), whole in memory: `get_word` is
+    /// called once per word of a 27 MB `xelatex.fmt`, and a slice index is
+    /// what a word costs then, where a buffered reader's `read_exact` costs
+    /// several times that.
+    input: Option<WordIn>,
     output: Option<BufWriter<File>>,
     at_eof: bool,
     err: i32,
     path: Option<String>,
+}
+
+/// A word file's bytes and the position of the next word.
+struct WordIn {
+    data: Vec<u8>,
+    pos: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -325,15 +335,20 @@ pub fn read_byte(f: &mut ByteFile) -> i32 {
     f.buf
 }
 
+/// Pascal's `get`: the next word, or the end of the file (a part word at
+/// the end is the end, as `read_exact` makes it).
+#[inline]
 pub fn get_word(f: &mut WordFile) {
-    let mut b = [0u8; 8];
-    match f.input.as_mut().map(|r| r.read_exact(&mut b)) {
-        Some(Ok(())) => f.buf = memory_word::from_bits(u64::from_le_bytes(b)),
-        _ => {
-            f.at_eof = true;
-            f.buf = memory_word::default();
+    if let Some(w) = f.input.as_mut() {
+        if let Some(b) = w.data.get(w.pos..w.pos + 8) {
+            w.pos += 8;
+            let b: [u8; 8] = b.try_into().expect("8 bytes");
+            f.buf = memory_word::from_bits(u64::from_le_bytes(b));
+            return;
         }
     }
+    f.at_eof = true;
+    f.buf = memory_word::default();
 }
 pub fn put_word(f: &mut WordFile) {
     let v = f.buf;
@@ -720,9 +735,9 @@ impl Globals {
         let Some(name) = self.input_path(Format::Fmt, true) else {
             return false;
         };
-        match File::open(&name) {
-            Ok(h) => {
-                f.input = Some(BufReader::new(h));
+        match std::fs::read(&name) {
+            Ok(data) => {
+                f.input = Some(WordIn { data, pos: 0 });
                 f.path = Some(name);
                 f.err = 0;
                 get_word(f);
@@ -755,7 +770,35 @@ impl Globals {
         f.close();
     }
     pub fn w_close(&mut self, f: &mut WordFile) {
+        if f.input.is_some() {
+            if let Some(p) = std::env::var_os("FLASHTEX_LOADED_STATE").filter(|p| !p.is_empty()) {
+                self.write_loaded_state(Path::new(&p));
+            }
+        }
         f.close();
+    }
+
+    /// `FLASHTEX_LOADED_STATE=PATH` (verification only): the state when the
+    /// format file is closed, after `load_fmt_file`, written to PATH as one
+    /// line per 64 KiB block of the word space (the scalars spilled into
+    /// it): the block's array, its offset and an FNV-1a hash of its bytes.
+    /// Two runs whose files are equal are in the same state there, so
+    /// everything after it is the same (changes/virtex.ch's
+    /// `initex_tables`, tools/unicode-m3/identical.py `--loaded-state`).
+    fn write_loaded_state(&mut self, path: &Path) {
+        self.spill_scalars();
+        let bytes = self.arena.bytes();
+        let mut out = String::new();
+        for (i, block) in bytes.chunks(1 << 16).enumerate() {
+            let off = i << 16;
+            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+            for &b in block {
+                h = (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            let (r, _) = self.arena.region_at(off);
+            out.push_str(&format!("{}\t{off}\t{h:016x}\n", r.name));
+        }
+        let _ = std::fs::write(path, out);
     }
 
     pub fn a_make_name_string(&mut self, _f: &mut AlphaFile) -> i32 {
@@ -1229,6 +1272,16 @@ impl Globals {
     /// Is this INITEX?
     pub fn ini_version(&mut self) -> bool {
         run().ini
+    }
+
+    /// Whether `initialize` sets up INITEX's table entries (tex.ch [1.8],
+    /// "init...tini is dynamic"): in INITEX only, as web2c's production
+    /// runs skip them and take every entry from the format. Verification
+    /// only: `FLASHTEX_INITEX_TABLES=1` sets them up in a production run
+    /// too, which the format load then overwrites (`FLASHTEX_LOADED_STATE`
+    /// shows the state after it is the same).
+    pub fn initex_tables(&mut self) -> bool {
+        run().ini || std::env::var_os("FLASHTEX_INITEX_TABLES").is_some_and(|v| v == "1")
     }
 
     /// Was `-etex` given?

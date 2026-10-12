@@ -71,10 +71,21 @@ jobs:
           workspaces: |
             crates/flashtex-xetex -> target
             . -> target
+      - name: regenerate the translation (head; its diff is kept)
+        if: matrix.which == 'head'
+        run: |
+          set -euo pipefail
+          scripts/xetex-regenerate.sh
+          git diff --stat -- crates/flashtex-xetex/src/generated crates/flashtex-xetex/xetex.pool
+          mkdir -p "$RUNNER_TEMP/bin"
+          git diff -- crates/flashtex-xetex/src/generated crates/flashtex-xetex/xetex.pool > "$RUNNER_TEMP/bin/regen.patch"
       - name: build
         run: |
           set -euo pipefail
           (cd crates/flashtex-xetex && cargo build --release --locked --bins --example fonts_line)
+          if [ "${{ matrix.which }}" = head ]; then
+            (cd crates/flashtex-xetex && cargo test --release --locked --lib 2>&1 | tail -25)
+          fi
           cargo build --release --locked -p flashtex-display-list --bin dl3-client
           mkdir -p "$RUNNER_TEMP/bin"
           cp crates/flashtex-xetex/target/release/{flashtex-xetex,flashtex-host-unicode} \
@@ -168,7 +179,7 @@ jobs:
             --base "$RUNNER_TEMP/base/flashtex-xetex" --head "$RUNNER_TEMP/head/flashtex-xetex" \
             --base-host "$RUNNER_TEMP/base/flashtex-host-unicode" --head-host "$RUNNER_TEMP/head/flashtex-host-unicode" \
             --client "$RUNNER_TEMP/head/dl3-client" \
-            --cases-dir "$RUNNER_TEMP/bench" --cases-dir "$RUNNER_TEMP/corpus" --jobs 4 \
+            --cases-dir "$RUNNER_TEMP/bench" --cases-dir "$RUNNER_TEMP/corpus" --jobs 4 --loaded-state \
             --json "$RUNNER_TEMP/out/identical.json" 2>&1 | tee "$RUNNER_TEMP/out/identical.txt"
           tail -1 "$RUNNER_TEMP/out/identical.txt" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
