@@ -249,12 +249,42 @@ impl LayoutEngine {
         out
     }
 
+    /// What the last shaping left that later answers read: the shaper it
+    /// used (`usingOpenType`, `usingGraphite`) and its script. A checkpoint
+    /// keeps it (`crate::ckpt`): the engine is shared with the checkpoints,
+    /// so a restore puts back what it was there.
+    pub fn shaping_state(&self) -> (Option<String>, u32) {
+        (
+            self.shaper.lock().unwrap().clone(),
+            self.last_script.load(Ordering::Relaxed),
+        )
+    }
+
+    /// What of a [`shaping_state`](Self::shaping_state) is read later: the
+    /// shaper (`using_graphite` and the like), and whether the script's
+    /// direction is right-to-left (`default_rtl`, the only reader of
+    /// `last_script`).
+    pub fn shaping_state_read(s: &(Option<String>, u32)) -> (Option<String>, bool) {
+        let rtl = unsafe { hb::hb_script_get_horizontal_direction(s.1) == hb::HB_DIRECTION_RTL };
+        (s.0.clone(), rtl)
+    }
+
+    /// Put back a [`shaping_state`](Self::shaping_state).
+    pub fn set_shaping_state(&self, s: &(Option<String>, u32)) {
+        *self.shaper.lock().unwrap() = s.0.clone();
+        self.last_script.store(s.1, Ordering::Relaxed);
+    }
+
     /// `getDefaultDirection`: whether the script of the buffer (of the
-    /// last shaping) is written right to left.
+    /// last shaping) is written right to left. The script is the one
+    /// `layout_chars` kept (`last_script`), not the live buffer's: the
+    /// engine is shared with its checkpoints, and a restore puts the kept
+    /// one back (`shaping_state`), where the buffer would still hold the
+    /// old run's later shaping.
     pub fn default_rtl(&self) -> bool {
         // SAFETY: a pure function of the script.
         unsafe {
-            hb::hb_script_get_horizontal_direction(hb::hb_buffer_get_script(self.buffer))
+            hb::hb_script_get_horizontal_direction(self.last_script.load(Ordering::Relaxed))
                 == hb::HB_DIRECTION_RTL
         }
     }

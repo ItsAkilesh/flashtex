@@ -32,11 +32,19 @@ pub struct MapEntry {
 /// `x:fontmapline` changes is kept beside the file's lines.
 #[derive(Clone, Debug, Default)]
 pub struct FontMap {
+    /// The map file's lines, indexed: shared by the runs of a resident
+    /// engine while the file is unchanged (`crate::out::fonts::FontCache`).
+    base: std::sync::Arc<MapIndex>,
+    /// The entries `x:fontmapline` added or replaced, or removed (`None`).
+    changed: HashMap<Vec<u8>, Option<MapEntry>>,
+}
+
+/// A map file's bytes and the first line of each TFM name in them.
+#[derive(Debug, Default)]
+pub struct MapIndex {
     data: Vec<u8>,
     /// The first line of `data` for each TFM name, as a range.
     index: HashMap<Box<[u8]>, (u32, u32), BuildHasherDefault<FxHasher>>,
-    /// The entries `x:fontmapline` added or replaced, or removed (`None`).
-    changed: HashMap<Vec<u8>, Option<MapEntry>>,
 }
 
 impl FontMap {
@@ -46,6 +54,26 @@ impl FontMap {
 
     /// [`FontMap::parse`] of a map file's bytes, kept.
     pub fn from_vec(data: Vec<u8>) -> FontMap {
+        FontMap::over(std::sync::Arc::new(MapIndex::from_vec(data)))
+    }
+
+    /// The map of an index already made, with no line changed.
+    pub fn over(base: std::sync::Arc<MapIndex>) -> FontMap {
+        FontMap {
+            base,
+            changed: HashMap::new(),
+        }
+    }
+
+    /// The index the map's file lines are in.
+    pub fn base(&self) -> &std::sync::Arc<MapIndex> {
+        &self.base
+    }
+}
+
+impl MapIndex {
+    /// The index of a map file's bytes.
+    pub fn from_vec(data: Vec<u8>) -> MapIndex {
         let mut index: HashMap<Box<[u8]>, (u32, u32), BuildHasherDefault<FxHasher>> =
             HashMap::with_capacity_and_hasher(data.len() / 100, Default::default());
         let mut start = 0;
@@ -59,17 +87,15 @@ impl FontMap {
             }
             start = end + 1;
         }
-        FontMap {
-            data,
-            index,
-            changed: HashMap::new(),
-        }
+        MapIndex { data, index }
     }
+}
 
+impl FontMap {
     fn contains(&self, tfm: &[u8]) -> bool {
         match self.changed.get(tfm) {
             Some(e) => e.is_some(),
-            None => self.index.contains_key(tfm),
+            None => self.base.index.contains_key(tfm),
         }
     }
 
@@ -104,8 +130,8 @@ impl FontMap {
         match self.changed.get(tfm) {
             Some(e) => e.clone(),
             None => {
-                let &(a, b) = self.index.get(tfm)?;
-                parse_line(&self.data[a as usize..b as usize])
+                let &(a, b) = self.base.index.get(tfm)?;
+                parse_line(&self.base.data[a as usize..b as usize])
             }
         }
     }
@@ -439,7 +465,7 @@ mod tests {
         let data = std::fs::read(p).unwrap();
         let want = eager(&data, &[]);
         let m = FontMap::parse(&data);
-        assert_eq!(m.index.len(), want.len());
+        assert_eq!(m.base.index.len(), want.len());
         for (k, v) in &want {
             assert_eq!(m.get(k).as_ref(), Some(v));
         }

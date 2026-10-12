@@ -326,7 +326,7 @@ impl Globals {
     /// `mapped_text` array, which grows to fit up to the
     /// `mapped_text_size + 1` units reserved for it (`changes/ext.ch`, the
     /// bound `native_text` has too).
-    fn apply_mapping(&mut self, m: i32, txt: &[u16]) -> i32 {
+    pub(crate) fn apply_mapping(&mut self, m: i32, txt: &[u16]) -> i32 {
         let Some(map) = self.mapping(m) else {
             return 0;
         };
@@ -545,8 +545,18 @@ impl Globals {
         let _ = self.start_time();
     }
 
-    /// `get_seconds_and_micros` (texmfmp.c).
+    /// `get_seconds_and_micros` (texmfmp.c). A run with a pinned clock
+    /// (`Host::clock`) reads it the first time (its start time, which seeds
+    /// the random numbers), and the system's clock after that
+    /// (`\pdfelapsedtime`), as the pdfTeX engine's resident runs do.
     pub fn seconds_and_micros(&mut self, s: &mut i32, m: &mut i32) {
+        if std::mem::take(&mut self.host.seed_pending) {
+            if let Some((cs, cm)) = self.host.clock {
+                *s = cs as i32;
+                *m = cm;
+                return;
+            }
+        }
         let d = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
@@ -572,7 +582,7 @@ impl Globals {
         let tm = if forced {
             flashtex_engine::os::broken_down(self.start_time(), true)
         } else {
-            flashtex_engine::os::broken_down(now_secs(), false)
+            flashtex_engine::os::broken_down(self.clock_secs(), false)
         };
         *t = tm.tm_hour * 60 + tm.tm_min;
         *d = tm.tm_mday;
@@ -620,6 +630,9 @@ impl Globals {
             .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
+        // the read journal: the time read (S₀'s key, as the pdfTeX
+        // engine's `getfilemoddate` notes it)
+        flashtex_engine::system::note_stamp(&path, t);
         let s = flashtex_engine::pdftex::utils::make_pdf_time(t, force_source_date());
         if self.pool_ptr as usize + s.len() >= crate::generated::consts::pool_size as usize {
             self.pool_ptr = crate::generated::consts::pool_size;
@@ -636,6 +649,8 @@ impl Globals {
         let Ok(meta) = std::fs::metadata(&path) else {
             return;
         };
+        // the read journal: the length read
+        flashtex_engine::system::note_size_read(&path);
         let b = meta.len().to_string().into_bytes();
         if self.pool_ptr as usize + b.len() >= crate::generated::consts::pool_size as usize {
             self.pool_ptr = crate::generated::consts::pool_size;
@@ -660,6 +675,8 @@ impl Globals {
         let Ok(data) = std::fs::read(&path) else {
             return;
         };
+        // the read journal: all of the file, read at once
+        flashtex_engine::system::note_whole_read(&path);
         if offset < 0 {
             return;
         }
@@ -681,6 +698,7 @@ impl Globals {
             let Ok(data) = std::fs::read(&path) else {
                 return;
             };
+            flashtex_engine::system::note_whole_read(&path);
             flashtex_engine::pdftex::md5::digest(&data)
         } else {
             let bytes = crate::system::tex_string_utf8(self, s);
@@ -713,11 +731,20 @@ impl Globals {
         }
         let (t, sde) = match std::env::var("SOURCE_DATE_EPOCH") {
             Ok(v) => (v.trim().parse::<i64>().unwrap_or(0), true),
-            Err(_) => (now_secs(), false),
+            Err(_) => (self.clock_secs(), false),
         };
         let s = flashtex_engine::pdftex::utils::make_pdf_time(t, sde);
         self.host.start = Some((t, s));
         t
+    }
+
+    /// The time now: the pinned clock (`Host::clock`: a resident engine's
+    /// session clock, DESIGN.md §4.5), else the system's.
+    fn clock_secs(&self) -> i64 {
+        match self.host.clock {
+            Some((s, _)) => s,
+            None => now_secs(),
+        }
     }
 
     /// texmfmp.c's `start_time_str`: the start time as a PDF date.

@@ -105,8 +105,8 @@ def rows(text):
     """[(cost, function)] of an annotate listing."""
     out = []
     for line in text.splitlines():
-        m = re.match(r"^\s*([\d,]+)\s+\(\s*[\d.]+%\)\s+(.*)$", line) or \
-            re.match(r"^\s*([\d,]+)\s+(.*)$", line)
+        m = re.match(r"^\s*(\d[\d,]*)\s+\(\s*[\d.]+%\)\s+(.*)$", line) or \
+            re.match(r"^\s*(\d[\d,]*)\s+(.*)$", line)
         if not m:
             continue
         cost = int(m.group(1).replace(",", ""))
@@ -122,8 +122,8 @@ def rows(text):
 
 
 def total(text):
-    m = re.search(r"^\s*([\d,]+)\s+\(100\.0%\)\s+PROGRAM TOTALS", text, re.M) or \
-        re.search(r"^\s*([\d,]+)\s+PROGRAM TOTALS", text, re.M)
+    m = re.search(r"^\s*(\d[\d,]*)\s+\(100\.0%\)\s+PROGRAM TOTALS", text, re.M) or \
+        re.search(r"^\s*(\d[\d,]*)\s+PROGRAM TOTALS", text, re.M)
     return int(m.group(1).replace(",", "")) if m else None
 
 

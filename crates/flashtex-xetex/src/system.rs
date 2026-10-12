@@ -77,6 +77,9 @@ pub struct AlphaFile {
     pushback: Option<u8>,
     /// The end of the file was seen (Pascal's `eof`).
     at_eof: bool,
+    /// The terminal of a resident engine (`crate::resident`): what is
+    /// written goes here instead of to the standard output.
+    captured: Option<Vec<u8>>,
 }
 
 impl Default for AlphaFile {
@@ -94,13 +97,55 @@ impl Default for AlphaFile {
             skip_next_lf: false,
             pushback: None,
             at_eof: true,
+            captured: None,
         }
     }
 }
 
 impl AlphaFile {
+    /// A terminal whose output is kept (a resident engine's, `rewrite_char`
+    /// keeps it so).
+    pub fn captured_terminal() -> AlphaFile {
+        AlphaFile {
+            captured: Some(Vec::new()),
+            err: 0,
+            ..AlphaFile::default()
+        }
+    }
+
+    /// What a captured terminal holds, emptied.
+    pub fn take_captured(&mut self) -> Vec<u8> {
+        self.captured
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
+    /// What a captured terminal holds.
+    pub fn captured_bytes(&self) -> &[u8] {
+        self.captured.as_deref().unwrap_or(&[])
+    }
+
+    /// A captured terminal holding `bytes` (a restored checkpoint's).
+    pub fn set_captured(&mut self, bytes: Vec<u8>) {
+        if self.captured.is_some() {
+            self.captured = Some(bytes);
+        }
+    }
+
+    /// An input file that is at its end (a resident engine's terminal:
+    /// nothing can be typed).
+    pub fn empty_input() -> AlphaFile {
+        AlphaFile {
+            encoding_mode: UTF8,
+            ..AlphaFile::default()
+        }
+    }
+
     fn put_byte(&mut self, b: u8) {
-        if self.to_stdout {
+        if let Some(c) = self.captured.as_mut() {
+            c.push(b);
+        } else if self.to_stdout {
             let _ = std::io::stdout().write_all(&[b]);
         } else if let Some(w) = self.output.as_mut() {
             let _ = w.write_all(&[b]);
@@ -165,7 +210,7 @@ pub struct ByteFile {
 
 /// Bytes written to a [`ByteFile`] in memory: those at absolute positions
 /// `base..` that the reader has not consumed.
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct MemSink {
     pub buf: Vec<u8>,
     /// The absolute position of `buf[0]`.
@@ -236,7 +281,8 @@ impl PasFile for AlphaFile {
         self.at_eof
     }
     fn flush(&mut self) {
-        if self.to_stdout {
+        if self.captured.is_some() {
+        } else if self.to_stdout {
             let _ = std::io::stdout().flush();
         } else if let Some(w) = self.output.as_mut() {
             let _ = w.flush();
@@ -418,19 +464,331 @@ pub fn pas_round(r: f64) -> i32 {
     }
 }
 
-/// `t_open_out` — `rewrite(term_out,'TTY:','/O')`.
+/// `t_open_out` — `rewrite(term_out,'TTY:','/O')`. A captured terminal (a
+/// resident engine's, [`AlphaFile::captured_terminal`]) stays captured.
 pub fn rewrite_char(f: &mut AlphaFile, _name: &str, _mode: &str) {
+    let captured = f.captured.take();
     *f = AlphaFile::default();
-    f.to_stdout = true;
+    f.to_stdout = captured.is_none();
+    f.captured = captured;
     f.err = 0;
 }
 
-/// What a checkpoint would visit in each file global (the generated
-/// `Globals::visit_files`); this crate takes no checkpoints.
+/// What a checkpoint visits in each file global (the generated
+/// `Globals::visit_files`; `crate::ckpt`).
 pub trait FileVisit {
     fn alpha(&mut self, f: &mut AlphaFile);
     fn byte(&mut self, f: &mut ByteFile);
     fn word(&mut self, f: &mut WordFile);
+}
+
+// ---------------------------------------------------------------------------
+// File globals at a checkpoint (`crate::ckpt`)
+// ---------------------------------------------------------------------------
+
+/// Where a file global's stream stands at a checkpoint.
+#[derive(Clone, Debug)]
+pub enum Stream {
+    None,
+    /// A resident engine's captured terminal (its bytes are the
+    /// checkpoint's record's).
+    Terminal,
+    /// Reading `path`; `offset` is the next byte not read.
+    In {
+        path: String,
+        offset: u64,
+    },
+    /// Writing `path`, which held `len` bytes (flushed) at the checkpoint.
+    /// With `prefix` (S₀'s), they are kept: a restore writes them back
+    /// where the file differs. Without (a page checkpoint's), the restore
+    /// cuts the file to `len`, its owner having checked that the file is
+    /// as the run that made the checkpoint left it (`crate::ckpt`).
+    Out {
+        path: String,
+        len: u64,
+        prefix: Option<std::sync::Arc<Vec<u8>>>,
+    },
+    /// The DVI file in PDF mode: the bytes in memory.
+    Mem(MemSink),
+}
+
+/// A file global at a checkpoint: its stream and its Pascal and `UFILE`
+/// state.
+#[derive(Clone, Debug)]
+pub struct FileSnap {
+    pub stream: Stream,
+    buf: i32,
+    word: Option<u64>,
+    err: i32,
+    at_eof: bool,
+    encoding_mode: i32,
+    saved_char: i32,
+    skip_next_lf: bool,
+    pushback: Option<u8>,
+    written: u64,
+    /// A DVI file in memory: the PDF file's name it stands for.
+    path: Option<String>,
+}
+
+impl FileSnap {
+    fn new(stream: Stream) -> FileSnap {
+        FileSnap {
+            stream,
+            buf: 0,
+            word: None,
+            err: 0,
+            at_eof: true,
+            encoding_mode: UTF8,
+            saved_char: -1,
+            skip_next_lf: false,
+            pushback: None,
+            written: 0,
+            path: None,
+        }
+    }
+}
+
+/// An output stream at a checkpoint (after its writer was flushed): the
+/// file's length, and with `keep`, its bytes.
+fn out_stream(path: String, keep: bool) -> Result<Stream, String> {
+    let e = |x: std::io::Error| format!("{path}: {x}");
+    if keep {
+        let d = std::fs::read(&path).map_err(e)?;
+        Ok(Stream::Out {
+            len: d.len() as u64,
+            prefix: Some(std::sync::Arc::new(d)),
+            path,
+        })
+    } else {
+        let len = std::fs::metadata(&path).map_err(e)?.len();
+        Ok(Stream::Out {
+            path,
+            len,
+            prefix: None,
+        })
+    }
+}
+
+/// `path` opened for writing after its first `len` bytes: with `prefix`,
+/// those are put back where they differ (a later run may have rewritten the
+/// file); without, the file must hold at least `len` bytes, which are kept.
+fn reopen_out(path: &str, len: u64, prefix: Option<&[u8]>) -> Result<File, String> {
+    use std::io::{Seek, SeekFrom};
+    let e = |x: std::io::Error| format!("{path}: {x}");
+    match prefix {
+        Some(prefix) => {
+            if std::fs::read(path)
+                .ok()
+                .as_deref()
+                .map(|d| d.get(..prefix.len()))
+                != Some(Some(prefix))
+            {
+                std::fs::write(path, prefix).map_err(e)?;
+            }
+        }
+        None => {
+            let now = std::fs::metadata(path).map_err(e)?.len();
+            if now < len {
+                return Err(format!("{path} is shorter than the {len} bytes written"));
+            }
+        }
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .map_err(e)?;
+    f.set_len(len).map_err(e)?;
+    f.seek(SeekFrom::Start(len)).map_err(e)?;
+    Ok(f)
+}
+
+/// `path` opened for reading at `offset`.
+fn reopen_in(path: &str, offset: u64) -> Result<BufReader<File>, String> {
+    use std::io::{Seek, SeekFrom};
+    let e = |x: std::io::Error| format!("{path}: {x}");
+    let mut f = File::open(path).map_err(e)?;
+    f.seek(SeekFrom::Start(offset)).map_err(e)?;
+    Ok(BufReader::new(f))
+}
+
+impl AlphaFile {
+    /// The file at a checkpoint: output flushed first (`keep`: its bytes
+    /// kept, `Stream::Out`). A pipe (`\input|command`) or the process's
+    /// standard input cannot be one.
+    pub fn snapshot(&mut self, keep: bool) -> Result<FileSnap, String> {
+        use std::io::Seek;
+        let stream = if self.captured.is_some() {
+            Stream::Terminal
+        } else if let Some(w) = self.output.as_mut() {
+            let path = self.path.clone().ok_or("an output file without a name")?;
+            w.flush().map_err(|e| format!("{path}: {e}"))?;
+            out_stream(path, keep)?
+        } else {
+            match self.input.as_mut() {
+                None => Stream::None,
+                Some(TextIn::File(r)) => {
+                    let path = self.path.clone().ok_or("an input file without a name")?;
+                    let offset = r.stream_position().map_err(|e| format!("{path}: {e}"))?;
+                    Stream::In { path, offset }
+                }
+                Some(TextIn::Pipe(_)) => return Err("a pipe is open (\\input|...)".into()),
+                Some(TextIn::Stdin) => return Err("the terminal is read".into()),
+            }
+        };
+        if self.to_stdout {
+            return Err("the terminal is the process's standard output".into());
+        }
+        let mut s = FileSnap::new(stream);
+        s.buf = self.buf as i32;
+        s.err = self.err;
+        s.at_eof = self.at_eof;
+        s.encoding_mode = self.encoding_mode;
+        s.saved_char = self.saved_char;
+        s.skip_next_lf = self.skip_next_lf;
+        s.pushback = self.pushback;
+        Ok(s)
+    }
+
+    /// Put the file back as `s` recorded it. A captured terminal keeps what
+    /// it holds (the checkpoint's owner sets it).
+    pub fn restore(&mut self, s: &FileSnap) -> Result<(), String> {
+        let captured = self.captured.take();
+        *self = AlphaFile::default();
+        match &s.stream {
+            Stream::None | Stream::Mem(_) => {}
+            Stream::Terminal => self.captured = captured.or_else(|| Some(Vec::new())),
+            Stream::In { path, offset } => {
+                self.input = Some(TextIn::File(reopen_in(path, *offset)?));
+                self.path = Some(path.clone());
+            }
+            Stream::Out { path, len, prefix } => {
+                let f = reopen_out(path, *len, prefix.as_deref().map(|p| &p[..]))?;
+                self.output = Some(BufWriter::new(Box::new(f)));
+                self.path = Some(path.clone());
+            }
+        }
+        self.buf = s.buf as u8;
+        self.err = s.err;
+        self.at_eof = s.at_eof;
+        self.encoding_mode = s.encoding_mode;
+        self.saved_char = s.saved_char;
+        self.skip_next_lf = s.skip_next_lf;
+        self.pushback = s.pushback;
+        Ok(())
+    }
+}
+
+impl FileSnap {
+    /// Whether this file global is as `o` is but for its stream's place
+    /// (the convergence test, `crate::conv`, compares the streams). A
+    /// closed file's name (`path`, kept from its last open) is not read.
+    pub fn alike_but_stream(&self, o: &FileSnap) -> bool {
+        // A closed file: `u_open_in` (and the byte files' opens) set `err`,
+        // `at_eof`, the encoding and the first byte again; what it leaves
+        // is compared.
+        if matches!((&self.stream, &o.stream), (Stream::None, Stream::None)) {
+            return (self.saved_char, self.skip_next_lf, self.pushback)
+                == (o.saved_char, o.skip_next_lf, o.pushback);
+        }
+        (
+            self.buf,
+            self.word,
+            self.err,
+            self.at_eof,
+            self.encoding_mode,
+            self.saved_char,
+            self.skip_next_lf,
+            self.pushback,
+        ) == (
+            o.buf,
+            o.word,
+            o.err,
+            o.at_eof,
+            o.encoding_mode,
+            o.saved_char,
+            o.skip_next_lf,
+            o.pushback,
+        ) && (!matches!(self.stream, Stream::Mem(_)) || self.path == o.path)
+    }
+}
+
+impl ByteFile {
+    /// The file at a checkpoint (output flushed first; `keep`: its bytes
+    /// kept).
+    pub fn snapshot(&mut self, keep: bool) -> Result<FileSnap, String> {
+        use std::io::Seek;
+        let stream = if let Some(m) = self.mem.as_ref() {
+            Stream::Mem(m.clone())
+        } else if let Some(w) = self.output.as_mut() {
+            let path = self.path.clone().ok_or("an output file without a name")?;
+            w.flush().map_err(|e| format!("{path}: {e}"))?;
+            out_stream(path, keep)?
+        } else if let Some(r) = self.input.as_mut() {
+            let path = self.path.clone().ok_or("an input file without a name")?;
+            let offset = r.stream_position().map_err(|e| format!("{path}: {e}"))?;
+            Stream::In { path, offset }
+        } else {
+            Stream::None
+        };
+        let mut s = FileSnap::new(stream);
+        s.buf = self.buf;
+        s.err = self.err;
+        s.at_eof = self.at_eof;
+        s.written = self.written;
+        s.path = self.path.clone();
+        Ok(s)
+    }
+
+    pub fn restore(&mut self, s: &FileSnap) -> Result<(), String> {
+        *self = ByteFile::default();
+        match &s.stream {
+            Stream::None | Stream::Terminal => {}
+            Stream::Mem(m) => self.mem = Some(m.clone()),
+            Stream::In { path, offset } => {
+                self.input = Some(reopen_in(path, *offset)?);
+                self.path = Some(path.clone());
+            }
+            Stream::Out { path, len, prefix } => {
+                let f = reopen_out(path, *len, prefix.as_deref().map(|p| &p[..]))?;
+                self.output = Some(BufWriter::new(f));
+                self.path = Some(path.clone());
+            }
+        }
+        if let Stream::Mem(_) = &s.stream {
+            // (`dvi_open_out` names the PDF file the memory sink stands for)
+            self.path = s.path.clone();
+        }
+        self.buf = s.buf;
+        self.err = s.err;
+        self.at_eof = s.at_eof;
+        self.written = s.written;
+        Ok(())
+    }
+}
+
+impl WordFile {
+    /// The file at a checkpoint: none is open between commands but while a
+    /// format is loaded or dumped.
+    pub fn snapshot(&mut self, _keep: bool) -> Result<FileSnap, String> {
+        if self.input.is_some() || self.output.is_some() {
+            return Err("a format file is open".into());
+        }
+        let mut s = FileSnap::new(Stream::None);
+        s.word = Some(self.buf.to_bits());
+        s.err = self.err;
+        s.at_eof = self.at_eof;
+        Ok(s)
+    }
+
+    pub fn restore(&mut self, s: &FileSnap) -> Result<(), String> {
+        *self = WordFile::default();
+        if let Some(w) = s.word {
+            self.buf = memory_word::from_bits(w);
+        }
+        self.err = s.err;
+        self.at_eof = s.at_eof;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -472,16 +830,24 @@ pub fn final_end(g: &mut Globals) -> ! {
     exit_process(g, code)
 }
 
-/// C's `exit(code)`: every stdio stream is flushed first.
+/// C's `exit(code)`: every stdio stream is flushed first. A resident
+/// engine's run (`crate::resident`) returns to its host instead: it unwinds
+/// with [`crate::resident::EngineExit`] (`resume_unwind` calls no panic
+/// hook, so nothing is printed).
 pub fn exit_process(g: &mut Globals, code: i32) -> ! {
     #[cfg(unix)]
     crate::host::spare::hints(g);
-    let _ = std::io::stdout().flush();
+    if g.host.resident.is_none() {
+        let _ = std::io::stdout().flush();
+    }
     g.log_file.flush();
     for f in g.write_file.iter_mut() {
         f.flush();
     }
     g.dvi_file.flush();
+    if g.host.resident.is_some() {
+        std::panic::resume_unwind(Box::new(crate::resident::EngineExit(code)));
+    }
     std::process::exit(code)
 }
 
@@ -630,13 +996,23 @@ impl Globals {
                 if Path::new(&p).is_file()
                     && flashtex_engine::system::confined_found_ok(&s, &p, format, false)
                 {
+                    // the read journal's entry, as the pdfTeX engine's
+                    // `find_input` notes its shortcut (a lookup notes
+                    // what it finds)
+                    flashtex_engine::system::note_file(&p);
                     found = Some(p);
                 }
             }
         }
         let (found, searched) = match found {
             Some(p) => (p, false),
-            None => (lookup(&s, format, must_exist)?, true),
+            // a resident engine's format directory, as a child's
+            // `TEXFORMATS=DIR:` searches it: that directory, then the
+            // default path
+            None => match self.resident_format(format, &s) {
+                Some(p) => (p, true),
+                None => (lookup(&s, format, must_exist)?, true),
+            },
         };
         self.host.full_name_of_file = Some(found.clone());
         let shown = match found.strip_prefix("./") {
@@ -660,11 +1036,27 @@ impl Globals {
                 fname = format!("{dir}/{name}");
             }
         }
+        // (a resident run keeps what the file held: a cancelled run puts
+        // it back, `crate::resident`)
+        if let Some(r) = self.host.resident.as_mut() {
+            r.guard_out(&fname);
+        }
         let mut f = File::create(&fname).ok();
         if f.is_none() && !absolute {
             if let Some(out) = texmf_var("TEXMFOUTPUT").filter(|v| !v.is_empty()) {
                 fname = format!("{out}/{name}");
+                if let Some(r) = self.host.resident.as_mut() {
+                    r.guard_out(&fname);
+                }
                 f = File::create(&fname).ok();
+            }
+        }
+        if f.is_some() {
+            flashtex_engine::system::note_output(&fname);
+            // a resident run's output opens, in order (`crate::ckpt`: a
+            // file opened again after a checkpoint cannot be cut back to it)
+            if let Some(r) = self.host.resident.as_mut() {
+                r.opens.push(fname.clone());
             }
         }
         if f.is_some() && fname != name {
@@ -916,6 +1308,7 @@ impl Globals {
     /// with trailing spaces (and CRs and LFs) removed; false at the end of
     /// the file. `bypass_eoln` is not needed: lines are read whole.
     pub fn input_ln(&mut self, f: &mut AlphaFile, _bypass_eoln: bool) -> bool {
+        self.resident_poll();
         let buf_size = crate::generated::consts::buf_size;
         self.last = self.first;
         let mut i = self.get_uni_c(f);
@@ -969,11 +1362,18 @@ impl Globals {
     /// `tex.web` §37 with texmfmp.c's `topenin`: the command line, decoded
     /// from UTF-8, is the first line; else the terminal is asked.
     pub fn init_terminal(&mut self) -> bool {
-        let mut term = AlphaFile {
-            input: Some(TextIn::Stdin),
-            at_eof: false,
-            encoding_mode: UTF8,
-            ..Default::default()
+        // a resident engine's terminal has nothing to read (its runs are
+        // `-interaction=nonstopmode`; one that asks gets the end of the
+        // file, as a run whose standard input is /dev/null)
+        let mut term = if self.host.resident.is_some() {
+            AlphaFile::empty_input()
+        } else {
+            AlphaFile {
+                input: Some(TextIn::Stdin),
+                at_eof: false,
+                encoding_mode: UTF8,
+                ..Default::default()
+            }
         };
         self.buffer[self.first as usize] = 0;
         if let Some(line) = self.host.first_line.take() {
