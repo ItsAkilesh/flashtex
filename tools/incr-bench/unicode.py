@@ -88,6 +88,8 @@ ap.add_argument('--interleave', action='store_true',
                      'edit saved in between (as an editor saves while the host reads); the second edit is '
                      'then compiled and verified (the classic sweep D: incr_bench.py --interleave)')
 ap.add_argument('--callgrind', metavar='DIR', help='count the measured host\'s instructions under callgrind')
+ap.add_argument('--callgrind-keep', action='store_true',
+                help='keep each compile\'s callgrind dumps (their paths in `cg_dumps`) for callgrind_annotate')
 ap.add_argument('--reopen', action='store_true', help='then a new host compiles the document once more')
 a = ap.parse_args()
 
@@ -141,6 +143,8 @@ class Callgrind:
         os.makedirs(out_dir, exist_ok=True)
         self.base = os.path.join(os.path.abspath(out_dir), 'cg-%d-%s' % (os.getpid(), tag))
         self.pid = None
+        self.keep = a.callgrind_keep
+        self.kept = []
 
     def argv(self):
         return ['valgrind', '--tool=callgrind', '--callgrind-out-file=' + self.base,
@@ -153,6 +157,7 @@ class Callgrind:
     def begin(self):
         self.ctl('-z')
         self.dumps = []
+        self.kept = []
 
     def mark(self):
         """A dump now: the instructions since the last one (callgrind
@@ -162,12 +167,20 @@ class Callgrind:
         new = sorted(set(self._dumps()) - before, key=os.path.getmtime)
         total = None
         for d in new:
+            # (a dump file gives its count twice, as `summary:` in its
+            # header and `totals:` at its end: one of them)
+            got = None
             with open(d, errors='replace') as f:
                 for line in f:
                     m = re.match(r'(?:summary|totals):\s+(\d+)', line)
                     if m:
-                        total = (total or 0) + int(m.group(1))
-            os.unlink(d)
+                        got = int(m.group(1))
+            if got is not None:
+                total = (total or 0) + got
+            if self.keep:
+                self.kept.append(d)
+            else:
+                os.unlink(d)
         self.dumps.append(total)
         return total
 
@@ -258,7 +271,8 @@ class Host:
             if edited_ins is None:
                 edited_ins = ins
         return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins,
-                               edited_instructions=edited_ins, footprint=footprint(self.p.pid))
+                               edited_instructions=edited_ins, footprint=footprint(self.p.pid),
+                               cg_dumps=list(self.cg.kept) if self.cg else [])
 
     def compile_cancelled(self, root, main, ms, between):
         """A compile cancelled `ms` milliseconds after it is sent, with
@@ -504,6 +518,7 @@ def main():
                  instructions_m=round(t['instructions'] / 1e6, 1) if t['instructions'] is not None else None,
                  edited_instructions_m=(round(t['edited_instructions'] / 1e6, 1)
                                         if t.get('edited_instructions') is not None else None),
+                 cg_dumps=t.get('cg_dumps') or None,
                  mode=d.get('mode'), starts=d.get('starts'),
                  footprint_mb=(t['footprint'] or (None, None))[0], peak_mb=(t['footprint'] or (None, None))[1],
                  sources=sum(1 for k, _ in frames if k == SOURCES))

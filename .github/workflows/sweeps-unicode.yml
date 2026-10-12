@@ -246,8 +246,9 @@ jobs:
             name=$(basename "$doc" .tex)
             for at in end mid; do
               # (unicode.py exits 1 only for a mismatch, which needs --verify)
+              keep=(); [[ $name == b4-fontspec-pages && $at == end ]] && keep=(--callgrind-keep)
               python3 tools/incr-bench/unicode.py "$RUNNER_TEMP/bin/flashtex-host-unicode" "$doc" --doc "$name" \
-                --keys 3 --at "$at" --reopen --callgrind "$RUNNER_TEMP/cg" \
+                --keys 3 --at "$at" --reopen --callgrind "$RUNNER_TEMP/cg" "${keep[@]}" \
                 --host-env "FLASHTEX_S0_CACHE=$RUNNER_TEMP/s0-$name-$at" \
                 --out "$RUNNER_TEMP/lat/$name-$at.jsonl" > /dev/null 2> "$RUNNER_TEMP/lat/$name-$at.err" \
                 || { echo "::warning::$name ($at): unicode.py failed"; tail -5 "$RUNNER_TEMP/lat/$name-$at.err"; }
@@ -271,6 +272,20 @@ jobs:
               med = statistics.median(keys) if keys else None
               emed = statistics.median(edited) if edited else None
               print(f'| {name} | {at} | {cold} | {", ".join(map(str, edited))} | {emed} | {med} | {reo} | {starts} |')
+          EOF
+          # where b4's second keystroke goes, to its edited page and after (inclusive)
+          python3 - "$RUNNER_TEMP/lat" <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, subprocess, sys
+          f = os.path.join(sys.argv[1], 'b4-fontspec-pages-end.jsonl')
+          rows = [json.loads(l) for l in open(f)] if os.path.exists(f) else []
+          key = next((r for r in rows if r['tag'] == 'key2' and r.get('cg_dumps')), None)
+          for i, d in enumerate(key['cg_dumps'] if key else []):
+              out = subprocess.run(['callgrind_annotate', '--inclusive=yes', '--threshold=99', d],
+                                   capture_output=True, text=True, errors='replace').stdout
+              open(os.path.join(sys.argv[1], 'b4-key2-dump%d.txt' % i), 'w').write(out)
+              print('\n#### b4 key2, dump %d (%s)\n\n```' % (i, 'to the edited page' if i == 0 else 'the rest'))
+              print('\n'.join(out.splitlines()[:70]))
+              print('```')
           EOF
       - uses: actions/upload-artifact@v4
         if: always()
