@@ -28,6 +28,7 @@ ap.add_argument('--kinds', default='replace,insert,delete,sentence')
 ap.add_argument('--only')
 ap.add_argument('--out')
 ap.add_argument('--host-env', action='append', default=[])
+ap.add_argument('--interleave', action='store_true', help='sweep D: cancel each edit\'s compile with a second edit saved meanwhile (unicode.py --interleave)')
 a = ap.parse_args()
 
 docs = sorted(glob.glob(os.path.join(HERE, 'unicode-corpus', '*.tex')))
@@ -40,6 +41,8 @@ if a.only:
 def one(doc):
     cmd = [sys.executable, os.path.join(HERE, 'unicode.py'), a.host, doc, '--verify', '--keys', str(a.keys),
            '--trials', str(a.trials), '--kinds', a.kinds, '--at', 'mid']
+    if a.interleave:
+        cmd.append('--interleave')
     for kv in a.host_env:
         cmd += ['--host-env', kv]
     r = subprocess.run(cmd, capture_output=True, text=True)

@@ -70,6 +70,10 @@ ap.add_argument('--out')
 ap.add_argument('--keep', action='store_true')
 ap.add_argument('--clock', default='1760000000.5')
 ap.add_argument('--host-env', action='append', default=[], help='K=V for the measured host')
+ap.add_argument('--interleave', action='store_true',
+                help='with --trials: each edit\'s compile is cancelled 0-15 ms after it is sent, a second '
+                     'edit saved in between (as an editor saves while the host reads); the second edit is '
+                     'then compiled and verified (the classic sweep D: incr_bench.py --interleave)')
 a = ap.parse_args()
 
 PAGE, FONT, IMAGE, FORM, DIAG, DONE, STARTED, TOOL, SOURCES = 0x45, 0x43, 0x44, 0x46, 0x48, 0x49, 0x42, 0x4C, 0x47
@@ -155,6 +159,26 @@ class Host:
         i1 = instructions(self.p.pid)
         ins = (i1 - i0) if i0 is not None and i1 is not None else None
         return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins)
+
+    def compile_cancelled(self, root, main, ms, between):
+        """A compile cancelled `ms` milliseconds after it is sent, with
+        `between()` run just before the cancel: its DONE."""
+        self.n += 1
+        req = {'id': self.n, 'root': os.path.join(root, 'src'), 'main': main, 'format': 'xelatex',
+               'shell_escape': 'default', 'output_dir': os.path.join(root, 'out')}
+        write_frame(self.s, 0x02, json.dumps(req))
+        time.sleep(ms / 1e3)
+        between()
+        write_frame(self.s, 0x03, json.dumps({'id': self.n}))
+        while True:
+            r = read_frame(self.f)
+            if r is None:
+                sys.exit('the host closed the connection')
+            k, b = r
+            if k == DONE:
+                d = json.loads(b)
+                if d.get('id') == self.n:
+                    return d
 
     def close(self):
         try:
@@ -415,7 +439,23 @@ def main():
             new = make_edit(kind, src, p, rng, i)
             if new is None:
                 continue
-            one(new, '%d:%s@%d' % (i, kind, p))
+            if a.interleave:
+                # the second edit: another kind, anywhere (before the first
+                # one about half the time), saved while the first compiles
+                q = rng.choice(cands)
+                second = make_edit(rng.choice(kinds), new, min(q, len(new) - 1), rng, i + 1000)
+                if second is None:
+                    second = new
+                ms = rng.uniform(0, 15)
+                path = os.path.join(work, 'src', main_tex)
+                open(path, 'wb').write(new)
+                d = host.compile_cancelled(work, main_tex, ms,
+                                           lambda: open(path, 'wb').write(second))
+                print(json.dumps(dict(tag='%d:%s@%d interrupted after %.1f ms' % (i, kind, p, ms),
+                                      status=d.get('status'), starts=d.get('starts'))), flush=True)
+                one(second, '%d:second-after-interrupt' % i)
+            else:
+                one(new, '%d:%s@%d' % (i, kind, p))
             one(src, '%d:revert' % i)
     host.close()
     if refhost is not None:

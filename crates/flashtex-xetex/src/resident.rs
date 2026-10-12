@@ -475,6 +475,7 @@ impl Engine {
         key: &PointKey,
         first_line: &[u8],
         dl_on: bool,
+        now: Option<&HashMap<String, Arc<Vec<u8>>>>,
     ) -> (Start, Option<String>) {
         let point_ok = self.keep_point
             && self.g.is_some()
@@ -510,7 +511,7 @@ impl Engine {
             self.pages.clear();
             return (Start::Format, Some(w));
         }
-        match self.restart_page() {
+        match now.and_then(|now| self.restart_page(now)) {
             Some(i) => (Start::Page(i), None),
             None => (Start::S0, None),
         }
@@ -600,12 +601,11 @@ impl Engine {
     /// to before its first changed byte), no lookup it made finds another
     /// file, and its output files are as the runs left them and not opened
     /// again later.
-    fn restart_page(&self) -> Option<usize> {
+    fn restart_page(&self, now: &HashMap<String, Arc<Vec<u8>>>) -> Option<usize> {
         if self.pages.is_empty() {
             return None;
         }
-        let now = self.texts_now();
-        let ch = self.changes(&now)?;
+        let ch = self.changes(now)?;
         let j = self.journal.as_ref()?;
         'pages: for (i, ck) in self.pages.iter().enumerate().rev() {
             if ch.lookup.is_some_and(|l| l < ck.reads.1) {
@@ -686,7 +686,20 @@ impl Engine {
         };
         let t_check = std::time::Instant::now();
         let dl_on = spec.dl.is_some() && env_on("FLASHTEX_SOURCE_MAP");
-        let (mut start, mut s0_note) = self.start_for(&key, &line, dl_on);
+        // The user's files as they are before the run reads any: where the
+        // edit is looked for now, and the next run's (read once, before
+        // the restore reopens a file: an edit saved while this run reads
+        // is a change from them the next run sees).
+        let texts_then = self.keep_pages.then(|| self.texts_now());
+        let (mut start, mut s0_note) = self.start_for(&key, &line, dl_on, texts_then.as_ref());
+        // (tests: a pause between where the edit was looked for and the
+        // restore, for an edit saved in between)
+        if let Some(ms) = std::env::var("FLASHTEX_UNICODE_TEST_START_PAUSE_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+        {
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+        }
         let check_ms = t_check.elapsed().as_secs_f64() * 1e3;
         let mut rewrite_failed = None;
         if start.in_body() {
@@ -793,9 +806,9 @@ impl Engine {
         }
         // the user's files as this run reads them (where the next run's
         // edit is looked for)
-        if self.keep_pages {
-            self.texts = self.texts_now();
-        }
+        // (a cancelled run puts back the last complete run's: its page
+        // checkpoints stand, and an edit saved since is a change to them)
+        let texts_before = texts_then.map(|t| std::mem::replace(&mut self.texts, t));
         let want_s0 = self.keep_s0 && self.keep_point && !spec.lean && !start.in_body();
         let want_pages = self.keep_pages && self.keep_s0 && self.keep_point && !spec.lean;
         // the journal and the output opens up to where the run starts
@@ -967,6 +980,9 @@ impl Engine {
             // ones and its journal do not
             new_pages.clear();
             (self.journal, opens) = before;
+            if let Some(t) = texts_before {
+                self.texts = t;
+            }
         }
         if rep.failure.is_some() || spec.lean {
             // a broken run's engine is not used again; Low Memory keeps none
@@ -986,7 +1002,11 @@ impl Engine {
             }
         }
         self.opens = opens;
-        self.terminal = rep.terminal.clone();
+        // (the page checkpoints' records are cut from the last complete
+        // run's terminal)
+        if !(rep.cancelled && start.in_body()) {
+            self.terminal = rep.terminal.clone();
+        }
         if let Some((id, state, format)) = kept {
             self.point = Some(Point {
                 key,

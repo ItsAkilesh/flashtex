@@ -911,3 +911,100 @@ fn a_cancelled_compile_leaves_the_next_one_incremental() {
     assert_eq!(got.1, want.1);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// An edit saved while a compile runs, and that compile cancelled: the next
+/// compile sees the edit (`resident`'s `texts` are the files as they were
+/// before a run read them, and a cancelled run puts back the last complete
+/// run's). The edit is early in the document, before the page checkpoint
+/// the cancelled run restarted from; the save comes while that run pauses
+/// between looking for the edit and restoring its checkpoint
+/// (`FLASHTEX_UNICODE_TEST_START_PAUSE_MS`), at several points of the pause.
+#[test]
+fn an_edit_saved_while_a_cancelled_compile_runs_is_seen() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-saved-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let para = "Words and more words that fill the page, again and again, until the \
+                paragraph is long enough to break into several lines of text. ";
+    let mut body = String::new();
+    for i in 1..=40 {
+        body.push_str(&format!("\\section{{Part {i}}}\\label{{p{i}}}\n"));
+        for _ in 0..4 {
+            body.push_str(&para.repeat(3));
+            body.push_str("\n\n");
+        }
+    }
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\\begin{{document}}\n{body}See~\\ref{{p2}}.\n\\end{{document}}\n"
+    );
+    // the cancelled compile's edit, late; the one saved while it runs, early
+    let late = doc.replace("See~\\ref{p2}.", "See~\\ref{p2} too.");
+    let saved = late.replacen("Words and more", "Wordz and more, early,", 1);
+    let sub = dir.join("run");
+    let (proj, out) = project(&sub, &doc);
+    let h = start_with(
+        &sub,
+        &[
+            ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+            ("FLASHTEX_UNICODE_TEST_START_PAUSE_MS", "60"),
+        ],
+        &sub.join("host.err"),
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    let compile = |c: &mut Client, id: i64, text: &str, save_then_cancel: Option<u64>| -> Json {
+        let mut r = request(id, &proj, &out);
+        r.buffers = vec![("main.tex".into(), text.to_string())];
+        c.compile(&r).unwrap();
+        if let Some(ms) = save_then_cancel {
+            std::thread::sleep(Duration::from_millis(ms));
+            std::fs::write(proj.join("main.tex"), &saved).unwrap();
+            std::thread::sleep(Duration::from_millis(60));
+            c.cancel(id).unwrap();
+        }
+        events(c, id).1
+    };
+    let o = Path::new(&out);
+    let mut got = vec![];
+    let mut id = 1;
+    for ms in [20u64, 40] {
+        compile(&mut c, id, &doc, None);
+        compile(&mut c, id + 1, &doc, None);
+        compile(&mut c, id + 2, &late, Some(ms));
+        let done = compile(&mut c, id + 3, &saved, None);
+        got.push((
+            ms,
+            done,
+            std::fs::read(o.join("main.pdf")).unwrap(),
+            std::fs::read_to_string(o.join("main.aux")).unwrap(),
+        ));
+        id += 4;
+    }
+    c.bye().unwrap();
+    drop(h);
+    // a run of its own on the saved text
+    let h = start_with(
+        &sub,
+        &[
+            ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+            ("FLASHTEX_UNICODE_INPROCESS", "0"),
+        ],
+        &sub.join("host2.err"),
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    compile(&mut c, 1, &saved, None);
+    let want_pdf = std::fs::read(o.join("main.pdf")).unwrap();
+    let want_aux = std::fs::read_to_string(o.join("main.aux")).unwrap();
+    c.bye().unwrap();
+    drop(h);
+    for (ms, done, pdf, aux) in got {
+        assert!(
+            pdf == want_pdf,
+            "saved after {ms} ms: the PDFs differ ({done:?})"
+        );
+        assert_eq!(aux, want_aux, "saved after {ms} ms");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
