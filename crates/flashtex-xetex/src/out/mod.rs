@@ -22,11 +22,13 @@
 //! * [`fonts`], [`fontmap`], [`images`]: the `FONT` and `IMAGE` resources;
 //! * [`doc`]: what lasts across pages (named objects, outline, forms);
 //! * [`pdfobj`]: PDF object syntax of the specials;
-//! * [`pdf`]: the PDF writer, and [`tounicode`] its glyphs' text.
+//! * [`pdf`]: the PDF writer, and [`tounicode`] its glyphs' text (with [`agl`],
+//!   the Adobe Glyph List), as xdvipdfmx derives it.
 //!
 //! The display list goes to `FLASHTEX_DISPLAY_LIST` (spec §6.6) as pages
 //! complete; at the end [`pdf`] writes the PDF from the display list.
 
+pub mod agl;
 pub mod cffcid;
 pub mod content;
 pub mod doc;

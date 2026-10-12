@@ -161,6 +161,7 @@ jobs:
         if: matrix.part == 'export'
         run: |
           set -o pipefail
+          python3 -m unittest discover -s tools/xetex-pdfparity -p 'test_outline.py'
           python3 tools/xetex-pdfparity/run.py --engine "$RUNNER_TEMP/bin/flashtex-xetex" \
             --cases-dir "$OUT/corpus" --jobs 4 --timeout 3600 --no-visual \
             --json "$OUT/export.json" --pdf-dir "$OUT/pdf" 2>&1 | tee "$OUT/export.txt" || true

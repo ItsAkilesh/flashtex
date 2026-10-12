@@ -13,7 +13,7 @@
 //!   outlines as a subset that keeps glyph ids in place (`CIDFontType2`,
 //!   `/CIDToGIDMap /Identity`), both by FlashTeX's own subsetters
 //!   (`flashtex_pdf::cff`, `flashtex_pdf::truetype`), with `/W` from the
-//!   font's advances and a `ToUnicode` CMap from its `cmap`.
+//!   font's advances and, as xdvipdfmx writes one, a `ToUnicode` CMap (`tounicode`).
 //! * TFM fonts are `Type1` fonts with a subset of the map file's program
 //!   (`flashtex_pdf::type1`), the encoding as `/Differences`, `/Widths` from
 //!   the TFM.
@@ -29,6 +29,7 @@
 //! them within its own rounding of TeX's positions (PLAN.md §3.5's parity
 //! is structural and visual, not byte-level).
 
+use super::agl::Agl;
 use super::doc::{Doc, Named, Supplement};
 use super::fonts::{FontRes, ResKind};
 use super::images::Kind;
@@ -107,6 +108,9 @@ struct Writer<'a> {
     /// For a native font with CID-keyed CFF outlines: each glyph id's CID
     /// (the font's charset), which the content stream writes as the code.
     cids: BTreeMap<u16, BTreeMap<u16, u16>>,
+    /// The Adobe Glyph List, as xdvipdfmx loads it (`agl_init_map`), read
+    /// when a font first needs a glyph name's text.
+    agl: Option<Agl>,
     /// What the PDF does not carry as the document asks (reported).
     pub warnings: Vec<String>,
 }
@@ -140,8 +144,13 @@ impl<'a> Writer<'a> {
             used: BTreeMap::new(),
             page_group: Vec::new(),
             cids: BTreeMap::new(),
+            agl: None,
             warnings: Vec::new(),
         }
+    }
+
+    fn agl(&mut self) -> &Agl {
+        self.agl.get_or_insert_with(Agl::load)
     }
 
     fn alloc(&mut self) -> u32 {
@@ -1091,6 +1100,11 @@ impl<'a> Writer<'a> {
         } else {
             None
         };
+        // xdvipdfmx writes no ToUnicode for a standard Adobe character
+        // collection (Type0Font_attach_ToUnicode_stream)
+        let acc = ros
+            .as_ref()
+            .is_some_and(|(reg, ord, _)| super::tounicode::is_acc_font(reg, ord));
         let csi = match ros {
             Some((r, o, sup)) => {
                 let (mut rs, mut os) = (Vec::new(), Vec::new());
@@ -1114,20 +1128,26 @@ impl<'a> Writer<'a> {
             if cff { "" } else { " /CIDToGIDMap /Identity" }
         );
         self.object(cid, d.as_bytes());
-        // ToUnicode from the font's cmap
-        let cmap_text = super::tounicode::cmap_reverse(&r.program, index);
-        let map: BTreeMap<u16, Vec<char>> =
-            super::tounicode::glyph_text(&r.program, index, &cmap_text, used)
-                .into_iter()
-                .map(|(g, t)| (code_of(g), t))
-                .collect();
-        let tu = self.alloc();
-        let cmap = to_unicode_cmap(&base, &map, true);
-        self.stream(tu, b"", cmap.as_bytes(), true);
+        // ToUnicode as xdvipdfmx derives it (super::tounicode), by code
+        let map = if acc {
+            None
+        } else {
+            let codes: BTreeSet<u16> = used.iter().map(|&g| code_of(g)).collect();
+            super::tounicode::otf_to_unicode(&r.program, index, &codes, self.agl())
+        };
+        let tu = match map {
+            Some(map) => {
+                let tu = self.alloc();
+                let cmap = to_unicode_cmap(&base, &map, true);
+                self.stream(tu, b"", cmap.as_bytes(), true);
+                format!(" /ToUnicode {tu} 0 R")
+            }
+            None => String::new(),
+        };
         let mut d = String::new();
         let _ = write!(
             d,
-            "<</Type /Font /Subtype /Type0 /BaseFont /{base} /Encoding /Identity-H /DescendantFonts [{cid} 0 R] /ToUnicode {tu} 0 R>>"
+            "<</Type /Font /Subtype /Type0 /BaseFont /{base} /Encoding /Identity-H /DescendantFonts [{cid} 0 R]{tu}>>"
         );
         self.object(num, d.as_bytes());
         Ok(())
@@ -1206,20 +1226,28 @@ impl<'a> Writer<'a> {
             prev = Some(c);
         }
         diffs.push_str(" ]");
-        let mut map = BTreeMap::new();
-        for &c in used {
-            if let Some(s) = encoding
-                .get(c as usize)
-                .and_then(|n| glyph_name_to_unicode(n))
-            {
-                map.insert(c, s);
+        // ToUnicode by the encoding's glyph names, as xdvipdfmx writes it
+        // (pdf_create_ToUnicode_CMap): none if a used name has no text
+        let names: BTreeMap<u16, Vec<u8>> = used
+            .iter()
+            .filter_map(|&c| {
+                encoding
+                    .get(c as usize)
+                    .filter(|n| !n.is_empty())
+                    .map(|n| (c, n.clone()))
+            })
+            .collect();
+        let tu = match super::tounicode::encoding_to_unicode(&names, self.agl()) {
+            Some(map) => {
+                let tu = self.alloc();
+                let cmap = to_unicode_cmap(&base, &map, false);
+                self.stream(tu, b"", cmap.as_bytes(), true);
+                format!(" /ToUnicode {tu} 0 R")
             }
-        }
-        let tu = self.alloc();
-        let cmap = to_unicode_cmap(&base, &map, false);
-        self.stream(tu, b"", cmap.as_bytes(), true);
+            None => String::new(),
+        };
         let d = format!(
-            "<</Type /Font /Subtype /Type1 /BaseFont /{base} /FirstChar {first} /LastChar {last} /Widths {wa} /Encoding <</Type /Encoding /Differences {diffs}>> /FontDescriptor {fd} 0 R /ToUnicode {tu} 0 R>>"
+            "<</Type /Font /Subtype /Type1 /BaseFont /{base} /FirstChar {first} /LastChar {last} /Widths {wa} /Encoding <</Type /Encoding /Differences {diffs}>> /FontDescriptor {fd} 0 R{tu}>>"
         );
         self.object(num, d.as_bytes());
         Ok(())
@@ -1700,164 +1728,6 @@ fn to_unicode_cmap(name: &str, map: &BTreeMap<u16, Vec<char>>, two_byte: bool) -
     s
 }
 
-/// A glyph name's Unicode text: `uniXXXX`, `uXXXX[XX]`, a single ASCII
-/// letter or digit, or one of the standard names of TeX's fonts.
-fn glyph_name_to_unicode(name: &[u8]) -> Option<Vec<char>> {
-    let s = std::str::from_utf8(name).ok()?;
-    if let Some(h) = s.strip_prefix("uni") {
-        if h.len() % 4 == 0 && !h.is_empty() {
-            let v: Option<Vec<char>> = h
-                .as_bytes()
-                .chunks(4)
-                .map(|c| {
-                    u32::from_str_radix(std::str::from_utf8(c).ok()?, 16)
-                        .ok()
-                        .and_then(char::from_u32)
-                })
-                .collect();
-            return v;
-        }
-    }
-    if let Some(h) = s.strip_prefix('u') {
-        if (4..=6).contains(&h.len()) {
-            if let Some(c) = u32::from_str_radix(h, 16).ok().and_then(char::from_u32) {
-                return Some(vec![c]);
-            }
-        }
-    }
-    if s.len() == 1 && s.as_bytes()[0].is_ascii_alphanumeric() {
-        return Some(vec![s.as_bytes()[0] as char]);
-    }
-    let t: &str = match s {
-        "space" => " ",
-        "exclam" => "!",
-        "quotedbl" => "\"",
-        "numbersign" => "#",
-        "dollar" => "$",
-        "percent" => "%",
-        "ampersand" => "&",
-        "quoteright" | "quotesingle" => "\u{2019}",
-        "parenleft" => "(",
-        "parenright" => ")",
-        "asterisk" => "*",
-        "plus" => "+",
-        "comma" => ",",
-        "hyphen" => "-",
-        "period" => ".",
-        "slash" => "/",
-        "zero" => "0",
-        "one" => "1",
-        "two" => "2",
-        "three" => "3",
-        "four" => "4",
-        "five" => "5",
-        "six" => "6",
-        "seven" => "7",
-        "eight" => "8",
-        "nine" => "9",
-        "colon" => ":",
-        "semicolon" => ";",
-        "less" => "<",
-        "equal" => "=",
-        "greater" => ">",
-        "question" => "?",
-        "at" => "@",
-        "bracketleft" => "[",
-        "backslash" => "\\",
-        "bracketright" => "]",
-        "asciicircum" | "circumflex" => "^",
-        "underscore" => "_",
-        "quoteleft" => "\u{2018}",
-        "braceleft" => "{",
-        "bar" => "|",
-        "braceright" => "}",
-        "asciitilde" | "tilde" => "~",
-        "ff" => "ff",
-        "fi" => "fi",
-        "fl" => "fl",
-        "ffi" => "ffi",
-        "ffl" => "ffl",
-        "dotlessi" => "\u{131}",
-        "dotlessj" => "\u{237}",
-        "endash" => "\u{2013}",
-        "emdash" => "\u{2014}",
-        "quotedblleft" => "\u{201C}",
-        "quotedblright" => "\u{201D}",
-        "germandbls" => "\u{DF}",
-        "ae" => "\u{E6}",
-        "oe" => "\u{153}",
-        "oslash" => "\u{F8}",
-        "AE" => "\u{C6}",
-        "OE" => "\u{152}",
-        "Oslash" => "\u{D8}",
-        "Gamma" => "\u{393}",
-        "Delta" => "\u{394}",
-        "Theta" => "\u{398}",
-        "Lambda" => "\u{39B}",
-        "Xi" => "\u{39E}",
-        "Pi" => "\u{3A0}",
-        "Sigma" => "\u{3A3}",
-        "Upsilon" => "\u{3A5}",
-        "Phi" => "\u{3A6}",
-        "Psi" => "\u{3A8}",
-        "Omega" => "\u{3A9}",
-        "alpha" => "\u{3B1}",
-        "beta" => "\u{3B2}",
-        "gamma" => "\u{3B3}",
-        "delta" => "\u{3B4}",
-        "epsilon" => "\u{3F5}",
-        "zeta" => "\u{3B6}",
-        "eta" => "\u{3B7}",
-        "theta" => "\u{3B8}",
-        "iota" => "\u{3B9}",
-        "kappa" => "\u{3BA}",
-        "lambda" => "\u{3BB}",
-        "mu" => "\u{3BC}",
-        "nu" => "\u{3BD}",
-        "xi" => "\u{3BE}",
-        "pi" => "\u{3C0}",
-        "rho" => "\u{3C1}",
-        "sigma" => "\u{3C3}",
-        "tau" => "\u{3C4}",
-        "upsilon" => "\u{3C5}",
-        "phi" => "\u{3D5}",
-        "chi" => "\u{3C7}",
-        "psi" => "\u{3C8}",
-        "omega" => "\u{3C9}",
-        "minus" => "\u{2212}",
-        "multiply" => "\u{D7}",
-        "divide" => "\u{F7}",
-        "infinity" => "\u{221E}",
-        "periodcentered" => "\u{B7}",
-        "bullet" => "\u{2022}",
-        "integraltext" | "integraldisplay" | "integral" => "\u{222B}",
-        "contintegraltext" | "contintegraldisplay" => "\u{222E}",
-        "summationtext" | "summationdisplay" | "summation" => "\u{2211}",
-        "producttext" | "productdisplay" | "product" => "\u{220F}",
-        "coproducttext" | "coproductdisplay" => "\u{2210}",
-        "uniontext" | "uniondisplay" => "\u{22C3}",
-        "intersectiontext" | "intersectiondisplay" => "\u{22C2}",
-        "radical" | "radicalbig" | "radicalBig" | "radicalbigg" | "radicalBigg" => "\u{221A}",
-        "arrowright" => "\u{2192}",
-        "arrowleft" => "\u{2190}",
-        "element" => "\u{2208}",
-        "lessequal" => "\u{2264}",
-        "greaterequal" => "\u{2265}",
-        "plusminus" => "\u{B1}",
-        "partialdiff" => "\u{2202}",
-        "prime" => "\u{2032}",
-        "similar" => "\u{223C}",
-        "approxequal" => "\u{2248}",
-        "notequal" => "\u{2260}",
-        "equivalence" => "\u{2261}",
-        "nabla" => "\u{2207}",
-        "angbracketleft" => "\u{27E8}",
-        "angbracketright" => "\u{27E9}",
-        _ => return None,
-    };
-    Some(t.chars().collect())
-}
-
 /// What a PNG says about its colours (dvipdfmx's order: `iCCP`, then
 /// `sRGB`, then `cHRM`/`gAMA`).
 #[derive(Default)]
@@ -2300,12 +2170,9 @@ mod tests {
         assert!(program.len() < 30_000, "{} bytes", program.len());
         let base = f.get("BaseFont").and_then(Obj::as_name).unwrap();
         assert_eq!(base.as_bytes()[6], b'+', "{base}");
-        // ToUnicode: the ideograph
-        let tu = pdf
-            .decode_stream(pdf.resolve(f.get("ToUnicode").unwrap()))
-            .unwrap();
-        let tu = String::from_utf8(tu).unwrap();
-        assert!(tu.contains(&format!("<{cid:04X}> <6F22>")), "{tu}");
+        // no ToUnicode: Adobe-Japan1 is a collection viewers know, and
+        // xdvipdfmx writes none for it (CIDFont_is_ACCFont)
+        assert!(f.get("ToUnicode").is_none());
         // its character collection, as xdvipdfmx writes it
         let csi = d.get("CIDSystemInfo").and_then(Obj::as_dict).unwrap();
         assert_eq!(csi.get("Ordering"), Some(&Obj::String(b"Japan1".to_vec())));
@@ -2326,11 +2193,11 @@ mod tests {
             return;
         };
         let data = std::fs::read(&path).unwrap();
-        let rev = super::super::tounicode::cmap_reverse(&data, 0);
+        let rev = super::super::tounicode::cmap_inverse(&data, 0);
         let font = flashtex_pdf::truetype::TrueTypeFont::parse(data).unwrap();
         for c in ['日', '文'] {
             let g = font.glyph_id(c).unwrap();
-            assert_eq!(rev.get(&g), Some(&vec![c]));
+            assert_eq!(rev.get(&g), Some(&c));
         }
     }
 

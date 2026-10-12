@@ -457,8 +457,8 @@ writer.
 plus that supplement, with no new dependency: native fonts as
 `Type0`/`Identity-H` with CID = glyph id (CFF: a CID-keyed subset,
 TrueType: glyph ids kept in place), TFM fonts as Type 1 subsets, by the
-MIT subsetters of `crates/pdf`; `ToUnicode` from the `cmap`, `GSUB`
-ligatures and substitutions and the `MATH` variants; PNG `IDAT` copied with
+MIT subsetters of `crates/pdf`; `ToUnicode` as xdvipdfmx writes it (see
+below); PNG `IDAT` copied with
 its colour space (`iCCP`, `sRGB`, `gAMA`/`cHRM` as dvipdfmx writes them),
 JPEG passed through with its ICC profile, PDF pages as forms; links,
 destinations, outline, document information and catalog entries; streams
@@ -500,12 +500,33 @@ a warning; CID-keyed CFF fonts (CJK) are drawn by CID, subset by FlashTeX's
 own CID-keyed subsetter (`src/out/cffcid.rs`: glyphs renumbered with their
 CIDs, unreached subroutines emptied in place) with the font's `ROS` as
 `CIDSystemInfo`, as xdvipdfmx writes them (a whole font, if one cannot be
-subset, has no subset tag); `/Flags` and `/StemV` come from the face. A glyph
-several code points reach reads as the highest, as xdvipdfmx's inverted
-`cmap` does (measured): 日 is U+65E5, not the Kangxi radical U+2F47.
+subset, has no subset tag); `/Flags` and `/StemV` come from the face.
 Verified: plain-XeTeX HaranoAji Mincho and Gothic against `xetex`: 46/46
-glyphs matched, 322 px at 2×; xdvipdfmx writes no `ToUnicode` for these
-fonts (viewers read the Adobe-Japan1 ordering), FlashTeX writes one.
+glyphs matched, 322 px at 2×.
+
+**`ToUnicode` (lane M3-EXPORT, 2026-10-12)** is a port of xdvipdfmx's
+(`src/out/tounicode.rs`, `src/out/agl.rs`; `type0.c`, `tt_cmap.c`,
+`tt_gsub.c`, `agl.c`, `pdfencoding.c` of TeX Live 2026). A font of a standard
+Adobe collection (Adobe-GB1, -CNS1, -Japan1, -Korea1: Fandol, HaranoAji) has
+none, as xdvipdfmx writes none (viewers read the collection); until this
+lane FlashTeX wrote one. Any other native font's text comes from, in turn:
+its `cmap` read backwards (the highest code point; private-use,
+presentation-form, CJK-compatibility and Kangxi-radical code points only as
+a fallback, so 日 is U+65E5, not U+2F47); the single, alternate and ligature
+substitutions of the `GSUB` lookups some feature lists (not those only a
+contextual lookup reaches: Amiri's positional forms have no text in
+xdvipdfmx's PDF either); the glyph's name (`post`, or a name-keyed CFF
+charset) through the Adobe Glyph List, which xdvipdfmx loads from
+`texglyphlist.txt`, `pdfglyphlist.txt` and `glyphlist.txt` (so `parenleft.v1`
+reads `(`; the `MATH` variants are no longer used); then the fallback code
+points. A Type 1 (TFM) font's text is its encoding's names through the same
+list (`visiblespace` is U+2423), and it has no `ToUnicode` when a used name
+has none. Measured before the port, by a prototype of the same algorithm
+against xelatex's PDFs of the 49-case corpus: 243 of 248 native fonts and
+33 of 33 Type 1 fonts equal; the other 5 were math fonts whose local copies
+were another version than the CI image's. The no-TeX-Live bundle does not
+ship TeX Live's `glyphlist` package, so there the name step finds nothing,
+as xdvipdfmx without those files.
 
 ## 4C. Phase S3, stage 1 (2026-10-09): `flashtex-host-unicode`, cold
 
