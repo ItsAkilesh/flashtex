@@ -245,6 +245,19 @@ final class EngineV3LayerTarget: @unchecked Sendable {
     }
 }
 
+/// A page view's hosted layer: says when it enters a visible layer tree
+/// (`kCAOnOrderIn`), where the tree's flip, and so the label's place, is known.
+final class EngineV3PageLayer: CALayer {
+    var onOrderIn: (() -> Void)?
+    override init() { super.init() }
+    override init(layer: Any) { super.init(layer: layer) }
+    required init?(coder: NSCoder) { fatalError() }
+    override func action(forKey event: String) -> CAAction? {
+        if event == kCAOnOrderIn { onOrderIn?() }
+        return super.action(forKey: event)
+    }
+}
+
 /// One page on screen: a layer-hosting view whose layer's contents is the
 /// page bitmap (set through `target`, from any thread).
 final class EngineV3PageView: NSView {
@@ -262,7 +275,7 @@ final class EngineV3PageView: NSView {
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
-        let l = CALayer()
+        let l = EngineV3PageLayer()
         l.backgroundColor = CGColor(gray: 1, alpha: 1)
         l.contentsGravity = .resize
         l.shadowOpacity = 0.18
@@ -280,6 +293,10 @@ final class EngineV3PageView: NSView {
         label.alignmentMode = .right
         label.zPosition = 5
         l.addSublayer(label)
+        // AppKit may put the hosted layer into its superlayer after
+        // `viewDidMoveToWindow` (in a SwiftUI pane, on a later pass): the
+        // tree's flip is known only then, so the label is placed again.
+        l.onOrderIn = { [weak self] in self?.placeLabelNow() }
     }
 
     /// The page's "page N" label (`DS.Preview` label colours, for the page's appearance).
@@ -304,6 +321,15 @@ final class EngineV3PageView: NSView {
     /// known once the view is in a window: placed again then.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        placeLabelNow()
+    }
+
+    override func layout() {
+        super.layout()
+        placeLabelNow()
+    }
+
+    private func placeLabelNow() {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         placeLabel()
         CATransaction.commit()

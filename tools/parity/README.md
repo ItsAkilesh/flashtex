@@ -746,6 +746,19 @@ checked against the manifest's sha256 when it is fetched. It was copied on
 snapshot the manifests were pinned on; all 112 entries match). Without the
 directory, those tiers' documents are unmeasured and the tiers read partial.
 
+**The hosted route** (p5-scoreboard.yml, route `hosted`, nightly at 02:23 UTC)
+measures the whole board, T4 included, on GitHub-hosted Ubuntu while the PC is
+off. Its oracle is TeX Live 2026 from the pinned image `HOSTED_TEXLIVE_IMAGE`
+(scheme-full, no doc files), so its reports carry `-hosted` and compare only
+with each other. One build (`hosted-build`) serves every job at one path, so
+every run, T4's included, is of one binary. T4 is split over hosted jobs
+(`scripts/ci/p5-hosted-t4.sh`: one run key for every job, then one merged
+summary); the board's stages run one per job (`scoreboard-run.sh --skip ...
+--no-board`) and are collected into one board (`--collect`). The templates and
+packages documents come from the release asset `corpus-texmf-tl2026-ca39e6791582`,
+the same selection as the PC's copy, made by `scripts/ci/corpus-texmf-bundle.py`
+and pinned by its sha256.
+
 **The new engine is the T4 run's own binary.** nightly.yml keeps it, with its
 formats and pool, in `~/.cache/flashtex-nightly/engines/<key>/` on the PC.
 `scoreboard-run.sh` uses it when the T4 summary names a binary on this host

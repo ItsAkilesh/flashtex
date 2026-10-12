@@ -2791,12 +2791,15 @@ sys.exit(0)
         """A `Terminated` raised in a `__del__` is printed and dropped, and one
         raised inside subprocess's lock handling can leave the worker blocked
         on that lock; either way the worker must still exit, or the pool's
-        join of it hangs the run (CI, 2026-10). A second SIGTERM exits at once."""
-        child = f"""
+        join of it hangs the run (CI, 2026-10). A second SIGTERM exits at once.
+        (With two signals the grace is long, 60 s, so "at once" is told apart
+        from "after the grace" with no tight bound on a loaded runner.)"""
+        for signals, grace in ((1, 0.5), (2, 60.0)):
+            child = f"""
 import sys, time
 sys.path.insert(0, {HERE!r})
 import parity
-parity.TERM_GRACE = 0.5
+parity.TERM_GRACE = {grace!r}
 parity.set_shell_escape("-no-shell-escape")  # installs the worker's SIGTERM handler
 print("ready", flush=True)
 while True:
@@ -2805,7 +2808,6 @@ while True:
     except BaseException:  # what a __del__ does to an exception
         pass
 """
-        for signals in (1, 2):
             p = subprocess.Popen([sys.executable, "-c", child], stdout=subprocess.PIPE)
             try:
                 self.assertEqual(p.stdout.readline().strip(), b"ready")
@@ -2815,7 +2817,7 @@ while True:
                     time.sleep(0.05)
                 self.assertEqual(p.wait(30), 128 + signal.SIGTERM)
                 if signals == 2:
-                    self.assertLess(time.monotonic() - t0, 0.45)  # before the grace ran out
+                    self.assertLess(time.monotonic() - t0, grace / 2)  # before the grace ran out
             finally:
                 if p.poll() is None:
                     p.kill()
