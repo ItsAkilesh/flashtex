@@ -6,7 +6,8 @@
 //!   TECkit's engine not the API version 2.4 that TECkit 2.5.13 reports
 //!   (`TECkit_GetVersion` has said 0x00020004 since 2006, so the release
 //!   itself is pinned by the README and the checksums);
-//! * a `third_party/<lib>/README.md` pins another version;
+//! * a `third_party/<lib>/README.md` pins another version (ICU's too, of
+//!   which only the line-break tables and the bidi sources are vendored);
 //! * any vendored file differs from its `SHA256SUMS` entry, or a file of the
 //!   vendored tree is missing from `SHA256SUMS`;
 //! * a declared FFI function does not link;
@@ -33,7 +34,8 @@ use sha2::{Digest, Sha256};
 const HARFBUZZ: &str = "12.3.2";
 const FREETYPE: (i32, i32, i32) = (2, 14, 1);
 const TECKIT: &str = "2.5.13";
-/// ICU, whose bidi algorithm src/native/ubidi ports (not linked).
+/// TeX Live 2026's ICU (third_party/icu): its line-break tables, and the
+/// bidi sources that src/native/ubidi ports (neither is linked).
 const ICU: &str = "78.2";
 
 fn third_party() -> PathBuf {
@@ -161,6 +163,11 @@ fn vendored_freetype_matches_sha256sums() {
 #[test]
 fn vendored_teckit_matches_sha256sums() {
     check_sums("teckit", &["TECkit-src", "TLpatches"], 20);
+}
+
+#[test]
+fn vendored_icu_line_tables_match_sha256sums() {
+    check_sums("icu", &["brkitr"], 16);
 }
 
 /// TECkit's own normalizer (no mapping file, as XeTeX's
@@ -328,7 +335,7 @@ fn shapes_office_with_the_ffi_ligature() {
 
 #[test]
 fn vendored_icu_matches_sha256sums() {
-    check_sums("icu", &["icu-src"], 11);
+    check_sums("icu", &["icu-src"], 16);
     let uvernum =
         std::fs::read_to_string(third_party().join("icu/icu-src/source/common/unicode/uvernum.h"))
             .unwrap();

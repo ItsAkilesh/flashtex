@@ -74,7 +74,7 @@ src/native/ubidi/ ports the part of ICU's bidirectional algorithm that
 XeTeX uses (ubidi.cpp, ubidiln.cpp, ubidi_props.cpp and the generated
 ubidi_props_data.h of ICU 78.2, the ICU TeX Live 2026 builds xetex with;
 third_party/icu). ICU's code is under the following licences, whose notices
-are reproduced here as they require (third_party/icu/icu-src/LICENSE):
+are reproduced here as they require (third_party/icu/LICENSE):
 
 ----------------------------------------------------------------------------
 UNICODE LICENSE V3
