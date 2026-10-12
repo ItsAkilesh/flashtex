@@ -404,6 +404,15 @@ impl FontCatalog {
         self
     }
 
+    /// The catalog a lookup by name searches: the installed fonts
+    /// ([`FontCatalog::system_cached`]), then, with no TeX Live, the
+    /// bundle's ([`bundle_faces`], #1783). Every engine, spare and resident
+    /// one, makes it here. The bundle is fixed for a process's life, so the
+    /// font directories alone still decide when a kept catalog is stale.
+    pub fn for_lookup() -> FontCatalog {
+        FontCatalog::system_cached(None).with_faces(bundle_faces())
+    }
+
     /// A catalog of faces built by the caller.
     pub fn from_faces(faces: Vec<CatalogFace>) -> FontCatalog {
         FontCatalog { faces }

@@ -94,6 +94,14 @@ impl Handles {
         }
     }
 
+    /// Every handle that refers to an object, with it.
+    pub fn objects(&self) -> impl Iterator<Item = (i32, &Object)> {
+        self.table
+            .iter()
+            .enumerate()
+            .filter_map(|(i, o)| o.as_ref().map(|o| (i as i32 + 1, o)))
+    }
+
     /// How many handles refer to an object.
     pub fn live(&self) -> usize {
         self.table.iter().filter(|s| s.is_some()).count()
@@ -139,8 +147,6 @@ pub struct Host {
     /// XeTeXFontMgr's `sReqEngine`: the renderer the last font name asked
     /// for (`/AAT`, `/OT` or `/ICU`, `/GR`), or 0.
     pub req_engine: u8,
-    /// Whether text needing ICU's bidi analysis was reported (once).
-    pub bidi_warned: bool,
     /// XeTeX_ext.c's `saved_mapping_name`: the `:mapping=` of the TFM font
     /// being loaded, from `check_for_tfm_font_mapping` to
     /// `load_tfm_font_mapping`, both within one `\font`. Each check
@@ -170,6 +176,9 @@ pub struct Host {
     /// The paths `find_pic_file` found, for the output (`crate::out`), which
     /// takes them from here at each page.
     pub pictures: std::collections::BTreeSet<String>,
+    /// The display list's source map (`crate::dlsource`): node positions,
+    /// spans and the markers of the page being shipped.
+    pub dl: crate::dlsource::DlSource,
     /// A hot spare's go-ahead (`crate::host::spare`): the descriptor the
     /// run waits on after the format is loaded, taken at that wait. `None`
     /// for every other run.
@@ -177,6 +186,19 @@ pub struct Host {
     /// What the host that started this run asked of it (`crate::host::spare`).
     #[cfg(unix)]
     pub child_env: crate::host::spare::ChildEnv,
+    /// The clock pinned for the run (seconds, microseconds since the
+    /// epoch): a resident engine's session clock, or `FLASHTEX_PIN_CLOCK`.
+    /// `\time`, `\day`, `\month`, `\year`, the start time, the PDF's
+    /// dates and (through the run's first `seconds_and_micros`) the random
+    /// seed read it (DESIGN.md §4.5).
+    pub clock: Option<(i64, i32)>,
+    /// The run's first `seconds_and_micros` is still to come: it reads
+    /// `clock`; later ones (`\pdfelapsedtime`) read the system's clock.
+    pub seed_pending: bool,
+    /// A run of a resident engine (`crate::resident`): its exits return to
+    /// the host, its terminal is captured.
+    /// `None` for a run that is a process of its own.
+    pub resident: Option<Box<crate::resident::Resident>>,
 }
 
 /// `-no-pdf`, true unless set otherwise.
@@ -203,6 +225,9 @@ struct Saved {
     full_name_of_file: Option<String>,
     protrusion: Protrusion,
     handles: Handles,
+    /// The display list's source map (`crate::dlsource`): its side table
+    /// is indexed like `mem`, so it goes back with the word space.
+    dl: crate::dlsource::DlSnap,
 }
 
 impl Globals {
@@ -218,6 +243,7 @@ impl Globals {
             full_name_of_file: self.host.full_name_of_file.clone(),
             protrusion: self.host.protrusion.clone(),
             handles: self.host.handles.clone(),
+            dl: self.host.dl.snapshot(),
         };
         self.host.checkpoints.insert(id, saved);
         id
@@ -240,6 +266,7 @@ impl Globals {
         self.host.full_name_of_file = saved.full_name_of_file;
         self.host.protrusion = saved.protrusion;
         self.host.handles = saved.handles;
+        self.host.dl.restore(&saved.dl);
         Ok(())
     }
 

@@ -54,6 +54,11 @@ flashtex-display-list = { path = "../display-list-v3" }
 flashtex-pdf = { path = "../pdf" }
 # The project manifest (MIT): `[fonts]` in Unicode mode (src/host/fonts.rs).
 flashtex-project-manifest = { path = "../project-manifest" }
+# The Unicode Bidirectional Algorithm (MIT or Apache-2.0, used under MIT;
+# Unicode 16.0, TeX Live 2026's ICU's version) for `measure_native_node`'s
+# direction runs (src/native/bidi.rs); ICU's own choices around it are ported
+# there. No dependencies with the default features.
+unicode-bidi = "=0.3.18"
 
 # The host's children (src/host/proc.rs): process groups, the lifeline pipe.
 [target.'cfg(unix)'.dependencies]

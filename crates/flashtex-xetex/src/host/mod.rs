@@ -5,20 +5,24 @@
 //! and `flashtex-v3` start whichever host the document's mode names, and
 //! a mode switch starts the other program (owner, Q10).
 //!
-//! **This first stage compiles cold.** Each `COMPILE` runs the engine in
-//! full, as a child process of this program invoked as `xelatex` (as the
-//! pdfTeX host's export runs): its pages stream to the client as they are
-//! shipped, through a socket of its own (`FLASHTEX_DISPLAY_LIST`); a run
-//! that changed the `.aux` (or another file LaTeX reads back) is followed
-//! by another, up to five passes, each pass's pages replacing the
+//! **The engine is resident** (`inproc`, `crate::resident`): each run of a
+//! `COMPILE` runs the engine on an engine thread of this process, from the
+//! state kept where the format is loaded (the first run loads it), so a
+//! compile does not wait for a process start, kpathsea's start-up or the
+//! format's undump; and an edit after the preamble runs from S₀, the state
+//! at the document's start (`crate::ckpt`), so it re-runs only the body
+//! (`DONE.mode` `incremental`, `DONE.starts` each pass's start). Its pages
+//! stream to the client as they are shipped. A
+//! run that changed the `.aux` (or another file LaTeX reads back) is
+//! followed by another, up to five passes, each pass's pages replacing the
 //! previous (spec §6.4); then the external tools (`tools`) and their
 //! follow-up compiles. `DONE.pdf` is FlashTeX's own PDF, written from the
-//! display list (PLAN.md §3.2). The next run is started ahead and waits with
-//! the format loaded (`spare`), so a compile does not wait for the process
-//! start and the format's undump. The resident, incremental engine of
-//! Classic (checkpoints, convergence, S₀) is the next stage; its pieces
-//! move into the shared runtime crate then (PLAN.md §3.3). Classic's
-//! `flashtex-host` is not changed by this program.
+//! display list (PLAN.md §3.2). `FLASHTEX_UNICODE_INPROCESS=0` runs each run
+//! as a child process of this program invoked as `xelatex` instead (as the
+//! pdfTeX host's export runs), the next one started ahead with the format
+//! loaded (`spare`). The incremental engine of Classic (S₀, checkpoints,
+//! convergence; docs/design/xetex/INCREMENTAL.md) builds on the resident
+//! one. Classic's `flashtex-host` is not changed by this program.
 //!
 //! The formats are FlashTeX's own (`format`), built from the user's TeX
 //! Live as fmtutil builds them and cached.
@@ -32,8 +36,10 @@
 //! Invoked as `xetex` or `xelatex` (`argv[0]`), it is the engine itself.
 
 pub mod compile;
+pub mod diag;
 pub mod fonts;
 pub mod format;
+pub mod inproc;
 pub mod proc;
 pub mod spare;
 pub mod tools;
@@ -289,6 +295,7 @@ fn serve(
         children,
         slots: Arc::new(spare::Slots::from_env()),
         profile: opts.profile,
+        engine: inproc::enabled().then(inproc::Shared::default),
     });
     let _ = listener.set_nonblocking(opts.once);
     let mut n = 0u64;
@@ -337,6 +344,9 @@ struct Host {
     /// The connections' spares, bounded together (`spare.rs`).
     slots: Arc<spare::Slots>,
     profile: Mode,
+    /// The engine thread of compiles run in this process (`inproc`), or
+    /// `None` when each run is a child process.
+    engine: Option<inproc::Shared>,
 }
 
 impl Host {
@@ -414,6 +424,9 @@ fn connection(host: &Arc<Host>, conn: UnixStream, n: u64) {
         line_state: accepted
             .iter()
             .any(|a| a == flashtex_display_list::accept::LINE_STATE),
+        diag: accepted
+            .iter()
+            .any(|a| a == flashtex_display_list::diag::CAPABILITY),
     };
     let caps = [
         "compile",
@@ -428,13 +441,17 @@ fn connection(host: &Arc<Host>, conn: UnixStream, n: u64) {
         "buffers",
         "edits",
         flashtex_display_list::PROFILE_CAPABILITY,
+        flashtex_display_list::diag::CAPABILITY,
     ];
     // a mode the host does not know is ignored (protocol §6.9)
     let mode = hello
         .str_field("profile")
         .and_then(Mode::parse)
         .unwrap_or(host.profile);
-    let spares = spare::Spares::new(host.slots.clone(), mode);
+    let mut spares = spare::Spares::new(host.slots.clone(), mode);
+    if host.engine.is_some() {
+        spares = spares.off();
+    }
     send_json(
         &out,
         kind::HELLO,
@@ -552,6 +569,9 @@ fn cancel_locked(r: &mut Running) {
     if let Some(g) = r.group {
         proc::kill_group(g);
     }
+    if let Some(s) = r.stop.as_ref() {
+        s.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 fn compile_thread(
@@ -601,7 +621,7 @@ fn compile_thread(
         };
         if superseded {
             let _ = job.apply_files();
-            done(out, &job, "cancelled", None, 0, 0, 0, None, t0, None);
+            done(out, &job, &compile::Outcome::none("cancelled"), t0, None);
             continue;
         }
         run_job(
@@ -641,7 +661,7 @@ fn run_job(
                 ("message", js(e)),
             ]),
         );
-        done(out, job, "failed", None, 0, 0, 0, None, t0, None);
+        done(out, job, &compile::Outcome::none("failed"), t0, None);
         return;
     }
     let fmt_dir = match host.format_dir(&job.format) {
@@ -656,7 +676,7 @@ fn run_job(
                     ("message", js(e)),
                 ]),
             );
-            done(out, job, "failed", None, 0, 0, 0, None, t0, None);
+            done(out, job, &compile::Outcome::none("failed"), t0, None);
             return;
         }
     };
@@ -713,19 +733,9 @@ fn run_job(
             scratch,
             &host.children,
             spares,
+            host.engine.as_ref(),
         );
-        done(
-            out,
-            job,
-            o.status,
-            o.exit_code,
-            o.pages,
-            o.diagnostics,
-            o.passes,
-            o.first_page_ms,
-            t0,
-            cause,
-        );
+        done(out, job, &o, t0, cause);
         if job.export || o.status == "cancelled" || o.status == "failed" {
             break;
         }
@@ -781,19 +791,15 @@ fn started(out: &Out, job: &Job, exe: &Path) {
     );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn done(
-    out: &Out,
-    job: &Job,
-    status: &str,
-    exit_code: Option<i32>,
-    pages: u32,
-    diagnostics: usize,
-    passes: usize,
-    first_page_ms: Option<f64>,
-    t0: Instant,
-    cause: Option<&str>,
-) {
+fn done(out: &Out, job: &Job, o: &compile::Outcome, t0: Instant, cause: Option<&str>) {
+    let (status, exit_code, pages, diagnostics, passes, first_page_ms) = (
+        o.status,
+        o.exit_code,
+        o.pages,
+        o.diagnostics,
+        o.passes,
+        o.first_page_ms,
+    );
     let pdf = job.output_dir.join(format!("{}.pdf", job.jobname));
     let log = job.output_dir.join(format!("{}.log", job.jobname));
     let ms = |v: f64| Json::Num((v * 10.0).round() / 10.0);
@@ -822,7 +828,19 @@ fn done(
         ("log".to_string(), js(log.to_string_lossy().into_owned())),
         (
             "mode".to_string(),
-            js(if job.export { "export" } else { "cold" }),
+            // a compile whose first run went on from S₀ re-ran only the
+            // document's body
+            js(if job.export {
+                "export"
+            } else if matches!(o.starts.first(), Some(&"s0" | &"page")) {
+                "incremental"
+            } else {
+                "cold"
+            }),
+        ),
+        (
+            "starts".to_string(),
+            Json::Arr(o.starts.iter().map(|s| js(*s)).collect()),
         ),
         ("passes".to_string(), Json::Int(passes as i64)),
         ("typeset_pages".to_string(), Json::Int(pages as i64)),

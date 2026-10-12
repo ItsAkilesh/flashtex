@@ -129,10 +129,55 @@ pdfTeX's own, each needing a XeTeX counterpart written against `xetex.web`:
    format image (`fmtimage.ch` for `xetex.web`) and the kpathsea and font
    catalogs kept in the process. Gate: P-T1 lockstep, XDV and the PDF parity
    baseline unchanged; spares removed.
+   *Landed (lane XETEX-INCR, step 1), before R2:* `src/resident.rs`,
+   `src/host/inproc.rs`. The engine is kept between runs, and the state
+   right after the format load is a checkpoint (`changes/resident.ch`'s
+   `flashtex_format_ready`) that later runs of the same command line and
+   unchanged format file restore, then run the rest of the main program
+   (`run_after_format`): no `fmtimage.ch`, no `initialize`/`init_prim` at
+   all. The clock is the session's (as Classic's), the terminal and the
+   output's reports are captured, exits unwind, and a run stops at its host's
+   cancel (`flashtex_poll` between commands and at each macro call). The
+   runtime is still per process, so one engine thread serves the process.
+   Spares remain behind `FLASHTEX_UNICODE_INPROCESS=0`, as the comparison
+   path; `tools/incr-bench/unicode.py --verify` compares every in-process
+   compile with a from-scratch one in a process of its own.
 3. **S₀** at `\begin{document}`, keyed by the read-set (font files and
    directories included). This is the step that matters for unicode-math.
+   *Landed (lane XETEX-INCR, step 2):* `changes/checkpoint.ch` (Classic's
+   arming at `\document` and the hook at `big_switch`, against `xetex.web`;
+   `resume_main_control`), `src/ckpt.rs` (the record: every file global's
+   stream, an output file's bytes so far being written back on a restore;
+   the captured terminal; the run's state outside the word space; each
+   layout engine's shaping state). The key is Classic's `host::Key`, checked
+   by Classic's code, built from the same read journal (this engine's own
+   opens now note their files: the output-directory shortcut, font files,
+   `\filemoddate` and the other whole reads), plus the font directories
+   when the preamble named a font. §4's two beliefs, tested
+   (`ckpt::tests`): HarfBuzz/FreeType answers and TECkit conversions do
+   not depend on what was asked before; but a layout engine keeps the last
+   shaping's shaper and script, which `usingOpenType`/`usingGraphite` read,
+   so the record keeps them and a restore puts them back. S₀ is refused
+   when a page shipped before it (the output's state is not kept yet: step
+   4), and when the preamble ran a shell command.
 4. **L2 checkpoints** at `\shipout` with §4's state, `checkpoint.ch` for
    `xetex.web`.
+   *Landed (lane XETEX-INCR, step 3), with L3's restart (not its
+   convergence):* after S₀, a checkpoint at the first `big_switch` after
+   each shipout (`ckpt::PageCk`). It keeps the output's document (pages
+   and forms shared, `Arc`), output files by length only (a restore cuts
+   them back while `system::outside_change` says the engine's last write
+   is what is there, and while no file open before the checkpoint was
+   opened again after it), and the terminal by length. A compile whose S₀
+   key holds restarts from the newest page checkpoint before what changed
+   (`resident::Engine::restart_page`): every file read by then unchanged,
+   but a file still open there may have changed after the bytes consumed
+   (the edit's place against the user's files as the last run read them),
+   and no lookup finds another file. The pages before it are sent again
+   from the checkpoint's document (each page's frame made once, kept in
+   its `Built`), then the run goes on to the end: no convergence yet, so
+   the pages after the edit are typeset again (`done` grows with the
+   document), but the edited page comes after a page or two.
 5. **L3 restart and converge**: `iso.rs` for XeTeX's nodes, the dead-word
    rules from `xetex.web`, line shifting; a soundness case for every rule and
    the soundness sweep (incremental equal to cold, frame by frame).

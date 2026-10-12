@@ -42,6 +42,8 @@ pub use flashtex_xetex_fontlibs as fontlibs;
 /// TeX Live's TECkit 2.5.13 (font mappings, phase S1): `teckit::TECkit_*`.
 pub use flashtex_xetex_teckit as teckit;
 
+pub mod ckpt;
+pub mod dlsource;
 pub mod driver;
 pub mod fontmgr;
 pub mod generated;
@@ -50,6 +52,7 @@ pub mod host;
 pub mod native;
 pub mod out;
 pub mod pic;
+pub mod resident;
 pub mod state;
 pub mod system;
 pub mod xetex_ext;

@@ -88,6 +88,11 @@ pub struct Built {
     pub fonts: Vec<u16>,
     pub images: Vec<u32>,
     pub forms: Vec<u32>,
+    /// Its `PAGE`/`FORM` body (`out::encode`), once made: a resident run
+    /// restarted after this page sends it again (`Output::resume`).
+    pub frame: std::sync::OnceLock<Vec<u8>>,
+    /// A page: how many forms had been made when it shipped.
+    pub forms_at: usize,
 }
 
 /// A link annotation being tracked between `pdf:bann` and `pdf:eann`.
@@ -101,8 +106,10 @@ pub struct Tracking {
     pub rect: Option<[f64; 4]>,
 }
 
-/// The document.
-#[derive(Default)]
+/// The document. A resident engine's page checkpoint keeps a copy
+/// (`crate::ckpt`): the pages and forms are shared, so a copy costs a
+/// pointer a page.
+#[derive(Clone, Default)]
 pub struct Doc {
     pub fonts: Fonts,
     pub images: Images,
@@ -119,7 +126,7 @@ pub struct Doc {
     /// (with `@page<n>` for its page).
     pub dests: Vec<(Vec<u8>, Obj)>,
     /// Forms by id - 1.
-    pub forms: Vec<Built>,
+    pub forms: Vec<std::sync::Arc<Built>>,
     /// `pdf:majorversion`, `pdf:minorversion` (dvipdfmx's default 1.7 is
     /// TeX Live's `dvipdfmx.cfg`'s `V 7`).
     pub version: (u32, u32),
@@ -136,7 +143,7 @@ pub struct Doc {
     /// The size the last `pdf:pagesize`/`papersize` gave, kept for later
     /// pages (dvipdfmx keeps it).
     pub paper: Option<(Fx, Fx)>,
-    pub pages: Vec<Built>,
+    pub pages: Vec<std::sync::Arc<Built>>,
     /// The XDV preamble's comment (` XeTeX output ...`): xdvipdfmx's
     /// `/Creator` when the document gives none.
     pub dvi_comment: Option<Vec<u8>>,
