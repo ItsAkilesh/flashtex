@@ -156,7 +156,11 @@ class Callgrind:
 
     def argv(self):
         return ['valgrind', '--tool=callgrind', '--callgrind-out-file=' + self.base,
-                '--dump-instr=no', '--compress-strings=no', '--dump-after=flashtex_page_sent']
+                '--dump-instr=no', '--compress-strings=no', '--dump-after=flashtex_page_sent',
+                # (valgrind runs one thread at a time; without a fair lock a
+                # busy thread -- the engine's S0 save -- keeps it, and the
+                # connection's thread cannot even pass on the next request)
+                '--fair-sched=yes']
 
     def ctl(self, *args):
         subprocess.run(['callgrind_control'] + list(args) + [str(self.pid)], check=True,

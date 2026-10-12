@@ -692,6 +692,11 @@ impl Engine {
         if self.s0_saved == Some(s0.id) {
             return Ok(None);
         }
+        // (asked for again by a later compile: the first ask's record
+        // stands, its texts and chunks are S₀'s time's)
+        if self.pending_save.as_ref().is_some_and(|p| p.id == s0.id) {
+            return Ok(None);
+        }
         let (k, f) = match (&self.point, &self.opened) {
             (Some(p), _) => (p.key.clone(), p.format.clone()),
             (None, Some(o)) => o.clone(),
