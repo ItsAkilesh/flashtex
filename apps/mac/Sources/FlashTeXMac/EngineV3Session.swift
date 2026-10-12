@@ -1248,11 +1248,16 @@ final class EngineV3Session {
     /// milliseconds of main thread (APP-EDITOR-INSTANT).
     static let sendQueue = DispatchQueue(label: "flashtex.engine-v3.send", qos: .userInteractive)
 
+    /// The threads the COMPILE writes and first-sight file writes ran on
+    /// (EngineV3SendOffMainTests: none on main).
+    nonisolated static let sendThreads = EngineV3SendThreads()
+
     /// Writes `req` to `c` on the send queue; a failed write restarts the
     /// host if `c` is still the connection.
     private func write(_ req: DL3CompileRequest, to c: DL3Connection, failed: @escaping @MainActor (EngineV3Session, Error) -> Void) {
         let ref = EngineV3WeakRef(self)
         Self.sendQueue.async {
+            EngineV3Session.sendThreads.note(.compile)
             do { try c.compile(req) } catch {
                 EngineV3Session.onMain {
                     guard let s = ref.value, s.connection === c else { return }
@@ -1409,6 +1414,7 @@ final class EngineV3Session {
                 // milliseconds of main thread).
                 let dst = project.root.appendingPathComponent(doc.path), text = doc.text
                 Self.sendQueue.async {
+                    EngineV3Session.sendThreads.note(.file)
                     try? FileManager.default.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
                     if (try? FileManager.default.destinationOfSymbolicLink(atPath: dst.path)) != nil { try? FileManager.default.removeItem(at: dst) }
                     try? Data(text.utf8).write(to: dst)
@@ -2356,6 +2362,27 @@ struct EngineV3LineIndexes {
         byFile[file] = ix
         return ix.range(line: line)
     }
+}
+
+/// Counts, by thread, the send queue's COMPILE writes and project-copy file
+/// writes: the test that they stay off main reads it (a counter bump per send).
+final class EngineV3SendThreads: @unchecked Sendable {
+    enum Kind { case compile, file }
+    struct Counts: Equatable { var compileOnMain = 0, compileOffMain = 0, fileOnMain = 0, fileOffMain = 0 }
+    private let lock = NSLock()
+    private var counts = Counts()
+    func note(_ kind: Kind) {
+        let main = Thread.isMainThread
+        lock.lock(); defer { lock.unlock() }
+        switch (kind, main) {
+        case (.compile, true): counts.compileOnMain += 1
+        case (.compile, false): counts.compileOffMain += 1
+        case (.file, true): counts.fileOnMain += 1
+        case (.file, false): counts.fileOffMain += 1
+        }
+    }
+    var current: Counts { lock.lock(); defer { lock.unlock() }; return counts }
+    func reset() { lock.lock(); counts = Counts(); lock.unlock() }
 }
 
 /// A weak reference that may cross threads (it is only dereferenced on main).
