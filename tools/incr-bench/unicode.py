@@ -142,22 +142,31 @@ class Callgrind:
 
     def begin(self):
         self.ctl('-z')
+        self.dumps = []
 
-    def end(self):
+    def mark(self):
+        """A dump now: the instructions since the last one (callgrind
+        zeroes its counters at a dump), kept in `dumps`."""
         before = set(self._dumps())
         self.ctl('-d')
         new = sorted(set(self._dumps()) - before, key=os.path.getmtime)
-        if not new:
-            return None
         total = None
-        with open(new[-1], errors='replace') as f:
-            for line in f:
-                m = re.match(r'(?:summary|totals):\s+(\d+)', line)
-                if m:
-                    total = int(m.group(1))
         for d in new:
+            with open(d, errors='replace') as f:
+                for line in f:
+                    m = re.match(r'(?:summary|totals):\s+(\d+)', line)
+                    if m:
+                        total = (total or 0) + int(m.group(1))
             os.unlink(d)
+        self.dumps.append(total)
         return total
+
+    def end(self):
+        """The instructions since `begin` (or the start): every dump's."""
+        self.mark()
+        if any(t is None for t in self.dumps):
+            return None
+        return sum(self.dumps)
 
     def _dumps(self):
         d = os.path.dirname(self.base)
@@ -192,14 +201,22 @@ class Host:
         read_frame(self.f)
         self.n = 0
 
-    def compile(self, root, main):
-        """One compile: (frames, done, timings)."""
+    def compile(self, root, main, prev=None):
+        """One compile: (frames, done, timings). With callgrind and `prev`
+        (the last compile's page hashes by number), the count is also taken
+        when the first page that differs from it arrives (`edited_ins`):
+        an upper bound, since the host runs on while the dump is asked for."""
         self.n += 1
         req = {'id': self.n, 'root': os.path.join(root, 'src'), 'main': main, 'format': 'xelatex',
                'shell_escape': 'default', 'output_dir': os.path.join(root, 'out')}
         i0 = instructions(self.p.pid)
-        if self.cg and not (self.from_start and self.n == 1):
-            self.cg.begin()
+        if self.cg:
+            if self.from_start and self.n == 1:
+                self.cg.dumps = []
+            else:
+                self.cg.begin()
+        edited_ins = None
+        n_page = 0
         t0 = time.time()
         write_frame(self.s, 0x02, json.dumps(req))
         frames = []
@@ -214,6 +231,10 @@ class Host:
                 page_times.append(time.time() - t0)
                 if first is None:
                     first = page_times[-1]
+                if self.cg and prev is not None and edited_ins is None \
+                        and prev.get(n_page) != hashlib.sha256(b).hexdigest():
+                    edited_ins = self.cg.mark()
+                n_page += 1
             if k == DONE:
                 d = json.loads(b)
                 if d.get('id') == self.n:
@@ -224,7 +245,10 @@ class Host:
         ins = (i1 - i0) if i0 is not None and i1 is not None else None
         if self.cg:
             ins = self.cg.end()
-        return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins)
+            if edited_ins is None:
+                edited_ins = ins
+        return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins,
+                               edited_instructions=edited_ins)
 
     def compile_cancelled(self, root, main, ms, between):
         """A compile cancelled `ms` milliseconds after it is sent, with
@@ -448,7 +472,7 @@ def main():
         nonlocal prev_pages
         open(os.path.join(work, 'src', main_tex), 'wb').write(content)
         pre = snapshot(work)
-        frames, d, t = host.compile(work, main_tex)
+        frames, d, t = host.compile(work, main_tex, prev_pages)
         pages = [b for k, b in frames if k == PAGE]
         n = d.get('pages') or 0
         last = pages[-n:] if n else []
@@ -468,6 +492,8 @@ def main():
                  first_ms=round(1e3 * (t['first'] or 0), 1), edited_ms=round(1e3 * edited, 1),
                  done_ms=round(1e3 * t['done'], 1),
                  instructions_m=round(t['instructions'] / 1e6, 1) if t['instructions'] is not None else None,
+                 edited_instructions_m=(round(t['edited_instructions'] / 1e6, 1)
+                                        if t.get('edited_instructions') is not None else None),
                  mode=d.get('mode'), starts=d.get('starts'),
                  sources=sum(1 for k, _ in frames if k == SOURCES))
         if refhost is not None:
