@@ -2044,6 +2044,12 @@ fn meanings_delta(
     then: &mut dyn FnMut(&Globals, &crate::readset::Patch) -> Result<(), String>,
 ) -> Result<crate::readset::Patch, String> {
     let words = crate::statediff::words(g, d);
+    if words.len() > PRE_PATCH_MAX_WORDS {
+        return Err(format!(
+            "{} words differ, more than {PRE_PATCH_MAX_WORDS}",
+            words.len()
+        ));
+    }
     let g: &Globals = g;
     let mut slots: Vec<i32> = vec![];
     let mut cells: Vec<usize> = vec![];
@@ -2155,6 +2161,13 @@ fn meanings_delta(
         k_old.extend(a);
         k_new.extend(b);
         names.push(n);
+    }
+    if k_old.len() + k_new.len() > 2 * PRE_PATCH_MAX_WORDS {
+        return Err(format!(
+            "the changed lists hold {} cells, more than {}",
+            k_old.len() + k_new.len(),
+            2 * PRE_PATCH_MAX_WORDS
+        ));
     }
     if def_ref {
         let heads = |v: &crate::readset::View| -> Vec<i32> {
@@ -6790,6 +6803,17 @@ impl Session {
         }
     }
 }
+
+/// A PREAMBLE-PATCH comparison gives up when more words differ than this,
+/// or the changed meanings' lists hold more than twice as many cells: what
+/// it saves is the end of the preamble and `\begin{document}`'s hooks (about
+/// 400 M instructions on full-100t), and its cost grows with the difference.
+/// Measured on full-100t with longer titles (mac-m1max-a): 74 differing
+/// words cost 47 M; 1,787 cost 51 M; 8,676 (a 5,000-character title) cost
+/// 58 M and saved 390 M; 51,782 (30,000 characters) cost 110 M here and
+/// 465 M in review. A refused comparison costs 17-25 M, once in
+/// `PRE_PATCH_RETRY` keystrokes.
+const PRE_PATCH_MAX_WORDS: usize = 16384;
 
 /// After a PREAMBLE-PATCH comparison failed, the keystrokes on its line
 /// try one again every this many (`Session::pre_patch_miss`).

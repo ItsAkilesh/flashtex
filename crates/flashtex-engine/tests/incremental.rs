@@ -3525,6 +3525,42 @@ fn preamble_patch_title_keystrokes_equal_scratch_runs() {
     }
 }
 
+/// PREAMBLE-PATCH: title keystrokes after an edit of the line before the
+/// title, which defines `\@title` literally (that edit's run read `\@title`
+/// before the keystrokes' restart point): they go on from the old run
+/// (`true`), and every compile equals scratch runs.
+#[test]
+fn preamble_patch_after_an_edit_of_the_line_before() {
+    let Some(e) = env() else {
+        common::no_texlive();
+        return;
+    };
+    let doc = |lit: &str, t: &str| {
+        patch_doc(t, "", "", "", false).replacen(
+            &format!("\\title{{{t}}}"),
+            &format!("\\makeatletter\\gdef\\@title{{{lit}}}\\makeatother\n\\title{{{t}}}"),
+            1,
+        )
+    };
+    let dir = e.dir.join("prepatch-before");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut h = Host::start(&e, &dir);
+    settle(&e, &mut h, &dir, &doc("L", "t"));
+    let keys = [
+        (doc("LM", "t"), "the line before", None),
+        (doc("LM", "t1"), "a title letter", None),
+        (doc("LM", "t12"), "the next", Some("true")),
+        (doc("LM", "t123"), "and the next", Some("true")),
+    ];
+    for (text, what, patched) in &keys {
+        let r = compile_and_check(&e, &mut h, &dir, &[("doc.tex", text)], what);
+        if let Some(p) = patched {
+            assert_eq!(field(&r, "preamble_patched"), *p, "{what}: {r}");
+        }
+    }
+}
+
 /// PREAMBLE-PATCH: what holds a title keystroke back from the old run, a
 /// case each; every compile equals scratch runs. `true`: it went on from
 /// the old run (from the second keystroke on); `false`: it compared and
@@ -3536,6 +3572,8 @@ fn preamble_patch_title_keystrokes_equal_scratch_runs() {
 ///   the anchor (`false`);
 /// * a register set on the title's line, edited with it: not a meaning
 ///   (`false`);
+/// * a title of 30,000 characters: more words differ than the comparison
+///   takes (`incr::PRE_PATCH_MAX_WORDS`; `false`);
 /// * a token register set on the title's line, its list where the old
 ///   run's was: cells of `mem` that no changed meaning holds (`false`);
 /// * a persisted S₀ after a preamble restart, which read from its restart:
@@ -3579,6 +3617,14 @@ fn preamble_patch_stops_where_the_old_run_differs() {
                     &format!("{}\\title{{{t}}}", reg(t)),
                     1,
                 )
+            }),
+            vec![("t1", "null"), ("t12", "false"), ("t1", "null")],
+        ),
+        (
+            "a title too long to compare",
+            Box::new(|t: &str| {
+                let words: String = (0..6000).map(|i| format!("w{} ", i % 97)).collect();
+                patch_doc(&format!("{t} {words}"), "", "", "", false)
             }),
             vec![("t1", "null"), ("t12", "false"), ("t1", "null")],
         ),
