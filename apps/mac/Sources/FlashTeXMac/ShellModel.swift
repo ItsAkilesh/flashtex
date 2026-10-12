@@ -1351,12 +1351,11 @@ final class ShellModel {
 
     // MARK: worker transport (runtime v1 JSON Lines)
 
-    /// Finds a built FT-002 worker: $FLASHTEX_COMPILER, then
-    /// crates/compiler/target/{release,debug}/flashtex-compiler under the repo root.
     /// Finds a built render pipeline (`flashtex-render`, crates/render-pipeline:
     /// a drop-in runtime-v1 producer measured with Latin Modern metrics, so
-    /// the preview draws Computer Modern-style text): $FLASHTEX_RENDER, the
-    /// app bundle, then crates/render-pipeline/target/{release,debug}.
+    /// the preview draws Computer Modern-style text): $FLASHTEX_RENDER, then
+    /// the app bundle. (The `crates/<crate>/target` probes are gone: the
+    /// workspace builds into ./target, so they never matched; #1236 S1b.)
     static func locateRenderPipeline() -> URL? {
         let fm = FileManager.default
         if let env = ProcessInfo.processInfo.environment["FLASHTEX_RENDER"], fm.isExecutableFile(atPath: env) {
@@ -1366,11 +1365,6 @@ final class ShellModel {
            fm.isExecutableFile(atPath: bundled.path) {
             return bundled
         }
-        guard let root = locateRepoRoot() else { return nil }
-        for profile in ["release", "debug"] {
-            let url = root.appendingPathComponent("crates/render-pipeline/target/\(profile)/flashtex-render")
-            if fm.isExecutableFile(atPath: url.path) { return url }
-        }
         return nil
     }
 
@@ -1378,7 +1372,7 @@ final class ShellModel {
     @discardableResult
     func attachDiscoveredRenderPipeline() -> Bool {
         guard let url = Self.locateRenderPipeline() else {
-            workerStatus = "no built flashtex-render found (build crates/render-pipeline or set FLASHTEX_RENDER)"
+            workerStatus = "no flashtex-render found (set FLASHTEX_RENDER to a built one)"
             return false
         }
         attachWorker(at: url)
@@ -1396,6 +1390,7 @@ final class ShellModel {
         return locateRenderPipeline() ?? locateCompiler()
     }
 
+    /// Finds a built FT-002 worker: $FLASHTEX_COMPILER, then the app bundle.
     static func locateCompiler() -> URL? {
         let fm = FileManager.default
         if let env = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"], fm.isExecutableFile(atPath: env) {
@@ -1405,11 +1400,6 @@ final class ShellModel {
            fm.isExecutableFile(atPath: bundled.path) {
             return bundled
         }
-        guard let root = locateRepoRoot() else { return nil }
-        for profile in ["release", "debug"] {
-            let url = root.appendingPathComponent("crates/compiler/target/\(profile)/flashtex-compiler")
-            if fm.isExecutableFile(atPath: url.path) { return url }
-        }
         return nil
     }
 
@@ -1417,7 +1407,7 @@ final class ShellModel {
     @discardableResult
     func attachDiscoveredWorker() -> Bool {
         guard let url = Self.locateCompiler() else {
-            workerStatus = "no built flashtex-compiler found (build crates/compiler or set FLASHTEX_COMPILER)"
+            workerStatus = "no flashtex-compiler found (set FLASHTEX_COMPILER to a built one)"
             return false
         }
         attachWorker(at: url)

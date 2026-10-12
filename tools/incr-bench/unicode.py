@@ -36,6 +36,19 @@ the same length, and its path is read as the measured one's in what it
 wrote (the logs name it). The source map (`SOURCES` frames) is also
 compared on its own (`source-map`). A mismatch's files go to BASE/mm/.
 
+`--callgrind DIR` (Linux, where `proc_pid_rusage` is not; GitHub's runners
+cannot count with `perf`): the measured host runs under valgrind's
+callgrind, its counts zeroed before each compile and dumped at its `DONE`
+(`callgrind_control`), so `instructions_m` is the host process's, all its
+threads, over the compile. The wall times are then callgrind's, not the
+host's.
+
+`--reopen`: after the edits, the measured host ends and a new one compiles
+the document once more, from the output directory the session left (its
+`.aux`), as a host started for a reopened document does (DESIGN.md §1.2:
+no host kept warm in advance). With `--callgrind` its instructions count
+from the new host's start.
+
 Prints one JSON line per compile (and to --out), then a summary line.
 """
 import argparse
@@ -74,6 +87,8 @@ ap.add_argument('--interleave', action='store_true',
                 help='with --trials: each edit\'s compile is cancelled 0-15 ms after it is sent, a second '
                      'edit saved in between (as an editor saves while the host reads); the second edit is '
                      'then compiled and verified (the classic sweep D: incr_bench.py --interleave)')
+ap.add_argument('--callgrind', metavar='DIR', help='count the measured host\'s instructions under callgrind')
+ap.add_argument('--reopen', action='store_true', help='then a new host compiles the document once more')
 a = ap.parse_args()
 
 PAGE, FONT, IMAGE, FORM, DIAG, DONE, STARTED, TOOL, SOURCES = 0x45, 0x43, 0x44, 0x46, 0x48, 0x49, 0x42, 0x4C, 0x47
@@ -108,16 +123,63 @@ def read_frame(f):
     return k, f.read(n - 1)
 
 
+class Callgrind:
+    """A host under callgrind: its instructions between `begin` and `end`
+    (`callgrind_control -z`, then `-d` and the dump's total)."""
+
+    def __init__(self, out_dir, tag):
+        os.makedirs(out_dir, exist_ok=True)
+        self.base = os.path.join(os.path.abspath(out_dir), 'cg-%d-%s' % (os.getpid(), tag))
+        self.pid = None
+
+    def argv(self):
+        return ['valgrind', '--tool=callgrind', '--callgrind-out-file=' + self.base,
+                '--dump-instr=no', '--compress-strings=no']
+
+    def ctl(self, *args):
+        subprocess.run(['callgrind_control'] + list(args) + [str(self.pid)], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+
+    def begin(self):
+        self.ctl('-z')
+
+    def end(self):
+        before = set(self._dumps())
+        self.ctl('-d')
+        new = sorted(set(self._dumps()) - before, key=os.path.getmtime)
+        if not new:
+            return None
+        total = None
+        with open(new[-1], errors='replace') as f:
+            for line in f:
+                m = re.match(r'(?:summary|totals):\s+(\d+)', line)
+                if m:
+                    total = int(m.group(1))
+        for d in new:
+            os.unlink(d)
+        return total
+
+    def _dumps(self):
+        d = os.path.dirname(self.base)
+        stem = os.path.basename(self.base)
+        return [os.path.join(d, n) for n in os.listdir(d) if n.startswith(stem + '.')]
+
+
 class Host:
-    def __init__(self, exe, env, tag):
+    def __init__(self, exe, env, tag, cg=None, from_start=False):
+        self.cg = cg
+        self.from_start = from_start
         self.sock = os.path.join(tempfile.gettempdir(), 'fxu-%d-%s.sock' % (os.getpid(), tag))
         try:
             os.unlink(self.sock)
         except OSError:
             pass
         self.err = open(os.path.join(tempfile.gettempdir(), 'fxu-%d-%s.err' % (os.getpid(), tag)), 'w')
-        self.p = subprocess.Popen([exe, '--socket', self.sock, '--once', '--accept-timeout', '600'],
+        self.p = subprocess.Popen((cg.argv() if cg else []) + [exe, '--socket', self.sock, '--once',
+                                                               '--accept-timeout', '600'],
                                   stdout=subprocess.DEVNULL, stderr=self.err, env=env)
+        if cg:
+            cg.pid = self.p.pid
         while not os.path.exists(self.sock):
             if self.p.poll() is not None:
                 sys.exit('%s: the host ended' % tag)
@@ -136,6 +198,8 @@ class Host:
         req = {'id': self.n, 'root': os.path.join(root, 'src'), 'main': main, 'format': 'xelatex',
                'shell_escape': 'default', 'output_dir': os.path.join(root, 'out')}
         i0 = instructions(self.p.pid)
+        if self.cg and not (self.from_start and self.n == 1):
+            self.cg.begin()
         t0 = time.time()
         write_frame(self.s, 0x02, json.dumps(req))
         frames = []
@@ -158,6 +222,8 @@ class Host:
         done = time.time() - t0
         i1 = instructions(self.p.pid)
         ins = (i1 - i0) if i0 is not None and i1 is not None else None
+        if self.cg:
+            ins = self.cg.end()
         return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins)
 
     def compile_cancelled(self, root, main, ms, between):
@@ -367,7 +433,8 @@ def main():
     for kv in a.host_env:
         k, v = kv.split('=', 1)
         henv[k] = v
-    host = Host(a.host, henv, 'm')
+    cg = (lambda tag: Callgrind(a.callgrind, tag)) if a.callgrind else (lambda tag: None)
+    host = Host(a.host, henv, 'm', cg('m'))
     refhost = None
     if a.verify:
         renv = dict(env, FLASHTEX_UNICODE_INPROCESS='0', FLASHTEX_UNICODE_SPARES='0')
@@ -446,7 +513,8 @@ def main():
 
     src = open(os.path.join(work, 'src', main_tex), 'rb').read()
     one(src, 'cold')
-    if a.keys:
+    # (a main file whose body is in other files gets no keystrokes)
+    if a.keys and b'\\begin{document}' in src and b'\\end{document}' in src:
         end = src.index(b'\\end{document}')
         if a.at == 'end':
             anchor = end
@@ -489,6 +557,10 @@ def main():
             else:
                 one(new, '%d:%s@%d' % (i, kind, p))
             one(src, '%d:revert' % i)
+    if a.reopen:
+        host.close()
+        host = Host(a.host, henv, 'm2', cg('m2'), from_start=True)
+        one(src, 'reopen')
     host.close()
     if refhost is not None:
         refhost.close()
