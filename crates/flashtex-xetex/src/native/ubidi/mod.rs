@@ -1680,7 +1680,7 @@ const fn sp(action: u8, new_state: u8) -> u8 {
 
 /// `groupProp`: dirProp regrouped.
 #[rustfmt::skip]
-static GROUP_PROP: [u8; 25] = [
+const GROUP_PROP: [u8; 25] = [
 //  L   R   EN  ES  ET  AN  CS  B   S   WS  ON  LRE LRO AL  RLE RLO PDF NSM BN  FSI LRI RLI PDI ENL ENR
     0,  1,  2,  7,  8,  3,  9,  6,  5,  4,  4,  10, 10, 12, 10, 10, 10, 11, 10, 4,  4,  4,  4,  13, 14,
 ];
@@ -1695,7 +1695,7 @@ const DIRPROP_B: u8 = 6;
 
 /// `impTabProps`.
 #[rustfmt::skip]
-static IMP_TAB_PROPS: [[u8; IMPTABPROPS_COLUMNS]; 24] = [
+const IMP_TAB_PROPS: [[u8; IMPTABPROPS_COLUMNS]; 24] = [
 //                        L ,     R ,    EN ,    AN ,    ON ,     S ,     B ,    ES ,    ET ,    CS ,    BN ,   NSM ,    AL ,   ENL ,   ENR , Res
 /* 0 Init        */ [     1 ,     2 ,     4 ,     5 ,     7 ,    15 ,    17 ,     7 ,     9 ,     7 ,     0 ,     7 ,     3 ,    18 ,    21 , DIRPROP_ON ],
 /* 1 L           */ [     1 ,sp(1,2),sp(1,4),sp(1,5),sp(1,7),sp(1,15),sp(1,17),sp(1,7),sp(1,9),sp(1,7),    1 ,     1 ,sp(1,3),sp(1,18),sp(1,21),  DIRPROP_L ],
@@ -1742,7 +1742,7 @@ type ImpTab = [[u8; IMPTABLEVELS_COLUMNS]; 6];
 /// `impTabL_DEFAULT`: even paragraph level. Conditional sequences receive
 /// the lower possible level until proven otherwise.
 #[rustfmt::skip]
-static IMP_TAB_L_DEFAULT: ImpTab = [
+const IMP_TAB_L_DEFAULT: ImpTab = [
 //                         L ,     R ,    EN ,    AN ,    ON ,     S ,     B , Res
 /* 0 : init       */ [     0 ,     1 ,     0 ,     2 ,     0 ,     0 ,     0 ,  0 ],
 /* 1 : R          */ [     0 ,     1 ,     3 ,     3 ,sl(1,4),sl(1,4),     0 ,  1 ],
@@ -1753,7 +1753,7 @@ static IMP_TAB_L_DEFAULT: ImpTab = [
 ];
 /// `impTabR_DEFAULT`: odd paragraph level.
 #[rustfmt::skip]
-static IMP_TAB_R_DEFAULT: ImpTab = [
+const IMP_TAB_R_DEFAULT: ImpTab = [
 //                         L ,     R ,    EN ,    AN ,    ON ,     S ,     B , Res
 /* 0 : init       */ [     1 ,     0 ,     2 ,     2 ,     0 ,     0 ,     0 ,  0 ],
 /* 1 : L          */ [     1 ,     0 ,     1 ,     3 ,sl(1,4),sl(1,4),     0 ,  1 ],
@@ -1763,7 +1763,7 @@ static IMP_TAB_R_DEFAULT: ImpTab = [
 /* 5 : L+AN+ON    */ [     1 ,     0 ,     1 ,     3 ,     5 ,     5 ,     0 ,  0 ],
 ];
 /// `impAct0`.
-static IMP_ACT0: [u8; 5] = [0, 1, 2, 3, 4];
+const IMP_ACT0: [u8; 5] = [0, 1, 2, 3, 4];
 
 #[cfg(test)]
 mod tests;

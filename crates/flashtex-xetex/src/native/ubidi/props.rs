@@ -149,12 +149,18 @@ mod tests {
                 })
                 .collect()
         };
-        assert_eq!(body("ubidi_props_indexes"), INDEXES.map(i64::from).to_vec());
+        assert_eq!(
+            body("ubidi_props_indexes"),
+            INDEXES.iter().map(|&v| i64::from(v)).collect::<Vec<_>>()
+        );
         assert_eq!(
             body("ubidi_props_trieIndex"),
-            TRIE_INDEX.map(i64::from).to_vec()
+            TRIE_INDEX.iter().map(|&v| i64::from(v)).collect::<Vec<_>>()
         );
-        assert_eq!(body("ubidi_props_mirrors"), MIRRORS.map(i64::from).to_vec());
+        assert_eq!(
+            body("ubidi_props_mirrors"),
+            MIRRORS.iter().map(|&v| i64::from(v)).collect::<Vec<_>>()
+        );
         let trie = src.split("ubidi_props_trieIndex+").nth(1).unwrap();
         let fields: Vec<&str> = trie.split(',').map(str::trim).collect();
         assert_eq!(fields[2], INDEX_LENGTH.to_string());

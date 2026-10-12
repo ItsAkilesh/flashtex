@@ -46,7 +46,7 @@ def rust_array(name, ty, vals):
     lines = []
     for i in range(0, len(vals), 12):
         lines.append("    " + ", ".join(vals[i : i + 12]) + ",")
-    return f"pub static {name}: [{ty}; {len(vals)}] = [\n" + "\n".join(lines) + "\n];\n"
+    return f"pub const {name}: &[{ty}; {len(vals)}] = &[\n" + "\n".join(lines) + "\n];\n"
 
 
 def main():
