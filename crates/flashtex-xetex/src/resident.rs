@@ -89,7 +89,6 @@ struct RunState {
     terminating: bool,
     tex_input_type: bool,
     req_engine: u8,
-    bidi_warned: bool,
     saved_mapping_name: Option<Vec<u8>>,
 }
 
@@ -101,7 +100,6 @@ impl RunState {
             terminating: h.terminating,
             tex_input_type: h.tex_input_type,
             req_engine: h.req_engine,
-            bidi_warned: h.bidi_warned,
             saved_mapping_name: h.saved_mapping_name.clone(),
         }
     }
@@ -112,7 +110,6 @@ impl RunState {
         h.terminating = self.terminating;
         h.tex_input_type = self.tex_input_type;
         h.req_engine = self.req_engine;
-        h.bidi_warned = self.bidi_warned;
         h.saved_mapping_name = self.saved_mapping_name.clone();
         h.first_line = None;
         h.pictures.clear();
