@@ -204,7 +204,7 @@ impl Globals {
         }
         let rules = self.host.brk_iter.expect("opened above");
         let text: Vec<u16> = (0..len.max(0))
-            .map(|i| self.native_text[crate::ix::U((s + i) as usize)])
+            .map(|i| self.native_text[crate::ix::U((s + i) as usize)] as u16)
             .collect();
         self.host.brk_boundaries = crate::native::linebreak::boundaries(rules, &text);
         self.host.brk_next = 0;
