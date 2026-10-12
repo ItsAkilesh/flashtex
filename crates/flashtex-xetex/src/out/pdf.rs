@@ -2440,7 +2440,7 @@ mod tests {
         ));
         body.extend(special("pdf:code /pgfsmask5 gs"));
         let built = Builder::page(&mut doc, &NoTfm, 1000, 1, &page_bytes(&body)).unwrap();
-        doc.pages.push(built);
+        doc.pages.push(std::sync::Arc::new(built));
         let opts = Options {
             producer: "test".into(),
             date: None,

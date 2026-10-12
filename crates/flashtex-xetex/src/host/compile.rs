@@ -306,7 +306,10 @@ fn engine_command(
         .env_remove("FLASHTEX_DISPLAY_LIST")
         .env(spare::HINTS_ENV, "1")
         // a preview's PDF has its streams stored (an export's compressed)
-        .env("FLASHTEX_UNICODE_PREVIEW", if job.export { "0" } else { "1" })
+        .env(
+            "FLASHTEX_UNICODE_PREVIEW",
+            if job.export { "0" } else { "1" },
+        )
         // the resolver's memo of lookups is for a resident engine: a run
         // of its own makes each lookup about once, and the memo's
         // bookkeeping costs more than it saves (kpathsea answers alike)
