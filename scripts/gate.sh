@@ -241,10 +241,12 @@ for p in changed:
     # must build and test it too, or an engine API change breaks it silently.
     # So must a change to another crate it path-depends on (its host links
     # the display list, the manifest, the font index, the PDF readers, and
-    # the runtime it shares with the engine, crates/flashtex-runtime).
+    # the runtime it shares with the engine, crates/flashtex-runtime), and a
+    # change under third_party/: it builds and embeds the vendored HarfBuzz,
+    # FreeType, TECkit, xetex.web and ICU's line-break tables from there.
     if p.startswith(("crates/flashtex-engine/", "tools/web2rust/", "crates/display-list-v3/",
                      "crates/project-manifest/", "crates/font-discovery/", "crates/pdf/",
-                     "crates/flashtex-runtime/")):
+                     "crates/flashtex-runtime/", "third_party/")):
         dirs.add("flashtex-xetex")
 
 out = []
