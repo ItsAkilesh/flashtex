@@ -27,7 +27,7 @@ import os
 import re
 import sys
 import tarfile
-import urllib.request
+import subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PINS = os.path.join(HERE, "tl2026", "biber.txt")
@@ -71,8 +71,16 @@ def tlpdb_entries(text):
 
 
 def get(url):
-    with urllib.request.urlopen(url, timeout=600) as r:
-        return r.read()
+    """The bytes at url, through curl; up to 5 tries, as CTAN's redirector
+    sends each try to another mirror (some serve an incomplete certificate
+    chain). What comes back is checked against its SHA-512 pin anyway."""
+    err = ""
+    for _ in range(5):
+        r = subprocess.run(["curl", "-fsSL", "--retry", "2", "--max-time", "900", url], capture_output=True)
+        if r.returncode == 0:
+            return r.stdout
+        err = r.stderr.decode(errors="replace").strip()
+    die(f"{url}: {err}")
 
 
 def checked(url, sha512):
