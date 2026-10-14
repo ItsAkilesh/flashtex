@@ -151,7 +151,7 @@ jobs:
           echo /Library/TeX/texbin >> "$GITHUB_PATH"
           export PATH=/Library/TeX/texbin:$PATH
           {
-            brew info --cask mactex-no-gui | head -3
+            brew info --cask mactex-no-gui 2>/dev/null | sed -n 1,3p
             pdftex --version | head -1; xetex --version | head -1; latexmk -v | sed -n 2p
             kpsewhich pdflatex.ini xelatex.ini
           } | tee -a "$OUT/machine-$SHARD.txt"
