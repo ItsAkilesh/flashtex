@@ -7,7 +7,7 @@
 #   gh workflow run bench-readme.yml -f ref=<branch|sha> [-f shards=cold-small,unicode] [-f reps=7]
 #
 # A push to a branch named bench-readme/** runs it on that commit too (a new workflow file cannot be
-# dispatched before it is on the default branch).
+# dispatched before it is on the default branch); bench-readme/only-A+B runs shards A and B.
 #
 # Jobs: `build` builds the release binaries once per SHA (flashtex-host, flashtex-initex, the dl3
 # clients, flashtex-v3, flashtex-host-unicode) and keeps them in the Actions cache by SHA; each
@@ -118,6 +118,8 @@ jobs:
         env:
           SHARDS: ${{ inputs.shards || '' }}
         run: |
+          # a push to bench-readme/only-A+B runs shards A and B
+          case "$GITHUB_REF_NAME" in bench-readme/only-*) SHARDS="${GITHUB_REF_NAME#bench-readme/only-}"; SHARDS="${SHARDS//+/,}" ;; esac
           if [ -z "$SHARDS" ] || [[ ",$SHARDS," == *",$SHARD,"* ]]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/checkout@v4
         if: steps.on.outputs.run == 'true'
@@ -159,6 +161,9 @@ jobs:
         if: steps.on.outputs.run == 'true'
         with:
           python-version: "3.12"
+      - name: python packages (tools/xetex-pdfparity)
+        if: steps.on.outputs.run == 'true'
+        run: python3 -m pip install -q fonttools pillow
       - uses: actions/cache@v4
         if: steps.on.outputs.run == 'true'
         with:

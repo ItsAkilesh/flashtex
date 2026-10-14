@@ -24,9 +24,12 @@ every engine on the document, then rep r+1), so drift hits them alike.
 
 Output parity, from the warm-up: v3's PDF and engine-mk's against latexmk's (Unicode: v3's against
 latexmk -xelatex's): byte for byte; else byte for byte but the trailer /ID (pdfTeX's /ID hashes the
-output file's name, which v3's private output directory changes); else P-T2 (tools/parity/tiers.py
-compare_pt2: identical font programs and content streams after qpdf normalisation). A speed figure is
-valid only for a document whose output matches.
+output file's name, which v3's private output directory changes); else, Classic, P-T2
+(tools/parity/tiers.py compare_pt2: identical font programs and content streams after qpdf
+normalisation); Unicode, whose PDF FlashTeX writes itself where xelatex runs xdvipdfmx, the M3 export
+gate's structural check (tools/xetex-pdfparity/compare.py --no-visual: pages, glyphs and their
+positions, fonts, rules, paths, images, links, outline). A speed figure is valid only for a
+document whose output matches.
 
 Environment: INCR_BENCH_DIR (mkeng.sh's engine `ref` and fmt-ref, mkdocs.py's and mkbook.py's
 documents), FLASHTEX_V3 (default target/release/flashtex-v3), FLASHTEX_HOST_UNICODE, TEXBIN (default
@@ -201,7 +204,29 @@ def pdf_of(d, e, main):
     return os.path.join(d, 'v3-out.pdf' if e == 'v3' else os.path.splitext(main)[0] + '.pdf')
 
 
-def parity(ref, cand, work):
+def parity_unicode(ref, cand, work):
+    """Unicode mode's export is FlashTeX's own PDF writer, not xdvipdfmx: its parity is structural
+    (tools/xetex-pdfparity/compare.py, the M3 export gate's check, without the raster)."""
+    if not ref or not cand or not os.path.exists(ref) or not os.path.exists(cand):
+        return {'ok': False, 'why': 'missing PDF'}
+    os.makedirs(work, exist_ok=True)
+    out = os.path.join(work, 'compare.json')
+    p = subprocess.run([sys.executable, f'{W}/tools/xetex-pdfparity/compare.py', ref, cand, '--no-visual',
+                        '--json', out], capture_output=True, text=True)
+    try:
+        rep = json.load(open(out))
+    except (OSError, ValueError):
+        return {'ok': False, 'why': f'compare.py exit {p.returncode}: {(p.stderr or p.stdout)[-300:]}'}
+    kinds = rep.get('kinds') or rep.get('differences') or {}
+    ok = p.returncode == 0
+    st = rep.get('stats') or {}
+    return {'ok': ok, 'level': 'structurally equal (xetex-pdfparity)' if ok else 'MISMATCH (structural)',
+            'summary': (p.stdout or '').splitlines()[:1], 'kinds': {k: (v.get('count') if isinstance(v, dict) else v)
+                                                                     for k, v in kinds.items()} if isinstance(kinds, dict) else kinds,
+            'structural_differences': rep.get('structural_differences'), 'glyphs': [st.get('glyphs_matched'), st.get('glyphs_ref')], 'glyph_max_dev_bp': st.get('glyph_max_dev')}
+
+
+def parity(ref, cand, work, unicode=False):
     if not ref or not cand or not os.path.exists(ref) or not os.path.exists(cand):
         return {'ok': False, 'why': 'missing PDF: ' + ', '.join(x for x, f in (('reference', ref), ('candidate', cand))
                                                                 if not f or not os.path.exists(f))}
@@ -211,6 +236,8 @@ def parity(ref, cand, work):
         return {'ok': True, 'level': 'byte-identical', 'bytes': len(a)}
     if strip(a) == strip(b):
         return {'ok': True, 'level': 'byte-identical but the trailer /ID', 'bytes': len(a)}
+    if unicode:
+        return dict(parity_unicode(ref, cand, work), bytes=[len(a), len(b)])
     try:
         import tiers
         os.makedirs(work, exist_ok=True)
@@ -272,7 +299,7 @@ def main():
                 print(f"{doc} {e} warm-up {r['wall'] and round(r['wall'], 2)} s, code {r['code']}, "
                       f"peak {r['peak_tree_rss_kb'] / 1024:.0f} MB", flush=True)
             for cand in [e for e in E if e in ('v3', 'engine-mk')]:
-                par = parity(pdfs.get(ref_engine), pdfs.get(cand), f'{WORK}/pt2/{doc}-{cand}')
+                par = parity(pdfs.get(ref_engine), pdfs.get(cand), f'{WORK}/pt2/{doc}-{cand}', a.set == 'unicode')
                 emit({'doc': doc, 'set': a.set, 'parity': cand, 'against': ref_engine, **par})
                 print(f"{doc} parity {cand} vs {ref_engine}: {par.get('level') or par.get('why')}", flush=True)
             live = {e: v for e, v in E.items() if e not in dead}
