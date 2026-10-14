@@ -6,6 +6,7 @@ usage: bench_readme_table.py cold FILE.jsonl...      median, p95 (nearest rank),
 """
 import json
 import math
+import os
 import sys
 from collections import defaultdict
 
@@ -27,6 +28,7 @@ def mb(kb):
 
 def cold(files):
     walls, bad, passes, par, warm, order = defaultdict(list), defaultdict(int), defaultdict(set), {}, {}, []
+    exit1 = defaultdict(int)
     sets = {}
     for f in files:
         for line in open(f):
@@ -42,7 +44,12 @@ def cold(files):
             if r['rep'] == 'warm':
                 warm[(d, e)] = r
                 continue
-            if r['code'] != 0 or r['wall'] is None:
+            # flashtex-v3 exits 1 when TeX or a tool reported an error but the PDF was written (as
+            # pdflatex in nonstop mode does); such a run counts when the warm-up's PDF matched, and the
+            # table says so
+            if r['code'] == 1 and e == 'v3' and r['wall'] is not None:
+                exit1[(d, e)] += 1
+            elif r['code'] != 0 or r['wall'] is None:
                 bad[(d, e)] += 1
                 continue
             walls[(d, e)].append(r['wall'])
@@ -53,7 +60,11 @@ def cold(files):
         v = walls.get((d, e))
         if not v:
             return 'failed' if bad.get((d, e)) or warm.get((d, e), {}).get('code') else '-'
-        return f'{secs(pct(v, 50))} / {secs(pct(v, 95))}'
+        if exit1.get((d, e)):
+            p = par.get((d, e), {})
+            if not p.get('ok'):
+                return 'failed (exit 1, output not verified)'
+        return f'{secs(pct(v, 50))} / {secs(pct(v, 95))}' + (' †' if exit1.get((d, e)) else '')
 
     def ratio(d, a, b):
         x, y = walls.get((d, a)), walls.get((d, b))
@@ -86,6 +97,9 @@ def cold(files):
         prog = warm.get((d, 'v3'), {}).get('progress') or []
         print(f'| {d} | ' + ' | '.join(mb(warm.get((d, e), {}).get('peak_tree_rss_kb')) for e in es)
               + f' | {(prog[-1] if prog else "-")[:90]} |')
+    if exit1:
+        print('\n† flashtex-v3 exited 1 (an error reported, the PDF written) in', dict(exit1),
+              'timed runs; the warm-up\'s PDF of the same build matched latexmk\'s, so the times count.')
     if bad:
         print('\nFailed timed runs:', dict(bad))
 
@@ -98,7 +112,9 @@ def opens(files):
             if not line.startswith('{'):
                 continue
             r = json.loads(line)
-            k = (r.get('doc') or f.rsplit('/', 1)[-1].rsplit('-', 1)[0], r.get('tag', ''))
+            # bench-readme.yml's names: open-DOC.jsonl, reopen-DOC.jsonl
+            base = os.path.basename(f)[:-len('.jsonl')] if f.endswith('.jsonl') else os.path.basename(f)
+            k = (r.get('doc') or base.split('-', 1)[-1], r.get('tag', ''))
             if k not in order:
                 order.append(k)
             rows[k].append(r)
