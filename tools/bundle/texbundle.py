@@ -90,9 +90,12 @@ def safe_name(doc_id):
 
 # --- documents ---------------------------------------------------------------
 
-def documents(tier, only=None, cache=None):
+def documents(tier, only=None, cache=None, strict=False):
     """[{id, dir, entry}] of a tier: the parity fixtures, or a corpus
-    manifest's documents fetched (and verified) into the parity cache."""
+    manifest's documents fetched (and verified) into the parity cache.
+    `strict` (the gate's documents): a document that cannot be fetched or
+    has no entry stops the run instead of being left out, so a network
+    error cannot silently drop a document from oracle-refs.json."""
     sys.path.insert(0, os.path.join(REPO, "tools", "parity"))
     if tier == "fixtures":
         import parity  # noqa: E402
@@ -112,6 +115,8 @@ def documents(tier, only=None, cache=None):
         if only is not None and d["id"] not in only and d["id"].split("/")[-1] not in only:
             continue
         if d.get("problem") or not d.get("entry"):
+            if strict:
+                die(f"{tier}/{d['id']}: {d.get('problem') or 'no entry'} (a gate document cannot be skipped)")
             print(f"skip {tier}/{d['id']}: {d.get('problem') or 'no entry'}", file=sys.stderr)
             continue
         out.append({"id": f"{tier}/{d['id']}" if tier != "fixtures" else d["id"], "dir": d["dir"],
@@ -753,7 +758,7 @@ def gate_documents(spec_path):
         spec = json.load(f)
     docs = []
     for tier, ids in spec["tiers"].items():
-        docs += documents(tier, None if ids is None else set(ids))
+        docs += documents(tier, None if ids is None else set(ids), strict=True)
     return docs
 
 
