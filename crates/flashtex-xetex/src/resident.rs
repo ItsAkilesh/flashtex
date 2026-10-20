@@ -1371,6 +1371,7 @@ impl Engine {
         if !start.in_body() {
             g.ckpt_arm_cs = 0;
             g.ckpt_arm_level = 0;
+            g.ckpt_arm_again = 0;
         }
         if start == Start::Fresh {
             if let Some(l) = first_line {
