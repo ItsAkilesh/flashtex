@@ -343,6 +343,14 @@ enum RegId {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Meaning {
     Plain(i32, i32),
+    /// The control sequence a `\csname` (`id_lookup`) found by this name:
+    /// the name must still lead to this location. A name's place in the
+    /// hash depends on the order names were made in (a colliding name takes
+    /// the next free slot, tex.web §260), which two runs can differ in --
+    /// the same `\csname` then names another location, which the meaning
+    /// at the recorded location cannot show (sweep C, framed-tikz-theorems,
+    /// verify mode).
+    Name(Vec<i32>),
     /// A macro's type and its tokens, shared by every variant that read
     /// the same body (`intern_tokens`).
     Macro(i32, std::rc::Rc<[i32]>),
@@ -498,7 +506,10 @@ struct Entry {
     /// The control sequences a replay reports to the L5 read-set: the
     /// macro, K3's, and every one `ops` assigns or `\let`s from.
     rs_locs: Vec<i32>,
-    last_badness: i32,
+    /// `last_badness` after the call, when the call packed a box: a call that
+    /// packs none leaves it as it was, which a replay must then do too (it
+    /// is the state's, not the call's).
+    last_badness: Option<i32>,
     last_used: u64,
     hits: u64,
     bytes: usize,
@@ -571,6 +582,8 @@ struct Rec {
     /// (register, box node, key) of each box moved out of a foreign register
     holes: Vec<(i32, i32, Vec<i32>)>,
     ops: Vec<Op>,
+    /// The call packed a box (`hpack`, `vpackage`), so it set `last_badness`.
+    packed: bool,
     /// Verifying the entry of this index (of `store[cs]`).
     verify: Option<usize>,
 }
@@ -1469,6 +1482,9 @@ impl Globals {
     /// Whether the meaning of `p` is `m` ([`bm_meaning`](Self::bm_meaning)
     /// compared in place, without copying a macro's tokens).
     fn bm_meaning_is(&self, p: i32, m: &Meaning) -> bool {
+        if let Meaning::Name(n) = m {
+            return self.bm_find_cs(n) == Some(p);
+        }
         let w = self.bm_eq(p).hh();
         let (t, e) = (w.b0(), w.rh());
         if (CALL..=LONG_OUTER_CALL).contains(&t) && e != 0 {
@@ -1744,6 +1760,13 @@ impl Globals {
         });
     }
 
+    /// A recording packed a box (changes/boxmemo.ch: `hpack`, `vpackage`).
+    #[cold]
+    #[inline(never)]
+    pub fn flashtex_bm_packed(&mut self) {
+        self.bm_with_rec(|r| r.packed = true);
+    }
+
     /// A recording made object `n` (a `\pdfstartlink`'s `pdf_new_objnum`;
     /// changes/boxmemo.ch): a replay makes its own.
     #[cold]
@@ -2014,6 +2037,7 @@ impl Globals {
             kb: vec![],
             holes: vec![],
             ops: vec![],
+            packed: false,
             verify,
         };
         // the macro's own meaning is part of K1; mark it seen
@@ -2127,7 +2151,7 @@ impl Globals {
                     font_glues: vec![],
                     rs_locs: vec![],
                     ops: vec![],
-                    last_badness: 0,
+                    last_badness: None,
                     last_used: now,
                     hits: 0,
                     bytes,
@@ -2212,6 +2236,17 @@ impl Globals {
     #[inline(never)]
     pub fn flashtex_bm_id(&mut self, j: i32, l: i32, p: i32) {
         if p != UNDEFINED_CS {
+            // the name leads to `p` (part of the key), and `p`'s meaning
+            let name: Vec<i32> = (j..j + l).map(|i| self.buffer[i as usize]).collect();
+            self.bm_with_rec(|r| {
+                if !r
+                    .k3
+                    .iter()
+                    .any(|(q, m)| *q == p && matches!(m, Meaning::Name(n) if *n == name))
+                {
+                    r.k3.push((p, Meaning::Name(name)));
+                }
+            });
             return self.bm_note_cs(p);
         }
         let name: Vec<i32> = (j..j + l).map(|i| self.buffer[i as usize]).collect();
@@ -2905,7 +2940,7 @@ impl Globals {
             }
         }
         let aux = self.cur_list.aux_field.0;
-        let last_badness = self.last_badness;
+        let last_badness = rec.packed.then_some(self.last_badness);
         if let Some(i) = rec.verify {
             let (cs, scanner) = (rec.cs, rec.scanner);
             self.bm_verified(rec, i, last_badness, &frag, trailer);
@@ -2924,7 +2959,7 @@ impl Globals {
     fn bm_commit(
         &mut self,
         rec: Rec,
-        last_badness: i32,
+        last_badness: Option<i32>,
         frag: Option<crate::boxfrag::Frag>,
         aux: u64,
         trailer: Option<i32>,
@@ -3060,7 +3095,7 @@ impl Globals {
         &mut self,
         rec: Rec,
         i: usize,
-        last_badness: i32,
+        last_badness: Option<i32>,
         frag: &Option<crate::boxfrag::Frag>,
         trailer: Option<i32>,
     ) {
@@ -3104,7 +3139,7 @@ impl Globals {
             }
             if e.last_badness != last_badness {
                 diffs.push(format!(
-                    "last_badness: recorded {} normal path {last_badness}",
+                    "last_badness: recorded {:?} normal path {last_badness:?}",
                     e.last_badness
                 ));
             }
@@ -3379,7 +3414,9 @@ impl Globals {
                 }
             }
         }
-        self.last_badness = last_badness;
+        if let Some(b) = last_badness {
+            self.last_badness = b;
+        }
         // a draw call: the boxes it moved out of their registers, then its
         // output appended to the current list
         let draw = ST.with(|s| {

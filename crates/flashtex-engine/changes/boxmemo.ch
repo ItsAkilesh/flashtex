@@ -216,6 +216,20 @@ if bm_rec_on then flashtex_bm_box_use(cur_val,2);
 if this_if=if_void_code then b:=(p=null)
 @z
 
+@x pdftex.web l.20923 - a recording notes that it packed a box (it then set |last_badness|)
+begin last_badness:=0; r:=get_node(box_node_size); type(r):=hlist_node;
+@y
+begin last_badness:=0; if bm_rec_on then flashtex_bm_packed;
+r:=get_node(box_node_size); type(r):=hlist_node;
+@z
+
+@x pdftex.web l.21282
+begin last_badness:=0; r:=get_node(box_node_size); type(r):=vlist_node;
+@y
+begin last_badness:=0; if bm_rec_on then flashtex_bm_packed;
+r:=get_node(box_node_size); type(r):=vlist_node;
+@z
+
 @x pdftex.web l.28752 (after changes/intrinsics.ch) - |big_switch| ends recordings, marks its own expansions, and checks every command a recording runs
 big_switch: if ckpt_request<>0 then flashtex_checkpoint_hook;
 if intr_on then
@@ -458,6 +472,7 @@ procedure flashtex_bm_abort(@!r:integer); external;
 procedure flashtex_bm_font_changed; external;
 procedure flashtex_bm_font_set(@!n:integer;@!a:integer;@!b:integer;@!v:integer); external;
 procedure flashtex_bm_hyph_changed; external;
+procedure flashtex_bm_packed; external;
 procedure flashtex_bm_obj_ref(@!t:integer;@!n:integer); external;
 procedure flashtex_bm_new_obj(@!n:integer); external;
 
