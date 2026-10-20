@@ -1548,18 +1548,6 @@ impl Globals {
             }
         }
         self.no_replay(miss);
-        // (lane T7-LAST12) In the host's edit window a macro BOX-MEMO
-        // offers is left to it: a recording here lives in the word space
-        // and the next keystroke's restore takes it away, so on the page
-        // the user types on (hyperref's `\pdfstringdefPreHook` at page 0)
-        // every keystroke recorded it again, at about 1.3 times a call;
-        // BOX-MEMO keeps its entries across restores and replays the call
-        // at the next keystroke. Outside the window the intrinsics record
-        // as before. Not recording is only a cache miss: the convergence
-        // test still compares the intrinsics' recordings in full.
-        if self.bm_on && self.bm_cand[cs as usize] && crate::boxmemo::in_record_window() {
-            return false;
-        }
         // Record this context as a variant.
         if self.sf(head, F_NOREC) != 0 || self.sf(head, F_RECORDS) >= RECORD_BUDGET {
             return false;

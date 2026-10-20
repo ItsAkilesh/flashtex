@@ -555,26 +555,26 @@ make control sequences for the first time (`NewCs`, §4.1), as every keystroke o
 again after its restore (§12.3), and the transition shading of the block's colours is made there
 (`\pgfuseshading`, an `\immediate\pdfxform`).
 
-### 12.2 `\pdfstringdefPreHook` on the page before the intrinsics' recordings
+### 12.2 `\pdfstringdefPreHook` on the page before the intrinsics' recordings (measured, not adopted)
 
 hyperref's hook, which siunitx fills (about 25 M instructions a call), is the guarded intrinsics'
 first target (DESIGN.md §5.6 item 4): recorded at its first call and replayed at every later one.
 Those recordings live in the word space (`intrinsics.rs`), so a keystroke on the page that makes
 the first calls (page 0's output routine: full-10 letter@start) restores to before them and runs
-the hook twice for real, recording it again each time (146 M instructions to the edited page; 132 M
-with the intrinsics off). Now:
-- `pdfstringdefPreHook` is in BOX-MEMO's `DEFAULT_NAMES`;
-- in the host, inside an edit's window (`boxmemo::in_record_window`), the intrinsics do not record
-  a macro BOX-MEMO offers (`flashtex_intr_call`); they still replay it from a recording the state
-  holds. BOX-MEMO's entries survive the restore, so the next keystroke replays both calls: 95 M
-  (−35 %). Outside the window the intrinsics record as before, so the pages after it replay them
-  as they did.
-- Not recording is only a missed cache: the convergence test still compares the intrinsics'
-  recordings in full (`iso.rs`), and full-10/full-100 letter@start/@middle converge where they
-  did, after the same number of pages.
-- Verify mode in the host: 10 of 10 calls verified with no difference (full-10 letter@start, five
-  keystrokes). On the command line the intrinsics record anywhere, and BOX-MEMO never offers a
-  call while they record (§1), so nothing changes there.
+the hook twice for real, recording it again each time: 146 M instructions to the edited page, 132 M
+with the intrinsics off.
+
+Tried: `pdfstringdefPreHook` in BOX-MEMO's `DEFAULT_NAMES`, and in the host's edit window the
+intrinsics leaving a macro BOX-MEMO offers unrecorded (they still replayed it from a recording the
+state held). BOX-MEMO's entries survive the restore, so the next keystroke replayed both calls:
+95 M (−35 %), and in verify mode 10 of 10 calls showed no difference. **Not adopted:** the run's
+intrinsics state then differs from the old run's (one recording fewer), and the convergence test
+compares the intrinsics' recordings word for word (`Iso::intrinsics`), so a run with such an edit
+no longer converges (`tests/incremental.rs`,
+`intrinsics_recorded_after_an_edit_converge`: every later page differs in `intr_state[0]`, and
+the run re-typesets to the end). It would need the rule DESIGN.md §5.3 adopted on 2026-09-30 and
+never built, the intrinsics' caches as derived state in the convergence test, which is a soundness
+rule of its own (a decision for the Commander, with its soundness case).
 
 ### 12.3 Calls that enter control sequences (`Op::NewCs`)
 
