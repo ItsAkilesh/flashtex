@@ -1171,7 +1171,8 @@ mod kpse {
                     .unwrap_or_default();
                 for d in dirs {
                     if seen.insert(d.clone()) {
-                        let s = crate::statsig::StatSig::of(&d);
+                        // (inside a check, as the watches vouch for it)
+                        let s = crate::fswatch::sig(&d);
                         v.push((d, s));
                     }
                 }

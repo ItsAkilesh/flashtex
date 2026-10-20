@@ -800,6 +800,14 @@ impl Engine {
     fn open(&mut self, job: Job) -> Result<(), String> {
         self.doc = None;
         std::env::set_current_dir(&job.root).map_err(|e| format!("{}: {e}", job.root.display()))?;
+        // (the document's own directories, which the host and the run write
+        // at every compile, are stat'ed at every check: `fswatch`)
+        for d in [job.root.clone(), job.root.join(&job.out_dir)] {
+            crate::fswatch::exclude(&d.to_string_lossy());
+            if let Ok(c) = std::fs::canonicalize(&d) {
+                crate::fswatch::exclude(&c.to_string_lossy());
+            }
+        }
         let mut argv = vec!["pdftex".to_string()];
         argv.extend(job.argv());
         let o = crate::cli::parse(&argv);
@@ -1310,6 +1318,17 @@ impl Engine {
                 m((displaylist::emit_ns() - t.emit0) as f64 * 1e-6),
             ));
             st.push(("send".to_string(), m(t.send_ns as f64 * 1e-6)));
+            // the file watcher's counts over the session: signatures served,
+            // stats made in checks, drains with events, overflows (`fswatch`)
+            st.push((
+                "fswatch".to_string(),
+                Json::Arr(
+                    crate::fswatch::counts()
+                        .iter()
+                        .map(|&c| Json::Int(c as i64))
+                        .collect(),
+                ),
+            ));
             st.push(("cpu".to_string(), m((incr::thread_cpu_s() - t.cpu0) * 1e3)));
             // the convergence tests' old chunks kept and rewound
             // (`arena::OldCache`), over this document's engine space

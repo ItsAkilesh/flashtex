@@ -3865,8 +3865,12 @@ impl Session {
     pub fn compile(&mut self, stop_at: Option<usize>) -> Result<Report, String> {
         let _m = crate::memstat::scope(crate::memstat::tag::ENGINE);
         let t0 = Instant::now();
-        // the disk as it is now for this compile's lookups and checks
-        system::refresh_disk_dirs();
+        // the disk as it is now for this compile's lookups and checks (its
+        // directories outside the document as the watches vouch for them)
+        {
+            let _check = crate::fswatch::check();
+            system::refresh_disk_dirs();
+        }
         let i0 = crate::os::thread_counts();
         let mut paused_how = "";
         // A run stopped for this compile (preempted, or at a viewport).
@@ -4810,6 +4814,9 @@ impl Session {
     fn changes(&mut self) -> Result<(Vec<Edit>, Vec<String>, Option<usize>), String> {
         // (names resolve afresh in every compile: `lineshift::same_path`)
         crate::lineshift::forget_paths();
+        // (the files and directories outside the document as the watches
+        // vouch for them: `fswatch`)
+        let _check = crate::fswatch::check();
         let (key_files, key_open) = self.key_cover.clone();
         let j = self.journal.as_mut().ok_or("no journal")?;
         let mut edits = vec![];
@@ -4827,7 +4834,7 @@ impl Session {
             if fixed.contains(&f.path) {
                 continue;
             }
-            if StatSig::of(&f.path).as_ref() == Some(&f.stat) {
+            if crate::fswatch::sig(&f.path).as_ref() == Some(&f.stat) {
                 continue;
             }
             // (the host's copy of a file it wrote, else read)

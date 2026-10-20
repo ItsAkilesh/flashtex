@@ -24,6 +24,11 @@ sha2 = { version = "0.10", optional = true }
 # and of this crate, computed without rerunning build.rs).
 flashtex-engine-build-id = { path = "../flashtex-engine/build-id", optional = true }
 
+# MIT OR Apache-2.0: inotify and kqueue for the host's file watcher
+# (src/fswatch.rs).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Linux only: the host's heap other than its undo logs (feature `jemalloc`,
 # src/logalloc.rs). The crates are MIT OR Apache-2.0; the jemalloc 5.3.1 they
 # build from source (`configure`, `make`) and link statically is

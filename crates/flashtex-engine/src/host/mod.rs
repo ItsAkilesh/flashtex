@@ -238,12 +238,15 @@ impl Key {
     /// The part of `check` about the files and lookups the run read.
     fn check_files<'a>(&'a self) -> Result<Fresh, String> {
         let mut fresh = Fresh::default();
+        // (TeX Live's files as the watches vouch for them: `fswatch`)
+        let _check = crate::fswatch::check();
         // One signature and one content hash per path: a preamble opens
         // many files more than once (beamer's: 432 reads of 189 files), and
         // the key lists every read. Each read is still compared with what
         // it recorded, against the file as this check found it.
         let mut sigs: HashMap<&str, Option<StatSig>> = HashMap::new();
-        let mut sig_of = |path: &'a str| *sigs.entry(path).or_insert_with(|| StatSig::of(path));
+        let mut sig_of =
+            |path: &'a str| *sigs.entry(path).or_insert_with(|| crate::fswatch::sig(path));
         let mut hashes: HashMap<&str, Option<[u64; 2]>> = HashMap::new();
         // A file both written before S₀ and read before it is keyed by
         // what was read; `rewrite_outputs` puts back what was written.
