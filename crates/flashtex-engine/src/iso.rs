@@ -52,6 +52,20 @@ const RULE_NODE_SIZE: i32 = crate::generated::consts::rule_node_size;
 const MEDIUM_NODE_SIZE: i32 = crate::generated::consts::medium_node_size;
 const EMPTY_FLAG: i32 = 268_435_455;
 
+thread_local! {
+    /// `align_by_words`: the alignment preamble is compared by its words.
+    static ALIGN_BY_WORDS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run `f` with the alignment preamble compared by its words rather than
+/// walked (BOX-MEMO's full-state verifier, `incr::same_state`; see `roots`).
+pub(crate) fn align_by_words<R>(f: impl FnOnce() -> R) -> R {
+    ALIGN_BY_WORDS.with(|c| c.set(true));
+    let r = f();
+    ALIGN_BY_WORDS.with(|c| c.set(false));
+    r
+}
+
 // the static heads (tex.web §162, pdftex.web)
 const PAGE_INS_HEAD: i32 = MEM_TOP;
 const CONTRIB_HEAD: i32 = MEM_TOP - 1;
@@ -1794,6 +1808,22 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
             if (h == TEMP_HEAD || h == BACKUP_HEAD) && self.scratch_heads_dead {
                 continue;
             }
+            // Inside an alignment the preamble (`link(align_head)`) alternates
+            // tabskip glue and alignrecords, whose `info` is `end_span` or a
+            // span list, not a node type (tex.web §770, §801): this walk does
+            // not know them. BOX-MEMO's verifier (`align_by_words`), which
+            // compares a call's two paths from one state, takes the preamble
+            // by its words instead: neither path made it, so its nodes are at
+            // the same places in both, and a word either path changed there
+            // is left unexplained by any pairing and reported. (The
+            // convergence test still walks it, and fails, as before.)
+            if h == ALIGN_HEAD
+                && ALIGN_BY_WORDS.with(|c| c.get())
+                && o.sc("align_ptr") != NULL
+                && n.sc("align_ptr") != NULL
+            {
+                continue;
+            }
             q.push((k, rh(o.mem(h)), rh(n.mem(h))));
         }
         let _ = (ACTIVE, END_SPAN, NULL_LIST, LIG_TRICK, HI_MEM_STAT_MIN);
@@ -2535,8 +2565,16 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
                 Some(_) => fail!(self, "{what}: {a} is paired with another node than {b}"),
                 None => {
                     // not reached by the walk: only the same address in both
-                    // states is safe, and only for a static head
-                    if !(a == b && (a >= HI_MEM_STAT_MIN || a <= LO_MEM_STAT_MAX)) {
+                    // states is safe, and only for a static head -- or, for
+                    // BOX-MEMO's verifier (`align_by_words`), anywhere: its
+                    // two states come from one, so an address not reached
+                    // holds what it held there unless a path wrote it, and
+                    // a word a path wrote that no pairing explains is
+                    // reported by the word comparison (the templates and
+                    // the alignment's pointers into the preamble, which it
+                    // compares by its words)
+                    let by_words = ALIGN_BY_WORDS.with(|c| c.get());
+                    if !(a == b && (by_words || a >= HI_MEM_STAT_MIN || a <= LO_MEM_STAT_MAX)) {
                         fail!(self, "{what}: {a}/{b} points at nothing the walk reached");
                     }
                 }

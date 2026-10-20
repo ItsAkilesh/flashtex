@@ -1909,11 +1909,16 @@ impl Globals {
         }
         if let Some(i) = found {
             if m == Mode::Verify {
-                // the full verifier. In the host its restore replaces
-                // the edit's pending branch, so a compile with a
-                // verified call does not converge: verify is a gate
-                // mode, and the output must still equal a full run's
-                {
+                // the full verifier, on the command line only. Its
+                // admission checkpoint stays the base of the state the run
+                // goes on from, so it cannot be dropped after the
+                // comparison; in the host it was left among the restart
+                // points with no page count (the verify sweep: "restart
+                // point without a page count" on beamer-fragile, a compile
+                // interrupted by the next edit), and its restore replaced
+                // the edit's pending branch. The host verifies each
+                // admitted call's operation log and output (`bm_verified`).
+                if WINDOW.with(|w| w.get()).is_none() {
                     if let Ok(ck) = self.checkpoint() {
                         FULL.with(|f| *f.borrow_mut() = Some(FullVerify { ck, warn }));
                     }
