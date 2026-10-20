@@ -918,9 +918,6 @@ fn connection(stream: Stream, cfg: &Config, tx: mpsc::Sender<Req>) {
                     conn.queued.fetch_add(1, Ordering::SeqCst);
                     // (a running compile looks at once: `checkpoint::PREEMPT_HINT`)
                     crate::checkpoint::hint_preempt();
-                    if std::env::var_os("FLASHTEX_PREEMPT_DEBUG").is_some() {
-                        eprintln!("[preempt] queued {:?}", std::time::SystemTime::now());
-                    }
                     if tx
                         .send(Req::Compile {
                             conn: conn.clone(),
