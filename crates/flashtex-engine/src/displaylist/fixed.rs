@@ -523,7 +523,9 @@ mod tests {
         let mut v = vec![0i128, 1, 5, 9, 10, 11, 99, 100, 101];
         for e in 0..39u32 {
             let p = 10i128.pow(e);
-            v.extend([p - 1, p, p + 1, p / 2, p / 2 + 1, 5 * p]);
+            v.extend([p - 1, p, p + 1, p / 2, p / 2 + 1]);
+            // 5 · 10^38 is past i128::MAX.
+            v.extend(p.checked_mul(5));
         }
         for e in [52u32, 53, 54, 62, 63, 64, 100, 125, 126] {
             let p = 1i128 << e;
