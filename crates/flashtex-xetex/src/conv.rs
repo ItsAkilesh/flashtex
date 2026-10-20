@@ -830,6 +830,22 @@ impl Globals {
                         "a dormant line ({} words): the old run uses it before its next page",
                         aside.len()
                     )),
+                    // (the jump goes on live from the earlier of the two:
+                    // worth it only where it keeps at least as many pages as
+                    // it typesets again, `flashtex_engine::dormant::worth`)
+                    Some(to)
+                        if !flashtex_engine::dormant::worth(
+                            c.pages[i].pages,
+                            c.pages[c.target(i).min(to)].pages,
+                            c.doc_pages.len(),
+                        ) =>
+                    {
+                        Err(format!(
+                            "a dormant line ({} words): the jump would typeset more pages \
+                             than it keeps",
+                            aside.len()
+                        ))
+                    }
                     Some(to) => {
                         *dormant = Some(crate::dormant::Jump {
                             words: words.unwrap_or_default(),

@@ -204,6 +204,20 @@ pub fn jump_words(
     Some(out)
 }
 
+/// Whether the jump is worth it: with `at` pages shipped at the comparison
+/// point, `to` where the run goes on live, and `total` pages in the old run,
+/// it keeps at least as many pages as it typesets again.
+///
+/// (So it never costs more pages than a run without the rule: between the
+/// comparison point and `to` the dormant line differs, so no ordinary test
+/// passes there either, and a run without the rule typesets at least to
+/// `to`. Where a later ordinary test could pass, as after a dormant line in
+/// the middle of a document, a jump that went on live from an early `to`
+/// would typeset the rest of the document instead.)
+pub fn worth(at: usize, to: usize, total: usize) -> bool {
+    total.saturating_sub(to) <= to.saturating_sub(at)
+}
+
 /// Whether every byte that differs (`x`) of the word at byte `rel` of the
 /// scalar region lies in one of the scalars `slots` (offset, size).
 pub fn bytes_within(x: u64, rel: usize, slots: &[(usize, usize)]) -> bool {
@@ -482,6 +496,11 @@ mod tests {
         assert!(!quiet_since(&b, &Dorm { shown: 2, ..b }, 0, 5, 200));
         assert!(!quiet_since(&b, &b, 0, 100, 200));
         assert!(!quiet_since(&Dorm { epoch: 0, ..b }, &Dorm { epoch: 0, ..b }, 0, 5, 200));
+        // b4: compared at 12 of 19 pages, live from 18; a line in the middle
+        // of c1-lipsum: compared at 4, live from 6
+        assert!(worth(12, 18, 19));
+        assert!(!worth(4, 6, 19));
+        assert!(worth(4, 6, 8));
         // a word holding `first` (bytes 8..12) and another scalar (12..16)
         assert!(bytes_within(0xff, 8, &[(8, 4)]));
         assert!(!bytes_within(0xff << 32, 8, &[(8, 4)]));

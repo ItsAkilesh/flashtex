@@ -1100,23 +1100,46 @@ impl Obs {
                     Some(to) => {
                         let ids = g.pending_ids();
                         let at = |c: CheckpointId| ids.iter().position(|&i| i == c);
-                        rerun_from = Some(match rerun_from {
+                        let live_from = match rerun_from {
                             Some(m) if at(m) <= at(to) => m,
                             _ => to,
-                        });
-                        if self.debug {
-                            eprintln!(
-                                "[incr] page {}: a dormant line ({} words), kept to checkpoint {to}",
-                                self.pages_so_far(),
+                        };
+                        // (pages shipped at a checkpoint of the old run's)
+                        let shipped = |c: CheckpointId| {
+                            self.old_pages
+                                .iter()
+                                .position(|p| p.ckpt == Some(c))
+                                .map(|i| i + 1)
+                        };
+                        let worth = match (shipped(old), shipped(live_from)) {
+                            (Some(a), Some(b)) => {
+                                crate::dormant::worth(a, b, self.old_pages.len())
+                            }
+                            _ => false,
+                        };
+                        if !worth {
+                            self.dormant_off = true;
+                            Err(format!(
+                                "a dormant line ({} words): the jump would typeset more pages \
+                                 than it keeps",
                                 a.words.len()
-                            );
+                            ))
+                        } else {
+                            rerun_from = Some(live_from);
+                            if self.debug {
+                                eprintln!(
+                                    "[incr] page {}: a dormant line ({} words), kept to checkpoint {to}",
+                                    self.pages_so_far(),
+                                    a.words.len()
+                                );
+                            }
+                            self.dormant = Some(crate::dormant::Jump {
+                                words: words.unwrap_or_default(),
+                                stream: dorm_stream.map(|i| (i, new.files[i].clone())),
+                                to,
+                            });
+                            Ok(n)
                         }
-                        self.dormant = Some(crate::dormant::Jump {
-                            words: words.unwrap_or_default(),
-                            stream: dorm_stream.map(|i| (i, new.files[i].clone())),
-                            to,
-                        });
-                        Ok(n)
                     }
                 }
             }
