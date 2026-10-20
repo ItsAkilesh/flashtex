@@ -24,7 +24,7 @@ use crate::generated::consts::{buf_size, macro_, token_list};
 use crate::generated::types::in_state_record;
 use crate::generated::Globals;
 use crate::statediff::{ScalarSlot, WordDiff};
-use flashtex_engine::dormant::{buffer_rest_only, first_grow, limit_only, quiet_since};
+use flashtex_engine::dormant::{buffer_rest_only, bytes_within, first_grow, limit_only, quiet_since};
 
 /// The innermost input level reading a file, as an index into
 /// `input_stack`, when every level above it is a token list (and the top,
@@ -103,7 +103,15 @@ impl Level {
     pub fn set_aside(&self, g: &Globals, layout: &[ScalarSlot], w: &WordDiff) -> bool {
         let x = w.old ^ w.new;
         match (w.region, w.scalar) {
-            (_, Some("first" | "last")) => true,
+            (_, Some("first" | "last")) => {
+                // (only those two scalars' bytes: a word may hold another)
+                let in_word: Vec<(usize, usize)> = layout
+                    .iter()
+                    .filter(|s| matches!(s.name, "first" | "last"))
+                    .map(|s| (s.off, s.size))
+                    .collect();
+                bytes_within(x, w.index, &in_word)
+            }
             ("buffer", None) => {
                 buffer_rest_only(x, w.index, std::mem::size_of_val(&g.buffer[0]), self.loc)
             }

@@ -1084,7 +1084,15 @@ impl Obs {
             (Ok(n), Some(a)) if !a.words.is_empty() || dorm_stream.is_some() => {
                 let pages: std::collections::HashSet<CheckpointId> =
                     self.old_pages.iter().filter_map(|p| p.ckpt).collect();
+                let words = crate::dormant::jump_words(
+                    a.words.iter().map(|w| (w.off, w.new)),
+                    &g.arena,
+                    std::mem::size_of_val(&g.buffer[0]),
+                    a.level.loc,
+                    g.first,
+                );
                 match crate::dormant::jump_point(g, old, &o, &pages, a.level.j, a.grow()) {
+                    _ if words.is_none() => Err("a dormant line: no buffer region".into()),
                     None => Err(format!(
                         "a dormant line ({} words): the old run uses it before its next page",
                         a.words.len()
@@ -1104,7 +1112,7 @@ impl Obs {
                             );
                         }
                         self.dormant = Some(crate::dormant::Jump {
-                            words: a.words.iter().map(|w| (w.off, w.new)).collect(),
+                            words: words.unwrap_or_default(),
                             stream: dorm_stream.map(|i| (i, new.files[i].clone())),
                             to,
                         });

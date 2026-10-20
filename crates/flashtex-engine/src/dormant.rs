@@ -168,6 +168,53 @@ pub fn limit_only(
     })
 }
 
+/// What the jump writes into the kept states: the set-aside words `aside`
+/// (offset, the new run's value), and every word of `buffer` (at byte
+/// `buf_off` of the space `live`, elements `elem` bytes long) that holds the
+/// new run's line from `loc` up to its `first` (`None`: no such region).
+///
+/// (Why the whole line: between the two checkpoints the old run's
+/// `\csname`s use `buffer` from its own `first` on as scratch. Where the new
+/// line is longer, that scratch lies over the new line's tail, and a word of
+/// it equal at the comparison point is not among the differing words; the
+/// new run never writes below its `first`.)
+pub fn jump_words(
+    aside: impl Iterator<Item = (usize, u64)>,
+    arena: &crate::arena::Arena,
+    elem: usize,
+    loc: i32,
+    first: i32,
+) -> Option<Vec<(usize, u64)>> {
+    let buf_off = arena.regions.iter().find(|r| r.name == "buffer")?.off;
+    let live = arena.bytes();
+    let mut out: Vec<(usize, u64)> = aside.collect();
+    if first > loc && loc >= 0 {
+        let lo = (buf_off + loc as usize * elem) & !7;
+        let hi = buf_off + first as usize * elem;
+        for off in (lo..hi).step_by(8) {
+            if off + 8 > live.len() {
+                return None;
+            }
+            if !out.iter().any(|w| w.0 == off) {
+                let v = u64::from_ne_bytes(live[off..off + 8].try_into().expect("8 bytes"));
+                out.push((off, v));
+            }
+        }
+    }
+    Some(out)
+}
+
+/// Whether every byte that differs (`x`) of the word at byte `rel` of the
+/// scalar region lies in one of the scalars `slots` (offset, size).
+pub fn bytes_within(x: u64, rel: usize, slots: &[(usize, usize)]) -> bool {
+    (0..8).all(|b| {
+        x >> (8 * b) & 0xff == 0
+            || slots
+                .iter()
+                .any(|&(off, size)| (off..off + size).contains(&(rel + b)))
+    })
+}
+
 /// How far `first` moved, from its word's old and new values (0 when it
 /// did not differ).
 pub fn first_grow(word: Option<(u64, u64)>) -> i64 {
@@ -267,7 +314,15 @@ impl Level {
     pub fn set_aside(&self, g: &Globals, layout: &[ScalarSlot], w: &WordDiff) -> bool {
         let x = w.old ^ w.new;
         match (w.region, w.scalar) {
-            (_, Some("first" | "last")) => true,
+            (_, Some("first" | "last")) => {
+                // (only those two scalars' bytes: a word may hold another)
+                let in_word: Vec<(usize, usize)> = layout
+                    .iter()
+                    .filter(|s| matches!(s.name, "first" | "last"))
+                    .map(|s| (s.off, s.size))
+                    .collect();
+                bytes_within(x, w.index, &in_word)
+            }
             ("buffer", None) => {
                 buffer_rest_only(x, w.index, std::mem::size_of_val(&g.buffer[0]), self.loc)
             }
@@ -369,9 +424,7 @@ pub fn jump_point(
 /// its convergence point): the dormant words are the new run's in every kept
 /// state from `old` on, and so is the stream's record.
 pub fn apply(g: &mut Globals, old: crate::arena::CheckpointId, dj: &Jump) -> Result<(), String> {
-    for &(off, v) in &dj.words {
-        g.arena.set_from(old, off, v)?;
-    }
+    g.arena.set_from(old, &dj.words)?;
     if let Some((i, snap)) = &dj.stream {
         g.patch_records_after(old, &mut |r: &mut ExtRecord| {
             if let Some(f) = r.files.get_mut(*i) {
@@ -429,6 +482,10 @@ mod tests {
         assert!(!quiet_since(&b, &Dorm { shown: 2, ..b }, 0, 5, 200));
         assert!(!quiet_since(&b, &b, 0, 100, 200));
         assert!(!quiet_since(&Dorm { epoch: 0, ..b }, &Dorm { epoch: 0, ..b }, 0, 5, 200));
+        // a word holding `first` (bytes 8..12) and another scalar (12..16)
+        assert!(bytes_within(0xff, 8, &[(8, 4)]));
+        assert!(!bytes_within(0xff << 32, 8, &[(8, 4)]));
+        assert!(bytes_within(0xff << 32, 8, &[(8, 4), (12, 4)]));
         assert_eq!(first_grow(Some((30, 31))), 1);
         assert_eq!(first_grow(None), 0);
     }

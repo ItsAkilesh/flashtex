@@ -482,10 +482,8 @@ impl Globals {
         }
         // READ-TRACK (`crate::dormant`): the dormant line's new words in every
         // kept state from the convergence point on, before the restore of `L`
-        for &(off, v) in &dormant_words {
-            if let Err(e) = self.arena.set_from(op_id, off, v) {
-                fail("the dormant line", e);
-            }
+        if let Err(e) = self.arena.set_from(op_id, &dormant_words) {
+            fail("the dormant line", e);
         }
         for (p, v) in contents {
             if let Err(e) = std::fs::write(&p, v) {
@@ -753,6 +751,17 @@ impl Globals {
             .filter(|w| w.region == "mem")
             .map(|w| w.index)
             .collect();
+        if on() {
+            eprintln!(
+                "[conv]   left for the walk: {} words ({} set aside): {}",
+                left.len(),
+                aside.len(),
+                crate::statediff::summary(&left)
+            );
+            for w in left.iter().take(12) {
+                eprintln!("[conv]     {w}");
+            }
+        }
         let written = d.written();
         let mut written_bits = vec![0u64; g.arena.chunks().div_ceil(64) + 1];
         for &ch in &written {
@@ -808,14 +817,22 @@ impl Globals {
         // line, prints one or opens a level (`dormant::target`)
         let r = match (r, level) {
             (Ok(n), Some(l)) if !aside.is_empty() => {
+                let words = flashtex_engine::dormant::jump_words(
+                    aside.iter().map(|w| (w.off, w.new)),
+                    &self.arena,
+                    std::mem::size_of_val(&self.buffer[0]),
+                    l.loc,
+                    self.first,
+                );
                 match crate::dormant::target(&c.pages, i, l.j, crate::dormant::grow(&aside)) {
+                    _ if words.is_none() => Err("a dormant line: no buffer region".into()),
                     None => Err(format!(
                         "a dormant line ({} words): the old run uses it before its next page",
                         aside.len()
                     )),
                     Some(to) => {
                         *dormant = Some(crate::dormant::Jump {
-                            words: aside.iter().map(|w| (w.off, w.new)).collect(),
+                            words: words.unwrap_or_default(),
                             to,
                         });
                         Ok(n)

@@ -2228,69 +2228,95 @@ impl Arena {
     /// live word is written without the barrier (the open log's copy is
     /// changed like the others). Returns how many copies were changed.
     pub fn or_from(&mut self, from: CheckpointId, off: usize, bits: u64) -> Result<usize, String> {
-        self.rewrite_from(from, off, &|v| v | bits, "or_from")
+        self.rewrite_from(from, &[off], &|_, v| v | bits, "or_from")
     }
 
-    /// Put `value` in the 8-byte word at `off` in the state at checkpoint
-    /// `from`, at every later checkpoint of the live chain and in the live
-    /// state, as `or_from` adds bits: as if the word had held it from
-    /// `from` on (READ-TRACK, `crate::dormant`: a word no state from `from`
-    /// on read). The checkpoints before `from` keep their value.
-    pub fn set_from(&mut self, from: CheckpointId, off: usize, value: u64) -> Result<usize, String> {
-        self.rewrite_from(from, off, &|_| value, "set_from")
+    /// Put each value of `words` (8-byte words at byte offsets, distinct)
+    /// in the state at checkpoint `from`, at every later checkpoint of the
+    /// live chain and in the live state, as `or_from` adds bits: as if the
+    /// word had held it from `from` on (READ-TRACK, `crate::dormant`: words
+    /// no state from `from` on read). The checkpoints before `from` keep
+    /// their values. One pass over the logs for all the words.
+    pub fn set_from(&mut self, from: CheckpointId, words: &[(usize, u64)]) -> Result<usize, String> {
+        let offs: Vec<usize> = words.iter().map(|w| w.0).collect();
+        self.rewrite_from(from, &offs, &|i, _| words[i].1, "set_from")
     }
 
-    /// `or_from` and `set_from`: every copy of the word from `from` on, and
-    /// the live word, becomes `f` of itself.
+    /// `or_from` and `set_from`: every copy of word `offs[i]` from `from`
+    /// on, and the live word, becomes `f(i, itself)`.
     fn rewrite_from(
         &mut self,
         from: CheckpointId,
-        off: usize,
-        f: &dyn Fn(u64) -> u64,
+        offs: &[usize],
+        f: &dyn Fn(usize, u64) -> u64,
         what: &str,
     ) -> Result<usize, String> {
         let core = self.core_mut();
-        if !off.is_multiple_of(8) || off + 8 > core.bytes {
-            return Err(format!("{what}: word {off} outside the space"));
+        for (i, &off) in offs.iter().enumerate() {
+            if !off.is_multiple_of(8) || off + 8 > core.bytes {
+                return Err(format!("{what}: word {off} outside the space"));
+            }
+            if offs[..i].contains(&off) {
+                return Err(format!("{what}: word {off} named twice"));
+            }
+        }
+        if offs.is_empty() {
+            return Ok(0);
         }
         let k = core
             .index_of(from)
             .ok_or_else(|| format!("{what}: checkpoint {from} is not in the live chain"))?;
         core.history_gen += 1;
-        let c = (off >> CHUNK_SHIFT) as u32;
-        let w = (off & (CHUNK_BYTES - 1)) / 8;
-        let (mw, b) = (w / 64, w % 64);
-        // The checkpoints before `from` keep the word as it was: the log
-        // into `from` (sealed) must hold its value there, which is its value
-        // at `from` unless that interval wrote it (then it holds it already).
+        // each word's chunk and place in it
+        let pos: Vec<(u32, usize)> = offs
+            .iter()
+            .map(|&off| ((off >> CHUNK_SHIFT) as u32, (off & (CHUNK_BYTES - 1)) / 8))
+            .collect();
+        let mut cs: Vec<u32> = pos.iter().map(|p| p.0).collect();
+        cs.sort_unstable();
+        cs.dedup();
+        let held_in = |d: &Delta, c: u32, w: usize| d.c == c && d.mask[w / 64] >> (w % 64) & 1 == 1;
+        // the word's place among a delta's words, in bit order
+        let place = |mask: &[u64; MASK_WORDS], w: usize| {
+            let (mw, b) = (w / 64, w % 64);
+            mask[..mw].iter().map(|m| m.count_ones() as usize).sum::<usize>()
+                + (mask[mw] & ((1u64 << b) - 1)).count_ones() as usize
+        };
+        // The checkpoints before `from` keep the words as they were: the log
+        // into `from` (sealed) must hold their values there, which are their
+        // values at `from` unless that interval wrote them (then it holds
+        // them already).
         if k > 0 {
             let live = |cc: u32| core.chunk_ptr(cc as usize) as *const u64;
-            let v = rewound(core.nchunks, &[c], &live, &core.logs[k..])[w];
+            let at = rewound(core.nchunks, &cs, &live, &core.logs[k..]);
             let prev = &mut core.logs[k - 1];
             if !prev.entries.is_empty() {
                 return Err(format!("{what}: the log before the checkpoint is not sealed"));
             }
-            let held = prev
-                .deltas
+            let missing: Vec<(u32, usize, u64)> = pos
                 .iter()
-                .any(|d| d.c == c && d.mask[mw] >> b & 1 == 1);
-            if !held {
+                .filter(|&&(c, w)| !prev.deltas.iter().any(|d| held_in(d, c, w)))
+                .map(|&(c, w)| {
+                    let ci = cs.binary_search(&c).expect("a chunk of the words");
+                    (c, w, at[ci * CHUNK_WORDS + w])
+                })
+                .collect();
+            if !missing.is_empty() {
                 let before = prev.sealed_bytes();
-                prev.rewrite(|ds| match ds.iter_mut().find(|e| e.0 == c) {
-                    Some((_, mask, vals)) => {
-                        // the word's place among the delta's words, in bit order
-                        let idx = mask[..mw]
-                            .iter()
-                            .map(|m| m.count_ones() as usize)
-                            .sum::<usize>()
-                            + (mask[mw] & ((1u64 << b) - 1)).count_ones() as usize;
-                        vals.insert(idx, v);
-                        mask[mw] |= 1u64 << b;
-                    }
-                    None => {
-                        let mut mask = [0u64; MASK_WORDS];
-                        mask[mw] = 1u64 << b;
-                        ds.push((c, mask, vec![v]));
+                prev.rewrite(|ds| {
+                    for &(c, w, v) in &missing {
+                        let (mw, b) = (w / 64, w % 64);
+                        match ds.iter_mut().find(|e| e.0 == c) {
+                            Some((_, mask, vals)) => {
+                                vals.insert(place(mask, w), v);
+                                mask[mw] |= 1u64 << b;
+                            }
+                            None => {
+                                let mut mask = [0u64; MASK_WORDS];
+                                mask[mw] = 1u64 << b;
+                                ds.push((c, mask, vec![v]));
+                            }
+                        }
                     }
                 });
                 core.sealed_bytes = core.sealed_bytes + prev.sealed_bytes() - before;
@@ -2299,40 +2325,45 @@ impl Arena {
         let mut n = 0;
         for log in &mut core.logs[k..] {
             for &(cc, p) in &log.entries {
-                if cc == c {
-                    // SAFETY: a slab chunk of CHUNK_WORDS words.
-                    unsafe { *p.add(w) = f(*p.add(w)) };
-                    n += 1;
+                if cs.binary_search(&cc).is_err() {
+                    continue;
+                }
+                for (i, &(c, w)) in pos.iter().enumerate() {
+                    if cc == c {
+                        // SAFETY: a slab chunk of CHUNK_WORDS words.
+                        unsafe { *p.add(w) = f(i, *p.add(w)) };
+                        n += 1;
+                    }
                 }
             }
             if log
                 .deltas
                 .iter()
-                .any(|d| d.c == c && d.mask[mw] >> b & 1 == 1)
+                .any(|d| pos.iter().any(|&(c, w)| held_in(d, c, w)))
             {
                 let before = log.sealed_bytes();
                 log.rewrite(|ds| {
                     for (dc, mask, vals) in ds.iter_mut() {
-                        if *dc == c && mask[mw] >> b & 1 == 1 {
-                            let idx = mask[..mw]
-                                .iter()
-                                .map(|m| m.count_ones() as usize)
-                                .sum::<usize>()
-                                + (mask[mw] & ((1u64 << b) - 1)).count_ones() as usize;
-                            vals[idx] = f(vals[idx]);
-                            n += 1;
+                        for (i, &(c, w)) in pos.iter().enumerate() {
+                            if *dc == c && mask[w / 64] >> (w % 64) & 1 == 1 {
+                                let idx = place(mask, w);
+                                vals[idx] = f(i, vals[idx]);
+                                n += 1;
+                            }
                         }
                     }
                 });
                 core.sealed_bytes = core.sealed_bytes + log.sealed_bytes() - before;
             }
         }
-        // SAFETY: inside the mapping, 8-byte aligned.
-        unsafe {
-            let p = core.base.add(off) as *mut u64;
-            *p = f(*p);
+        for (i, &off) in offs.iter().enumerate() {
+            // SAFETY: inside the mapping, 8-byte aligned.
+            unsafe {
+                let p = core.base.add(off) as *mut u64;
+                *p = f(i, *p);
+            }
         }
-        Ok(n + 1)
+        Ok(n + offs.len())
     }
 
     /// Write `src` at byte `off` of the space through the barrier, touching
@@ -4000,10 +4031,9 @@ mod tests {
             .find(|&i| copies.iter().all(|c| c[i] == end[i]) && i != w)
             .unwrap();
         let value = 0x5eed_0f_da7a_u64;
-        for &i in &[w, quiet] {
-            let off = (&arr[i] as *const u64 as usize) - (a.bytes().as_ptr() as usize);
-            a.set_from(ids[7], off, value).unwrap();
-        }
+        let off = |i: usize| (&arr[i] as *const u64 as usize) - (a.bytes().as_ptr() as usize);
+        let words = [(off(w), value), (off(quiet), value)];
+        a.set_from(ids[7], &words).unwrap();
         let expect = |c: &Vec<u64>, k: usize| {
             let mut c = c.clone();
             if k >= 7 {
