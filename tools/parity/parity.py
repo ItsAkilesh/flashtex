@@ -4,11 +4,11 @@ pdfLaTeX, and what stops the rest?
 
 Oracle tooling only (Python 3 standard library, plus qpdf run as an external
 program for P-T2). pdflatex (MacTeX) is the oracle and never runs in the
-product path. The engine under test is `--engine <bin>`: by default the
-shipped command line, `flashtex build` (the same exact-route PDF the Mac app
-exports), run on the untouched source tree; or any pdfTeX-compatible command
-line (pdfTeX itself for the self-test, later the new engine), run as
-`<bin> -fmt=pdflatex` on a copy of the tree. `--engine-kind` overrides the
+product path. The engine under test is `--engine <bin>`: by default (since
+S5) the new engine, flashtex-initex, or any pdfTeX-compatible command line
+(pdfTeX itself for the self-test), run as `<bin> -fmt=pdflatex` on a copy of
+the tree; or, with `--old-engine`, the frozen command line `flashtex build`
+(the old exact-route PDF), run on the untouched source tree. `--engine-kind` overrides the
 detection, which reads the first line of `<bin> --version`.
 
 Headline: the DESIGN §1.1 gating tiers (tools/parity/tiers.py), per document
@@ -111,6 +111,14 @@ FIXTURE_ROOTS = ("fixtures/real-world", "fixtures/divergence-probes")
 # crates/flashtex-cli/target/, which is where it lived while the crate was
 # standalone against crates/render-pipeline/vendor/.
 DEFAULT_FLASHTEX = os.path.join(REPO, "target", "release", "flashtex")
+# Since S5 (retirement plan §1.8) the engine under test defaults to the new
+# engine, flashtex-initex (FLASHTEX_ENGINE overrides). It needs its formats:
+# --engine-env FLASHTEX_FORMATS=<dir with pdflatex.fmt>, or FLASHTEX_FORMATS in
+# the environment (scripts/engine-parity.sh build makes them). The pool
+# defaults to crates/flashtex-engine/pdftex.pool. `--old-engine` picks the
+# frozen flashtex CLI (FLASHTEX_CLI, else DEFAULT_FLASHTEX) until S7.
+DEFAULT_ENGINE = os.path.join(REPO, "target", "release", "flashtex-initex")
+DEFAULT_POOL = os.path.join(REPO, "crates", "flashtex-engine", "pdftex.pool")
 # Diagnostic codes that describe fonts/outline provenance, not typesetting:
 # they cannot block L0-L3 and are L4 causes only.
 FONT_NOTE_CODES = {"math_resource_profile", "math_metrics_opentype", "font_substitution", "font_face_substituted"}
@@ -1898,8 +1906,12 @@ def main(argv=None):
     ap.add_argument("--pt1-sample", action="append", default=[], metavar="TIER=FRACTION",
                     help="evaluate P-T1 on this fraction of TIER only (a fixed pseudo-random sample, "
                          "in_pt1_sample); P-T2 and L0-L4 still run on every document; repeatable")
-    ap.add_argument("--engine", "--flashtex", dest="engine", default=os.environ.get("FLASHTEX_CLI", DEFAULT_FLASHTEX),
-                    help="engine under test: the flashtex CLI (default) or a pdfTeX-compatible binary")
+    ap.add_argument("--engine", "--flashtex", dest="engine", default=None,
+                    help="engine under test: a pdfTeX-compatible binary (default: the new engine, "
+                         "$FLASHTEX_ENGINE or target/release/flashtex-initex) or the flashtex CLI")
+    ap.add_argument("--old-engine", action="store_true",
+                    help="measure the frozen flashtex CLI ($FLASHTEX_CLI or target/release/flashtex) "
+                         "instead of the new engine (until S7)")
     ap.add_argument("--engine-kind", choices=["auto", "flashtex-cli", "tex"], default="auto",
                     help="how to run --engine (auto: from the first line of `<engine> --version`)")
     ap.add_argument("--oracle-pdftex", default=ptiers.DEFAULT_ORACLE,
@@ -1951,9 +1963,17 @@ def main(argv=None):
     except argparse.ArgumentTypeError as e:
         ap.error(str(e))
     tiers = args.tier or ["fixtures"]
+    if args.old_engine and args.engine:
+        ap.error("--old-engine and --engine name two engines; pass one")
+    if args.old_engine:
+        args.engine = os.environ.get("FLASHTEX_CLI") or DEFAULT_FLASHTEX
+    elif not args.engine:
+        args.engine = os.environ.get("FLASHTEX_ENGINE") or DEFAULT_ENGINE
     if not os.path.isfile(args.engine):
-        print(f"engine not found at {args.engine}; build the flashtex CLI with\n  cargo build --release "
-              "-p flashtex-cli --bin flashtex", file=sys.stderr)
+        how = ("cargo build --release -p flashtex-cli --bin flashtex" if args.old_engine else
+               "scripts/engine-parity.sh --work W build   (then --engine W/eng/flashtex-initex "
+               "--engine-env FLASHTEX_FORMATS=W/fmt)")
+        print(f"engine not found at {args.engine}; build it with\n  {how}", file=sys.stderr)
         return 2
     kind = args.engine_kind if args.engine_kind != "auto" else ptiers.engine_kind(args.engine)
     oracle_pdftex = args.oracle_pdftex if args.pt != "off" and os.path.isfile(args.oracle_pdftex) else None
@@ -1972,6 +1992,15 @@ def main(argv=None):
         print(f"--engine-env wants KEY=VALUE, got {bad}", file=sys.stderr)
         return 2
     engine_env = dict(kv.split("=", 1) for kv in args.engine_env)
+    if os.path.basename(args.engine) == "flashtex-initex":
+        # the new engine's own inputs, when not given (see DEFAULT_ENGINE)
+        engine_env.setdefault("FLASHTEX_POOL", os.environ.get("FLASHTEX_POOL") or DEFAULT_POOL)
+        if "FLASHTEX_FORMATS" not in engine_env and os.environ.get("FLASHTEX_FORMATS"):
+            engine_env["FLASHTEX_FORMATS"] = os.environ["FLASHTEX_FORMATS"]
+        if "FLASHTEX_FORMATS" not in engine_env:
+            print("the new engine needs its formats: --engine-env FLASHTEX_FORMATS=<dir with pdflatex.fmt> "
+                  "(scripts/engine-parity.sh build makes them), or --old-engine", file=sys.stderr)
+            return 2
     max_log = int(args.pt1_max_log_mb * (1 << 20))
     kpse = ptiers.pcapture.kpsewhich_beside(oracle_pdftex) if oracle_pdftex else None
     set_shell_escape(args.shell_escape_flag, max_log, args.pt1_timeout, kpse, worker=False)
