@@ -154,9 +154,10 @@ Its \csname scratch never reached `buf_size`: `max_buf_stack` at *k′* plus the
 `rerun_from`; Unicode: `conv_jump` to its target). The old run's pages *k*…*k′* are kept, the
 old checkpoint *k′* is restored, and the run goes on live from there. Before it goes on, the new
 run's values of the dormant words are written into the restored state, and into every old
-checkpoint from *k* to *k′* that the jump keeps. `Arena::or_from` already writes a word into a
-range of kept states this way; the rule adds a `set_from` beside it. The host records of those
-checkpoints get the new stream record.
+checkpoint from *k* to *k′* that the jump keeps. So is every other buffer word of the new
+run's line from `loc` up to its `first` (§5.2 says why). `Arena::or_from` already writes a word
+into a range of kept states this way; the rule adds a `set_from` beside it, which writes all the
+words in one pass over the logs. The host records of those checkpoints get the new stream record.
 
 The run is **not converged**: it re-typesets from *k′* to the end, as a barrier's re-run does.
 The test only proves that the pages from *k* to *k′* are the new run's pages.
@@ -191,9 +192,19 @@ steps from *k* to *k′*, one at a time. No step reads a word of *D*:
 - **The stream record** is read only by `input_ln` for level *j*, which needs level *j* current.
 
 So every step reads the same values in both runs, takes the same branch, writes the same words
-and produces the same output. By induction, the new run's state at *k′* is the old one's with
-*D* replaced by the new run's *D*, which no step wrote either. The pages from *k* to *k′* are
-the new run's pages, byte for byte and frame for frame.
+and produces the same output. One kind of write lands in different places: a `\csname` in the
+old run writes its scratch from the old `first` on, and in the new run from the new `first` on.
+Where the new line is longer, the old run's scratch lies over the new line's tail, and a word
+there may have been equal at *k*, so it is not in *D*. The jump therefore writes the new run's
+values of the whole line from `loc` up to the new `first` (the new run never writes below its
+`first`), and the scratch above `first` is dead: every reader of it writes it first.
+
+By induction, the new run's state at *k′* is the old one's with *D*, and the new line, replaced
+by the new run's values, up to dead scratch. The pages from *k* to *k′* are the new run's pages,
+byte for byte and frame for frame.
+
+A word of the scalars is set aside as `first` or `last` only when every byte that differs is one
+of theirs: an 8-byte word may hold another scalar too.
 
 That includes the source map. `dl_here` reads level *j*'s `start` and `loc`, and in Unicode the
 bytes `buffer[start..loc)`, which are equal. It never reads past `loc`.

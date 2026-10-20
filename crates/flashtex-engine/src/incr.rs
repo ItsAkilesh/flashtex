@@ -1120,11 +1120,20 @@ impl Obs {
                     }
                 }
             }
-            (Ok(_), _) if dorm_stream.is_some() => Err("an input file's lookahead differs".into()),
+            // (the edited file's stream differs, and no word of a line: not a
+            // dormant line, and the test fails as it would without the rule)
+            (Ok(_), _) if dorm_stream.is_some() => {
+                self.dormant_off = true;
+                Err("an input file's lookahead differs".into())
+            }
             // (a test past a dormant line that found another difference: the
             // next ones would too, the peeked token being another, so this run
-            // tests no more of them, each a diff and a walk of the state)
-            (Err(e), Some(a)) if !a.words.is_empty() && e != PREEMPTED => {
+            // tests no more of them, each a diff and a walk of the state; and
+            // a test the rule let past the edited file's stream costs a diff
+            // the ordinary test does not make)
+            (Err(e), Some(a))
+                if (!a.words.is_empty() || dorm_stream.is_some()) && e != PREEMPTED =>
+            {
                 self.dormant_off = true;
                 Err(e)
             }
