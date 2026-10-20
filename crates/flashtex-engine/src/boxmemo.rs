@@ -146,7 +146,9 @@ enum Val {
     FreshShape(Vec<i32>),
     /// The glue specification a skip register holds when the assignment is
     /// made (`\skip1=\skip2` shares it): an `eqtb` location, or a sparse
-    /// register (type, number) as `(-type, number)`.
+    /// register (type, number) as `(-type, number)`, or font `f`'s
+    /// interword glue as `(0, f)` (beamer's `\beamer@lastskip=\lastskip`
+    /// after an interword space).
     GlueFrom(i32, i32),
 }
 
@@ -258,6 +260,10 @@ struct Context {
     par_token: i32,
     font_version: i32,
     hyph_version: i32,
+    /// The current list's `aux` (`\spacefactor` and `clang`, or
+    /// `\prevdepth`) at the call: a draw call's first spaces and lines
+    /// depend on it.
+    aux: u64,
 }
 
 /// How K2 keeps the value at one `eqtb` location.
@@ -319,6 +325,8 @@ fn key_hash(k1: &[i32], ctx: &Context, k2: &[i32], k4: &[i32]) -> u64 {
         ctx.par_token,
         ctx.font_version,
         ctx.hyph_version,
+        ctx.aux as i32,
+        (ctx.aux >> 32) as i32,
         k1.len() as i32,
         k2.len() as i32,
         k4.len() as i32,
@@ -366,6 +374,19 @@ struct Entry {
     /// What a replay makes: `ops` without the groups that leave nothing
     /// behind ([`elide_local_groups`]).
     fast: Vec<Op>,
+    /// Existing forms and images the call referred to (`\pdfrefxform`,
+    /// `\pdfrefximage`): each must still be one of its type with the same
+    /// dimensions (part of the key).
+    obj_refs: Vec<ObjRef>,
+    /// Objects the call made (a `\pdfstartlink`'s), made again by a replay.
+    new_objs: usize,
+    /// Fonts whose interword glue the call shares (an assignment's
+    /// `GlueFrom(0, f)`, a fragment's `Spec::Font`), with its fields: each
+    /// must be there with the same fields (part of the key).
+    font_glues: Vec<(i32, [i32; 5])>,
+    /// `\pdflastlink` after the call, when the call set it: the `i`-th of
+    /// its new objects.
+    last_link: Option<usize>,
     /// The control sequences a replay reports to the L5 read-set: the
     /// macro, K3's, and every one `ops` assigns or `\let`s from.
     rs_locs: Vec<i32>,
@@ -399,8 +420,20 @@ struct Frame {
     lines: (u64, Vec<(i32, i32)>, bool),
 }
 
+/// An existing object a recording referred to: its type, its number, and
+/// its width, height and depth (`obj_xform_width` & co.).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ObjRef {
+    t: i32,
+    n: i32,
+    dims: [i32; 3],
+}
+
 struct Rec {
     cs: i32,
+    obj_refs: Vec<ObjRef>,
+    new_objs: Vec<i32>,
+    last_link: i32,
     /// The input level of the body.
     base: i32,
     /// `save_scanner_status`: the status the body runs with.
@@ -1052,7 +1085,7 @@ impl Globals {
     }
 
     /// The sparse array elements of type `t`, in order: (number, element).
-    fn bm_sa_walk(&self, t: i32, f: &mut dyn FnMut(i32, i32)) {
+    pub(crate) fn bm_sa_walk(&self, t: i32, f: &mut dyn FnMut(i32, i32)) {
         let root = self.sa_root[t as usize];
         if root == 0 {
             return;
@@ -1359,6 +1392,7 @@ impl Globals {
             par_token: self.par_token,
             font_version: self.bm_font_version,
             hyph_version: self.bm_hyph_version,
+            aux: self.cur_list.aux_field.0,
         }
     }
 
@@ -1493,6 +1527,51 @@ impl Globals {
         }
     }
 
+    /// The dimensions of object `n` (a form or an image) as pdfTeX keeps
+    /// them (`obj_xform_width` & co.: `pdf_mem` at its `obj_data_ptr`).
+    fn bm_obj_dims(&self, n: i32) -> [i32; 3] {
+        let d = self.obj_tab[n as usize].int4;
+        [self.pdf_mem[d as usize], self.pdf_mem[(d + 1) as usize], self.pdf_mem[(d + 2) as usize]]
+    }
+
+    /// Whether object `n` is one of type `t` (`pdf_check_obj`'s walk).
+    fn bm_obj_is(&self, t: i32, n: i32) -> bool {
+        if n <= 0 || n > self.obj_ptr {
+            return false;
+        }
+        let mut k = self.head_tab[(t - 1) as usize];
+        while k != 0 && k != n {
+            k = self.obj_tab[k as usize].int1;
+        }
+        k == n
+    }
+
+    /// A recording referred to existing object `n` of type `t` (pdftex.web's
+    /// `\pdfrefxform`, `\pdfrefximage`; changes/boxmemo.ch): the node
+    /// copied its dimensions, so the object joins the key.
+    #[cold]
+    #[inline(never)]
+    pub fn flashtex_bm_obj_ref(&mut self, t: i32, n: i32) {
+        let r = ObjRef {
+            t,
+            n,
+            dims: self.bm_obj_dims(n),
+        };
+        self.bm_with_rec(|rec| {
+            if !rec.obj_refs.contains(&r) {
+                rec.obj_refs.push(r);
+            }
+        });
+    }
+
+    /// A recording made object `n` (a `\pdfstartlink`'s `pdf_new_objnum`;
+    /// changes/boxmemo.ch): a replay makes its own.
+    #[cold]
+    #[inline(never)]
+    pub fn flashtex_bm_new_obj(&mut self, n: i32) {
+        self.bm_with_rec(|rec| rec.new_objs.push(n));
+    }
+
     #[cold]
     #[inline(never)]
     pub fn flashtex_bm_font_changed(&mut self) {
@@ -1594,7 +1673,15 @@ impl Globals {
                         .iter()
                         .chain(&e.holes)
                         .all(|(n, v)| self.bm_box_key(self.bm_box_value(*n)) == *v)
-                    && e.k3.iter().all(|(p, m)| self.bm_meaning_is(*p, m));
+                    && e.k3.iter().all(|(p, m)| self.bm_meaning_is(*p, m))
+                    && e
+                        .obj_refs
+                        .iter()
+                        .all(|r| self.bm_obj_is(r.t, r.n) && self.bm_obj_dims(r.n) == r.dims)
+                    && e.font_glues.iter().all(|(f, w)| {
+                        let q = self.font_glue[*f as usize];
+                        q > LO_MEM_STAT_MAX && self.bm_glue_fields(q) == *w
+                    });
                 if rest_ok {
                     best = Some((e.last_used, i));
                 } else if partial.is_none_or(|(u, _)| u < e.last_used) {
@@ -1708,6 +1795,9 @@ impl Globals {
         let start = self.bm_frame();
         let rec = Rec {
             cs,
+            obj_refs: vec![],
+            new_objs: vec![],
+            last_link: self.pdf_last_link,
             base: self.input_ptr,
             scanner,
             start,
@@ -1922,7 +2012,26 @@ impl Globals {
                 return Ok(Val::StaticGlue(e));
             }
             if self.bm_link(e) != 0 {
-                return self.bm_glue_source(e).ok_or("SharedGlue");
+                let mut src = self.bm_glue_source(e);
+                // `\skip49=\lastskip` (beamer's `\reset@color`): the last
+                // glue of the current list, which is a list the call made
+                // (`flashtex_bm_internal` refuses the call's outer one), so
+                // only the call's own nodes share the specification. Made
+                // fresh by the replay, it is shared as the normal path
+                // shares it from then on: a node the call's output keeps
+                // takes it from the register (`boxfrag`'s `Spec::Eqtb`) or
+                // as its own.
+                if src.is_none() && self.cur_cmd == k::last_item && self.cur_chr == GLUE_VAL {
+                    src = Some(Val::FreshGlue(self.bm_glue_fields(e)));
+                }
+                if src.is_none() && debug() {
+                    eprintln!(
+                        "boxmemo: {} gets a shared glue specification ({e}, {} more references) of no single register",
+                        self.bm_loc_name(p),
+                        self.bm_link(e)
+                    );
+                }
+                return src.ok_or("SharedGlue");
             }
             return Ok(Val::FreshGlue(self.bm_glue_fields(e)));
         }
@@ -1999,6 +2108,25 @@ impl Globals {
                 if self.bm_link(q + 1) == e {
                     found.push(Val::GlueFrom(-t, n));
                 }
+            });
+        }
+        if found.is_empty() {
+            for f in 0..=self.font_ptr {
+                if self.font_glue[f as usize] == e {
+                    found.push(Val::GlueFrom(0, f));
+                }
+            }
+        }
+        if found.len() > 1 {
+            // (several registers hold it, as `\z@skip` and another after an
+            // assignment between them: the one the recording read is the
+            // source `scan_glue` took it from, as it is in LaTeX's
+            // `\parskip\z@skip\relax`, where the current token is past it)
+            let read: Vec<RegId> = self.bm_with_rec(|r| r.kr.iter().map(|x| x.0).collect()).unwrap_or_default();
+            found.retain(|v| match v {
+                Val::GlueFrom(p, 0) if *p > 0 => read.contains(&RegId::Eqtb(*p)),
+                Val::GlueFrom(t, n) if *t < 0 => read.contains(&RegId::Sa(-*t, *n)),
+                _ => false,
             });
         }
         if found.len() == 1 {
@@ -2336,6 +2464,12 @@ impl Globals {
                 k::pdf_save_node,
                 k::pdf_restore_node,
                 k::pdf_save_pos_node,
+                // a link: its object is made again by a replay; an
+                // existing form or image: part of the key
+                k::pdf_start_link_node,
+                k::pdf_end_link_node,
+                k::pdf_refxform_node,
+                k::pdf_refximage_node,
             ]
             .contains(&chr)
         } else if [
@@ -2458,7 +2592,15 @@ impl Globals {
             Some("Fonts")
         } else if end.marks != start.marks {
             Some("Marks")
-        } else if end.obj_ptr != start.obj_ptr {
+        } else if !self
+            .bm_with_rec(|r| {
+                // only the links' objects, made one after the other
+                r.new_objs.len() as i32 == end.obj_ptr - start.obj_ptr
+                    && r.new_objs.iter().zip(start.obj_ptr + 1..).all(|(&o, n)| o == n)
+                    && (self.pdf_last_link == r.last_link || r.new_objs.contains(&self.pdf_last_link))
+            })
+            .unwrap_or(false)
+        {
             Some("Objects")
         } else if end.interaction != start.interaction || end.arm != start.arm {
             Some("State")
@@ -2503,7 +2645,7 @@ impl Globals {
                 return self.bm_abort_taken(rec, "Hole");
             }
             let first = self.bm_link(start.tail);
-            match self.frag_take(first, 0, &holes) {
+            match self.frag_take(first, 0, &holes, &rec.new_objs) {
                 Ok(f) if self.cur_list.tail_field == end.tail => frag = Some(f),
                 Ok(_) => return self.bm_abort_taken(rec, "Tail"),
                 Err(w) => return self.bm_abort_taken(rec, w),
@@ -2584,6 +2726,19 @@ impl Globals {
                 })
                 .inspect(|k2| bytes -= 4 * k2.len())
                 .unwrap_or_else(|| rec.k2.into());
+            let font_glues: Vec<(i32, [i32; 5])> = {
+                let mut fs: Vec<i32> = frag.as_ref().map(|f| f.fonts.clone()).unwrap_or_default();
+                for o in &rec.ops {
+                    if let Op::Def { v: Val::GlueFrom(0, f), .. } | Op::Sa { v: Val::GlueFrom(0, f), .. } = o {
+                        if !fs.contains(f) {
+                            fs.push(*f);
+                        }
+                    }
+                }
+                fs.into_iter()
+                    .map(|f| (f, self.bm_glue_fields(self.font_glue[f as usize])))
+                    .collect()
+            };
             let rs_locs = {
                     let mut v: Vec<i32> = rec.k3.iter().map(|(p, _)| *p).collect();
                     v.push(rec.cs);
@@ -2617,6 +2772,12 @@ impl Globals {
                 voids: rec.voids,
                 line: rec.line_read.then_some(line),
                 fast: elide_local_groups(&rec.ops),
+                last_link: (self.pdf_last_link != rec.last_link)
+                    .then(|| rec.new_objs.iter().position(|&o| o == self.pdf_last_link))
+                    .flatten(),
+                obj_refs: rec.obj_refs,
+                new_objs: rec.new_objs.len(),
+                font_glues,
                 rs_locs,
                 ops: rec.ops,
                 last_badness,
@@ -2695,8 +2856,14 @@ impl Globals {
                     break;
                 }
             }
-            if e.frag != *frag {
+            let fd = match (&e.frag, frag) {
+                (Some(a), Some(b)) => crate::boxfrag::frag_diff(a, b),
+                (None, None) => None,
+                (a, b) => Some(format!("output {} normal path {}", a.is_some(), b.is_some())),
+            };
+            if let Some(d) = fd {
                 diffs.push("the output nodes differ".to_string());
+                diffs.push(d.chars().take(400).collect());
             }
             if e.trailer != trailer {
                 diffs.push("the last \\ignorespaces differs".to_string());
@@ -2881,6 +3048,9 @@ impl Globals {
             Val::GlueFrom(a, b) => {
                 let e = if *a > 0 {
                     self.bm_eq(*a).hh().rh()
+                } else if *a == 0 {
+                    // (the key holds it: `font_glues`)
+                    self.font_glue[*b as usize]
                 } else {
                     self.find_sa_element(-*a, *b, false);
                     let q = self.cur_ptr;
@@ -2983,9 +3153,18 @@ impl Globals {
         let draw = ST.with(|s| {
             let s = s.borrow();
             let e = s.store.get(&cs)?.get(i)?;
-            Some((e.holes.clone(), e.frag.clone(), e.aux))
+            Some((e.holes.clone(), e.frag.clone(), e.aux, e.new_objs, e.last_link))
         });
-        if let Some((holes, Some(frag), aux)) = draw {
+        // the links' objects, as `pdf_new_objnum` made them on the normal
+        // path (nothing else the call did makes or reads an object)
+        let mut objs = vec![];
+        if let Some((_, _, _, n, last)) = &draw {
+            objs = (0..*n).map(|_| self.pdf_new_objnum()).collect();
+            if let Some(l) = last {
+                self.pdf_last_link = objs[*l];
+            }
+        }
+        if let Some((holes, Some(frag), aux, _, _)) = draw {
             let mut nodes = vec![];
             for (n, _) in &holes {
                 nodes.push(self.bm_box_value(*n));
@@ -2993,7 +3172,7 @@ impl Globals {
             }
             let save = self.scanner_status;
             self.scanner_status = 0;
-            let (first, last) = self.frag_make(&frag, &nodes);
+            let (first, last) = self.frag_make(&frag, &nodes, &objs);
             self.scanner_status = save;
             if first != 0 {
                 let t = self.cur_list.tail_field;

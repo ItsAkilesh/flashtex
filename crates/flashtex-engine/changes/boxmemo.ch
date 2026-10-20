@@ -304,6 +304,31 @@ assign_font_int: begin if bm_on then flashtex_bm_font_changed;
     end;
 @z
 
+@x pdftex.web l.34446 - an existing form a recording refers to is part of its key
+    pdf_depth(tail) := obj_xform_depth(cur_val);
+end
+@y
+    pdf_depth(tail) := obj_xform_depth(cur_val);
+    if bm_rec_on then flashtex_bm_obj_ref(obj_type_xform, cur_val);
+end
+@z
+
+@x pdftex.web l.34705 - ... and so is an existing image
+    pdf_depth(tail) := obj_ximage_depth(cur_val);
+end
+@y
+    pdf_depth(tail) := obj_ximage_depth(cur_val);
+    if bm_rec_on then flashtex_bm_obj_ref(obj_type_ximage, cur_val);
+end
+@z
+
+@x pdftex.web l.34928 - a link's new object is a relative effect of a recording
+    pdf_last_link := k;
+@y
+    pdf_last_link := k;
+    if bm_rec_on then flashtex_bm_new_obj(k);
+@z
+
 @x pdftex.web l.38695 (after changes/intrinsics.ch) - \.{\\ifcsname} reads the meaning it tests
   if intr_rec_on then flashtex_intr_read(cur_cs);
   b:=(eq_type(cur_cs)<>undefined_cs);
@@ -411,6 +436,8 @@ procedure flashtex_bm_reg_loc(@!l:pointer;@!e:boolean); external;
 procedure flashtex_bm_abort(@!r:integer); external;
 procedure flashtex_bm_font_changed; external;
 procedure flashtex_bm_hyph_changed; external;
+procedure flashtex_bm_obj_ref(@!t:integer;@!n:integer); external;
+procedure flashtex_bm_new_obj(@!n:integer); external;
 
 @* \[55] Index.
 @z
