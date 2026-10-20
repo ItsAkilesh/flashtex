@@ -482,8 +482,25 @@ K2 (2,250 values), hashed it, and copied K3's macros to compare them. Now:
 `\immediate\pdfobj`), `\beamer@calculateheadfoot` (a box register set at the call's level), the
 first frame's font loads.
 
-### 11.5 Measured
+### 11.5 Font versions named by their changes, and abandoned keys
 
-T7 rows, instructions per key to the edited page (host `edited_instr_k`, p50), NixOS PC; times
-there are non-reference. The tables are in the PR (T7-BEAMER).
+- **Font versions.** Revision 1 gave the fonts a fresh version at every `\fontdimen` or
+  `\hyphenchar` & co. An edit's window that loads a font (NFSS sets the new font's `\hyphenchar`)
+  then reached a new version at every keystroke, and no call after it ever hit (beamer-30's first
+  block frame: 667 M instructions a key). Now a version is named by its parent and the change
+  (`next_version`, an interned table): the same changes from the same version reach the same
+  version, and equal versions still name equal font arrays. Each engine start takes a fresh base.
+- **Doomed entries.** An abandoned recording's key, as far as it read, is kept: the same reads take
+  the call to the same refusal, so a call matching it runs for real, unrecorded, and the calls
+  inside it are offered (a recording would have refused them). beamer's
+  `\beamer@typesetheadorfoot`, which makes a shading object on a deck's first block frame, no
+  longer hides its `\colorlet` calls.
+
+### 11.6 Measured
+
+`docs/evidence/t7-beamer-2026-10-20/`: T7's beamer rows, instructions per key to the edited page
+(the gated quantity's engine share, load-independent), main against BOX-MEMO on, NixOS PC:
+beamer-5 200 M → 37 M (−81 %) on every in-body and typing row, beamer-30 470 M → 133 M (−72 %),
+its first block frame 486 M → 167 M (−66 %). Convergence is unchanged. 0 differences in verify
+mode (host and command line).
 
