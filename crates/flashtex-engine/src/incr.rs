@@ -5071,7 +5071,7 @@ impl Session {
             .iter()
             .position(|&i| i == anchor)
             .ok_or("S0 is not retained")?;
-        let first_read = first_reads(j);
+        let first_read = first_reads(j, &changed);
         for &id in ids[..lo].iter().rev() {
             if self.ck_pages.get(&id) != Some(&0) {
                 continue;
@@ -5165,7 +5165,7 @@ impl Session {
         let g = self.g.as_mut()?;
         let ids = g.checkpoints();
         let lo = ids.iter().position(|&i| i == s0)?;
-        let first_read = first_reads(j);
+        let first_read = first_reads(j, &changed);
         let good = |g: &mut Globals, id: CheckpointId| -> bool {
             g.record_of(id).is_ok_and(|r| {
                 consumed_nothing_changed(j, &first_read, &r, edits, changed, bad_lookup)
@@ -5306,7 +5306,7 @@ impl Session {
         let mut windows = prior.to_vec();
         windows.push((r0.reads.0, r1.reads.0));
         let w = crate::revalidate::window_journal(j, &windows);
-        let first_read = first_reads(&w);
+        let first_read = first_reads(&w, &changed);
         let now: HashMap<String, std::sync::Arc<Vec<u8>>> = edits
             .iter()
             .filter_map(|e| {
@@ -5423,7 +5423,7 @@ impl Session {
             return Err(format!("{why}, its checkpoint is not kept"));
         }
         let r0 = g.record_of(a)?;
-        let first_read = first_reads(j);
+        let first_read = first_reads(j, &changed);
         if !consumed_nothing_changed(j, &first_read, &r0, edits, changed, bad_lookup)
             || !g.restorable(a)
         {
@@ -5704,7 +5704,6 @@ impl Session {
                 None => f.path.clone(),
             })
             .collect();
-        let jr = journal.clone();
         let mut obs = self.observer(t0, base, stop_at);
         // The live state is the old run's end.
         obs.old_last_byte_reads_end = Some(crate::pdftex::last_byte_reads());
@@ -5746,7 +5745,7 @@ impl Session {
         // restore saves the old bytes of every output file open at `r` or at
         // the old run's end, and of every file the old run opened after `r`
         // (its journal says which), so the journal must be in place.
-        system::record_reads_into(Some(jr.clone()));
+        system::record_reads_into(self.journal.clone());
         let busy_restore = crate::busy::enter(crate::busy::Part::Restore);
         // A pass that cannot converge (`no_tests`: an `.aux` appeared, a
         // first compile's next pass) keeps nothing of the old run's future:
@@ -5901,7 +5900,8 @@ impl Session {
             .collect();
         // (the definitions this run makes are in the new numbering)
         crate::diag::new_run();
-        system::record_reads_into(Some(truncate_journal(&jr, rec.reads, &self.dirs_checked)));
+        let jr = self.journal.as_ref().ok_or("no journal")?;
+        system::record_reads_into(Some(truncate_journal(jr, rec.reads, &self.dirs_checked)));
         let restore_s = t1.elapsed().as_secs_f64();
         drop(busy_restore);
         let restore_instr = i1.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
@@ -6956,10 +6956,14 @@ fn pre_patch_arm(
 }
 
 /// Each journal file's first read (its index in `j.files`), by path.
-fn first_reads(j: &ReadLog) -> HashMap<&str, usize> {
+fn first_reads<'a>(j: &'a ReadLog, changed: &[String]) -> HashMap<&'a str, usize> {
+    // (only the changed files': the callers look up nothing else, and a
+    // journal lists hundreds of reads)
     let mut m = HashMap::new();
     for (i, f) in j.files.iter().enumerate() {
-        m.entry(f.path.as_str()).or_insert(i);
+        if changed.iter().any(|c| *c == f.path) {
+            m.entry(f.path.as_str()).or_insert(i);
+        }
     }
     m
 }
