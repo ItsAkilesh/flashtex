@@ -236,8 +236,19 @@ class Host:
             if self.p.poll() is not None:
                 sys.exit('%s: the host ended' % tag)
             time.sleep(0.005)
-        self.s = socket.socket(socket.AF_UNIX)
-        self.s.connect(self.sock)
+        # (the socket's file appears at bind, before the host listens: a
+        # connect in between is refused, so it is tried again)
+        t0 = time.monotonic()
+        while True:
+            self.s = socket.socket(socket.AF_UNIX)
+            try:
+                self.s.connect(self.sock)
+                break
+            except ConnectionRefusedError:
+                self.s.close()
+                if self.p.poll() is not None or time.monotonic() - t0 > 60:
+                    raise
+                time.sleep(0.01)
         self.f = self.s.makefile('rb')
         write_frame(self.s, 0x01, json.dumps({'protocol': 'display-list-v3', 'version': [3, 3],
                                               'client': 'incr-bench-unicode'}))
