@@ -1023,6 +1023,8 @@ pub fn after_restore(g: &mut Globals) {
 // Meanings found equal (§12.4)
 // ---------------------------------------------------------------------------
 
+type IntHash = std::hash::BuildHasherDefault<crate::iso::FastHasher>;
+
 /// The macro bodies K3 found equal since the last restore (BOX-MEMO.md
 /// §12.4): location `p` held type `t` and the list at reference count `e`,
 /// whose tokens were the kept body. A macro's list does not change while it
@@ -1035,9 +1037,9 @@ pub fn after_restore(g: &mut Globals) {
 #[derive(Default)]
 struct Seen {
     owner: usize,
-    at: HashMap<i32, (i32, i32, std::rc::Rc<[i32]>)>,
+    at: HashMap<i32, (i32, i32, std::rc::Rc<[i32]>), IntHash>,
     /// The locations whose entry names list `e`.
-    by_list: HashMap<i32, Vec<i32>>,
+    by_list: HashMap<i32, Vec<i32>, IntHash>,
     /// The lists some entry names, a bit each by `mem` index: the free
     /// hook's test.
     bits: Vec<u64>,
