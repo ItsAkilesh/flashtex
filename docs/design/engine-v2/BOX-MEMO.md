@@ -531,7 +531,7 @@ its first block frame 486 M → 168 M (−65 %). Convergence is unchanged. 0 dif
 mode (host and command line).
 
 
-## 12. Revision 3: more names, and the intrinsics' first page (lane T7-LAST12, 2026-10-20)
+## 12. Revision 3: more names, the intrinsics' first page, and new control sequences (lane T7-LAST12, 2026-10-20)
 
 After revision 2, nine of beamer-30's rows and full-10 letter@start still missed §1.2 on the
 reference Mac (PR #1855). Evidence: `docs/evidence/t7-last12-2026-10-20/`.
@@ -552,7 +552,7 @@ instructions to the edited page, revision 2: 125 M):
 
 On beamer-30's first block frame (letter@start) the gain is smaller (161 M → 146 M): there the calls
 make control sequences for the first time (`NewCs`, §4.1), as every keystroke on that frame does
-again after its restore, and the transition shading of the block's colours is made there
+again after its restore (§12.3), and the transition shading of the block's colours is made there
 (`\pgfuseshading`, an `\immediate\pdfxform`).
 
 ### 12.2 `\pdfstringdefPreHook` on the page before the intrinsics' recordings
@@ -575,3 +575,39 @@ with the intrinsics off). Now:
 - Verify mode in the host: 10 of 10 calls verified with no difference (full-10 letter@start, five
   keystrokes). On the command line the intrinsics record anywhere, and BOX-MEMO never offers a
   call while they record (§1), so nothing changes there.
+
+### 12.3 Calls that enter control sequences (`Op::NewCs`)
+
+§4.1 refused a call that left a new string or control sequence: `\csname` of a name never made
+before enters it (tex.web §259-260), and where it lands depends on the hash table as the run left it.
+Such calls are the first use of something in the document (a colour's `\\color@...` name, a
+shading's names, a block's colours on beamer-30's first block frame), and every keystroke on that
+page restores to before it and makes them again, so they never hit (`NewCs`, 40 abandoned recordings
+over a letter@start session).
+
+- **Recording.** `id_lookup`'s hook for a new control sequence (`flashtex_bm_new_cs`) appends
+  `Op::NewCs { p, name }` to the log, in order with the other operations, if no string was being
+  built (`id_lookup` moves one up past the new name; else the recording is abandoned as before).
+  The name's own lookups are not part of the key (the operation stands for them); its meaning at
+  its first read (undefined) is.
+- **The end.** The string and hash counters may have moved only for those: the call's strings are
+  exactly the new names, one each, in order, with none being built at its start or end
+  (`bm_strings_are_new_names`); anything else is still `NewCs`.
+- **The offer.** Part of the key: each name is absent, and `id_lookup`'s search for a free
+  location, made for each name in order without changing anything, ends where the recording's did
+  (`bm_new_cs_placeable`: the bucket's chain, an occupied bucket's overflow to web2c's
+  `hash_extra` (`hash_high`) or down from `hash_used`, room in the buffer). Then the replay's
+  `id_lookup` makes the same string, the same hash entry and the same link as the normal path.
+- **The replay** enters each name where the log has it, as `\csname` does (the name in the buffer
+  above `first`, `id_lookup` with `no_new_control_sequence` false, tex.web §374), so the L5
+  read-set, the intrinsics and BOX-MEMO hear of it from `id_lookup`'s own hooks; a location other
+  than the one worked out stops the program (`assert`). A group holding a `NewCs` is never elided
+  (§11.2): no `unsave` takes an entered name away.
+- **Measured** (NixOS PC, instructions to the edited page): beamer-30 letter@start 149 M → 126 M
+  (from 164 M before this lane); letter@middle unchanged (105 M). Verify mode in the host: 2,179
+  calls verified on letter@start, 1,708 on letter@middle, 536 on beamer-5, 15 on full-10, no
+  difference. The verifier compares the normal path's log, its `NewCs` operations included, with
+  the entry's. On the command line no entry with a `NewCs` ever hits (the names stay made for the
+  rest of the run); `tests/host_incremental.rs`
+  (`a_replayed_call_enters_its_new_control_sequences_again`) runs the replay in the host and
+  compares every page with a scratch compile.

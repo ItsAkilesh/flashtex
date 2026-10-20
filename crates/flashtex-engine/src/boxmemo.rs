@@ -1791,7 +1791,7 @@ impl Globals {
             self.str_start[t as usize] as usize,
             self.str_start[t as usize + 1] as usize,
         );
-        let name: Vec<i32> = self.str_pool[a..b].iter().map(|&c| c as i32).collect();
+        let name: Vec<i32> = self.str_pool[a..b].to_vec();
         self.bm_with_rec(|r| {
             r.created.push(p);
             r.ops.push(Op::NewCs { p, name });
@@ -1867,7 +1867,7 @@ impl Globals {
                                 && self.str_pool[a..b]
                                     .iter()
                                     .zip(name)
-                                    .all(|(&c, &n)| c as i32 == n)
+                                    .all(|(&c, &n)| c == n)
                             {
                                 return false;
                             }
@@ -1919,7 +1919,7 @@ impl Globals {
     fn bm_make_cs(&mut self, p: i32, name: &[i32]) {
         let first = self.first;
         for (i, &c) in name.iter().enumerate() {
-            self.buffer[(first + i as i32) as usize] = c as _;
+            self.buffer[(first + i as i32) as usize] = c;
         }
         let j = first + name.len() as i32;
         if j > self.max_buf_stack {
