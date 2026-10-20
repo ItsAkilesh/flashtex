@@ -2036,12 +2036,25 @@ fn a_replayed_call_enters_its_new_control_sequences_again() {
             path: main.into(),
             offset: at,
             delete: if k % 2 == 0 { 0 } else { 1 },
-            insert: if k % 2 == 0 { "x".into() } else { String::new() },
+            insert: if k % 2 == 0 {
+                "x".into()
+            } else {
+                String::new()
+            },
         }];
         let o = compile(&mut c, &mut view, &r);
         assert_eq!(o.done.str_field("status"), Some("ok"), "{}", o.done);
         let (p2, o2) = snapshot(&base, &proj, &out, &format!("nc{k}"));
-        compare_with_scratch(&scratch.1, &view, &proj, &out, &p2, &o2, main, &format!("edit {k}"));
+        compare_with_scratch(
+            &scratch.1,
+            &view,
+            &proj,
+            &out,
+            &p2,
+            &o2,
+            main,
+            &format!("edit {k}"),
+        );
         last = counts(&o);
     }
     // offers, hits, recordings, control sequences entered

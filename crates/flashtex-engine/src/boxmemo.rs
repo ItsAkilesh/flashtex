@@ -709,7 +709,12 @@ fn debug() -> bool {
 pub fn counts() -> [u64; 4] {
     ST.with(|s| {
         let s = s.borrow();
-        [s.stats.offers, s.stats.hits, s.stats.committed, s.stats.entered]
+        [
+            s.stats.offers,
+            s.stats.hits,
+            s.stats.committed,
+            s.stats.entered,
+        ]
     })
 }
 
@@ -1864,10 +1869,7 @@ impl Globals {
                                 self.str_start[t as usize + 1] as usize,
                             );
                             if b - a == name.len()
-                                && self.str_pool[a..b]
-                                    .iter()
-                                    .zip(name)
-                                    .all(|(&c, &n)| c == n)
+                                && self.str_pool[a..b].iter().zip(name).all(|(&c, &n)| c == n)
                             {
                                 return false;
                             }
