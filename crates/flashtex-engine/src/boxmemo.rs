@@ -959,9 +959,13 @@ fn by_value(v: &Val) -> bool {
 /// refuses everything else a group could leave (an `\aftergroup` token,
 /// output, tracing).
 ///
-/// A group is replayed as recorded (its own groups replaced in turn) when
-/// a global value comes from the state ([`by_value`]: inside the group the
-/// state is the group's own), when it assigns a sparse register globally,
+/// A global value from the state ([`by_value`]: a `\\let`'s meaning, a
+/// shared glue) is the one where the group was when nothing in the group
+/// assigned what it reads before it; it is then made there, before what
+/// the group assigns after it. A group is replayed as recorded (its own
+/// groups replaced in turn) when such a value reads what the group
+/// assigned (inside the group the state is the group's own), or a font's
+/// glue or a sparse register, when it assigns a sparse register globally,
 /// or when it enters a control sequence (no `unsave` takes it away); less
 /// its local assignments to every location no such value in it reads,
 /// which its `unsave` takes back unread.
@@ -982,14 +986,29 @@ fn compress_groups(ops: &[Op]) -> Vec<Op> {
         }
     }
     // The net global assignments of the group ops[b] begins, in the order
-    // of their last assignment, or `None` when it is kept.
-    fn net(ops: &[Op], end: &[usize], b: usize) -> Option<Vec<Op>> {
+    // of their last assignment, and every location it assigned; `None`
+    // when it is replayed as recorded.
+    fn net(ops: &[Op], end: &[usize], b: usize) -> Option<(Vec<Op>, HashSet<i32>)> {
         let e = end[b];
         if e == usize::MAX {
             return None;
         }
         let mut last: Vec<(i32, Op)> = vec![];
-        let mut put = |p: i32, o: &Op, last: &mut Vec<(i32, Op)>| {
+        // (a value from the state is the group's entry state's when nothing
+        // in the group assigned what it reads before it: it is then made
+        // where the group was, before what the group assigns after it)
+        let mut touched: HashSet<i32> = HashSet::new();
+        let from_entry = |o: &Op, touched: &HashSet<i32>| match o {
+            Op::Def {
+                v: Val::LetCs(q), ..
+            } => !touched.contains(q),
+            Op::Def {
+                v: Val::GlueFrom(a, _),
+                ..
+            } => *a > 0 && !touched.contains(a),
+            _ => true,
+        };
+        let put = |p: i32, o: &Op, last: &mut Vec<(i32, Op)>| {
             last.retain(|(q, _)| *q != p);
             last.push((p, o.clone()));
         };
@@ -997,29 +1016,36 @@ fn compress_groups(ops: &[Op]) -> Vec<Op> {
         while i < e {
             match &ops[i] {
                 Op::Begin(_) => {
-                    for (p, o) in net(ops, end, i)?.into_iter().map(|o| match &o {
-                        Op::Def { p, .. } => (*p, o),
-                        _ => unreachable!(),
-                    }) {
+                    let (v, t) = net(ops, end, i)?;
+                    for o in v {
+                        if !from_entry(&o, &touched) {
+                            return None;
+                        }
+                        let Op::Def { p, .. } = o else {
+                            unreachable!()
+                        };
                         put(p, &o, &mut last);
                     }
+                    touched.extend(t);
                     i = end[i] + 1;
                     continue;
                 }
-                Op::Def { p, v, kind, .. } if *kind > 1 => {
-                    if !by_value(v) {
-                        return None;
+                Op::Def { p, kind, .. } => {
+                    if *kind > 1 {
+                        if !from_entry(&ops[i], &touched) {
+                            return None;
+                        }
+                        put(*p, &ops[i], &mut last);
                     }
-                    put(*p, &ops[i], &mut last);
+                    touched.insert(*p);
                 }
-                Op::Def { .. } => {}
                 Op::Sa { kind, .. } if *kind > 1 => return None,
                 Op::Sa { .. } => {}
                 Op::NewCs { .. } | Op::End => return None,
             }
             i += 1;
         }
-        Some(last.into_iter().map(|(_, o)| o).collect())
+        Some((last.into_iter().map(|(_, o)| o).collect(), touched))
     }
     // `kept`: inside a group replayed as recorded, the locations a value
     // from the state reads anywhere in it (`None` at the call's level).
@@ -1038,7 +1064,7 @@ fn compress_groups(ops: &[Op]) -> Vec<Op> {
             match &ops[i] {
                 Op::Begin(_) if end[i] != usize::MAX => {
                     match net(ops, end, i) {
-                        Some(v) => out.extend(v),
+                        Some((v, _)) => out.extend(v),
                         None => {
                             let read: HashSet<i32> = ops[i + 1..end[i]]
                                 .iter()
@@ -4081,6 +4107,10 @@ mod tests {
             compress_groups(&ops),
             vec![Op::Begin(1), def(8, 1, 1), let_global, Op::End]
         );
+        // a `\let` of what the group has not assigned yet reads the state
+        // where the group was: made there
+        let early = vec![Op::Begin(1), let_global.clone(), def(8, 1, 1), Op::End];
+        assert_eq!(compress_groups(&early), vec![let_global.clone()]);
         // a group the call does not close, and an `End` of the caller's
         // group, are replayed as recorded
         let open = vec![Op::Begin(1), def(1, 1, 3), Op::End, Op::End, Op::Begin(2)];
