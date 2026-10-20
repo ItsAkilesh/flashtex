@@ -1541,6 +1541,7 @@ impl Core {
     /// the restore had not happened.
     fn reattach(&mut self, branch: Branch) -> Result<(), String> {
         self.drop_part();
+        let t0 = std::time::Instant::now();
         let target = *branch.ids.first().ok_or("empty branch")?;
         let Some(k) = self.index_of(target) else {
             self.drop_branch(branch);
@@ -1552,6 +1553,7 @@ impl Core {
         for log in later {
             self.free_log(log);
         }
+        let t_rewind = t0.elapsed();
         let Branch { ids, logs, redo } = branch;
         // The live state is the target's now. The chunks the branch's logs
         // hold are the redo's (the restore that detached the branch saved
@@ -1575,10 +1577,13 @@ impl Core {
         } else {
             None
         };
+        let t_pre = t0.elapsed();
         self.copy_in(&redo);
+        let n_redo = redo.len();
         for (_, p) in redo {
             self.slab.give(p);
         }
+        let t_copy = t0.elapsed();
         self.ids.extend(ids);
         self.logs.extend(logs);
         self.clear_saved();
@@ -1603,6 +1608,16 @@ impl Core {
             }
         });
         self.set_prepared(prepared);
+        if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
+            let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
+            eprintln!(
+                "[arena] reattach: rewind {:.2}, prepare copy {:.2}, redo in {:.2} ({n_redo} chunks), rest {:.2} ms",
+                ms(t_rewind),
+                ms(t_pre - t_rewind),
+                ms(t_copy - t_pre),
+                ms(t0.elapsed() - t_copy)
+            );
+        }
         if std::env::var_os("FLASHTEX_VERIFY_PREPARED").is_some() {
             if let Err(e) = self.verify_prepared() {
                 // (a verify mode: loud, so that a sweep fails)
