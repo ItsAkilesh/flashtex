@@ -123,6 +123,12 @@ pub const DEFAULT_NAMES: &[&str] = &[
     "beamer@thc@docolor",
     "beamer@thc@usecolor",
     "pgfusepath",
+    // hyperref's per-`\pdfstringdef` hook, which siunitx fills (about 25 M
+    // instructions a call): the intrinsics replay it on later pages, but an
+    // edit on a page before their recordings (page 0's output routine)
+    // ran it twice a keystroke (`intrinsics.rs`: left to BOX-MEMO in an
+    // edit's window)
+    "pdfstringdefPreHook",
 ];
 
 /// Whether BOX-MEMO is on when `FLASHTEX_BOXMEMO` does not say: in the
@@ -790,6 +796,14 @@ thread_local! {
 /// The host: an edit's window opens (`true`) or closes.
 pub fn record_window(open: bool) {
     WINDOW.with(|w| w.set(Some(open)));
+}
+
+/// In the host, inside an edit's window (`record_window`): where a call
+/// BOX-MEMO offers is better left to it than recorded by the intrinsics,
+/// whose recordings live in the word space and go with the next restore
+/// (`Globals::flashtex_intr_call`).
+pub fn in_record_window() -> bool {
+    WINDOW.with(|w| w.get()) == Some(true)
 }
 
 /// The engine restored a checkpoint (`Globals::fill_scalars`): a recording
