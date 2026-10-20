@@ -59,6 +59,24 @@ case "$mode" in
     # 70 % of this VM's memory (it runs nothing else); nightly.py refuses a -j over it
     budget="$(awk '/^MemTotal:/ { printf "%.1f", $2 * 0.7 / 1048576 }' /proc/meminfo)"
     echo "T4 shards $range of $T4_SHARDS: $jobs workers, memory budget $budget GiB, host id ${P5_HOST_ID:0:12}"
+    # FETCH FIRST, LOUDLY. The shards' arXiv e-prints are downloaded before any
+    # scoring (corpus.py fetch: retried with backoff, each verified against its
+    # pinned sha256 before it is cached). A document still missing after the
+    # retries is an infrastructure failure: the shards are scored anyway (the
+    # board reads that document missing) and the job then FAILS, so a cut
+    # download is never mistaken for a quiet partial T4.
+    shard_args=()
+    for k in $(seq "${range%-*}" "${range#*-}"); do shard_args+=(--shard "$k/$T4_SHARDS"); done
+    fetch_rc=0
+    echo "::group::fetch the e-prints of shards $range"
+    python3 "$ROOT/tools/parity/corpus.py" fetch --manifest "$ROOT/tools/parity/corpus/nightly-5k.json" \
+      "${shard_args[@]}" 2>"$RUNNER_TEMP/t4-fetch-errors.txt" || fetch_rc=$?
+    echo "::endgroup::"
+    cat "$RUNNER_TEMP/t4-fetch-errors.txt" >&2
+    if [[ $fetch_rc -ne 0 ]]; then
+      while IFS= read -r line; do echo "::error::T4 fetch (infrastructure):$line"; done \
+        < <(grep -E '^  nightly-5k/' "$RUNNER_TEMP/t4-fetch-errors.txt" || true)
+    fi
     rc=0
     "${run[@]}" --shard-range "$range" -j "$jobs" --memory-budget-gib "$budget" \
       --out "$RUNNER_TEMP/t4-part" "${parity[@]}" || rc=$?
@@ -71,6 +89,10 @@ case "$mode" in
       compgen -G "$FLASHTEX_NIGHTLY_HOME/runs/*/$d/done.json" >/dev/null ||
         echo "::warning::T4 shard $k did not finish (its documents read missing on the board)"
     done
+    if [[ $fetch_rc -ne 0 ]]; then
+      echo "::error::T4 shards $range: e-prints could not be fetched and verified after retries (corpus.py fetch exit $fetch_rc); infrastructure, not parity: re-run this job" >&2
+      exit 3
+    fi
     ;;
   merge)
     : "${T4_OUT:?}"

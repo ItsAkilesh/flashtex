@@ -1,14 +1,15 @@
-//! One `COMPILE` of the Unicode host: the job, its runs of the engine (a
-//! child process of this program invoked as `xelatex`, as the pdfTeX
-//! host's export runs), the `.aux` passes, the external tools, and the
-//! diagnostics read from the log.
+//! One `COMPILE` of the Unicode host: the job, its runs of the engine (on
+//! the host's engine thread, `inproc`; or a child process of this program
+//! invoked as `xelatex`, as the pdfTeX host's export runs), the `.aux`
+//! passes, the external tools, and the diagnostics read from the log.
 //!
-//! Every run is a full, cold run (started ahead as a spare, `spare.rs`,
-//! when one stands for it): the engine's display list streams from
-//! the child through a socket of its own (`FLASHTEX_DISPLAY_LIST`) to the
-//! client as pages are shipped. A run whose `.aux` (or table of contents,
-//! list of figures, ...) changed is followed by another, as latexmk does,
-//! each pass's pages replacing the previous pass's (spec §6.4).
+//! A run in this process starts from the state where the format is loaded
+//! (`crate::resident`); a child's run is a full, cold run (started ahead as
+//! a spare, `spare.rs`, when one stands for it). Either way the engine's
+//! display list streams through a socket to the client as pages are
+//! shipped. A run whose `.aux` (or table of contents, list of figures, ...)
+//! changed is followed by another, as latexmk does, each pass's pages
+//! replacing the previous pass's (spec §6.4).
 
 use super::proc::Children;
 use super::spare::{self, Inputs, Key, Spares, Started};
@@ -61,6 +62,8 @@ pub struct Job {
     /// TeX code run before the main file on the first line (`[fonts]`,
     /// `fonts.rs`); empty: the main file's name alone.
     pub preamble: String,
+    /// The document's persisted S₀ (`--s0-cache`, `crate::s0file`).
+    pub s0_file: Option<PathBuf>,
 }
 
 fn parse_key(h: &str) -> Option<[u8; 32]> {
@@ -160,7 +163,23 @@ impl Job {
             buffers,
             edits,
             preamble: String::new(),
+            s0_file: None,
         })
+    }
+
+    /// The name of this job's persisted S₀ in the S₀ cache: what its runs'
+    /// state at the document's start stands for (the command line, the
+    /// directories), hashed.
+    pub fn s0_name(&self) -> String {
+        let key = format!(
+            "{:?}\0{}\0{}\0{}",
+            self.argv(),
+            self.root.display(),
+            self.output_dir.display(),
+            self.format
+        );
+        let h = flashtex_engine::persist::hash128(key.as_bytes());
+        format!("{:016x}{:016x}.xs0", h[0], h[1])
     }
 
     /// Write the editor's buffers and apply the edits (spec §6.3), as
@@ -220,6 +239,8 @@ impl Job {
 pub struct Accept {
     pub color_spaces: bool,
     pub line_state: bool,
+    /// `diag-v1` (spec §6.7): `DIAG`s in place of `DIAGNOSTIC`s.
+    pub diag: bool,
 }
 
 /// One run of the engine: what it sent and how it ended.
@@ -231,6 +252,10 @@ pub struct RunResult {
     pub cancelled: bool,
     /// What the engine wrote to its standard error (the output's reports).
     pub stderr: String,
+    /// An in-process run that broke off (`inproc`): why.
+    pub failure: Option<String>,
+    /// An in-process run: where it started.
+    pub start: Option<crate::resident::Start>,
 }
 
 /// A running engine the connection can stop (`CANCEL`, a newer `COMPILE`).
@@ -242,6 +267,8 @@ pub struct Running {
     /// The process group of the child running now (an engine run or a
     /// tool), which a cancel kills (`proc.rs`).
     pub group: Option<u32>,
+    /// The in-process run going now (`inproc`): a cancel sets its flag.
+    pub stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     /// The sequence number of the newest `COMPILE` received: an older one
     /// not started yet is superseded.
     pub newest: u64,
@@ -296,6 +323,11 @@ fn engine_command(
         .env("TEXFORMATS", format!("{}:", format_dir.display()))
         .env_remove("FLASHTEX_DISPLAY_LIST")
         .env(spare::HINTS_ENV, "1")
+        // a preview's PDF has its streams stored (an export's compressed)
+        .env(
+            "FLASHTEX_UNICODE_PREVIEW",
+            if job.export { "0" } else { "1" },
+        )
         // the resolver's memo of lookups is for a resident engine: a run
         // of its own makes each lookup about once, and the memo's
         // bookkeeping costs more than it saves (kpathsea answers alike)
@@ -396,9 +428,22 @@ pub fn run_once(
     sock_dir: &Path,
     children: &Children,
     spares: &mut Spares,
+    inproc: Option<&super::inproc::Shared>,
 ) -> Result<RunResult, String> {
     std::fs::create_dir_all(&job.output_dir)
         .map_err(|e| format!("{}: {e}", job.output_dir.display()))?;
+    if let Some(sh) = inproc {
+        return run_in_process(
+            sh,
+            format_dir,
+            job,
+            accept,
+            out,
+            running,
+            t0,
+            spares.retention(),
+        );
+    }
     // an export is a run of its own: it neither takes nor ends the spare
     let spare = (spares.enabled() && !job.export)
         .then(|| spare_for(job, format_dir))
@@ -510,6 +555,86 @@ pub fn run_once(
     res.stderr = err.join().unwrap_or_default();
     if !job.export {
         spares.hints(&res.stderr);
+    }
+    Ok(res)
+}
+
+/// Run the engine once for `job` in this process (`inproc`), streaming its
+/// pages to `out` as a child's run would (unless an export). `retention`: how
+/// much of its checkpoints the engine keeps (the connection's mode).
+#[allow(clippy::too_many_arguments)]
+fn run_in_process(
+    sh: &super::inproc::Shared,
+    format_dir: &Path,
+    job: &Job,
+    accept: &Accept,
+    out: &Out,
+    running: &Arc<Mutex<Running>>,
+    t0: Instant,
+    retention: crate::ckpt::Retention,
+) -> Result<RunResult, String> {
+    let stop = super::inproc::cancel_flag();
+    {
+        // a cancel either comes first (and nothing starts) or finds the
+        // run's flag to set
+        let mut r = running.lock().unwrap();
+        if r.cancelled {
+            return Ok(RunResult {
+                cancelled: true,
+                ..RunResult::default()
+            });
+        }
+        r.stop = Some(stop.clone());
+    }
+    let pair = if job.export {
+        None
+    } else {
+        Some(
+            std::os::unix::net::UnixStream::pair()
+                .map_err(|e| format!("the display list's socket: {e}"))?,
+        )
+    };
+    let (w, r) = match pair {
+        Some((w, r)) => (Some(w), Some(r)),
+        None => (None, None),
+    };
+    let spec = crate::resident::Spec {
+        argv: job.argv(),
+        root: job.root.clone(),
+        format_dir: Some(format_dir.to_path_buf()),
+        dl: w.map(|w| Box::new(std::io::BufWriter::new(w)) as Box<dyn Write + Send>),
+        // a child's `FLASHTEX_DISPLAY_LIST_FONT_FORMATS` (`font_formats`)
+        font_formats: Some(job.font_formats.clone()),
+        cancel: stop,
+        retention,
+        preview: !job.export,
+        // (an export is a run of its own: no persisted S₀)
+        s0_file: (!job.export).then(|| job.s0_file.clone()).flatten(),
+    };
+    let mut res = RunResult::default();
+    let ran = sh.run(spec, || {
+        if let Some(r) = r {
+            forward(r, job, accept, out, &mut res, t0);
+        }
+    });
+    {
+        let mut r = running.lock().unwrap();
+        r.stop = None;
+        res.cancelled = r.cancelled;
+    }
+    let (rep, ()) = ran?;
+    res.cancelled |= rep.cancelled;
+    res.exit_code = rep.exit_code;
+    res.stderr = rep.reports.join("\n");
+    res.failure = rep.failure;
+    res.start = Some(rep.start);
+    if std::env::var_os("FLASHTEX_UNICODE_DEBUG").is_some() {
+        eprintln!(
+            "flashtex-host-unicode: run from {} (checked in {:.2} ms){}",
+            rep.start.name(),
+            rep.check_ms,
+            rep.s0_note.map(|n| format!(": {n}")).unwrap_or_default()
+        );
     }
     Ok(res)
 }
@@ -721,6 +846,24 @@ pub struct Outcome {
     pub passes: usize,
     pub first_page_ms: Option<f64>,
     pub diagnostics: usize,
+    /// Where each pass's run started (`crate::resident::Start`; a run in a
+    /// process of its own: none).
+    pub starts: Vec<&'static str>,
+}
+
+impl Outcome {
+    /// A compile that ended as `status` without a run.
+    pub fn none(status: &'static str) -> Outcome {
+        Outcome {
+            status,
+            exit_code: None,
+            pages: 0,
+            passes: 0,
+            first_page_ms: None,
+            diagnostics: 0,
+            starts: vec![],
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -735,15 +878,17 @@ pub fn compile(
     sock_dir: &Path,
     children: &Children,
     spares: &mut Spares,
+    inproc: Option<&super::inproc::Shared>,
 ) -> Outcome {
     let mut passes = 0;
     let mut last;
     let mut first_page_ms = None;
+    let mut starts = vec![];
     loop {
         let before = pass_state(&job.output_dir, &job.jobname);
         passes += 1;
         last = match run_once(
-            exe, format_dir, job, accept, out, running, t0, sock_dir, children, spares,
+            exe, format_dir, job, accept, out, running, t0, sock_dir, children, spares, inproc,
         ) {
             Ok(r) => r,
             Err(e) => {
@@ -757,16 +902,29 @@ pub fn compile(
                     ]),
                 );
                 return Outcome {
-                    status: "failed",
-                    exit_code: None,
-                    pages: 0,
                     passes,
                     first_page_ms,
                     diagnostics: 1,
+                    starts,
+                    ..Outcome::none("failed")
                 };
             }
         };
         first_page_ms = first_page_ms.or(last.first_page_ms);
+        if let Some(s) = last.start {
+            starts.push(s.name());
+        }
+        if let Some(f) = &last.failure {
+            send_json(
+                out,
+                kind::DIAGNOSTIC,
+                &obj([
+                    ("id", Json::Int(job.id)),
+                    ("severity", js("error")),
+                    ("message", js(format!("the engine stopped: {f}"))),
+                ]),
+            );
+        }
         for l in last.stderr.lines() {
             let (sev, m) = match l.strip_prefix("! FlashTeX output: ") {
                 Some(m) => ("error", m),
@@ -798,7 +956,17 @@ pub fn compile(
     let log = std::fs::read_to_string(job.output_dir.join(format!("{}.log", job.jobname)))
         .unwrap_or_default();
     let diags = log_diagnostics(&log);
-    if !last.cancelled {
+    let mut count = diags.len();
+    if !last.cancelled && accept.diag {
+        // diag-v1: structured, from the same log (`super::diag`)
+        let structured = super::diag::from_log(&log, &job.root, job.id);
+        count = structured.len();
+        for d in &structured {
+            if !send(out, kind::DIAG, &d.encode()) {
+                break;
+            }
+        }
+    } else if !last.cancelled {
         for d in &diags {
             let mut j = vec![
                 ("id".to_string(), Json::Int(job.id)),
@@ -829,7 +997,8 @@ pub fn compile(
         pages: last.pages,
         passes,
         first_page_ms,
-        diagnostics: diags.len(),
+        diagnostics: count,
+        starts,
     }
 }
 
