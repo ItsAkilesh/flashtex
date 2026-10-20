@@ -17,7 +17,78 @@ The harnesses are in [`tools/unicode-m3/`](../../../tools/unicode-m3/README.md).
 - **Runs:** [38178866539](https://github.com/flash-tex/flashtex/actions/runs/38178866539)
   for every criterion, and [38185041540](https://github.com/flash-tex/flashtex/actions/runs/38185041540) for P-T1 (with the panic's frames) and the export after the colour fix. Its no-TeX-Live and Core Graphics totals equal the first run's.
 
-**Verdict: M3 is NOT MET.** Of the gate's seven criteria:
+## Re-measured on main, 2026-10-20
+
+Every row was run again on main `f5ef18a85` (after #1833 FMT-NUM, #1838
+font cache, #1817/#1818 S₀ delta and GC, #1842 STATSIG-CTIME, #1780).
+The procedure is this README's own. Runs:
+- [39422784768](https://github.com/flash-tex/flashtex/actions/runs/39422784768): `unicode-m3.yml`. It covers P-T1, export, host, Classic and the macOS leg.
+- [39422789482](https://github.com/flash-tex/flashtex/actions/runs/39422789482): `sweeps-unicode.yml`, `ref=main`. It covers the sweep, the reopen scenarios and the callgrind latency job.
+- [39422832866](https://github.com/flash-tex/flashtex/actions/runs/39422832866): `unicode-m3-bundle.yml`, which runs the corpus with no TeX Live from the bundle the lock pins.
+
+The NixOS PC (x86-64, callgrind 3.27.1, TeX Live 2026 at `~/texlive/2026`) ran the latency rows the hosted job lacks. These are marked PC.
+
+**Verdict: M3 is still NOT MET.** One row misses: the §1.2 edit row for a keystroke at b4's last line. Two rows are met but wait on outside steps. The no-TeX-Live row needs the locked bundle published. The wall-time rows need the reference Mac.
+
+| # | M3 criterion | 2026-10-20 verdict | Evidence (verified unless marked belief) |
+|---|---|---|---|
+| 1 | Unicode corpus P-T1 100 % | **met** | 39422784768 `linux pt1`: **49 cases, 49 equal, 0 differ** (`latex.py`, P-T1 log, exit status, XDV) |
+| 2 | Export gate (Q2, R1) | **met** | 39422784768 `linux export`: **48 of 48 pass**, 1 listed and not counted (xeCJK-example-fallback: xelatex writes no PDF). 0 structural differences. XDV check max 0.000252 bp. macOS Core Graphics: 48 pairs, 0 structural, 1 at 0 px, 360,324 px at 2× and 783,451 px at 3×. These totals equal 10-12's, and pixels are reported, not gated (the 10-09 ruling) |
+| 3 | §1.2 latency on the bench documents | **edit row not met at b4's end**; edit row at the edit point and reopen row met by estimate; preamble row **pending the reference Mac** | See "Latency, 2026-10-20" below |
+| 4 | Incremental soundness sweeps on Unicode | **met** (it runs as defined now: the incremental Unicode engine landed) | 39422789482: **76 documents, 684 compiles, 0 bad**. Each compile is equal, every file and every display-list frame, to a from-scratch compile in a separate process. `reopen` job (`unicode_reopen.py`): **0 bad** over 43 documents. Each is compiled cold, then reopened four ways: unchanged, after a body edit, after a preamble edit, and after an edit at the preamble's end. Each reopen goes on from S₀ or is refused, as it must be, and equals a from-scratch compile. The host's own spares-against-cold sweep (39422784768 `linux host`): 53 documents, 318 of 318 compiles equal |
+| 5 | No-TeX-Live run of the corpus from the bundle | **met for the locked bundle; not yet in the product path** | 39422832866 packed the bundle from main's lists. Its digest is `9c4e31ad…`, **the digest `flashtex-bundle.lock` pins** (texbundle-tl2026-5). On macos-15, sandboxed with no TeX Live, **44 of 50** cases compile cleanly. The other 6 are exactly the cases where xelatex itself errors (fontspec-example, polyglossia, u04, unimath-symbols, xeCJK-example-fallback, xeCJK-example-listings), and the TeX Live run fails them the same way. **47 of 47 PDFs written are byte-identical** to the Linux TeX Live run's. The other 3 have no Linux PDF to compare: l004 needs macOS fonts; unimath-symbols and fallback write none. **But texbundle-tl2026-5 is not published** (`gh release view`: release not found). So `unicode-m3.yml`'s macOS leg, which fetches the lock's release over https, ran with no bundle: 0 of 50, and `xelatex.fmt` failed to build. Publishing the release (bundle-publish.yml) closes this row. It is a Commander/owner step |
+| 6 | `[fonts]` fixtures and precedence | **met** | f01–f06 are among the 49 P-T1 cases and the 48 export passes above. `tests/host.rs` with TeX Live (39422784768 `linux host`): **18 of 18** pass, including the `[fonts]` precedence test |
+| 7 | Classic unchanged | **met for the U3 merges**; later shared-crate merges not paired | 39422784768 `classic`. Each U3 merge equals its first parent in size and SHA-256: pre-U3 and #1732 merge are 10,043,944 bytes, `9c813bd0…`; `08708c4e2^1` and #1734 are 10,043,944 bytes, `9c813bd0…`; `6b97bae22^1` and #1762 are 10,798,296 bytes, `76511179…`. Start-up to HELLO for the same pairs: 311.6 / 311.5 M, 311.6 / 311.6 M and 302.2 / 302.3 M instructions. Main's `flashtex-host` today is 11,272,736 bytes and starts in 219.2 M. That comes from Classic's own work since. Five later Unicode merges also touched shared crates, as deliberate shared changes: #1775 and #1784 (runtime 2b and 2c: zlib and kpathsea moved into `flashtex-runtime`), #1842 (`StatSig` change time), #1840 (SHA-256) and #1838 (`crates/pdf` TrueType). They are not paired here; Classic's own CI gates them. Classic's T7 latency: pending the reference Mac |
+
+### Latency, 2026-10-20
+
+All figures are M instructions of the whole host process, from callgrind on
+x86-64 (39422789482's `latency` job unless marked PC). "Edited page" means
+up to the frame of the page the keystroke changed (`flashtex_page_sent`).
+
+| bench | keystroke at EDITPOINT: edited page / DONE | keystroke before `\end{document}`: edited page / DONE | reopen from the persisted S₀ in a new host: first page / DONE |
+|---|---:|---:|---:|
+| b1 article | 63.1 / 93.8 | 63.1 / 93.9 | 327.8 / 382.9 |
+| b2 fontspec, by name | 17.9 / 28.2 | 18.0 / 28.3 | 297.9 / 329.1 |
+| b3 unicode-math | 37.4 / 50.2 | 37.4 / 50.3 | 311.6 / 349.1 |
+| b4 fontspec, 19 pages | 83.5 / 763.4 | **545.3** / 755.3 | 270.9 / 1,504.0 |
+
+- **Edit row (≤ 16 ms, host ≤ 11 ms).** Belief, not measured: at about 10 G
+  instructions/s on an M1-class core, every keystroke at EDITPOINT reaches
+  its page in about 2–8 ms. That meets the row. b4's keystroke before
+  `\end{document}` does not: 545 M is about 55 ms (PC on main `41a3b38cc`:
+  500 M). Why: `\lipsum[61-100]`'s optional-argument peek reads the
+  `\end{document}` line at page 11. From then on, the two runs differ in
+  `buffer`, `first`, `last` and in `eqtb` (`\l_peek_token`) through page 18
+  (the `[conv]` notes of the latency job). So no page from 12 to 18 passes
+  the convergence test, and the run rebuilds pages 11–19.
+  Converging soundly needs a rule for words that differ but are never read
+  before they are overwritten. That rule needs read tracking on `eqtb` (a
+  web2rust read barrier). It is new machinery, not a port: XETEX-INCR
+  stopped there on 10-12 and asked the Commander to choose. This lane
+  measured it again and did not start that work.
+- **The first keystroke right after a cold compile** (PC, `unicode.py
+  --no-s0-wait`, one keystroke at EDITPOINT, edited page / DONE). On main
+  `f5ef18a85` it queues behind the S₀ copy: b1 997.3 / 1,065.0, b2 983.5 /
+  999.6, b3 1,035.8 / 1,055.5, b4 1,117.4 / 1,747.2. With #1836 (the S₀ is
+  saved when the engine is idle, and the save stops for a request): b1
+  72.1 / 102.1, b2 47.6 / 58.1, b3 81.9 / 95.0, b4 150.3 / 715.1. The hosted
+  latency job on #1836's branch ([39434091379](https://github.com/flash-tex/flashtex/actions/runs/39434091379))
+  gives b1 71.5 / 101.6, b2 45.6 / 56.0, b3 82.0 / 95.1 and b4 153.1 / 735.5.
+  Its other rows are within 1 M of main's in the table above.
+- **Reopen row (≤ 100 ms to the first page).** Belief: 271–328 M is about
+  27–33 ms, which meets the row.
+- **Preamble row (≤ 400 ms):** pending the reference Mac, as before.
+- **`fmt_num` (#1833).** PC on main `41a3b38cc`, b4 keystroke at EDITPOINT,
+  744.8 M to DONE. `out::num::push_num`, which replaced `fmt_num`, is
+  **29.1 M** (inclusive). The whole preview PDF write (`out::finish`) is 56.1 M.
+  On 10-12 the write was 441 M, with 275 M of it in `fmt_num`. The largest
+  cost outside the engine now is SHA-256, 181.3 M: the PDF `/ID` hash thread
+  (#1840) is 136.6 M of it, off the engine thread. It is not a gate row.
+
+## Measured 2026-10-11
+
+**Verdict (2026-10-11): M3 is NOT MET.** Of the gate's seven criteria:
 - two are met: the `[fonts]` fixtures, and Classic unchanged so far as hosted
   runners can show it;
 - four are not met: Unicode corpus P-T1, the export gate, the no-TeX-Live run,
