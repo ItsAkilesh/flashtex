@@ -30,10 +30,10 @@
   - S1 is done (#1400, `cba6c3470`).
   - S3 is partly landed (#1421, #1427).
   - S4 is partly in place:
-    - (b) is #1461, with T4 on the board in #1598;
+    - (b) is #1461, with T4 on the board in #1598 (merged) and a reliable hosted T4 fetch in #1846 (merged);
     - (c) the T2 harness was fixed by #1574;
     - (d) `notex-gate.yml` runs weekly (#1563);
-    - (e) T7 is #1605 and #1609, from Q1.
+    - (e) T7 is #1605 and #1609 (both merged), from Q1.
   - D5's CLI successor exists as `flashtex-v3` (#1436).
 - **Out of scope** (§5.8): the side-by-side compare, *Copy Engine Report*, the crash-limit banner and the storage UI. None is needed for retirement.
 
@@ -46,7 +46,7 @@
 | Swift retiring in S6, sources (§1.4) | 7,027 in 16 files, of which S6a first moves about 213 lines to v3 files (VERIFIED) |
 | Workspace packages | 43: the 41 `crates/*` members, `tools/web2rust` and the implicit `flashtex-engine-build-id`. 34 after S2 (VERIFIED by reading the manifests; `cargo metadata` not run). |
 | Open PRs touching old-engine crates | **0** (#1120 closed 2026-10-06; VERIFIED) |
-| Stages | 12: S0 ✔, S1 ✔, S1b, S2 ✔ (#1610), S3 (partly), S3r, S4 (partly), S5, S6a, S6, S7, S8 |
+| Stages | 12: S0 ✔, S1 ✔, S1b, S2 ✔ (#1610), S3 (partly), S3r ✔ (#1611), S4 (partly), S5, S6a, S6, S7, S8 |
 
 ### Stage table
 
@@ -56,11 +56,11 @@
 |---|---|---|---|---|---|---|---|
 | 1 | **S0** vendor/ retired | #1183 (`e1e17d8f6`) | — | — | — | — | ✔ done |
 | 2 | **S1** Decouple | #1400 (`cba6c3470`): paragraph-layout tests into compiler tests; bridge reads an MIT features table; the bundle verifier and its manifest move to `apps/mac/scripts/`; licence check E. `supported-latex.json` is excluded (RQ5). | No behaviour change | mac-claude-a | — | — | ✔ done |
-| 3 | **S1b** S1 follow-ups | Check E's four false negatives, with CI running the boundary self-tests; a host field in the parity baseline (RQ8); remove the stale `crates/<crate>/target` probes in `ShellModel`; check `review-workflow.json`'s `/tmp/flashtex-compiler` path (§1.5); S1(c) **only after RQ5** | Same as S1 | kabir-claude (RETIRE-S3r) | — | S1; RQ5 for S1(c) | **partly**: check E's four false negatives closed (`ec909da7e`) and its self-tests in CI's `checks` job; the `ShellModel` probes removed; `review-workflow.json`'s unused `provenance` removed (RETIRE-S3r). Open: the RQ8 host field; S1(c) after RQ5 |
+| 3 | **S1b** S1 follow-ups | Check E's four false negatives, with CI running the boundary self-tests; a host field in the parity baseline (RQ8); remove the stale `crates/<crate>/target` probes in `ShellModel`; check `review-workflow.json`'s `/tmp/flashtex-compiler` path (§1.5); S1(c) **only after RQ5** | Same as S1 | kabir-claude (RETIRE-S3r) | — | S1; RQ5 for S1(c) | **partly**: check E's four false negatives closed (`ec909da7e`) and its self-tests in CI's `checks` job; the `ShellModel` probes removed; `review-workflow.json`'s unused `provenance` removed (RETIRE-S3r); the RQ8 host field in `baseline-fixtures.json` (schema /2; `parity.py` writes it and refuses a baseline from another OS). Open: S1(c) |
 | 4 | **S2** No-consumer cleanup (ruling 1) | Delete the 9 §1.2 crates, `tests/test_rendering_v2.py` and `scripts/check_rendering_v2.py`. Fix every live reference in the same PR: `gate.sh` L607–610, `rust-test-exclude.txt` L10, `SUPPLEMENTARY-FACES.json` L7, the `verify_bundle_resources.py` docstring, `docs/INDEX.md`, the `rendering-v2.schema.json` description and the root `Cargo.toml` count. Add a reference check with a named allowlist (§4.6). | `gate.sh pr`; CI green on both OSes; `packaging-selftest.sh` (fast); the §4.6 reference check finds nothing outside its allowlist | kabir-claude (P5-RETIREMENT) | **yes** | S1 ✔; #1120 closed ✔ | **✔ landed** #1610 (`28855c698`, 2026-10-06; −164,986 lines). Re-checked on `6b97bae22`: the nine crates and both rendering-v2 files are gone, every listed reference is fixed, `tools/parity/retirement_refs.py` runs in `gate.sh` L641 and ci.yml L579 and reports 0 problems. |
 | 5 | **S3** Per-document engine choice | #1421, #1427: the choice per document, a window override, the app setting, records, a lazy migration of the global key, fallback blockers with a banner | Built; `EngineChoiceTests` (29 tests) | mac-claude-a | — | — | **partly landed** |
-| 6 | **S3r** S3 remainder | (a) `CaptureFeatures` per engine (§1.5); (b) an engine label on `FlashTeXLog` lines at open and compile, and an `engine` field in the §1.8 attribution tools | `mac-app`; named tests (§4.4) | kabir-claude | — | S3 | not started |
-| 7 | **S4** Gates P5 needs | (a) the #1299 board on a hosted fallback leg, and a complete run; (b) T4 on the board (#1461 ✔ baseline FINAL; #1598 board row); (c) T2 completing green on main (#1574 fixed the harness); (d) the no-TeX-Live gate scheduled and green (#1563 ✔ weekly; first run pending); (e) T7 by Q1 (#1605, #1609; a reference run on main); (f) parity fixtures on the engine; (g) T0 in `CI required` ✔ (#1336); (h) **the row → test check** (§4.4) | 10 consecutive green `merge_group` runs with the new jobs; 3 consecutive complete nightly boards (hosted `-hosted` reports from #1774 count, DESIGN §13 2026-10-11); one T7 reference run on main | Commander (workflows); (h) kabir-claude | — | — | partly |
+| 6 | **S3r** S3 remainder | (a) `CaptureFeatures` per engine (§1.5); (b) an engine label on `FlashTeXLog` lines at open and compile, and an `engine` field in the §1.8 attribution tools | `mac-app`; named tests (§4.4) | kabir-claude | — | S3 | **✔ landed** #1611 (`e75c6be5e`, 2026-10-06) |
+| 7 | **S4** Gates P5 needs | (a) the #1299 board on a hosted fallback leg, and a complete run; (b) T4 on the board (#1461 ✔ baseline FINAL; #1598 ✔ board row; #1846 ✔ the hosted T4 fetch retried and sha256-verified, failing loudly); (c) T2 completing green on main (#1574 fixed the harness); (d) the no-TeX-Live gate scheduled and green (#1563 ✔ weekly; first run pending); (e) T7 by Q1 (#1605 ✔, #1609 ✔; a reference run on main); (f) parity fixtures on the engine; (g) T0 in `CI required` ✔ (#1336); (h) **the row → test check** (§4.4) | 10 consecutive green `merge_group` runs with the new jobs; 3 consecutive complete nightly boards (hosted `-hosted` reports from #1774 count, DESIGN §13 2026-10-11); one T7 reference run on main | Commander (workflows); (h) kabir-claude | — | — | partly |
 | 8 | **S5** Flip: new documents default to the new engine | `EngineChoice.defaultForNewDocuments = .new` (EngineChoice.swift L130, one line); nightly `parity-corpus` and parity fixtures default to the engine; `baseline-fixtures.json` re-recorded on its host. **Existing documents do not change** (§5.3). | **Decision 3's gate as confirmed** (§4.2); the S5 rows (§4.4); one shipped release carries #1421/#1427's records (§5.3; app v0.2.0, which the Commander may publish after 3 consecutive complete green P5 boards, DESIGN §13 2026-10-11); T1 with 0 new differences; T7 meeting §1.2 | Commander (one-line flip) | — (flip back) | S3, S3r, S4; the modes lane's interim fontspec fallback (§4.4) | — |
 | 9 | **S6a** Shared types to v3 files | Move `V2PageText`'s line builder, `DisplayListLinks`'s URI policy and `MathHoverPreview`'s `padding` / `MathPreviewView` into v3-owned files (§1.4), as a rename with no behaviour change. Rewrite the v2-parity assertions in `EngineV3LinksTests`. | `swift build`; `EngineV3LinksTests`, `EngineV3AccessibilityTests`, `EngineV3SearchTests` and `EngineV3MathHoverTests` pass, not skipped | Commander assigns | — (a move) | S5 | — |
 | 10 | **S6** App old route out | Delete the §1.4 Swift, the helper rows, menus, attach commands, user docs and the §5.5 defaults; retarget the tools (§1.8); remove the `.previous` engine, its blockers and banner from `EngineChoice` and rewrite their tests; `packaging-selftest.sh` must fail on a missing helper | **The S6 rows** (§4.4); the §6 licence preconditions (RQ19 closed 2026-10-11: the About and release-notes link, #1806); RQ6 ruled ✔; **the Unicode mode's M3 gate passed** (modes Q1) | Commander assigns | **yes** | S5, S6a, M3 | — |
@@ -587,7 +587,7 @@ Unchanged from revision 2, except that RQ18 is decided:
 - **perf.yml** gates output digests everywhere and timings only on the same host. Its baseline holds the **old path's** digests. Under D13, a digest change before S7 is a behaviour change with its own re-record PR.
 - **The new engine's digests are new baselines,** recorded on the Q1 reference Mac (`scripts/t7-reference.sh`) by the team member who runs it.
 - **perf-bench is deleted in S7 only after T7 has gated for ≥ 10 runs.** S7 rewrites `Cargo.toml` L23–29's profile-pin reason for the T7 baselines.
-- **`baseline-fixtures.json` stores no host.** S1b adds the field before S5 re-records it.
+- **`baseline-fixtures.json` stores its host** (S1b, RQ8): `parity.py --write-baseline` records `host` and `--check-baseline` refuses one recorded on another OS. The 2026-09-22 recording predates the field, so only `system: Darwin` is on record; S5 re-records it on its host.
 
 ### 4.6 The reference check and its allowlist (gap 5)
 
@@ -762,7 +762,7 @@ executable: this is aggregation, and check E refuses any link. Before S6 lands:
 | **RQ5** | Where `supported-latex.json` comes from | Commander (owner-delegated) | **Ruled** 2026-10-11: generated from the new engine's measured package support (package-smoke tier, oracle-verified); an MIT data file owned by the app, regenerated by a script; replaces `sync-supported-latex.sh`'s old-compiler source after S7. No longer blocks S1(c) or S7. |
 | RQ6 | Release artifacts, and the CLI's name and packaging. #1436's `flashtex-v3` is the successor (D5 partial); what remains is the rename to `flashtex`, release.yml packaging and the source offer. | Commander, then owner | **Ruled** 2026-10-11: `flashtex-v3` is renamed to `flashtex` and becomes the packaged CLI at S7; the source offer is RQ19's. No longer blocks S7. |
 | RQ7 | preview-controller after S6: retire it, or keep it for ledger and history (row E5) | Commander | Open; blocks S6 |
-| RQ8 | Host field in the parity baseline | — | S1b |
+| RQ8 | Host field in the parity baseline | — | **Done** (S1b): `baseline-fixtures.json` schema /2 has `host`; the 2026-09-22 recording keeps only `system: Darwin`, the rest `null` until S5 re-records it |
 | RQ10 | Open old-path PRs before S7 | Commander | **0 open** (#1120 closed 2026-10-06); must stay 0 at S7 |
 | RQ15 | Drop the `[fonts]` roles? | Owner | **Superseded** by Q-new-1 / 3A (DESIGN §13 L1202): the Unicode mode carries them. Row A9. |
 | RQ16 | Bundle-mode BibTeX: reuse `bibtex-bst`? | Commander | **Proposed: no.** DESIGN §13 decision 4 (O4) ports `bibtex.web` through web2rust, so S2 deletes bibtex-bst. To be confirmed. |

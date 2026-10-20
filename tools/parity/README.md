@@ -252,7 +252,8 @@ of `tools/visual-oracle/rank.py`, pairs), the first diverging page, and
 - **fixtures**: `fixtures/real-world` + `fixtures/divergence-probes` against
   their committed reference PDFs. Deterministic, needs no TeX, and takes about
   3 s. CI runs it on macOS against `baseline-fixtures.json` (no document may
-  drop below its recorded level).
+  drop below its recorded level). The baseline names the `host` it was
+  recorded on (schema /2); `--check-baseline` exits 2 on another OS.
 - **arxiv**: `corpus/arxiv-2025-01.json`, 149 version-pinned e-prints (10 per
   primary category across math, cs, hep-th, quant-ph, cond-mat, astro-ph and
   gr-qc, submitted 13–17 Jan 2025), each with its SHA-256. `corpus.py
