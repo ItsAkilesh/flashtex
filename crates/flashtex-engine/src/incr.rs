@@ -5169,7 +5169,7 @@ impl Session {
         let g = self.g.as_mut()?;
         let ids = g.checkpoints();
         let lo = ids.iter().position(|&i| i == s0)?;
-        let first_read = first_reads(j, &changed);
+        let first_read = first_reads(j, changed);
         let good = |g: &mut Globals, id: CheckpointId| -> bool {
             g.record_of(id).is_ok_and(|r| {
                 consumed_nothing_changed(j, &first_read, &r, edits, changed, bad_lookup)
@@ -5310,7 +5310,7 @@ impl Session {
         let mut windows = prior.to_vec();
         windows.push((r0.reads.0, r1.reads.0));
         let w = crate::revalidate::window_journal(j, &windows);
-        let first_read = first_reads(&w, &changed);
+        let first_read = first_reads(&w, changed);
         let now: HashMap<String, std::sync::Arc<Vec<u8>>> = edits
             .iter()
             .filter_map(|e| {
@@ -5427,7 +5427,7 @@ impl Session {
             return Err(format!("{why}, its checkpoint is not kept"));
         }
         let r0 = g.record_of(a)?;
-        let first_read = first_reads(j, &changed);
+        let first_read = first_reads(j, changed);
         if !consumed_nothing_changed(j, &first_read, &r0, edits, changed, bad_lookup)
             || !g.restorable(a)
         {
@@ -5981,7 +5981,7 @@ impl Session {
         g.layer().pre_force_line = None;
         g.layer().pre_q_taking = None;
         let q_line = if before_s0 && pre_patch_enabled() {
-            pre_patch_line(&rec, &obs.edits, &jr)
+            pre_patch_line(&rec, &obs.edits, jr)
         } else {
             None
         };
@@ -6013,7 +6013,7 @@ impl Session {
                         })
                         .unwrap_or_default();
                     obs.pre_patch =
-                        pre_patch_arm(g, q, before, anchor, &rec, &jr, &obs).map(Box::new);
+                        pre_patch_arm(g, q, before, anchor, &rec, jr, &obs).map(Box::new);
                 }
             }
         }
@@ -6965,7 +6965,7 @@ fn first_reads<'a>(j: &'a ReadLog, changed: &[String]) -> HashMap<&'a str, usize
     // journal lists hundreds of reads)
     let mut m = HashMap::new();
     for (i, f) in j.files.iter().enumerate() {
-        if changed.iter().any(|c| *c == f.path) {
+        if changed.contains(&f.path) {
             m.entry(f.path.as_str()).or_insert(i);
         }
     }
