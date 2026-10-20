@@ -509,7 +509,8 @@ impl Watch {
         let mut any = false;
         loop {
             // SAFETY: a buffer of the length given.
-            let n = unsafe { libc::read(self.q, buf.as_mut_ptr().cast(), std::mem::size_of_val(&buf)) };
+            let n =
+                unsafe { libc::read(self.q, buf.as_mut_ptr().cast(), std::mem::size_of_val(&buf)) };
             if n < 0 {
                 let e = std::io::Error::last_os_error().raw_os_error();
                 if e == Some(libc::EAGAIN) || e == Some(libc::EWOULDBLOCK) {

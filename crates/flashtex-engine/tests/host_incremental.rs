@@ -1948,8 +1948,12 @@ fn a_package_outside_the_document_that_changes_is_seen() {
         h.set_modified(mtime).unwrap();
     };
     let steps: [(&str, &dyn Fn()); 3] = [
-        ("the body's file rewritten", &|| rewrite(&body, "BBBB", "CCCC")),
-        ("the preamble's file rewritten", &|| rewrite(&pre, "AAAA", "DDDD")),
+        ("the body's file rewritten", &|| {
+            rewrite(&body, "BBBB", "CCCC")
+        }),
+        ("the preamble's file rewritten", &|| {
+            rewrite(&pre, "AAAA", "DDDD")
+        }),
         ("the directory replaced", &|| {
             std::fs::rename(ext.join("tree"), ext.join("old")).unwrap();
             std::fs::create_dir_all(ext.join("tree")).unwrap();

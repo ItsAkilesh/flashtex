@@ -218,7 +218,10 @@ enum Op {
     /// `\csname` looked up for the first time) at `p` (§12.3): a replay
     /// enters it again through `id_lookup`, where an offer has worked out it
     /// lands at `p` (`bm_new_cs_placeable`).
-    NewCs { p: i32, name: Vec<i32> },
+    NewCs {
+        p: i32,
+        name: Vec<i32>,
+    },
 }
 
 thread_local! {
@@ -1850,7 +1853,10 @@ impl Globals {
                                 self.str_start[t as usize + 1] as usize,
                             );
                             if b - a == name.len()
-                                && self.str_pool[a..b].iter().zip(name).all(|(&c, &n)| c as i32 == n)
+                                && self.str_pool[a..b]
+                                    .iter()
+                                    .zip(name)
+                                    .all(|(&c, &n)| c as i32 == n)
                             {
                                 return false;
                             }
@@ -1914,7 +1920,10 @@ impl Globals {
         self.no_new_control_sequence = save;
         // (an offer checked it: anything else is a broken invariant, and
         // going on would leave the state wrong)
-        assert_eq!(q, p, "boxmemo: a replayed control sequence landed elsewhere");
+        assert_eq!(
+            q, p,
+            "boxmemo: a replayed control sequence landed elsewhere"
+        );
     }
 
     /// The dimensions of object `n` (a form or an image) as pdfTeX keeps
