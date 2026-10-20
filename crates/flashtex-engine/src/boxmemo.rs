@@ -214,6 +214,11 @@ enum Op {
         v: Val,
         kind: i32,
     },
+    /// A control sequence entered (`id_lookup` making `name`, which a
+    /// `\csname` looked up for the first time) at `p` (§12.3): a replay
+    /// enters it again through `id_lookup`, where an offer has worked out it
+    /// lands at `p` (`bm_new_cs_placeable`).
+    NewCs { p: i32, name: Vec<i32> },
 }
 
 thread_local! {
@@ -328,6 +333,12 @@ fn elide_local_groups(ops: &[Op]) -> Vec<Op> {
                     for x in stack.iter_mut() {
                         x.1 = false;
                     }
+                }
+            }
+            // (a control sequence entered stays: no group undoes it)
+            Op::NewCs { .. } => {
+                for x in stack.iter_mut() {
+                    x.1 = false;
                 }
             }
         }
@@ -505,6 +516,10 @@ struct Entry {
     /// What a replay makes: `ops` without the groups that leave nothing
     /// behind ([`elide_local_groups`]).
     fast: Vec<Op>,
+    /// The control sequences the call entered (`Op::NewCs`: name,
+    /// location), in order: an offer checks they would land where they
+    /// did (`bm_new_cs_placeable`).
+    new_cs: Vec<(Vec<i32>, i32)>,
     /// Existing forms and images the call referred to (`\pdfrefxform`,
     /// `\pdfrefximage`): each must still be one of its type with the same
     /// dimensions (part of the key).
@@ -597,6 +612,8 @@ struct Rec {
     /// (register, box node, key) of each box moved out of a foreign register
     holes: Vec<(i32, i32, Vec<i32>)>,
     ops: Vec<Op>,
+    /// The control sequences the call entered (`Op::NewCs`), in order.
+    created: Vec<i32>,
     /// The call packed a box (`hpack`, `vpackage`), so it set `last_badness`.
     packed: bool,
     /// Verifying the entry of this index (of `store[cs]`).
@@ -1741,6 +1758,163 @@ impl Globals {
         if with_config(|c| self.bm_name_is(p, &c.names)) {
             self.bm_cand[p as usize] = true;
         }
+        if self.bm_rec_on {
+            self.bm_note_new_cs(p);
+        }
+    }
+
+    /// A recording entered control sequence `p` (§12.3): an operation, if
+    /// no string was being built (`id_lookup` moves one up past the new
+    /// name, and a replay could not tell where it stood).
+    #[cold]
+    #[inline(never)]
+    fn bm_note_new_cs(&mut self, p: i32) {
+        if self.pool_ptr != self.str_start[self.str_ptr as usize] {
+            return self.bm_abort("NewCs");
+        }
+        let t = self.hash[(p - k::hash_base) as usize].rh();
+        let (a, b) = (
+            self.str_start[t as usize] as usize,
+            self.str_start[t as usize + 1] as usize,
+        );
+        let name: Vec<i32> = self.str_pool[a..b].iter().map(|&c| c as i32).collect();
+        self.bm_with_rec(|r| {
+            r.created.push(p);
+            r.ops.push(Op::NewCs { p, name });
+        });
+    }
+
+    /// At a recording's end, with the string or hash counters moved: whether
+    /// all the call left in the pool is the names of the control sequences
+    /// it entered, one string each, in order, with no string being built at
+    /// its start or end. `hash_used` and `hash_high` may have moved only for
+    /// those; a replay enters them again (`Op::NewCs`).
+    fn bm_strings_are_new_names(&self, start: &Frame, end: &Frame) -> bool {
+        let (s0, p0, _) = start.strings;
+        let (s1, p1, _) = end.strings;
+        let Some(created) = self.bm_with_rec(|r| r.created.clone()) else {
+            return false;
+        };
+        if created.is_empty()
+            || s1 - s0 != created.len() as i32
+            || self.str_start[s0 as usize] != p0
+            || self.str_start[s1 as usize] != p1
+        {
+            return false;
+        }
+        created
+            .iter()
+            .enumerate()
+            .all(|(i, &p)| self.hash[(p - k::hash_base) as usize].rh() == s0 + i as i32)
+    }
+
+    /// Whether the control sequences an entry enters (`Op::NewCs`, in order)
+    /// are entered at their recorded locations if entered now: each name is
+    /// absent, and `id_lookup`'s search for a free location (tex.web §259,
+    /// web2c's `hash_extra`) ends where the recording's did, given the ones
+    /// before it. Nothing is changed.
+    fn bm_new_cs_placeable(&self, made: &[(Vec<i32>, i32)]) -> bool {
+        if made.is_empty() {
+            return true;
+        }
+        let hb = k::hash_base;
+        let mut taken: HashMap<i32, usize> = HashMap::new();
+        let mut links: HashMap<i32, i32> = HashMap::new();
+        let (mut used, mut high) = (self.hash_used, self.hash_high);
+        let text = |q: i32| self.hash[(q - hb) as usize].rh();
+        let occupied = |taken: &HashMap<i32, usize>, q: i32| taken.contains_key(&q) || text(q) > 0;
+        for (i, (name, want)) in made.iter().enumerate() {
+            if name.is_empty() || self.first + name.len() as i32 >= k::buf_size {
+                return false;
+            }
+            // tex.web §261
+            let prime = k::hash_prime as i64;
+            let mut h = name[0] as i64;
+            for &c in &name[1..] {
+                h = h + h + c as i64;
+                while h >= prime {
+                    h -= prime;
+                }
+            }
+            let mut p = h as i32 + hb;
+            loop {
+                // (an earlier one of these, or a name in the table)
+                match taken.get(&p) {
+                    Some(&j) if made[j].0 == *name => return false,
+                    Some(_) => {}
+                    None => {
+                        let t = text(p);
+                        if t > 0 && t < self.str_ptr {
+                            let (a, b) = (
+                                self.str_start[t as usize] as usize,
+                                self.str_start[t as usize + 1] as usize,
+                            );
+                            if b - a == name.len()
+                                && self.str_pool[a..b].iter().zip(name).all(|(&c, &n)| c as i32 == n)
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                let next = links
+                    .get(&p)
+                    .copied()
+                    .unwrap_or_else(|| self.hash[(p - hb) as usize].lh());
+                if next != 0 {
+                    p = next;
+                    continue;
+                }
+                // §260: where it goes
+                let at = if occupied(&taken, p) {
+                    let q = if high < k::hash_extra {
+                        high += 1;
+                        high + k::eqtb_size
+                    } else {
+                        loop {
+                            if used == hb {
+                                return false;
+                            }
+                            used -= 1;
+                            if !occupied(&taken, used) {
+                                break used;
+                            }
+                        }
+                    };
+                    links.insert(p, q);
+                    q
+                } else {
+                    p
+                };
+                if at != *want {
+                    return false;
+                }
+                taken.insert(at, i);
+                break;
+            }
+        }
+        true
+    }
+
+    /// A replay enters `name` as the normal path's `\csname` did: through
+    /// `id_lookup` on the buffer above the current line (tex.web §374),
+    /// where `bm_new_cs_placeable` worked out it lands at `p`.
+    fn bm_make_cs(&mut self, p: i32, name: &[i32]) {
+        let first = self.first;
+        for (i, &c) in name.iter().enumerate() {
+            self.buffer[(first + i as i32) as usize] = c as _;
+        }
+        let j = first + name.len() as i32;
+        if j > self.max_buf_stack {
+            self.max_buf_stack = j;
+        }
+        let save = self.no_new_control_sequence;
+        self.no_new_control_sequence = false;
+        let q = self.id_lookup(first, name.len() as i32);
+        self.no_new_control_sequence = save;
+        // (an offer checked it: anything else is a broken invariant, and
+        // going on would leave the state wrong)
+        assert_eq!(q, p, "boxmemo: a replayed control sequence landed elsewhere");
     }
 
     /// The dimensions of object `n` (a form or an image) as pdfTeX keeps
@@ -1916,7 +2090,8 @@ impl Globals {
                     && e.font_glues.iter().all(|(f, w)| {
                         let q = self.font_glue[*f as usize];
                         q > LO_MEM_STAT_MAX && self.bm_glue_fields(q) == *w
-                    });
+                    })
+                    && self.bm_new_cs_placeable(&e.new_cs);
                 if rest_ok {
                     best = Some((e.last_used, i));
                 } else if partial.is_none_or(|(u, _)| u < e.last_used) {
@@ -2066,6 +2241,7 @@ impl Globals {
             kb: vec![],
             holes: vec![],
             ops: vec![],
+            created: vec![],
             packed: false,
             verify,
         };
@@ -2174,6 +2350,7 @@ impl Globals {
                     voids: rec.voids,
                     line: rec.line_read.then_some(self.line),
                     fast: vec![],
+                    new_cs: vec![],
                     last_link: None,
                     obj_refs: rec.obj_refs,
                     new_objs: 0,
@@ -2265,13 +2442,16 @@ impl Globals {
     #[inline(never)]
     pub fn flashtex_bm_id(&mut self, j: i32, l: i32, p: i32) {
         if p != UNDEFINED_CS {
-            // the name leads to `p` (part of the key), and `p`'s meaning
+            // the name leads to `p` (part of the key), and `p`'s meaning;
+            // not for a name the call entered itself (`Op::NewCs`: an offer
+            // checks that it is absent and lands at `p`)
             let name: Vec<i32> = (j..j + l).map(|i| self.buffer[i as usize]).collect();
             self.bm_with_rec(|r| {
-                if !r
-                    .k3
-                    .iter()
-                    .any(|(q, m)| *q == p && matches!(m, Meaning::Name(n) if *n == name))
+                if !r.created.contains(&p)
+                    && !r
+                        .k3
+                        .iter()
+                        .any(|(q, m)| *q == p && matches!(m, Meaning::Name(n) if *n == name))
                 {
                     r.k3.push((p, Meaning::Name(name)));
                 }
@@ -2882,7 +3062,7 @@ impl Globals {
             Some("Cond")
         } else if end.align_state != start.align_state {
             Some("Unbalanced")
-        } else if end.strings != start.strings {
+        } else if end.strings != start.strings && !self.bm_strings_are_new_names(&start, &end) {
             Some("NewCs")
         } else if end.errors != start.errors {
             Some("Error")
@@ -3013,6 +3193,8 @@ impl Globals {
                         v: Val::FreshShape(l),
                         ..
                     } => 32 + 4 * l.len(),
+                    // (and once more in `Entry::new_cs`)
+                    Op::NewCs { name, .. } => 2 * (32 + 4 * name.len()),
                     _ => 32,
                 })
                 .sum::<usize>();
@@ -3071,6 +3253,9 @@ impl Globals {
                 }
                 v.sort_unstable();
                 v.dedup();
+                // (the ones it entered: the replay's `id_lookup` tells the
+                // read-set, as the normal path's did, once they exist)
+                v.retain(|p| !rec.created.contains(p));
                 v
             };
             let entry = Entry {
@@ -3092,6 +3277,14 @@ impl Globals {
                 voids: rec.voids,
                 line: rec.line_read.then_some(line),
                 fast: elide_local_groups(&rec.ops),
+                new_cs: rec
+                    .ops
+                    .iter()
+                    .filter_map(|o| match o {
+                        Op::NewCs { p, name } => Some((name.clone(), *p)),
+                        _ => None,
+                    })
+                    .collect(),
                 last_link: (self.pdf_last_link != rec.last_link)
                     .then(|| rec.new_objs.iter().position(|&o| o == self.pdf_last_link))
                     .flatten(),
@@ -3444,6 +3637,7 @@ impl Globals {
                         _ => self.gsa_w_def(q, e),
                     }
                 }
+                Op::NewCs { p, name } => self.bm_make_cs(*p, name),
             }
         }
         if let Some(b) = last_badness {
