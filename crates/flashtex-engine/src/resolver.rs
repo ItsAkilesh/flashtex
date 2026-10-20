@@ -47,6 +47,12 @@ pub enum Format {
     OpenType,
     /// `subfont definition files` (`.sfd`).
     Sfd,
+    /// `ist`: makeindex style files (`INDEXSTYLE`), for makeindex run
+    /// in-process (crates/makeindex).
+    Ist,
+    /// `graphic/figure` (`kpse_pict_format`): the XeTeX-derived engine's
+    /// `\\XeTeXpicfile` and `\\XeTeXpdffile` (crates/flashtex-xetex).
+    Pict,
 }
 
 impl Format {
@@ -68,6 +74,8 @@ impl Format {
             Format::TrueType => "truetype fonts",
             Format::OpenType => "opentype fonts",
             Format::Sfd => "subfont definition files",
+            Format::Ist => "ist",
+            Format::Pict => "graphic/figure",
         }
     }
 
@@ -89,6 +97,8 @@ impl Format {
             Format::TrueType,
             Format::OpenType,
             Format::Sfd,
+            Format::Ist,
+            Format::Pict,
         ]
     }
 
@@ -126,11 +136,23 @@ pub trait FileResolver: Send {
     fn config_var(&mut self, _var: &str) -> Option<String> {
         None
     }
+    /// [`FileResolver::config_var`] as program `prog` sees it
+    /// (`VAR.prog` before `VAR`), for a tool run in-process: bibtex's
+    /// `max_strings.bibtex`. None where there is no texmf.cnf.
+    fn config_var_for(&mut self, _var: &str, _prog: &str) -> Option<String> {
+        None
+    }
     /// kpathsea's `kpse_in_name_ok` (`write` false) or `kpse_out_name_ok`
     /// (`write` true): may the file be opened, under texmf.cnf's
     /// `openin_any` and `openout_any`? Without texmf.cnf, yes.
     fn name_ok(&mut self, _name: &str, _write: bool) -> bool {
         true
+    }
+    /// [`FileResolver::name_ok`] without kpathsea's message on a refusal
+    /// (`kpse_out_name_ok_silent`), for a caller that reports it under
+    /// another program's name.
+    fn name_ok_silent(&mut self, name: &str, write: bool) -> bool {
+        self.name_ok(name, write)
     }
     /// pdftex.web's `kpse_init_prog(prefix, dpi, mode, nil)` and
     /// `kpse_set_program_enabled(kpse_pk_format, 1, kpse_src_compile)`, at
@@ -149,6 +171,113 @@ pub trait FileResolver: Send {
     fn find_pk(&mut self, _name: &str, _dpi: u32, _make: bool) -> Option<PkGlyph> {
         None
     }
+    /// What `found`, the answer to looking `name` up (`find`, or `find_ex`
+    /// with `must_exist`), depends on outside this process's own kpathsea
+    /// state (texmf.cnf, the ls-R databases, the `//` expansions it keeps):
+    /// the directories it searched on disk (#1562). `Err(why)` where that
+    /// is not known; the lookup must then be made again to know its answer.
+    /// By default not known.
+    fn lookup_dirs(
+        &mut self,
+        _name: &str,
+        _format: Format,
+        _must_exist: Option<bool>,
+        _found: Option<&Path>,
+    ) -> Result<LookupDirs, &'static str> {
+        Err("the resolver does not say")
+    }
+    /// See what changed on disk since the last call where the resolver
+    /// caches what it read there (kpathsea's `//` expansions of the
+    /// directories no ls-R covers), and forget what is stale, so that the
+    /// next lookups search the disk as a fresh process would. Called at the
+    /// start of every compile (`system::refresh_disk_dirs`) and before the
+    /// format cache's check. By default nothing is cached.
+    fn refresh_disk_dirs(&mut self) {}
+}
+
+/// The directories a lookup's answer depends on (`FileResolver::lookup_dirs`).
+/// While each has the same listing, no entry kpathsea passed over in them
+/// becomes readable, and the answer stays a readable file, the lookup finds
+/// the same.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LookupDirs {
+    /// The names kpathsea tries in each directory: the name's last
+    /// component as is and with the format's suffixes.
+    pub tries: Vec<String>,
+    /// The directories searched, in order, whose entries under `tries`
+    /// decide the answer. `system::note_lookup` lists each for entries
+    /// kpathsea passes over (a dangling link, an unreadable file), which
+    /// can become readable while the listing stays the same.
+    pub listed: Vec<String>,
+    /// Directories whose listing decides the answer but holds no entry
+    /// under `tries`: the deepest existing directory on the way to a
+    /// directory searched that does not exist (`D/sub` for `sub/name`).
+    pub above: Vec<String>,
+}
+
+impl LookupDirs {
+    /// `dir`, searched for the name's last component: listed if it is a
+    /// directory, else its deepest existing ancestor goes `above`. `Err`
+    /// if the first missing component is there but not a directory (a
+    /// file, or a dangling link, which can become one with no listing
+    /// changing).
+    pub fn add(&mut self, dir: &str) -> Result<(), &'static str> {
+        let p = Path::new(dir);
+        let known = p.is_absolute() && known_dir(dir);
+        if known || p.is_dir() {
+            if !known && p.is_absolute() {
+                KNOWN_DIRS
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(Default::default)
+                    .insert(dir.to_string());
+            }
+            if !self.listed.iter().any(|d| d == dir) {
+                self.listed.push(dir.to_string());
+            }
+            return Ok(());
+        }
+        let mut below = p;
+        while let Some(a) = below.parent() {
+            let a = if a.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                a
+            };
+            if a.is_dir() {
+                if std::fs::symlink_metadata(below).is_ok() {
+                    return Err("a directory searched is there but is not a directory");
+                }
+                let a = a.to_string_lossy().into_owned();
+                if !self.above.contains(&a) {
+                    self.above.push(a);
+                }
+                return Ok(());
+            }
+            below = a;
+        }
+        Err("no directory on the way to one searched exists")
+    }
+}
+
+/// Directories [`LookupDirs::add`] found to be directories (a stat per
+/// directory of a `//` subtree per lookup otherwise: 60 for every TFM name
+/// on a Mac with mktextfm's `TEXMFVAR`). Only "is a directory" is kept: one
+/// that has gone since is still `listed`, where it cannot be listed, and
+/// every user of `listed` takes that as a dependency not known
+/// (`system::note_lookup_dirs`, `lookupproof`); one that was not a
+/// directory is looked at again each time, since one appearing moves the
+/// dependency from its parent (`above`) to it. Absolute names only (a
+/// relative one is another directory in another working directory).
+static KNOWN_DIRS: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+    std::sync::Mutex::new(None);
+
+fn known_dir(dir: &str) -> bool {
+    KNOWN_DIRS
+        .lock()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|k| k.contains(dir))
 }
 
 /// What `kpse_find_pk` found: the file, `font_ret.name` and `font_ret.dpi`
@@ -187,6 +316,14 @@ impl FileResolver for CwdResolver {
         if format == Format::Tex && !name.ends_with(".tex") {
             if let Some(p) = self.find_one(&format!("{name}.tex"), format) {
                 return Some(p);
+            }
+        }
+        // The same rule for bibtex's `.bib` and `.bst` (crate::bibtex).
+        for (f, suffix) in [(Format::Bib, ".bib"), (Format::Bst, ".bst")] {
+            if format == f && !name.ends_with(suffix) {
+                if let Some(p) = self.find_one(&format!("{name}{suffix}"), format) {
+                    return Some(p);
+                }
             }
         }
         // TFM files, which tex.ch packs without `.tfm` (tex.ch [30.563]:
@@ -473,10 +610,31 @@ pub fn kpathsea_version() -> String {
 
 #[cfg(feature = "kpathsea")]
 mod kpse {
-    use super::{FileResolver, Format};
+    use super::{FileResolver, Format, LookupDirs};
     use std::collections::HashMap;
     use std::ffi::{c_char, c_int, c_void, CStr, CString};
     use std::path::{Path, PathBuf};
+
+    /// Where kpathsea keeps ls-R's packed index (db.c, `packed_build`):
+    /// `<format cache>/lsr`, beside the font maps' cache (DESIGN.md §4.4),
+    /// or none when the format cache is off. Set once, before the first
+    /// instance reads ls-R.
+    fn set_lsr_cache() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            #[cfg(feature = "distribution")]
+            if crate::formats::cache_enabled() {
+                if let Some(d) = crate::formats::cache_dir().map(|d| d.join("lsr")) {
+                    if std::fs::create_dir_all(&d).is_ok() {
+                        if let Ok(c) = CString::new(d.to_string_lossy().as_bytes()) {
+                            // SAFETY: the C side copies the string.
+                            unsafe { flashtex_kpse_set_lsr_cache(c.as_ptr()) };
+                        }
+                    }
+                }
+            }
+        });
+    }
 
     extern "C" {
         fn flashtex_kpse_new(
@@ -494,18 +652,34 @@ mod kpse {
             made: *mut c_int,
         ) -> *mut c_char;
         fn flashtex_kpse_format(k: *mut c_void, name: *const c_char) -> c_int;
+        fn flashtex_kpse_set_lsr_cache(dir: *const c_char);
         fn flashtex_kpse_find(k: *mut c_void, name: *const c_char, format: c_int) -> *mut c_char;
         fn flashtex_kpse_var_value(k: *mut c_void, var: *const c_char) -> *mut c_char;
+        fn flashtex_kpse_var_value_prog(
+            k: *mut c_void,
+            var: *const c_char,
+            prog: *const c_char,
+        ) -> *mut c_char;
         fn flashtex_kpse_free(p: *mut c_void);
         fn flashtex_kpse_set_make_tex_discard_errors(k: *mut c_void, discard: c_int);
         fn flashtex_kpse_get_make_tex_discard_errors(k: *mut c_void) -> c_int;
         fn flashtex_kpse_name_ok(k: *mut c_void, name: *const c_char, write: c_int) -> c_int;
+        fn flashtex_kpse_name_ok_silent(k: *mut c_void, name: *const c_char, write: c_int)
+            -> c_int;
         fn flashtex_kpse_find_all(
             k: *mut c_void,
             name: *const c_char,
             format: c_int,
         ) -> *mut *mut c_char;
         fn flashtex_kpse_free_list(list: *mut *mut c_char);
+        fn flashtex_kpse_disk_dirs(k: *mut c_void, format: c_int) -> *mut *mut c_char;
+        fn flashtex_kpse_forget_disk_dirs(k: *mut c_void);
+        fn flashtex_kpse_make_enabled(k: *mut c_void, format: c_int) -> c_int;
+        fn flashtex_kpse_try_names(
+            k: *mut c_void,
+            format: c_int,
+            name: *const c_char,
+        ) -> *mut *mut c_char;
         fn flashtex_kpse_init_pk(
             k: *mut c_void,
             prefix: *const c_char,
@@ -521,6 +695,15 @@ mod kpse {
             ret_dpi: *mut std::ffi::c_uint,
             made: *mut c_int,
         ) -> *mut c_char;
+        fn flashtex_kpse_format_path(k: *mut c_void, format: c_int) -> *const c_char;
+        fn flashtex_kpse_has_alias(k: *mut c_void, name: *const c_char) -> c_int;
+        fn flashtex_kpse_readable(k: *mut c_void, path: *const c_char) -> c_int;
+        fn flashtex_kpse_db_hazard(k: *mut c_void, format: c_int, name: *const c_char) -> c_int;
+        fn flashtex_kpse_search_dirs(
+            k: *mut c_void,
+            format: c_int,
+            found: *const c_char,
+        ) -> *mut *mut c_char;
     }
 
     /// TeX Live's kpathsea, vendored and linked (third_party/kpathsea).
@@ -528,6 +711,76 @@ mod kpse {
         k: *mut c_void,
         formats: HashMap<Format, c_int>,
         what: String,
+        memo: Memo,
+        /// The formats looked up so far, and the signature of every
+        /// directory kpathsea has expanded their search paths to on disk
+        /// (`refresh_disk_dirs`), as of the last check.
+        disk: (
+            std::collections::BTreeSet<c_int>,
+            Vec<(String, Option<crate::system::StatSig>)>,
+        ),
+    }
+
+    /// The session's lookup memo: a lookup's answer, kept while everything
+    /// kpathsea's answer depends on is unchanged, so that a lookup made
+    /// again (every compile reloads the fonts and packages its restart point
+    /// had not loaded yet) costs a `stat` per directory instead of kpathsea's
+    /// disk search. Where a tree has no `ls-R` (a user's `TEXMFVAR` with
+    /// mktextfm's directories, `TEXMFHOME`), kpathsea tries the name in
+    /// every directory of the `//` subtree and then, case-insensitively,
+    /// lists every one of them again (`casefold_readable_file`): about a
+    /// millisecond per font on mac-m1max-a, a quarter of a keystroke.
+    ///
+    /// What kpathsea's answer depends on, beyond its own per-process state
+    /// (texmf.cnf, the ls-R databases, the `//` expansions it caches,
+    /// texfonts.map), which a remembered answer shares:
+    /// - the working directory, and the format's search path;
+    /// - the listing of every directory it searches on disk before the one
+    ///   that held the answer (all of them for "not found"), and that one:
+    ///   each directory's signature (`StatSig`: a file added, removed or
+    ///   renamed changes it; git's racy rule, a signature taken within the
+    ///   file system's time granularity of the change equals nothing);
+    /// - the answer itself, still a readable regular file
+    ///   (`kpathsea_readable_file`; what it holds does not change the
+    ///   answer, a name);
+    /// - entries of those directories kpathsea tried and passed over (a
+    ///   dangling symbolic link or an unreadable file under a name it tries)
+    ///   could become readable without changing their directory: a lookup
+    ///   that met one is not remembered.
+    /// - likewise an ls-R entry under the name (or the name with a suffix)
+    ///   with no readable file on disk: kpathsea's database search checks
+    ///   each entry on disk (`db.c`), so the file's appearing would change
+    ///   the answer with no directory of the search changing; an ls-R alias
+    ///   too (`flashtex_kpse_db_hazard`). An `!!` element is taken as where
+    ///   the answer was found only by kpathsea's own database search.
+    ///
+    /// Not remembered either: absolute and relative names and names with a
+    /// directory, variables or `~` (kpathsea expands them; they are cheap
+    /// anyway), a name with a fontmap alias, an answer an mktex script made,
+    /// "not found" where an mktex script may run (`must_exist`), and where
+    /// an element of the path is not `!!` but has an `ls-R`.
+    /// `FLASHTEX_LOOKUP_MEMO=off` turns the memo off.
+    #[derive(Default)]
+    struct Memo {
+        entries: HashMap<(String, c_int, u8), MemoEntry>,
+        off: Option<bool>,
+    }
+
+    struct MemoEntry {
+        cwd: PathBuf,
+        path: Vec<u8>,
+        found: Option<PathBuf>,
+        dirs: Vec<(String, crate::system::StatSig)>,
+    }
+
+    /// Lookups the memo answered, and those it did not (measurement).
+    static MEMO_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static MEMO_MISSES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    /// A name kpathsea looks up through its search path as given: no
+    /// directory, no variable or `~` to expand.
+    fn memo_name(name: &str) -> bool {
+        !name.is_empty() && !name.contains(['/', '\\', '$', '~', ':', '{', '}', '!'])
     }
 
     // One kpathsea instance, used from one thread at a time.
@@ -543,6 +796,26 @@ mod kpse {
     }
 
     impl KpathseaResolver {
+        /// A NULL-terminated list of strings from the shim, freed; `None`
+        /// for NULL.
+        fn list(&self, list: *mut *mut c_char) -> Option<Vec<String>> {
+            if list.is_null() {
+                return None;
+            }
+            let mut out = vec![];
+            // SAFETY: a NULL-terminated array of NUL-terminated strings,
+            // freed once below.
+            unsafe {
+                let mut p = list;
+                while !(*p).is_null() {
+                    out.push(CStr::from_ptr(*p).to_string_lossy().into_owned());
+                    p = p.add(1);
+                }
+                flashtex_kpse_free_list(list);
+            }
+            Some(out)
+        }
+
         /// kpathsea's `make_tex_discard_errors` for this resolver: its
         /// instance's, or (not started yet) the one it will start with.
         pub fn make_tex_discard_errors(&self) -> bool {
@@ -706,6 +979,7 @@ mod kpse {
                 "OPENTYPEFONTS",
                 "MISCFONTS",
                 "SFDFONTS",
+                "INDEXSTYLE",
                 "TEXPOOL",
                 "MFINPUTS",
                 "TEXCONFIG",
@@ -749,6 +1023,7 @@ mod kpse {
                 .collect();
             let mut ptrs: Vec<*const c_char> = kv.iter().map(|c| c.as_ptr()).collect();
             ptrs.push(std::ptr::null());
+            set_lsr_cache();
             let k = unsafe {
                 flashtex_kpse_new(
                     a.as_ptr(),
@@ -766,7 +1041,219 @@ mod kpse {
                     formats.insert(*f, id);
                 }
             }
-            KpathseaResolver { k, formats, what }
+            KpathseaResolver {
+                k,
+                formats,
+                what,
+                memo: Memo::default(),
+                disk: Default::default(),
+            }
+        }
+
+        /// Every directory kpathsea has expanded the search paths of the
+        /// formats looked up so far to on disk, with its signature now.
+        fn disk_dirs_now(&self) -> Vec<(String, Option<crate::system::StatSig>)> {
+            let mut v: Vec<(String, Option<crate::system::StatSig>)> = vec![];
+            let mut seen = std::collections::HashSet::new();
+            for &f in &self.disk.0 {
+                // SAFETY: the live instance; the list is freed by `list`.
+                let dirs = self
+                    .list(unsafe { flashtex_kpse_disk_dirs(self.k, f) })
+                    .unwrap_or_default();
+                for d in dirs {
+                    if seen.insert(d.clone()) {
+                        let s = crate::system::StatSig::of(&d);
+                        v.push((d, s));
+                    }
+                }
+            }
+            v
+        }
+
+        /// Turn the lookup memo on or off for this resolver (`Memo`; the
+        /// tests compare its answers with kpathsea's own).
+        pub fn set_memo(&mut self, on: bool) {
+            self.memo.off = Some(!on);
+        }
+
+        /// Lookups the memo answered and lookups it passed to kpathsea, in
+        /// this process.
+        pub fn memo_counts() -> (u64, u64) {
+            use std::sync::atomic::Ordering::Relaxed;
+            (MEMO_HITS.load(Relaxed), MEMO_MISSES.load(Relaxed))
+        }
+
+        fn format_path(&self, f: c_int) -> Vec<u8> {
+            let p = unsafe { flashtex_kpse_format_path(self.k, f) };
+            if p.is_null() {
+                return vec![];
+            }
+            unsafe { CStr::from_ptr(p) }.to_bytes().to_vec()
+        }
+
+        fn readable(&self, path: &Path) -> bool {
+            CString::new(path.to_string_lossy().as_bytes())
+                .is_ok_and(|c| unsafe { flashtex_kpse_readable(self.k, c.as_ptr()) } != 0)
+        }
+
+        /// A lookup through the memo (`Memo`): `kind` tells the kpathsea
+        /// calls apart (0 `find`, 1 `find_ex`, 2 `find_ex` with
+        /// `must_exist`); `run` makes the lookup, and says whether an mktex
+        /// script made the file.
+        fn memo_lookup(
+            &mut self,
+            name: &str,
+            f: c_int,
+            kind: u8,
+            run: impl FnOnce(&mut Self) -> (Option<PathBuf>, bool),
+        ) -> (Option<PathBuf>, bool) {
+            // (the formats whose disk directories `refresh_disk_dirs` watches)
+            self.disk.0.insert(f);
+            let off = *self.memo.off.get_or_insert_with(|| {
+                std::env::var("FLASHTEX_LOOKUP_MEMO").is_ok_and(|v| v == "off")
+            });
+            if off || !memo_name(name) {
+                return run(self);
+            }
+            use std::sync::atomic::Ordering::Relaxed;
+            let key = (name.to_string(), f, kind);
+            if let Some(e) = self.memo.entries.get(&key) {
+                if self.still_holds(e, f) {
+                    MEMO_HITS.fetch_add(1, Relaxed);
+                    return (e.found.clone(), false);
+                }
+            }
+            MEMO_MISSES.fetch_add(1, Relaxed);
+            let (found, made) = run(self);
+            let entry = if made {
+                Err("an mktex script made it")
+            } else {
+                self.remember(name, f, kind, found.as_deref())
+            };
+            if std::env::var_os("FLASHTEX_LOOKUP_MEMO_DEBUG").is_some() {
+                eprintln!(
+                    "[memo] {name} ({f}/{kind}) -> {found:?}: {}",
+                    entry.as_ref().map_or_else(
+                        |e| *e,
+                        |e| if e.dirs.is_empty() {
+                            "remembered (no directory)"
+                        } else {
+                            "remembered"
+                        }
+                    )
+                );
+            }
+            match entry.ok() {
+                Some(e) => {
+                    self.memo.entries.insert(key, e);
+                }
+                None => {
+                    self.memo.entries.remove(&key);
+                }
+            }
+            (found, made)
+        }
+
+        fn still_holds(&self, e: &MemoEntry, f: c_int) -> bool {
+            use crate::system::StatSig;
+            if std::env::current_dir().ok().as_deref() != Some(e.cwd.as_path())
+                || self.format_path(f) != e.path
+            {
+                return false;
+            }
+            if !e
+                .dirs
+                .iter()
+                .all(|(d, sig)| StatSig::of(d).as_ref() == Some(sig))
+            {
+                return false;
+            }
+            // (the answer is a name: what the file holds does not matter)
+            e.found.as_deref().is_none_or(|p| self.readable(p))
+        }
+
+        /// What `found`, the answer to looking `name` up, depends on
+        /// (`Memo`); `None` if it cannot be remembered.
+        fn remember(
+            &mut self,
+            name: &str,
+            f: c_int,
+            kind: u8,
+            found: Option<&Path>,
+        ) -> Result<MemoEntry, &'static str> {
+            use crate::system::StatSig;
+            if found.is_none() && kind == 2 {
+                return Err("not found where an mktex script may run");
+            }
+            let n = CString::new(name).map_err(|_| "a NUL in the name")?;
+            if unsafe { flashtex_kpse_has_alias(self.k, n.as_ptr()) } != 0 {
+                return Err("a fontmap alias");
+            }
+            if unsafe { flashtex_kpse_db_hazard(self.k, f, n.as_ptr()) } != 0 {
+                return Err("an ls-R entry under the name is not on disk, or has an alias");
+            }
+            let cwd = std::env::current_dir().map_err(|_| "no working directory")?;
+            let path = self.format_path(f);
+            let fc = match found {
+                Some(p) => Some(
+                    CString::new(p.to_string_lossy().as_bytes())
+                        .map_err(|_| "a NUL in the path")?,
+                ),
+                None => None,
+            };
+            let list = unsafe {
+                flashtex_kpse_search_dirs(
+                    self.k,
+                    f,
+                    fc.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+                )
+            };
+            if list.is_null() {
+                return Err("the directories it depends on are not known");
+            }
+            let mut dirs = vec![];
+            unsafe {
+                let mut p = list;
+                while !(*p).is_null() {
+                    dirs.push(CStr::from_ptr(*p).to_string_lossy().into_owned());
+                    p = p.add(1);
+                }
+                flashtex_kpse_free_list(list);
+            }
+            // The names kpathsea tries: NAME, and NAME with a suffix.
+            let lname = name.to_lowercase();
+            let dotted = format!("{lname}.");
+            let found_dir = found.and_then(|p| p.parent()).map(|d| d.to_path_buf());
+            let found_base = found.and_then(|p| p.file_name()).map(|b| b.to_os_string());
+            let mut sigs = Vec::with_capacity(dirs.len());
+            for d in dirs {
+                // (taken before the listing: a change after it is a change)
+                let sig = StatSig::of(&d).ok_or("a directory is gone")?;
+                let here = found_dir
+                    .as_deref()
+                    .is_some_and(|fd| Path::new(&d).components().eq(fd.components()));
+                for entry in std::fs::read_dir(&d)
+                    .map_err(|_| "a directory cannot be listed")?
+                    .flatten()
+                {
+                    let en = entry.file_name();
+                    let l = en.to_string_lossy().to_lowercase();
+                    if l != lname && !l.starts_with(&dotted) {
+                        continue;
+                    }
+                    // a name kpathsea tries here, other than the answer
+                    if !(here && Some(&en) == found_base.as_ref()) {
+                        return Err("another entry under a name kpathsea tries");
+                    }
+                }
+                sigs.push((d, sig));
+            }
+            Ok(MemoEntry {
+                cwd,
+                path,
+                found: found.map(|p| p.to_path_buf()),
+                dirs: sigs,
+            })
         }
 
         /// A texmf.cnf variable, expanded (`kpsewhich -var-value`).
@@ -780,7 +1267,11 @@ mod kpse {
         fn find(&mut self, name: &str, format: Format) -> Option<PathBuf> {
             let f = *self.formats.get(&format)?;
             let n = CString::new(name).ok()?;
-            take(unsafe { flashtex_kpse_find(self.k, n.as_ptr(), f) }).map(PathBuf::from)
+            self.memo_lookup(name, f, 0, |r| {
+                let p = take(unsafe { flashtex_kpse_find(r.k, n.as_ptr(), f) });
+                (p.map(PathBuf::from), false)
+            })
+            .0
         }
         fn find_ex(
             &mut self,
@@ -791,11 +1282,125 @@ mod kpse {
             let (Some(&f), Ok(n)) = (self.formats.get(&format), CString::new(name)) else {
                 return (None, false);
             };
-            let mut made: c_int = 0;
-            let p = take(unsafe {
-                flashtex_kpse_find_ex(self.k, n.as_ptr(), f, must_exist as c_int, &mut made)
-            });
-            (p.map(PathBuf::from), made != 0)
+            self.memo_lookup(name, f, 1 + must_exist as u8, |r| {
+                let mut made: c_int = 0;
+                let p = take(unsafe {
+                    flashtex_kpse_find_ex(r.k, n.as_ptr(), f, must_exist as c_int, &mut made)
+                });
+                (p.map(PathBuf::from), made != 0)
+            })
+        }
+        fn refresh_disk_dirs(&mut self) {
+            let now = self.disk_dirs_now();
+            // (a signature taken within its directory's time-stamp tick
+            // equals nothing: such a directory is forgotten again until
+            // the tick has passed)
+            if now != self.disk.1 {
+                if !self.disk.1.is_empty() {
+                    // SAFETY: the live instance.
+                    unsafe { flashtex_kpse_forget_disk_dirs(self.k) };
+                    // (the memo's entries depend on these directories'
+                    // signatures, so those a change touches are made again)
+                    self.disk.1 = self.disk_dirs_now();
+                } else {
+                    self.disk.1 = now;
+                }
+            }
+        }
+        fn lookup_dirs(
+            &mut self,
+            name: &str,
+            format: Format,
+            must_exist: Option<bool>,
+            found: Option<&Path>,
+        ) -> Result<LookupDirs, &'static str> {
+            // (kpathsea expands variables, `~` and braces first)
+            if name.is_empty() || name.contains(['$', '~', '{', '}', '!']) {
+                return Err("a name kpathsea expands");
+            }
+            if cfg!(windows) && name.contains(['\\', ':']) {
+                return Err("a Windows name");
+            }
+            let f = *self.formats.get(&format).ok_or("a format kpathsea lacks")?;
+            // SAFETY: the live instance; the shim only reads it.
+            if found.is_none()
+                && must_exist == Some(true)
+                && unsafe { flashtex_kpse_make_enabled(self.k, f) } != 0
+            {
+                return Err("not found where an mktex script may run");
+            }
+            let (rel, base) = match name.rfind('/') {
+                Some(i) => (&name[..i], &name[i + 1..]),
+                None => ("", name),
+            };
+            if base.is_empty() {
+                return Err("a name with no last component");
+            }
+            let c = |s: &str| CString::new(s).map_err(|_| "a NUL in the name");
+            let (n, b) = (c(name)?, c(base)?);
+            // SAFETY: the live instance and NUL-terminated strings; the
+            // shims only read them.
+            if unsafe { flashtex_kpse_has_alias(self.k, n.as_ptr()) } != 0 {
+                return Err("a fontmap alias");
+            }
+            if unsafe { flashtex_kpse_db_hazard(self.k, f, b.as_ptr()) } != 0 {
+                return Err("an ls-R entry under the name is not on disk, or has an alias");
+            }
+            let mut out = LookupDirs {
+                tries: self
+                    .list(unsafe { flashtex_kpse_try_names(self.k, f, b.as_ptr()) })
+                    .unwrap_or_default(),
+                ..LookupDirs::default()
+            };
+            if super::kpse_absolute(name) {
+                // opened as given, never along the path
+                out.add(if rel.is_empty() { "/" } else { rel })?;
+                return Ok(out);
+            }
+            // The directory of the search that holds the answer: `found`'s,
+            // less the name's own directories.
+            let found_at = match found {
+                None => None,
+                Some(p) => {
+                    let s = p.to_string_lossy();
+                    let dir = &s[..s.rfind('/').ok_or("an answer with no directory")?];
+                    let top = if rel.is_empty() {
+                        dir
+                    } else {
+                        dir.strip_suffix(rel)
+                            .and_then(|d| d.strip_suffix('/'))
+                            .ok_or("an answer not under the name's directory")?
+                    };
+                    // (the shim compares the directory, with its slash, and
+                    // looks an `ls-R` element up by the answer's own last
+                    // component: `cmr12.tfm` for the TFM name `cmr12`, which
+                    // kpathsea finds only with its suffix)
+                    let file = &s[s.rfind('/').map_or(0, |i| i + 1)..];
+                    Some(c(&format!("{top}/{file}"))?)
+                }
+            };
+            let dirs = self
+                .list(unsafe {
+                    flashtex_kpse_search_dirs(
+                        self.k,
+                        f,
+                        found_at.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+                    )
+                })
+                .ok_or("the directories it depends on are not known")?;
+            for d in dirs {
+                // kpathsea's directories end in `/`; `./` is the working one
+                let d = match d.trim_end_matches('/') {
+                    "" => "/".to_string(),
+                    t => t.to_string(),
+                };
+                if rel.is_empty() {
+                    out.add(&d)?;
+                } else {
+                    out.add(&format!("{d}/{rel}"))?;
+                }
+            }
+            Ok(out)
         }
         fn find_all(&mut self, name: &str, format: Format) -> Vec<PathBuf> {
             let (Some(&f), Ok(n)) = (self.formats.get(&format), CString::new(name)) else {
@@ -826,11 +1431,27 @@ mod kpse {
         fn config_var(&mut self, var: &str) -> Option<String> {
             self.var_value(var)
         }
+        fn config_var_for(&mut self, var: &str, prog: &str) -> Option<String> {
+            let v = CString::new(var).ok()?;
+            let p = CString::new(prog).ok()?;
+            // SAFETY: `self.k` is the live kpathsea instance; both strings
+            // are NUL-terminated and outlive the call, which restores the
+            // instance's program name before it returns.
+            take(unsafe { flashtex_kpse_var_value_prog(self.k, v.as_ptr(), p.as_ptr()) })
+        }
         fn name_ok(&mut self, name: &str, write: bool) -> bool {
             let Ok(n) = CString::new(name) else {
                 return false;
             };
             unsafe { flashtex_kpse_name_ok(self.k, n.as_ptr(), write as c_int) != 0 }
+        }
+        fn name_ok_silent(&mut self, name: &str, write: bool) -> bool {
+            let Ok(n) = CString::new(name) else {
+                return false;
+            };
+            // SAFETY: `self.k` is the live kpathsea instance and `n` a
+            // NUL-terminated string that outlives the call.
+            unsafe { flashtex_kpse_name_ok_silent(self.k, n.as_ptr(), write as c_int) != 0 }
         }
         fn set_make_tex_discard_errors(&mut self, discard: bool) {
             // SAFETY: `self.k` is the live kpathsea instance or null (an
@@ -894,6 +1515,66 @@ pub const TEXLIVE_SHELL_ESCAPE_COMMANDS: &str = "bibtex,bibtex8,extractbb,gregor
 l3sys-query,latexminted,makeindex,memoize-extract.pl,memoize-extract.py,repstopdf,r-mpost,\
 texosquery-jre8,";
 
+/// Why a run cannot start for want of TeX files, found before TeX runs
+/// ([`setup_problem`]); [`SetupProblem::message`] says what to do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SetupProblem {
+    /// No TeX Live and no bundle configured.
+    NoTexFiles,
+    /// A `flashtex-bundle.lock` bundle, not in the cache, that the user has
+    /// not agreed to download.
+    NoConsent,
+    /// Offline (`FLASHTEX_BUNDLE_OFFLINE`) with the bundle not in the cache.
+    OfflineUncached,
+}
+
+impl SetupProblem {
+    /// One actionable message, for the CLI's stderr and the host's HELLO.
+    pub fn message(self) -> &'static str {
+        match self {
+            SetupProblem::NoTexFiles => {
+                "flashtex: no TeX Live installation was found and no FlashTeX TeX bundle is set up, \
+so there are no TeX files (pdflatex.fmt and the rest) to typeset with. Either: \
+in the FlashTeX app, choose \"Download TeX Files\" and click Download; \
+on the command line, set FLASHTEX_BUNDLE_URL and FLASHTEX_BUNDLE_DIGEST to a bundle \
+(or FLASHTEX_BUNDLE_LOCK to a flashtex-bundle.lock) and FLASHTEX_BUNDLE_ALLOW_FETCH=1; \
+or install TeX Live (MacTeX on macOS)."
+            }
+            SetupProblem::NoConsent => {
+                "flashtex: no TeX Live installation was found, and the FlashTeX TeX bundle \
+(flashtex-bundle.lock) has not been downloaded because downloading it has not been allowed. \
+In the FlashTeX app, choose \"Download TeX Files\" and click Download; \
+on the command line, set FLASHTEX_BUNDLE_ALLOW_FETCH=1 (and unset FLASHTEX_BUNDLE_OFFLINE); \
+or install TeX Live (MacTeX on macOS)."
+            }
+            SetupProblem::OfflineUncached => {
+                "flashtex: no TeX Live installation was found, and the FlashTeX TeX bundle is not \
+in the cache while offline mode (FLASHTEX_BUNDLE_OFFLINE) is on. Connect to the network and \
+run once with FLASHTEX_BUNDLE_OFFLINE unset so the bundle is downloaded, \
+point FLASHTEX_BUNDLE_CACHE_DIR at a cache that holds it, or install TeX Live (MacTeX on macOS)."
+            }
+        }
+    }
+}
+
+/// The [`SetupProblem`] of this process, if a run with the default resolver
+/// cannot start: no TeX Live, and the bundle unconfigured, not agreed to, or
+/// offline and uncached. None with TeX Live, or another `FLASHTEX_RESOLVER`.
+pub fn setup_problem() -> Option<SetupProblem> {
+    let which = std::env::var("FLASHTEX_RESOLVER").unwrap_or_default();
+    if !(which.is_empty() || which == "kpathsea") || find_texlive_bin().is_some() {
+        return None;
+    }
+    #[cfg(all(feature = "distribution", not(feature = "tex82")))]
+    return crate::bundle::setup_problem_with(
+        &|k| std::env::var(k).ok(),
+        &crate::bundle::lock_candidates(),
+        crate::bundle::default_cache_dir().as_deref(),
+    );
+    #[allow(unreachable_code)]
+    Some(SetupProblem::NoTexFiles)
+}
+
 /// The fetched bundle of `FLASHTEX_BUNDLE_DIGEST` (src/bundle/), if one is
 /// configured; a bundle that cannot be opened is reported, and then there
 /// is none.
@@ -903,7 +1584,10 @@ fn fetched_bundle(progname: &str, engine: &str) -> Option<Box<dyn FileResolver>>
     match crate::bundle::BundleResolver::from_env(progname, engine)? {
         Ok(r) => return Some(Box::new(r)),
         Err(e) => {
-            eprintln!("flashtex: bundle: {e}");
+            match setup_problem() {
+                Some(p) => eprintln!("{}", p.message()),
+                None => eprintln!("flashtex: bundle: {e}"),
+            }
             return None;
         }
     }
@@ -943,6 +1627,10 @@ pub fn default_resolver(progname: &str, engine: &str) -> Box<dyn FileResolver> {
             // No TeX Live: the bundle, if one is configured (DESIGN.md 4.4).
             if let Some(r) = fetched_bundle(progname, engine) {
                 return r;
+            }
+            // Neither: say what to do before TeX fails to find its format.
+            if setup_problem() == Some(SetupProblem::NoTexFiles) {
+                eprintln!("{}", SetupProblem::NoTexFiles.message());
             }
         }
     }

@@ -3,6 +3,8 @@
     python3 -m unittest discover -s tools/parity -p 'test_*.py' -v
 """
 
+import contextlib
+import faulthandler
 import gzip
 import io
 import json
@@ -14,6 +16,19 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+
+
+@contextlib.contextmanager
+def watchdog(seconds=180):
+    """A test that runs parity.main's process pool in this process: if it
+    has not finished in `seconds`, print every thread's stack and exit, so
+    a hang fails the CI step at once with where it hung, instead of eating
+    the job's timeout."""
+    faulthandler.dump_traceback_later(seconds, exit=True)
+    try:
+        yield
+    finally:
+        faulthandler.cancel_dump_traceback_later()
 
 import corpus  # noqa: E402
 import definers  # noqa: E402
@@ -509,6 +524,54 @@ class Corpus(unittest.TestCase):
             self.assertEqual(ok["dir"], os.path.join(d, "cache", "src", "packages", "p-single"))
             self.assertEqual(sorted(os.listdir(ok["dir"])), [".parity-copied", "fig.png", "p.tex"])
             self.assertIn("sha256 mismatch", bad["problem"])
+
+    def test_arxiv_fetch_retries_verifies_and_never_caches_short_bytes(self):
+        import http.client
+        from unittest import mock
+        good = b"pinned e-print bytes"
+        answers = [http.client.IncompleteRead(b"pinned"), b"pinned", good]  # a cut read, a short body, the bytes
+        calls = []
+
+        def get(url, timeout=120):
+            calls.append(url)
+            a = answers.pop(0)
+            if isinstance(a, Exception):
+                raise a
+            return a
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(corpus, "http_get", get), \
+                mock.patch.object(corpus.time, "sleep", lambda s: None):
+            man = os.path.join(d, "m.json")
+            with open(man, "w") as f:
+                json.dump({"tier": "nightly-5k", "entries": [
+                    {"id": "1603.06059v3", "url": "https://x/e-print/1603.06059v3", "sha256": corpus.sha256_bytes(good)},
+                    {"id": "1612.03571v1", "url": "https://x/e-print/1612.03571v1", "sha256": "0" * 64}]}, f)
+            cache = os.path.join(d, "cache")
+            with mock.patch.object(corpus, "unpack", lambda data, dest: os.makedirs(dest, exist_ok=True)):
+                rec = corpus.fetch_manifest(man, cache, log=lambda *_: None, delay=0, only={"1603.06059v3"})[0]
+                self.assertIsNone(rec["problem"])
+                self.assertEqual(len(calls), 3)
+                with open(os.path.join(cache, "eprints", "1603.06059v3"), "rb") as f:
+                    self.assertEqual(f.read(), good)
+                # changed bytes: fetched once more, then a sha256 mismatch, and nothing cached
+                answers[:] = [b"other", b"other"]
+                (bad,) = corpus.fetch_manifest(man, cache, log=lambda *_: None, delay=0, only={"1612.03571v1"})
+                self.assertIn("sha256 mismatch", bad["problem"])
+                self.assertFalse(os.path.exists(os.path.join(cache, "eprints", "1612.03571v1")))
+                # a network error on every try fails after FETCH_TRIES, and `fetch` exits non-zero
+                answers[:] = [OSError("reset")] * corpus.FETCH_TRIES
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                    rc = corpus.main(["--cache", cache, "--delay", "0", "fetch", "--manifest", man, "--shard", "1/2"])
+                self.assertEqual(rc, 1)
+                self.assertIn(f"fetch failed after {corpus.FETCH_TRIES} tries", err.getvalue())
+                self.assertEqual(answers, [])
+                # a cached file that is not the pinned bytes is fetched again
+                with open(os.path.join(cache, "eprints", "1603.06059v3"), "wb") as f:
+                    f.write(b"pin")
+                answers[:] = [good]
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(corpus.main(["--cache", cache, "--delay", "0", "fetch", "--manifest", man,
+                                                  "--shard", "0/2"]), 0)
+                self.assertEqual(answers, [])
 
     def test_packages_manifest_is_well_formed(self):
         with open(os.path.join(corpus.MANIFEST_DIR, "packages-texlive-2026.json"), encoding="utf-8") as f:
@@ -1525,7 +1588,7 @@ class PTWithOracle(unittest.TestCase):
         src = os.path.join(self.d, "warn")
         os.makedirs(src)
         _, _, pdf = self.build("fig", "Figure.")
-        subprocess.run(["qpdf", "--force-version=2.0", pdf, os.path.join(src, "fig.pdf")], check=True)
+        subprocess.run(["qpdf", "--force-version=2.0", pdf, os.path.join(src, "fig.pdf")], check=True, timeout=60)
         with open(os.path.join(src, "main.tex"), "w") as f:
             f.write("\\documentclass{article}\\usepackage{graphicx}\\begin{document}"
                     "\\includegraphics{fig.pdf}\\end{document}\n")
@@ -1608,9 +1671,10 @@ class PTWithOracle(unittest.TestCase):
                 if n:
                     time.sleep(2.1)  # a conversion of the candidate's own would carry another time
                 out, work = os.path.join(self.d, f"out{n}"), os.path.join(self.d, f"work{n}")
-                code = parity.main(["--tier", "packages", "--engine", engine, "--oracle-pdftex", PDFTEX,
-                                    "--shell-escape-flag=-shell-restricted", "--texmf", texmf, "--cache", cache,
-                                    "--raster", "none", "-j", "1", "--out", out, "--work", work, "--keep-work"])
+                with watchdog(600):
+                    code = parity.main(["--tier", "packages", "--engine", engine, "--oracle-pdftex", PDFTEX,
+                                        "--shell-escape-flag=-shell-restricted", "--texmf", texmf, "--cache", cache,
+                                        "--raster", "none", "-j", "1", "--out", out, "--work", work, "--keep-work"])
                 with open(os.path.join(out, "documents.json")) as f:
                     rec = json.load(f)["packages"][0]
                 entries = {p: os.stat(p).st_mtime_ns for p in glob.glob(os.path.join(cache, "pt-oracle", "*", "*",
@@ -1651,7 +1715,7 @@ class PTWithOracle(unittest.TestCase):
     def test_object_renumbering_is_invisible(self):
         _, _, p1 = self.build("a", "Hello world.")
         lin = os.path.join(self.d, "renumbered.pdf")
-        subprocess.run(["qpdf", "--linearize", "--object-streams=generate", p1, lin], check=True)
+        subprocess.run(["qpdf", "--linearize", "--object-streams=generate", p1, lin], check=True, timeout=60)
         self.assertTrue(tiers.compare_pt2(p1, lin, self.d)["ok"])
 
 
@@ -1774,7 +1838,7 @@ class NightlyDiskAndCommit(unittest.TestCase):
             else:
                 os.environ["GITHUB_SHA"] = saved
         head = subprocess.run(["git", "-C", nightly.REPO, "rev-parse", "HEAD"], capture_output=True,
-                              text=True).stdout.strip()
+                              text=True, timeout=60).stdout.strip()
         self.assertEqual(sha, head if len(head) == 40 else "f" * 40)
 
 
@@ -2059,9 +2123,10 @@ class WorkerDeath(unittest.TestCase):
                         "case \"$(pwd)\" in *article-twocolumn*) kill -9 $PPID; sleep 5;; esac\nexit 1\n")
             os.chmod(probe, 0o755)
             out = os.path.join(d, "out")
-            code = parity.main(["--tier", "fixtures", "--only", a, "--only", b, "--engine", probe,
-                                "--pt", "off", "--raster", "none", "-j", "2", "--out", out,
-                                "--work", os.path.join(d, "work"), "--cache", os.path.join(d, "cache")])
+            with watchdog():
+                code = parity.main(["--tier", "fixtures", "--only", a, "--only", b, "--engine", probe,
+                                    "--pt", "off", "--raster", "none", "-j", "2", "--out", out,
+                                    "--work", os.path.join(d, "work"), "--cache", os.path.join(d, "cache")])
             self.assertEqual(code, parity.DIED_EXIT)
             with open(os.path.join(out, "documents.json")) as f:
                 recs = {r["id"]: r for r in json.load(f)["fixtures"]}
@@ -2422,7 +2487,8 @@ class PTStream(unittest.TestCase):
         while a LogPipe at `p` reads."""
         p = os.path.join(d, "main.log")
         with pt1stream.LogPipe(p, d, budget) as pipe:
-            subprocess.run([sys.executable, "-c", "import os, sys\np = sys.argv[1]\n" + body, p], check=True)
+            subprocess.run([sys.executable, "-c", "import os, sys\np = sys.argv[1]\n" + body, p], check=True,
+                           timeout=120)
         return pipe, p
 
     def test_log_pipe_reads_what_the_engine_writes(self):
@@ -2769,9 +2835,46 @@ sys.exit(0)
                     p.kill()
             self.assertEqual(self.work_dirs(cache), [])
 
+    def test_sigterm_exits_even_when_terminated_is_swallowed(self):
+        """A `Terminated` raised in a `__del__` is printed and dropped, and one
+        raised inside subprocess's lock handling can leave the worker blocked
+        on that lock; either way the worker must still exit, or the pool's
+        join of it hangs the run (CI, 2026-10). A second SIGTERM exits at once.
+        (With two signals the grace is long, 60 s, so "at once" is told apart
+        from "after the grace" with no tight bound on a loaded runner.)"""
+        for signals, grace in ((1, 0.5), (2, 60.0)):
+            child = f"""
+import sys, time
+sys.path.insert(0, {HERE!r})
+import parity
+parity.TERM_GRACE = {grace!r}
+parity.set_shell_escape("-no-shell-escape")  # installs the worker's SIGTERM handler
+print("ready", flush=True)
+while True:
+    try:
+        time.sleep(0.05)
+    except BaseException:  # what a __del__ does to an exception
+        pass
+"""
+            p = subprocess.Popen([sys.executable, "-c", child], stdout=subprocess.PIPE)
+            try:
+                self.assertEqual(p.stdout.readline().strip(), b"ready")
+                t0 = time.monotonic()
+                for _ in range(signals):
+                    p.send_signal(signal.SIGTERM)
+                    time.sleep(0.05)
+                self.assertEqual(p.wait(30), 128 + signal.SIGTERM)
+                if signals == 2:
+                    self.assertLess(time.monotonic() - t0, grace / 2)  # before the grace ran out
+            finally:
+                if p.poll() is None:
+                    p.kill()
+                p.wait(30)
+                p.stdout.close()
+
     def test_stale_work_dirs_are_swept_at_startup(self):
         dead = subprocess.Popen([sys.executable, "-c", "pass"])
-        dead.wait()
+        dead.wait(60)
         live = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
         try:
             with tempfile.TemporaryDirectory() as d:
@@ -2785,9 +2888,10 @@ sys.exit(0)
                 with open(probe, "w") as f:
                     f.write("#!/bin/sh\ncase \"$1\" in --version) echo 'pdfTeX probe'; exit 0;; esac\nexit 1\n")
                 os.chmod(probe, 0o755)
-                parity.main(["--tier", "fixtures", "--only", "real-world/article-twocolumn", "--engine", probe,
-                             "--pt", "off", "--raster", "none", "-j", "1", "--out", os.path.join(d, "out"),
-                             "--work", os.path.join(d, "work"), "--cache", cache])
+                with watchdog():
+                    parity.main(["--tier", "fixtures", "--only", "real-world/article-twocolumn", "--engine", probe,
+                                 "--pt", "off", "--raster", "none", "-j", "1", "--out", os.path.join(d, "out"),
+                                 "--work", os.path.join(d, "work"), "--cache", cache])
                 left = sorted(os.path.basename(x) for x in self.work_dirs(cache))
                 self.assertEqual(left, sorted([f"work-{live.pid}", "work-notapid"]))
                 for pid in (dead.pid, live.pid):  # a half-written cache file of each

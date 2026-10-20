@@ -621,8 +621,17 @@ D8 specification; what landed differs, and D8's rewording is proposed to the own
   `.bbl`/`.ind` byte-identical; a `\cite` edit takes 0.74× latexmk's wall on a 126-page
   biblatex document and 0.72× on a 348-page book (lane target ≤ 0.5×, not met yet). **A user
   with no TeX Live** (owner, 2026-09-30, decision 4): the user's TeX Live tools are
-  orchestrated now; porting `bibtex.web` (through web2rust) and makeindex for the bundle case
-  (D12) comes later.
+  orchestrated, and since lane RUST-TOOLS (2026-10-09) makeindex is FlashTeX's own: TeX Live
+  2026's makeindex 2.18 ported to Rust (`crates/makeindex`, #1706), run in-process by the host
+  and for restricted `\write18`, with `.ist` files from kpathsea (the bundle's in bundle mode),
+  byte-identical to TeX Live's on 3,000 fuzz cases and 4,608 corpus runs (VERIFIED,
+  `docs/evidence/rusttools-2026-10-09/makeindex/`). So is bibtex (#1723): `bibtex.web` with
+  TeX Live's `bibtex.ch`, both unmodified, translated by web2rust (`crates/bibtex`), run the same
+  way, with `.bib`/`.bst` files from kpathsea, byte-identical to TeX Live's bibtex on all 397
+  TeX Live styles and 79 databases (3,168 cases) and 5,000 fuzz cases (VERIFIED,
+  `docs/evidence/rusttools-2026-10-09/bibtex/`). biber stays TeX Live's program (options for the
+  owner in that README). Both ports refuse non-regular and oversized inputs (64 MiB), where
+  TeX Live's programs would read `/dev/zero` without end.
 - **tikz/pgfplots picture memoisation** comes later (P6). It needs epoch-level
   read-sets and must handle `remember picture`, global counters and shadings. The
   CTAN `memoize` package is prior art.
@@ -1085,50 +1094,42 @@ by CI or by a named reference run. Lane runs are REPORTED evidence.
     - P3-VERIFY: the sweep re-run on current main;
     - P3-PARITY-CI: the sweep running in CI, not skipping (§13 R12).
   - The PDF backend's font scope is complete on main.
-- **P4: not met.**
-  - T7 exists (#1391). It has no reference run, and no reference host (Q1).
-  - Non-reference runs: 8 of 56 rows on `ab9893935` (M1 Max, Low Power Mode); **30 of 56 on
-    `9f29302fe`** (NixOS PC, 2026-10-05, §1.2).
-    - All preamble rows pass, and all plain-10/100/300 in-body rows.
-    - The full-* and plain-1000 in-body rows miss, at 11.2–21.6 ms p95.
-  - Remaining:
-    - the edited-page host share ≤ 11 ms p95 on full-* and plain-1000 (LIVE-30MS, #1541–#1549);
-    - preamble ≤ 400 ms (PREAMBLE-FAST, #1551);
-    - newline, split and sentence convergence (§5.3: line shift and object relocation,
-      unstaffed);
-    - RSS within budget on T7 (#1493, #1505);
-    - app key → commit and the in-app preamble row (unstaffed);
-    - cold reopen at launch ≤ 100 ms (101–365 ms; the host side is #1537);
-    - error recovery (#1553, #1554).
-- **P5: not met.**
-  - The current gate's metric is exceeded on the rows the board has. The latest board
-    (37203562594, 10-04, `e450d72e`, CI on mac-m1max-a-2) has every T3 row at 100 % and new ≥
-    old: fixtures 86/86, arXiv 140/140 (L1 140/140 against v1's 0.7 %), templates 18/18,
-    packages 92/92, package-smoke 484/484, fonts 439/439.
-  - **Not met:**
-    - **T2 is 1,576/1,590 with 14 unexpected** (1,590/1,590 on 10-03; lane T2-TRIAGE);
-    - **T4 is missing** from the board. Its nightly (#1276) is PC-only and the PC's runners are
-      off. `corpus-t4-mac.yml` has never run. The lane evidence is 4,335/4,335 on one build
-      (`82752c2fb`, REPORTED, #1319 5961734949), and a recheck on `17f025ece` stopped at 19 of
-      40 shards;
-    - the board is not gated, and the nightly has failed 4 of 4 nights;
-    - retirement: S0 is done and S1 landed (#1400). S3's per-document engine choice landed
-      (#1421, #1427) without the flip. S2 and S4–S8 have not started. The plan #1236
-      (revision `4b0eb7db2`) has awaited the Commander's review since 10-03.
-  - Decision 3's proposal (thresholds still pending, Q3):
-    - P-T1 and P-T2 rates: met on arXiv and on lane-run T4;
-    - zero T4 panics: lane-run;
-    - T2 clean: **not met**;
-    - **the no-TeX-Live gate exists and passed**: `notex-gate.yml`, 116/116 byte-identical from
-      the bundle with TeX Live hidden (37225170319, 10-04). It is not scheduled;
-    - the app checklist: nearly closed (§10), with A9 an owner question.
-  - **T4 decision 1** (ruled 2026-10-02, §13):
-    - The board's T4 old column reads `tools/parity/baselines/t4-v1-oneoff.json`, now
-      **FINAL** (#1461: 440 IDs, hash and oracle recorded; v1 L0 7, L1 5, L2 0, L3 0, P-T2 0
-      of 440).
-    - Rates are compared against the new run restricted to those 440 IDs.
-    - The new engine's T4 is always measured against the board's own oracle, and each board
-      takes T4 from its own host (#1457).
+- **P4: not met (status 2026-10-11, P5-STATUS; GitHub evidence, not re-measured).**
+  - T7's reference workflow exists (`t7-reference.yml`, #1677, nightly on the heavy M1 Max,
+    self-hosted). **No reference run has completed**: 37770223614 (10-08) and 38045772414
+    (10-10) failed (the script cancelled, then the artifact upload refused), 37923471179
+    (10-09) failed in `scripts/t7-reference.sh`; 38133613355 (10-11) waits for the offline
+    runner.
+  - The latest latency rows are still the non-reference 30/56 of 10-05 (`9f29302fe`). Work
+    since on the 10-05 list: COLD-START and COLD-FIXED (#1655, #1678, #1679, #1748–#1753),
+    convergence (#1711, #1717, #1729), mid-line preamble restarts (#1714), memory
+    (#1493, #1505, #1755–#1758). None is gated until a reference run lands.
+- **P5: not met (status 2026-10-11, P5-STATUS).** Decision 3's gate, item by item:
+  - **Board all green on a complete nightly: met once.** 37789250180 (10-08, `0258d79d0`,
+    T4 from nightly 37645090383, 50/50 shards): "All green ... every run complete", new ≥ old
+    on every row. Since then 37939418396 was cancelled and 38054287106 / 38143582724 are
+    queued: the board runs only on self-hosted runners, which are offline. S4 asks for 3
+    consecutive complete boards.
+  - **P-T2 ≥ 99 % and P-T1 ≥ 98 % on arXiv and T4: met on that board.** arXiv 127/127 both;
+    T4 P-T2 3,789/3,789, P-T1 193/193 measured.
+  - **Zero T4 panics: met** (crashes row 3,790/3,790 clean).
+  - **T2 with 0 unexpected: met** on that board (1,590/1,590).
+  - **No-TeX-Live gate: exists, not yet on main since #1700/#1741/#1762.** Its runs are
+    branch dispatches (37269834503, 37656254618, green); the weekly schedule (Mondays) has
+    not yet produced a run. Hosted (`macos-15`).
+  - **App checklist:** S5 met from the rows file (no S5 row lacks a test or a ruling);
+    S6 not met: A9 and A17 still use the visible fallback, E2, E3 and E5 are open.
+  - **Retirement:** S0, S1, S2 (#1610) and S3r (#1611) landed; S3 partly (#1421, #1427);
+    S4 partly ((a) no hosted board leg, (e) no T7 reference run); S1b not started; S5 waits
+    for S4, a shipped release carrying #1421/#1427 (the latest app release is v0.1.9,
+    09-26), T1 with 0 new differences and T7; S6 waits for RQ19 and the Unicode mode's M3
+    gate; S7 for RQ5 and T7 gating ≥ 10 runs. `retirement-stages.json` still says S2 next
+    and S3r not started.
+  - **Unicode M3 (modes PROPOSAL L438): not met.** #1732 (cold host), #1734, #1735, #1741 and
+    #1762 build U3a–U3c, but no Unicode corpus P-T1, xelatex latency, Unicode soundness
+    sweep or no-TeX-Live corpus run is recorded.
+  - Main CI was red on the last merge (38028759045, #1762: mac host tests and the
+    self-hosted parity fixtures).
 - **P6: in progress ahead of its phase, by measured wins. Under the owner's 2026-10-05 rule, P6
   extras are parked** while any P3–P5 lane is unstaffed.
   - Landed: #1309 and #1499 (−16 % instructions on *Infinite Descent*), #1302, the
@@ -1243,6 +1244,11 @@ by CI or by a named reference run. Lane runs are REPORTED evidence.
 | 2026-10-06 | The latency gate covers continuous typing with keys **50 ms apart** (≈ 240 wpm; ≥ the owner's 200 wpm floor): each key at 50/60/80/100/150 ms intervals meets ≤ 16 ms p95 (host ≤ 11 ms) for its own edited page and is painted by its own compile (§1.2) | Owner (Kabir): "anything below 200wpm needs to hit our target"; "the 50ms target is good" |
 | 2026-10-06 | Speed and memory targets (§1.2): ≤ 20 ms key→commit at 50 ms typing on the slowest supported Mac (M1-class) for 1,000 pages and *Infinite Descent*; editor key→glyph ≤ 1 frame p99 regardless of preview state; visible page ≤ 1 s after open; edits during the initial compile as fast as after; memory and cold-compile time minimised; *Infinite Descent ×2* is the heavy benchmark. P6 work serving these is P4-critical under critical path first | Owner (Kabir): "make it faster … sub 20ms on all macs … memory usage needs to be decreased … the editor should literally be a text editor and be completely instant … optimize the absolute fuck out of everything" |
 | 2026-10-06 | Performance modes: Low Memory / Balanced (default, all gates) / High Performance, as named profiles of the retention budget and the speed/memory knobs, switchable live; every mode passes the soundness and parity gates (§1.2, §5.2) | Owner (Kabir) |
+| 2026-10-11 | **RQ19 closed: publish source.** The engine's GPL source stays public in this GitHub repository and is linked from the app's About box and the release notes (#1806). That satisfies the §3 source offer; S6 is no longer blocked on RQ19 | Owner (Kabir) |
+| 2026-10-11 | **Next release:** the Commander may tag and publish app v0.2.0 through `release.yml` after 3 consecutive complete green P5 boards. Old documents keep their engine. This release satisfies S5's "one shipped release carries #1421/#1427" | Owner (Kabir) |
+| 2026-10-11 | **RQ5:** after S7, `supported-latex.json` is generated from the new engine's measured package support (the package-smoke tier results, oracle-verified). It is an MIT data file owned by the app, regenerated by a script, and replaces `sync-supported-latex.sh`'s old-compiler source | Commander (kabir-claude), under the owner's delegation for technical rows |
+| 2026-10-11 | **RQ6:** `flashtex-v3` (`crates/flashtex-build`) is renamed to `flashtex` and becomes the packaged CLI at S7 | Commander (kabir-claude) |
+| 2026-10-11 | **P5 board:** the hosted board route (#1774) is accepted. Hosted reports are tagged `-hosted` and count toward S4's 3 consecutive complete boards | Commander (kabir-claude) |
 
 ---
 

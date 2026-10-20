@@ -36,6 +36,11 @@ public struct DL3CompileRequest: Sendable {
     /// Honoured by a host that lists `haltOnErrorCapability`.
     public var haltOnError = false
     public static let haltOnErrorCapability = "halt-on-error"
+    /// `includeonly`: LaTeX's `\includeonly{…}` on the first line, before the
+    /// main file (a chapter focus); the names as the document's `\include`s
+    /// write them. Honoured by a host that lists `includeOnlyCapability`.
+    public var includeOnly: [String]?
+    public static let includeOnlyCapability = "includeonly"
 
     public init(id: Int, root: String, main: String) { self.id = id; self.root = root; self.main = main }
 
@@ -56,6 +61,7 @@ public struct DL3CompileRequest: Sendable {
         if export { o["export"] = .bool(true) }
         if let externalTools { o["external_tools"] = .string(externalTools) }
         if haltOnError { o["halt_on_error"] = .bool(true) }
+        if let includeOnly { o["includeonly"] = .array(includeOnly.map(DL3JSON.string)) }
         return .object(o)
     }
 }
@@ -146,18 +152,25 @@ public final class DL3Connection: @unchecked Sendable {
     public func start(onTimedEvent: @escaping @Sendable (DL3Event, Timing) -> Void, onClose: @escaping @Sendable (DL3Error?) -> Void) {
         let fd = self.fd
         let thread = Thread {
-            while true {
+            // One autorelease pool per frame. The thread lives as long as the
+            // connection, and its own pool drains only when it exits: what a
+            // frame's handler autoreleases (a page raster installed as layer
+            // contents, the contents it replaced, Core Animation's commit
+            // state) would otherwise stay alive for the whole session, one
+            // full-page IOSurface per page per compile (9 GB, APP-PREVIEW-MEMORY).
+            while Self.withFramePool({
                 do {
-                    guard let (k, body) = try Self.readFrame(fd) else { onClose(nil); return }
+                    guard let (k, body) = try Self.readFrame(fd) else { onClose(nil); return false }
                     let read = DispatchTime.now().uptimeNanoseconds
                     let ev = try DL3Event.decode(kind: k, body: body)
                     onTimedEvent(ev, Timing(readNs: read, decodedNs: DispatchTime.now().uptimeNanoseconds))
+                    return true
                 } catch let e as DL3Error {
-                    onClose(e); return
+                    onClose(e); return false
                 } catch {
-                    onClose(DL3Error("\(error)")); return
+                    onClose(DL3Error("\(error)")); return false
                 }
-            }
+            }) {}
         }
         thread.name = "flashtex.dl3.reader"
         thread.qualityOfService = .userInteractive
@@ -165,8 +178,20 @@ public final class DL3Connection: @unchecked Sendable {
         thread.start()
     }
 
+    /// `body` in its own autorelease pool where there is one (Darwin).
+    static func withFramePool<T>(_ body: () -> T) -> T {
+        #if canImport(ObjectiveC)
+        return autoreleasepool(invoking: body)
+        #else
+        return body()
+        #endif
+    }
+
     public func compile(_ request: DL3CompileRequest) throws { try send(DL3.Kind.compile, request.json) }
     public func cancel(id: Int) throws { try send(DL3.Kind.cancel, .object(["id": .int(Int64(id))])) }
+    /// `TRIM` (`trim-v1`; send only to a host that lists it): the system is
+    /// short of memory, `level` `warning` or `critical`. No reply.
+    public func trim(level: String) throws { try send(DL3.Kind.trim, .object(["level": .string(level)])) }
     /// Switch the host's performance mode live (`PROFILE`, §6.9; only to a
     /// host whose HELLO lists `DL3.profileCapability`). The host answers
     /// with a `PROFILE` (decoded as `.other`) once it applies, between compiles.

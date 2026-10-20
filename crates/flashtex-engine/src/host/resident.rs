@@ -502,6 +502,10 @@ struct Doc {
     /// keeps): S₀ is persisted after the next compile that completes, not
     /// while that work waits.
     s0_unsaved: bool,
+    /// A restart in the preamble took S₀ again (PREAMBLE-FAST): S₀ is
+    /// persisted once the host is idle (`TRIM_AFTER`), not after every
+    /// keystroke in the preamble (20 MB each).
+    s0_when_idle: bool,
 }
 
 /// The external tools of the resident document (`super::external`).
@@ -573,6 +577,12 @@ impl Engine {
                 .profile
                 .trim_after_ms
                 .map(std::time::Duration::from_millis);
+            let idle_wait = trim_after.or_else(|| {
+                self.doc
+                    .as_ref()
+                    .is_some_and(|d| d.s0_when_idle)
+                    .then_some(std::time::Duration::from_secs(2))
+            });
             let req = match hot_until {
                 Some(t) if Instant::now() < t && pause.is_zero() => match rx.try_recv() {
                     Ok(r) => r,
@@ -595,12 +605,26 @@ impl Engine {
                     }
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 },
-                _ if trim_due && trim_after.is_some() => {
-                    match rx.recv_timeout(trim_after.unwrap_or_default()) {
+                // (merged: the profile's idle trim, and #1551's save of an
+                // S₀ a preamble restart took; a profile without the trim
+                // still saves that S₀ after the old 2 s idle wait)
+                _ if trim_due && idle_wait.is_some() => {
+                    match rx.recv_timeout(idle_wait.unwrap_or_default()) {
                         Ok(r) => r,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
                             trim_due = false;
-                            self.trim();
+                            if trim_after.is_some() {
+                                self.trim();
+                            }
+                            // (S₀ a restart in the preamble took, now that
+                            // the keystrokes have stopped)
+                            if self
+                                .doc
+                                .as_ref()
+                                .is_some_and(|d| d.s0_when_idle && !d.session.is_paused())
+                            {
+                                self.save_s0();
+                            }
                             continue;
                         }
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -662,17 +686,22 @@ impl Engine {
         }
     }
 
-    /// Warm the process up: a one-page LaTeX document in a scratch
-    /// directory starts kpathsea, reads the font map and loads the format,
-    /// so that a document's first compile (or its reopening from S₀) does
-    /// not pay for them.
+    /// Warm the process up: a one-page job in a scratch directory starts
+    /// kpathsea, reads the font map and loads the format, so that a
+    /// document's first compile (or its reopening from S₀) does not pay
+    /// for them. The page is one character of cmr10 shipped with the
+    /// primitive `\shipout`, which is all it takes to read the font map
+    /// (pdfTeX reads it at the first font it sets): no class, no
+    /// `\begin{document}`. A one-page article typeset its class and LaTeX's
+    /// start of a document first, which the first compile (it follows at
+    /// once when a project opens) waited for and gained little from.
     fn warm(&mut self) -> Result<f64, String> {
         let t = Instant::now();
         let dir = std::env::temp_dir().join(format!("flashtex-host-warm-{}", std::process::id()));
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         std::fs::write(
             dir.join("flashtex-warm.tex"),
-            "\\documentclass{article}\\begin{document}Warm.\\end{document}\n",
+            "\\font\\warmfont=cmr10 \\pdfprimitive\\shipout\\hbox{\\warmfont W}\\csname @@end\\endcsname\\end\n",
         )
         .map_err(|e| e.to_string())?;
         let here = std::env::current_dir().ok();
@@ -756,6 +785,13 @@ impl Engine {
             // (only when set: a normal job's stored S0 keeps its key)
             if job.halt { "\0halt" } else { "" }
         );
+        // A focused job (`includeonly`, lane FOCUS-CHAPTER) has its own
+        // stored S0 (its first line differs), so switching the focus back
+        // and forth keeps both.
+        let key = match &job.includeonly {
+            Some(list) => format!("{key}\0includeonly\0{list}"),
+            None => key,
+        };
         let h = crate::persist::hash128(key.as_bytes());
         Some(dir.join(format!("{:016x}{:016x}.s0", h[0], h[1])))
     }
@@ -779,6 +815,7 @@ impl Engine {
             texts: HashMap::new(),
             tools: DocTools::default(),
             s0_unsaved: false,
+            s0_when_idle: false,
         });
         Ok(())
     }
@@ -893,6 +930,15 @@ impl Engine {
         ps.peer.font_formats = Some(displaylist::parse_font_formats(
             &server::font_formats(&req).join(","),
         ));
+        // (a save of this S₀ still being written by this process: wait for it)
+        if doc.compiles == 0 {
+            if let Some(p) = &s0_path {
+                super::s0write::flush(
+                    Some(&p.to_string_lossy()),
+                    std::time::Duration::from_secs(30),
+                );
+            }
+        }
         let reopen = doc.compiles == 0 && s0_path.as_ref().is_some_and(|p| p.is_file());
         started(
             "resident",
@@ -974,18 +1020,25 @@ impl Engine {
         doc.session.set_progress(conn.progress.then(|| {
             let c = conn.clone();
             let last = std::cell::Cell::new((0usize, None::<Instant>));
-            std::rc::Rc::new(move |pass: usize, pages: usize| {
-                let (last_pass, at) = last.get();
-                if pass != last_pass || at.is_none_or(|t| t.elapsed().as_millis() >= 250) {
-                    last.set((pass, Some(Instant::now())));
-                    let j = obj([
-                        ("id", Json::Int(id)),
-                        ("pass", Json::Int(pass as i64)),
-                        ("page", Json::Int(pages as i64)),
-                    ]);
-                    server::send_json(&c.out, kind::PROGRESS, &j);
-                }
-            }) as incr::Progress
+            std::rc::Rc::new(
+                move |pass: usize, pages: usize, g: &crate::generated::Globals| {
+                    let (last_pass, at) = last.get();
+                    if pass != last_pass || at.is_none_or(|t| t.elapsed().as_millis() >= 250) {
+                        last.set((pass, Some(Instant::now())));
+                        let mut j = obj([
+                            ("id", Json::Int(id)),
+                            ("pass", Json::Int(pass as i64)),
+                            ("page", Json::Int(pages as i64)),
+                        ]);
+                        // `file`: the innermost file TeX reads (only read
+                        // here, at most every 250 ms; never per token).
+                        if let (Some(f), Json::Obj(kv)) = (reading(g), &mut j) {
+                            kv.push(("file".into(), js(f)));
+                        }
+                        server::send_json(&c.out, kind::PROGRESS, &j);
+                    }
+                },
+            ) as incr::Progress
         }));
         // Lane P4-MULTIPASS: when a pass leaves work for the external tools
         // (latexmk's rules: a new `.bcf`, `\citation`s, an `.idx`), the
@@ -1103,6 +1156,25 @@ impl Engine {
                         "restart_mid_page".to_string(),
                         Json::Bool(rep.restart_mid_page),
                     ),
+                    // before S₀: a preamble edit (the run took S₀ again)
+                    (
+                        "restart_preamble".to_string(),
+                        Json::Bool(rep.restart_preamble),
+                    ),
+                    // READ-REVALIDATE: a later restart point tried (`crate::revalidate`)
+                    (
+                        "revalidated".to_string(),
+                        rep.revalidated.map(Json::Bool).unwrap_or(Json::Null),
+                    ),
+                    // ... in the middle of the main file's line (`crate::midline`)
+                    (
+                        "restart_midline".to_string(),
+                        Json::Bool(rep.restart_midline),
+                    ),
+                    (
+                        "arm_revalidated".to_string(),
+                        rep.arm_revalidated.map(Json::Bool).unwrap_or(Json::Null),
+                    ),
                     (
                         "restart_next_gap".to_string(),
                         rep.restart_next_gap.map(Json::Int).unwrap_or(Json::Null),
@@ -1126,6 +1198,22 @@ impl Engine {
                     // whether they stopped for the external tools
                     ("passes".to_string(), Json::Int(rep.passes as i64)),
                     ("deferred".to_string(), Json::Bool(rep.deferred)),
+                    // how each pass ran ("cold": from the format;
+                    // "incremental": from a checkpoint) and its seconds
+                    // (lane COLD-OPEN: a first open's later passes)
+                    (
+                        "pass_modes".to_string(),
+                        Json::Arr(rep.pass_modes.iter().map(|m| js(m.as_str())).collect()),
+                    ),
+                    (
+                        "pass_s".to_string(),
+                        Json::Arr(
+                            rep.pass_s
+                                .iter()
+                                .map(|s| Json::Num((s * 1e3).round() / 1e3))
+                                .collect(),
+                        ),
+                    ),
                 ];
                 if let Some(r) = &rep.cold_reason {
                     extra.push(("cold_reason".to_string(), js(r.as_str())));
@@ -1219,15 +1307,11 @@ impl Engine {
             st.push(("send".to_string(), m(t.send_ns as f64 * 1e-6)));
             st.push(("cpu".to_string(), m((incr::thread_cpu_s() - t.cpu0) * 1e3)));
             // the convergence tests' old chunks kept and rewound
-            // (`arena::OldCache`), since the host started
+            // (`arena::OldCache`), over this document's engine space
             {
-                use std::sync::atomic::Ordering::Relaxed;
-                let c = |a: &std::sync::atomic::AtomicU64| Json::Int(a.load(Relaxed) as i64);
-                st.push(("old_kept".to_string(), c(&crate::arena::OLD_CACHE_HITS)));
-                st.push((
-                    "old_rewound".to_string(),
-                    c(&crate::arena::OLD_CACHE_MISSES),
-                ));
+                let (kept, rewound) = doc.session.old_cache_counts();
+                st.push(("old_kept".to_string(), Json::Int(kept as i64)));
+                st.push(("old_rewound".to_string(), Json::Int(rewound as i64)));
             }
             // Instructions and cycles of the engine thread, in thousands:
             // the whole compile, to the first page, and (from the session)
@@ -1368,6 +1452,7 @@ impl Engine {
         server::send_json(&out, kind::DONE, &Json::Obj(kv));
         let failed = result.is_err();
         let cold = matches!(mode.as_str(), "cold");
+        let preamble = matches!(&result, Ok(r) if r.restart_preamble);
         self.peers.insert(conn.id, t.ps);
         if failed {
             // The engine's state is unknown: start the document afresh.
@@ -1385,31 +1470,72 @@ impl Engine {
         let _busy = crate::busy::enter(crate::busy::Part::Other);
         let save = (cold || doc.s0_unsaved) && !stopped;
         doc.s0_unsaved = (cold || doc.s0_unsaved) && stopped;
+        doc.s0_when_idle = !save && (preamble || doc.s0_when_idle);
         if save {
-            if let Some(p) = &s0_path {
-                if let Some(d) = p.parent() {
-                    let _ = std::fs::create_dir_all(d);
-                }
-                let t = Instant::now();
-                match doc.session.save_s0(&p.to_string_lossy()) {
-                    // One line for a supervisor (and the measurements).
-                    Ok((bytes, _)) => server::say(&format!(
-                        "flashtex-host: {}",
-                        obj([
-                            ("saved_s0", js(p.display().to_string())),
-                            ("bytes", Json::Int(bytes as i64)),
-                            (
-                                "ms",
-                                Json::Num((t.elapsed().as_secs_f64() * 1e4).round() / 10.0)
-                            ),
-                        ])
-                    )),
-                    Err(e) => eprintln!("flashtex-host: saving S0: {e}"),
-                }
-            }
+            self.save_s0();
         }
         if !cancelled {
             self.after_compile(conn, req, id, cause);
+        }
+    }
+
+    /// Persist the resident document's S₀ (`--s0-cache`), with one line
+    /// for a supervisor (and the measurements).
+    fn save_s0(&mut self) {
+        let path = self.doc.as_ref().and_then(|d| self.s0_path(&d.job));
+        let Some(doc) = self.doc.as_mut() else {
+            return;
+        };
+        doc.s0_when_idle = false;
+        let Some(p) = path else {
+            return;
+        };
+        if let Some(d) = p.parent() {
+            let _ = std::fs::create_dir_all(d);
+        }
+        // The engine thread only takes S₀ out of the engine; the writer
+        // thread writes it (`super::s0write`), so a keystroke that comes now
+        // does not wait for the file.
+        let t = Instant::now();
+        let i0 = crate::os::thread_counts();
+        let image = doc.session.prepare_s0();
+        let engine_ms = (t.elapsed().as_secs_f64() * 1e4).round() / 10.0;
+        let engine_instr_k = match (i0, crate::os::thread_counts()) {
+            (Some(a), Some(b)) => Json::Int(((b.0 - a.0) / 1000) as i64),
+            _ => Json::Null,
+        };
+        let image = match image {
+            Ok(i) => i,
+            Err(e) => {
+                eprintln!("flashtex-host: saving S0: {e}");
+                return;
+            }
+        };
+        let shown = p.display().to_string();
+        let done: super::s0write::Done = Box::new(move |r, write_s| match r {
+            Ok((bytes, _)) => server::say(&format!(
+                "flashtex-host: {}",
+                obj([
+                    ("saved_s0", js(shown)),
+                    ("bytes", Json::Int(bytes as i64)),
+                    (
+                        "ms",
+                        Json::Num((t.elapsed().as_secs_f64() * 1e4).round() / 10.0)
+                    ),
+                    ("engine_ms", Json::Num(engine_ms)),
+                    ("engine_instr_k", engine_instr_k),
+                    ("write_ms", Json::Num((write_s * 1e4).round() / 10.0)),
+                ])
+            )),
+            Err(e) => eprintln!("flashtex-host: saving S0: {e}"),
+        });
+        if self.profile.lean {
+            // (Low Memory: no second copy alive; written here, as before)
+            let t = Instant::now();
+            let r = image.write(&p.to_string_lossy(), &|| false);
+            done(r, t.elapsed().as_secs_f64());
+        } else {
+            super::s0write::submit(&p.to_string_lossy(), image, done);
         }
     }
 
@@ -1475,7 +1601,14 @@ impl Engine {
         let spawned = std::thread::Builder::new()
             .name("tools".into())
             .spawn(move || {
-                let report = job.run();
+                // A panic in a tool (an in-process port's bug) must not
+                // leave `doc.tools.running` set: the engine thread is told
+                // the tools are done either way.
+                let report = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job.run()))
+                    .unwrap_or_else(|_| {
+                        eprintln!("flashtex-host: the external tools' run panicked");
+                        external::Report { outcomes: vec![] }
+                    });
                 let _ = tx.send(Req::ToolsDone {
                     gen,
                     conn,
@@ -1617,24 +1750,35 @@ fn settle(doc: &mut Doc, conn: &Conn, id: i64, limit: bool) {
 /// retention pass merged, a detached branch, the convergence test's
 /// buffers) mapped, so the host's resident memory stayed at its peak: on
 /// full-1000, 1.5 GB resident for a 0.47 GB heap
-/// (docs/evidence/p4-memory-2026-09-30/). macOS's allocator returns free
-/// pages itself. FLASHTEX_NO_TRIM=1 leaves it out (for A/B).
+/// (docs/evidence/p4-memory-2026-09-30/). With jemalloc as the host's heap
+/// (`crate::logalloc`, feature `jemalloc`) the Rust side's free pages go
+/// back by a purge of its arenas (`logalloc::give_back`), and glibc's trim
+/// is left with the C parts' blocks. On macOS the large blocks' spares are
+/// unmapped (`logalloc::give_back`); xzone keeps the small blocks' pages,
+/// and `malloc_zone_pressure_relief` returns none of them (0 bytes,
+/// MEM-FOOTPRINT and MEM-BASELINE). FLASHTEX_NO_TRIM=1 leaves it out (for
+/// A/B).
 fn give_back_free_memory() {
-    #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    {
-        extern "C" {
-            fn malloc_trim(pad: usize) -> i32;
-        }
-        if std::env::var_os("FLASHTEX_NO_TRIM").is_none() {
-            let t = Instant::now();
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("FLASHTEX_NO_TRIM").is_none() {
+        let t = Instant::now();
+        let purged = crate::logalloc::give_back();
+        let tp = t.elapsed();
+        #[cfg(target_env = "gnu")]
+        {
+            extern "C" {
+                fn malloc_trim(pad: usize) -> i32;
+            }
             // SAFETY: no preconditions; it only releases free memory.
             unsafe { malloc_trim(0) };
-            if std::env::var_os("FLASHTEX_MEMSTAT").is_some() {
-                eprintln!(
-                    "flashtex-host: malloc_trim {:.2} ms",
-                    t.elapsed().as_secs_f64() * 1e3
-                );
-            }
+        }
+        if std::env::var_os("FLASHTEX_MEMSTAT").is_some() {
+            eprintln!(
+                "flashtex-host: give back {:.2} ms (jemalloc purge {}: {:.2} ms)",
+                t.elapsed().as_secs_f64() * 1e3,
+                purged,
+                tp.as_secs_f64() * 1e3
+            );
         }
     }
     // macOS's allocator returns most free pages itself, but its magazines
@@ -1645,6 +1789,8 @@ fn give_back_free_memory() {
             fn malloc_zone_pressure_relief(zone: *mut std::ffi::c_void, goal: usize) -> usize;
         }
         if std::env::var_os("FLASHTEX_NO_TRIM").is_none() {
+            // (the large blocks' spares unmapped: `logalloc`)
+            crate::logalloc::give_back();
             // SAFETY: a null zone means every zone; it only releases free memory.
             unsafe { malloc_zone_pressure_relief(std::ptr::null_mut(), 0) };
         }
@@ -2000,6 +2146,18 @@ fn lf_count_words(b: &[u8]) -> usize {
         n += z.count_ones() as usize;
     }
     n + rest.iter().filter(|&&c| c == b'\n').count()
+}
+
+/// The innermost file the engine reads (`\input`, `\include`, a package),
+/// as TeX opened it: `full_source_filename_stack[in_open]`, which
+/// `-file-line-error` names too. `None` at the terminal level.
+fn reading(g: &crate::generated::Globals) -> Option<String> {
+    let level = g.in_open;
+    if level <= 0 {
+        return None;
+    }
+    let name = g.full_source_filename_stack[level as usize];
+    (name > 0).then(|| String::from_utf8_lossy(&g.str_bytes(name)).into_owned())
 }
 
 #[cfg(test)]

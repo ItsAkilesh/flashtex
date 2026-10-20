@@ -66,6 +66,9 @@ MANIFESTS = {
 # Reproducible runs, as tools/parity and scripts/engine-parity.sh.
 DATE_ENV = {"SOURCE_DATE_EPOCH": "0", "FORCE_SOURCE_DATE": "1"}
 PASSES = 3
+# Unicode mode's index of the bundle's fonts by name (crates/flashtex-xetex
+# fontmgr::catalog::BUNDLE_FONT_INDEX_PATH), generated at pack time.
+FONT_INDEX = "texmf-var/fonts/misc/flashtex/flashtex-xetex-fonts.json"
 PASS_TIMEOUT = 300
 HELLO = "\\documentclass{article}\n\\begin{document}\nHello, world.\n\\end{document}\n"
 
@@ -87,9 +90,12 @@ def safe_name(doc_id):
 
 # --- documents ---------------------------------------------------------------
 
-def documents(tier, only=None, cache=None):
+def documents(tier, only=None, cache=None, strict=False):
     """[{id, dir, entry}] of a tier: the parity fixtures, or a corpus
-    manifest's documents fetched (and verified) into the parity cache."""
+    manifest's documents fetched (and verified) into the parity cache.
+    `strict` (the gate's documents): a document that cannot be fetched or
+    has no entry stops the run instead of being left out, so a network
+    error cannot silently drop a document from oracle-refs.json."""
     sys.path.insert(0, os.path.join(REPO, "tools", "parity"))
     if tier == "fixtures":
         import parity  # noqa: E402
@@ -109,6 +115,8 @@ def documents(tier, only=None, cache=None):
         if only is not None and d["id"] not in only and d["id"].split("/")[-1] not in only:
             continue
         if d.get("problem") or not d.get("entry"):
+            if strict:
+                die(f"{tier}/{d['id']}: {d.get('problem') or 'no entry'} (a gate document cannot be skipped)")
             print(f"skip {tier}/{d['id']}: {d.get('problem') or 'no entry'}", file=sys.stderr)
             continue
         out.append({"id": f"{tier}/{d['id']}" if tier != "fixtures" else d["id"], "dir": d["dir"],
@@ -422,6 +430,12 @@ NO_LICENCE_RECORDED = {
                 "its header, and TeX Live distributes them as free software",
     "latexconfig": "TeX Live's own configuration files for the LaTeX formats (part of TeX Live's "
                    "infrastructure, under TeX Live's licensing, LICENSE.TL)",
+    "glyphlist": "glyph-name lists with no CTAN catalogue entry (checked against the files of "
+                 "TeX Live 2026's glyphlist r54074, 2026-10-12): glyphlist.txt is the Adobe Glyph "
+                 "List, whose header licenses it under the Apache License 2.0; texglyphlist.txt is "
+                 "lcdf-typetools' (GPL-2.0-or-later, its header names it); pdfglyphlist.txt is a "
+                 "subset of the Adobe Glyph List's entries (PDF character sets), distributed by "
+                 "TeX Live as free software",
 }
 
 
@@ -465,9 +479,17 @@ def licence_problems(db, packages):
     return out
 
 
+def bundle_packages(packages_txt, extra_txt):
+    """The packages the bundle packs whole: packages.txt (derived from the
+    engine's reads) and extra.txt (hand-picked: what the in-process tools
+    and documents outside the corpora read), each once, in sorted order."""
+    extra = read_list(extra_txt) if extra_txt and os.path.isfile(extra_txt) else []
+    return sorted(set(read_list(packages_txt)) | set(extra))
+
+
 def cmd_pack(a):
     root = os.path.realpath(a.root)
-    packages = read_list(a.packages)
+    packages = bundle_packages(a.packages, a.extra)
     core = read_list(a.core)
     work = tempfile.mkdtemp(prefix="texbundle-pack-")
     try:
@@ -499,6 +521,25 @@ def cmd_pack(a):
         with open(core_lst, "w") as f:
             for c in core:
                 f.write(os.path.join(root, c) + "\n")
+        if a.font_index_tool:
+            # Unicode mode's font-name index of the bundle's OpenType and
+            # TrueType fonts (no-TeX-Live mode names them, #1783): FlashTeX's
+            # own generated file in the tree's texmf-var, packed in the core
+            # range, read by fontmgr::catalog::bundle_faces.
+            fonts_lst = os.path.join(work, "fonts.lst")
+            with open(fonts_lst, "w") as f:
+                for p in packages:
+                    for rel in db[p]["runfiles"]:
+                        if rel.lower().endswith((".otf", ".ttf", ".ttc")) and os.path.isfile(os.path.join(root, rel)):
+                            f.write(os.path.join(root, rel) + "\n")
+            index = os.path.join(root, FONT_INDEX)
+            r = subprocess.run([a.font_index_tool, "--bundle-font-index", root, fonts_lst, index],
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                die(f"the font index failed: {r.stderr.strip()}")
+            for lst in (reads, core_lst):
+                with open(lst, "a") as f:
+                    f.write(index + "\n")
         env = dict(os.environ, FLASHTEX_TEXLIVE_BIN=texlive_bin(root))
         r = subprocess.run([a.dist, "bundle-pack", "--out", a.out, "--read", reads, "--read", core_lst,
                             "--core-read", core_lst, "--tlpdb", tlpdb_path, "--whole-packages"],
@@ -694,7 +735,10 @@ def cmd_notes(a):
       "(the format the engine builds from this bundle).")
     w(f"- Packed by `tools/bundle/texbundle.py pack` (commit {a.commit}): the package list "
       "`tools/bundle/tl2026/packages.txt` (every package whose files the parity fixtures, the arXiv "
-      "corpus, the beamer corpus and packages-2026 read) and the core range `tools/bundle/tl2026/core.txt`.")
+      "corpus, the beamer corpus and packages-2026 read), the hand-picked "
+      "`tools/bundle/tl2026/extra.txt` (bibtex's and makeindex's styles and other files the tools "
+      "FlashTeX runs read, common bibliography styles) and the core range "
+      "`tools/bundle/tl2026/core.txt`.")
     w(f"- Digest (SHA-256 of the bundle's file list): `{digest}`; file SHA-256: `{info['sha256']}`; "
       f"index {info['index_gzip']} bytes gzipped; core range {info['core_bytes']} bytes.")
     w("- Packed twice in the same job: byte-identical.")
@@ -714,7 +758,7 @@ def gate_documents(spec_path):
         spec = json.load(f)
     docs = []
     for tier, ids in spec["tiers"].items():
-        docs += documents(tier, None if ids is None else set(ids))
+        docs += documents(tier, None if ids is None else set(ids), strict=True)
     return docs
 
 
@@ -924,9 +968,13 @@ def main():
     s.add_argument("--root", required=True)
     s.add_argument("--dist", required=True, help="flashtex-dist")
     s.add_argument("--packages", default=os.path.join(DATA, "packages.txt"))
+    s.add_argument("--extra", default=os.path.join(DATA, "extra.txt"),
+                   help="hand-picked packages packed besides --packages (tl2026/extra.txt)")
     s.add_argument("--core", default=os.path.join(DATA, "core.txt"))
     s.add_argument("--out", required=True)
     s.add_argument("--json")
+    s.add_argument("--font-index-tool",
+                   help="flashtex-host-unicode: write and pack Unicode mode's font-name index (since -4)")
     s = sub.add_parser("lock")
     s.add_argument("--lock", default=LOCK)
     s = sub.add_parser("notes")

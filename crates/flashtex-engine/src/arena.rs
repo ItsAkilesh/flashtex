@@ -39,6 +39,9 @@ use std::marker::PhantomData;
 use std::ops::{Deref, Index, IndexMut};
 
 pub const CHUNK_SHIFT: usize = 10;
+
+/// Bytes `Arena::release_zero_pages` gave back in this process (`DONE.mem`).
+static ZERO_RELEASED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub const CHUNK_BYTES: usize = 1 << CHUNK_SHIFT;
 pub const CHUNK_WORDS: usize = CHUNK_BYTES / 8;
 
@@ -144,6 +147,22 @@ pub type CheckpointId = u64;
 /// A chunk's saved contents, a slot of the slab.
 type ChunkPtr = *mut u64;
 
+/// A word pointer the restore's worker threads share. Kept a pointer, not
+/// cast to an address and back, so it keeps its provenance (Miri checks
+/// every access through it under `-Zmiri-strict-provenance`).
+#[derive(Clone, Copy)]
+struct SharedPtr(*mut u64);
+// SAFETY: each use states which thread alone writes through the pointer, and
+// that nobody writes what the others read meanwhile.
+unsafe impl Send for SharedPtr {}
+unsafe impl Sync for SharedPtr {}
+impl SharedPtr {
+    /// Chunk `c` of the word space at `self`.
+    fn chunk(self, c: u32) -> *mut u64 {
+        self.0.wrapping_add((c as usize) * CHUNK_WORDS)
+    }
+}
+
 /// Chunks are carved out of 1 MiB blocks and recycled through a free list:
 /// the snapshot benchmark measured 1.24x overhead for 16 KB `malloc`s.
 struct Slab {
@@ -185,9 +204,94 @@ impl Drop for Slab {
 
 const MASK_WORDS: usize = CHUNK_WORDS / 64;
 
+// ---------------------------------------------------------------------------
+// The words of a sealed log, packed
+// ---------------------------------------------------------------------------
+//
+// A sealed log's words are the pre-images of TeX's memory words: two 32-bit
+// halves each (`link`/`info`, a `scaled`, character and font codes), most of
+// them small. Each half is stored in 0, 1, 2 or 4 bytes (zero, then the
+// smallest sign-extended width that holds it), with a 2-bit tag; a word's two
+// tags are one nibble. A delta's words are its nibbles (two to a byte), then
+// the halves' bytes in the same order. On the documents measured this takes
+// 0.50–0.58 of the 8 bytes a word took (docs/evidence/mem-footprint-2026-10-04/).
+// Decoding a word needs the sizes of the words before it in its delta, which
+// the nibbles give without touching their bytes.
+
+/// Bytes a half takes, by its tag.
+const HALF_LEN: [usize; 4] = [0, 1, 2, 4];
+
+/// Bytes a word takes, by its nibble (the low half's tag, then the high half's).
+const NIBBLE_LEN: [usize; 16] = {
+    let mut t = [0usize; 16];
+    let mut i = 0;
+    while i < 16 {
+        t[i] = HALF_LEN[i & 3] + HALF_LEN[i >> 2];
+        i += 1;
+    }
+    t
+};
+
+#[inline]
+fn half_tag(x: u32) -> usize {
+    let v = x as i32;
+    if v == 0 {
+        0
+    } else if v as i8 as i32 == v {
+        1
+    } else if v as i16 as i32 == v {
+        2
+    } else {
+        3
+    }
+}
+
+#[inline]
+fn put_half(out: &mut Vec<u8>, x: u32, t: usize) {
+    match t {
+        0 => {}
+        1 => out.push(x as u8),
+        2 => out.extend_from_slice(&(x as u16).to_le_bytes()),
+        _ => out.extend_from_slice(&x.to_le_bytes()),
+    }
+}
+
+/// The half at `b[p..]` with tag `t`.
+#[inline]
+fn get_half(b: &[u8], p: usize, t: usize) -> u32 {
+    match t {
+        0 => 0,
+        1 => b[p] as i8 as i32 as u32,
+        2 => i16::from_le_bytes([b[p], b[p + 1]]) as i32 as u32,
+        _ => u32::from_le_bytes([b[p], b[p + 1], b[p + 2], b[p + 3]]),
+    }
+}
+
+/// Append `vals`, packed, to `out`.
+fn pack_words(vals: &[u64], out: &mut Vec<u8>) {
+    let t0 = out.len();
+    out.resize(t0 + vals.len().div_ceil(2), 0);
+    for (i, &x) in vals.iter().enumerate() {
+        let (lo, hi) = (x as u32, (x >> 32) as u32);
+        let (tl, th) = (half_tag(lo), half_tag(hi));
+        out[t0 + i / 2] |= ((tl | th << 2) as u8) << ((i & 1) * 4);
+        put_half(out, lo, tl);
+        put_half(out, hi, th);
+    }
+}
+
+/// The word at byte `p` of `b` with nibble `t`.
+#[inline]
+fn get_word(b: &[u8], p: usize, t: usize) -> u64 {
+    let lo = get_half(b, p, t & 3);
+    let hi = get_half(b, p + HALF_LEN[t & 3], t >> 2);
+    lo as u64 | (hi as u64) << 32
+}
+
 /// One chunk of a sealed log: the words that differ between the state at
 /// the log's checkpoint and the state at the next, as a bit mask; their
-/// values at the log's checkpoint are `Log::words[at..]`, in bit order.
+/// values at the log's checkpoint are packed at `Log::bytes[at..]`, in bit
+/// order (`pack_words`).
 #[derive(Clone, Copy)]
 struct Delta {
     c: u32,
@@ -200,6 +304,29 @@ impl Delta {
         self.mask.iter().map(|m| m.count_ones() as usize).sum()
     }
 
+    /// The values of the words in `mask`, in bit order, into `out[..len]`.
+    fn unpack(&self, bytes: &[u8], out: &mut [u64; CHUNK_WORDS]) {
+        let n = self.len();
+        let tags = self.at as usize;
+        let mut p = tags + n.div_ceil(2);
+        for (i, v) in out.iter_mut().enumerate().take(n) {
+            let t = (bytes[tags + i / 2] >> ((i & 1) * 4)) as usize & 15;
+            *v = get_word(bytes, p, t);
+            p += NIBBLE_LEN[t];
+        }
+    }
+
+    /// Bytes the packed words take.
+    fn packed_len(&self, bytes: &[u8]) -> usize {
+        let n = self.len();
+        let tags = self.at as usize;
+        let mut p = n.div_ceil(2);
+        for i in 0..n {
+            p += NIBBLE_LEN[(bytes[tags + i / 2] >> ((i & 1) * 4)) as usize & 15];
+        }
+        p
+    }
+
     /// Rewind a chunk by this delta where an older entry has not already:
     /// write the words it holds that are not in `done` into `dst`, and add
     /// them to `done`. Applied from the oldest log on, this leaves each word
@@ -208,20 +335,41 @@ impl Delta {
     /// # Safety
     /// `dst` points at CHUNK_WORDS writable words.
     #[inline]
-    unsafe fn apply_under(&self, words: &[u64], dst: *mut u64, done: &mut [u64; MASK_WORDS]) {
-        let mut k = self.at as usize;
-        for (mw, dmw) in done.iter_mut().enumerate() {
-            let m = self.mask[mw];
-            let mut need = m & !*dmw;
-            while need != 0 {
-                let b = need.trailing_zeros();
-                let idx = k + (m & ((1u64 << b) - 1)).count_ones() as usize;
-                *dst.add(mw * 64 + b as usize) = words[idx];
-                need &= need - 1;
+    unsafe fn apply_under(&self, bytes: &[u8], dst: *mut u64, done: &mut [u64; MASK_WORDS]) {
+        let need = [self.mask[0] & !done[0], self.mask[1] & !done[1]];
+        if need[0] | need[1] != 0 {
+            // Walk the words in order up to the last one needed, decoding
+            // only those (the others' sizes come from their nibbles).
+            let n = self.len();
+            let tags = self.at as usize;
+            let mut p = tags + n.div_ceil(2);
+            let mut i = 0usize;
+            for mw in 0..MASK_WORDS {
+                let mut m = self.mask[mw];
+                let mut left = need[mw];
+                while left != 0 {
+                    let b = m.trailing_zeros();
+                    let t = (bytes[tags + i / 2] >> ((i & 1) * 4)) as usize & 15;
+                    if left >> b & 1 == 1 {
+                        *dst.add(mw * 64 + b as usize) = get_word(bytes, p, t);
+                        left &= left - 1;
+                    }
+                    p += NIBBLE_LEN[t];
+                    i += 1;
+                    m &= m - 1;
+                }
+                i += m.count_ones() as usize;
+                if mw + 1 < MASK_WORDS && need[mw + 1] != 0 {
+                    // the skipped rest of this mask word: their sizes
+                    let skip = m.count_ones() as usize;
+                    for k in i - skip..i {
+                        p += NIBBLE_LEN[(bytes[tags + k / 2] >> ((k & 1) * 4)) as usize & 15];
+                    }
+                }
             }
-            *dmw |= m;
-            k += m.count_ones() as usize;
         }
+        done[0] |= self.mask[0];
+        done[1] |= self.mask[1];
     }
 }
 
@@ -230,19 +378,20 @@ impl Delta {
 #[inline(always)]
 fn prefetch_chunk(a: usize) {
     for line in (0..CHUNK_BYTES).step_by(64) {
-        #[cfg(target_arch = "aarch64")]
+        // (Miri cannot run inline assembly, and a hint changes nothing it checks.)
+        #[cfg(all(target_arch = "aarch64", not(miri)))]
         // SAFETY: a prefetch never faults and has no other effect.
         unsafe {
             std::arch::asm!("prfm pldl1keep, [{0}]", in(reg) a + line, options(nostack, readonly, preserves_flags));
         }
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(all(target_arch = "x86_64", not(miri)))]
         // SAFETY: as above.
         unsafe {
             std::arch::x86_64::_mm_prefetch::<{ std::arch::x86_64::_MM_HINT_T0 }>(
                 (a + line) as *const i8,
             );
         }
-        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+        #[cfg(any(miri, not(any(target_arch = "aarch64", target_arch = "x86_64"))))]
         let _ = a + line;
     }
 }
@@ -278,7 +427,8 @@ unsafe fn apply_whole_under(src: *const u64, dst: *mut u64, done: &mut [u64; MAS
 struct Log {
     entries: Vec<(u32, ChunkPtr)>,
     deltas: Vec<Delta>,
-    words: Vec<u64>,
+    /// The deltas' words, packed (`pack_words`).
+    bytes: Vec<u8>,
 }
 
 impl Log {
@@ -292,7 +442,48 @@ impl Log {
 
     /// Heap bytes of the sealed part.
     fn sealed_bytes(&self) -> usize {
-        self.deltas.capacity() * std::mem::size_of::<Delta>() + self.words.capacity() * 8
+        self.deltas.capacity() * std::mem::size_of::<Delta>() + self.bytes.capacity()
+    }
+
+    /// The words the deltas hold.
+    fn words(&self) -> usize {
+        self.deltas.iter().map(|d| d.len()).sum()
+    }
+
+    /// Rewrite the sealed log through `f`, which sees each delta as its
+    /// chunk, mask and values (in bit order) and may change them or add
+    /// deltas (kept sorted by chunk). For the rare edits of a sealed log
+    /// (`Arena::or_from`), not for restores.
+    fn rewrite(&mut self, f: impl FnOnce(&mut Vec<(u32, [u64; MASK_WORDS], Vec<u64>)>)) {
+        let mut buf = [0u64; CHUNK_WORDS];
+        let mut v: Vec<(u32, [u64; MASK_WORDS], Vec<u64>)> = self
+            .deltas
+            .iter()
+            .map(|d| {
+                d.unpack(&self.bytes, &mut buf);
+                (d.c, d.mask, buf[..d.len()].to_vec())
+            })
+            .collect();
+        f(&mut v);
+        v.sort_by_key(|e| e.0);
+        let mut deltas = Vec::with_capacity(v.len());
+        let mut bytes = Vec::with_capacity(self.bytes.len() + 16);
+        for (c, mask, vals) in &v {
+            debug_assert_eq!(
+                vals.len(),
+                mask.iter().map(|m| m.count_ones() as usize).sum::<usize>()
+            );
+            let at = bytes.len() as u32;
+            pack_words(vals, &mut bytes);
+            deltas.push(Delta {
+                c: *c,
+                at,
+                mask: *mask,
+            });
+        }
+        bytes.shrink_to_fit();
+        self.deltas = deltas;
+        self.bytes = bytes;
     }
 }
 
@@ -329,9 +520,13 @@ fn rewound_until(
         let src = unsafe { std::slice::from_raw_parts(start(c), CHUNK_WORDS) };
         buf[i * CHUNK_WORDS..(i + 1) * CHUNK_WORDS].copy_from_slice(src);
     }
+    // the wanted chunks' bits (a test per entry), and each one's index in
+    // `cs` (a lookup per match, not a binary search)
     let mut want = vec![0u64; nchunks.div_ceil(64)];
-    for &c in cs {
+    let mut slot = vec![0u32; nchunks];
+    for (i, &c) in cs.iter().enumerate() {
         set_bit(&mut want, c as usize);
+        slot[c as usize] = i as u32;
     }
     let mut done = vec![[0u64; MASK_WORDS]; cs.len()];
     for (k, log) in logs.iter().enumerate() {
@@ -340,7 +535,7 @@ fn rewound_until(
         }
         for &(c, p) in &log.entries {
             if bit(&want, c as usize) {
-                let i = cs.binary_search(&c).unwrap();
+                let i = slot[c as usize] as usize;
                 // SAFETY: a slab chunk; a chunk of `buf`.
                 unsafe {
                     apply_whole_under(p, buf.as_mut_ptr().add(i * CHUNK_WORDS), &mut done[i])
@@ -349,11 +544,11 @@ fn rewound_until(
         }
         for d in &log.deltas {
             if bit(&want, d.c as usize) {
-                let i = cs.binary_search(&d.c).unwrap();
+                let i = slot[d.c as usize] as usize;
                 // SAFETY: a chunk of `buf`.
                 unsafe {
                     d.apply_under(
-                        &log.words,
+                        &log.bytes,
                         buf.as_mut_ptr().add(i * CHUNK_WORDS),
                         &mut done[i],
                     )
@@ -377,48 +572,58 @@ const STOP_CHUNKS: usize = 256;
 /// word, `older`'s value wins.
 fn merge_sealed(older: &Log, newer: &Log) -> Log {
     let mut deltas = Vec::with_capacity(older.deltas.len() + newer.deltas.len());
-    let mut words = Vec::with_capacity(older.words.len() + newer.words.len());
-    let copy = |d: &Delta, from: &[u64], words: &mut Vec<u64>| -> Delta {
-        let at = words.len();
-        words.extend_from_slice(&from[d.at as usize..d.at as usize + d.len()]);
+    let mut bytes = Vec::with_capacity(older.bytes.len() + newer.bytes.len());
+    // a delta of one log alone keeps its packed bytes as they are
+    let copy = |d: &Delta, from: &[u8], bytes: &mut Vec<u8>| -> Delta {
+        let at = bytes.len();
+        let n = d.packed_len(from);
+        bytes.extend_from_slice(&from[d.at as usize..d.at as usize + n]);
         Delta {
             c: d.c,
             at: at as u32,
             mask: d.mask,
         }
     };
+    let (mut xv, mut yv) = ([0u64; CHUNK_WORDS], [0u64; CHUNK_WORDS]);
+    let mut vals: Vec<u64> = Vec::with_capacity(CHUNK_WORDS);
     let (mut i, mut j) = (0, 0);
     let (a, b) = (&older.deltas, &newer.deltas);
     while i < a.len() || j < b.len() {
         if j == b.len() || (i < a.len() && a[i].c < b[j].c) {
-            deltas.push(copy(&a[i], &older.words, &mut words));
+            deltas.push(copy(&a[i], &older.bytes, &mut bytes));
             i += 1;
         } else if i == a.len() || b[j].c < a[i].c {
-            deltas.push(copy(&b[j], &newer.words, &mut words));
+            deltas.push(copy(&b[j], &newer.bytes, &mut bytes));
             j += 1;
         } else {
             let (x, y) = (&a[i], &b[j]);
-            let at = words.len();
-            let (mut kx, mut ky) = (x.at as usize, y.at as usize);
+            x.unpack(&older.bytes, &mut xv);
+            y.unpack(&newer.bytes, &mut yv);
+            let at = bytes.len();
+            let (mut kx, mut ky) = (0usize, 0usize);
             let mut mask = [0u64; MASK_WORDS];
+            vals.clear();
             for (mw, m) in mask.iter_mut().enumerate() {
                 let (mx, my) = (x.mask[mw], y.mask[mw]);
                 *m = mx | my;
-                for bpos in 0..64 {
-                    let bitv = 1u64 << bpos;
+                let mut all = mx | my;
+                while all != 0 {
+                    let bitv = all.isolate_lowest_one();
                     let (in_x, in_y) = (mx & bitv != 0, my & bitv != 0);
                     if in_x {
-                        words.push(older.words[kx]);
+                        vals.push(xv[kx]);
                         kx += 1;
                         if in_y {
                             ky += 1;
                         }
-                    } else if in_y {
-                        words.push(newer.words[ky]);
+                    } else {
+                        vals.push(yv[ky]);
                         ky += 1;
                     }
+                    all &= all - 1;
                 }
             }
+            pack_words(&vals, &mut bytes);
             deltas.push(Delta {
                 c: x.c,
                 at: at as u32,
@@ -429,11 +634,11 @@ fn merge_sealed(older: &Log, newer: &Log) -> Log {
         }
     }
     deltas.shrink_to_fit();
-    words.shrink_to_fit();
+    bytes.shrink_to_fit();
     Log {
         entries: Vec::new(),
         deltas,
-        words,
+        bytes,
     }
 }
 
@@ -491,6 +696,8 @@ pub(crate) struct Core {
     sealed_bytes: usize,
     /// A restore worked out ahead of time (`prepare_restore`, `reattach`).
     prepared: Option<Prepared>,
+    /// One `prepare_restore` stopped before it was done (`PartPrep`).
+    part: Option<PartPrep>,
     /// `reattach` leaves a prepared restore to its target (default on;
     /// `FLASHTEX_NO_PREPARE=1` turns it off, for A/B).
     prepare_on_reattach: bool,
@@ -521,6 +728,37 @@ struct Prepared {
     pre: Vec<ChunkPtr>,
 }
 
+/// A `prepare_restore` that newer work stopped (a keystroke): how far it
+/// got, kept so that the next `prepare_restore` to the same target, or the
+/// restore itself, goes on from there instead of starting again (lane
+/// P4-TYPING-200WPM (a): on *Infinite Descent* a preparation takes 300 to
+/// 600 ms and the next keystroke came first, every time). Valid while
+/// `Prepared` would be: the same target, the checkpoint list `ids`, no log
+/// changed in place (`history_gen`); the open log may grow meanwhile, as
+/// it may after a whole preparation, and is rewound through last (its
+/// entries hold the chunks' values at the newest checkpoint, which a chunk
+/// copied before or after its first write since then both end with).
+/// Anything else discards it.
+struct PartPrep {
+    id: CheckpointId,
+    ids: Vec<CheckpointId>,
+    history_gen: u64,
+    /// Logs from the target's on looked through for their chunks.
+    collected: usize,
+    /// The chunks found (sorted once all are found), and their bits.
+    cs: Vec<u32>,
+    seen: Vec<u64>,
+    sorted: bool,
+    /// The copies: how many taken from the live space, then the logs
+    /// rewound through (oldest first), with each word's done bits.
+    copied: usize,
+    buf: Vec<u64>,
+    done: Vec<[u64; MASK_WORDS]>,
+    rewound: usize,
+    /// `Prepared::pre`, as far as it got.
+    pre: Vec<ChunkPtr>,
+}
+
 #[inline(always)]
 fn bit(bits: &[u64], c: usize) -> bool {
     bits[c >> 6] & (1u64 << (c & 63)) != 0
@@ -534,6 +772,11 @@ impl Core {
     fn saved(&mut self) -> &mut [u8] {
         // SAFETY: `saved` is an allocation of `nchunks` bytes owned by the core.
         unsafe { std::slice::from_raw_parts_mut(self.saved, self.nchunks) }
+    }
+
+    fn saved_ref(&self) -> &[u8] {
+        // SAFETY: as `saved`.
+        unsafe { std::slice::from_raw_parts(self.saved, self.nchunks) }
     }
 
     fn chunk_ptr(&self, c: usize) -> *mut u64 {
@@ -585,7 +828,8 @@ impl Core {
         debug_assert!(self.logs[i].deltas.is_empty(), "sealing a sealed log");
         entries.sort_unstable_by_key(|e| e.0);
         let mut deltas = Vec::with_capacity(entries.len());
-        let mut words = Vec::with_capacity(entries.len() * (CHUNK_WORDS / 8));
+        let mut bytes = Vec::with_capacity(entries.len() * CHUNK_WORDS / 2);
+        let mut vals: Vec<u64> = Vec::with_capacity(CHUNK_WORDS);
         // The two chunks of each entry are mostly not in the cache any more
         // (the page wrote them long ago): ask for the next ones early. On the
         // 953-page benchmark this cut the seal from 0.31 to 0.20 ms a page.
@@ -628,14 +872,16 @@ impl Core {
                 }
             }
             if mask.iter().any(|&m| m != 0) {
-                let at = words.len();
+                let at = bytes.len();
+                vals.clear();
                 for (mw, &m0) in mask.iter().enumerate() {
                     let mut m = m0;
                     while m != 0 {
-                        words.push(old[mw * 64 + m.trailing_zeros() as usize]);
+                        vals.push(old[mw * 64 + m.trailing_zeros() as usize]);
                         m &= m - 1;
                     }
                 }
+                pack_words(&vals, &mut bytes);
                 deltas.push(Delta {
                     c,
                     at: at as u32,
@@ -645,10 +891,10 @@ impl Core {
             self.slab.give(p);
         }
         deltas.shrink_to_fit();
-        words.shrink_to_fit();
+        bytes.shrink_to_fit();
         let log = &mut self.logs[i];
         log.deltas = deltas;
-        log.words = words;
+        log.bytes = bytes;
         self.sealed_bytes += log.sealed_bytes();
     }
 
@@ -702,8 +948,8 @@ impl Core {
         } else {
             Vec::new()
         };
-        let base = self.base as usize;
-        let redo_at: Vec<usize> = redo.iter().map(|&(_, p)| p as usize).collect();
+        let base = SharedPtr(self.base as *mut u64);
+        let redo_at: Vec<SharedPtr> = redo.iter().map(|&(_, p)| SharedPtr(p)).collect();
         let n = cs.len();
         // Contiguous chunk ranges, one per worker, each with its own words
         // done so far.
@@ -745,12 +991,11 @@ impl Core {
             let hi = if i1 == n { u32::MAX } else { cs[i1] };
             if capture {
                 for i in i0..i1 {
-                    let live = base + ((cs[i] as usize) << CHUNK_SHIFT);
                     // SAFETY: a live chunk and its own redo chunk.
                     unsafe {
                         std::ptr::copy_nonoverlapping(
-                            live as *const u64,
-                            redo_at[i] as *mut u64,
+                            base.chunk(cs[i]) as *const u64,
+                            redo_at[i].0,
                             CHUNK_WORDS,
                         )
                     };
@@ -762,7 +1007,7 @@ impl Core {
                         continue;
                     }
                     let dn = &mut done[slot_r[c as usize] as usize - i0];
-                    let live = (base + ((c as usize) << CHUNK_SHIFT)) as *mut u64;
+                    let live = base.chunk(c);
                     // SAFETY: this worker alone writes chunks in [lo, hi);
                     // `p` is a whole slab chunk.
                     unsafe { apply_whole_under(p, live, dn) };
@@ -773,9 +1018,9 @@ impl Core {
                         break;
                     }
                     let dn = &mut done[slot_r[d.c as usize] as usize - i0];
-                    let live = (base + ((d.c as usize) << CHUNK_SHIFT)) as *mut u64;
+                    let live = base.chunk(d.c);
                     // SAFETY: as above.
-                    unsafe { d.apply_under(&log.words, live, dn) };
+                    unsafe { d.apply_under(&log.bytes, live, dn) };
                 }
             }
         };
@@ -795,65 +1040,173 @@ impl Core {
 
     /// Work out `restore_branch(id)`'s rewind ahead of time
     /// (`Prepared`), asking `stop` as it goes: false if it stopped or `id`
-    /// is not in the live chain.
+    /// is not in the live chain. Stopped, what it did is kept (`PartPrep`):
+    /// the next call for the same target, or the restore, goes on from
+    /// there.
     fn prepare_restore(&mut self, id: CheckpointId, stop: &mut dyn FnMut() -> bool) -> bool {
         let _m = crate::memstat::scope(crate::memstat::tag::PREPARE);
         self.set_prepared(None);
+        let part = self.take_part(id);
         let Some(k) = self.index_of(id) else {
-            return false;
-        };
-        let mut mark = std::mem::take(&mut self.mark);
-        mark.fill(0);
-        let mut cs: Vec<u32> = Vec::new();
-        for (n, log) in self.logs[k..].iter().enumerate() {
-            if n % STOP_LOGS == STOP_LOGS - 1 && stop() {
-                self.mark = mark;
-                return false;
+            if let Some(p) = part {
+                self.give_pre(p.pre);
             }
-            for c in log.chunk_ids() {
-                if !bit(&mark, c as usize) {
-                    set_bit(&mut mark, c as usize);
-                    cs.push(c);
-                }
-            }
-        }
-        self.mark = mark;
-        cs.sort_unstable();
-        let base = self.base as usize;
-        let live = |c: u32| (base + ((c as usize) << CHUNK_SHIFT)) as *const u64;
-        let Some(buf) = rewound_until(self.nchunks, &cs, &live, &self.logs[k..], stop) else {
             return false;
         };
-        let Some(pre) = self.pre_redo_until(&cs, stop) else {
-            return false;
-        };
-        self.prepared = Some(Prepared {
+        let mut p = part.unwrap_or_else(|| PartPrep {
             id,
             ids: self.ids.clone(),
             history_gen: self.history_gen,
-            cs,
-            buf,
-            pre,
+            collected: 0,
+            cs: Vec::new(),
+            seen: vec![0u64; self.nchunks.div_ceil(64)],
+            sorted: false,
+            copied: 0,
+            buf: Vec::new(),
+            done: Vec::new(),
+            rewound: 0,
+            pre: Vec::new(),
         });
-        true
+        if self.prepare_go_on(&mut p, k, stop) {
+            self.prepared = Some(Prepared {
+                id,
+                ids: p.ids,
+                history_gen: p.history_gen,
+                cs: p.cs,
+                buf: p.buf,
+                pre: p.pre,
+            });
+            true
+        } else {
+            self.part = Some(p);
+            false
+        }
     }
 
-    /// `pre_redo`, asking `stop` every `STOP_CHUNKS` chunks: `None` (the
-    /// copies given back) when it said to stop.
-    fn pre_redo_until(
-        &mut self,
-        cs: &[u32],
-        stop: &mut dyn FnMut() -> bool,
-    ) -> Option<Vec<ChunkPtr>> {
-        let mut pre = Vec::with_capacity(cs.len());
-        for (i, ch) in cs.chunks(STOP_CHUNKS).enumerate() {
-            if i > 0 && stop() {
-                self.give_pre(pre);
-                return None;
-            }
-            pre.extend(self.pre_redo(ch));
+    /// Give back a kept `PartPrep`, if any: its copies were made from logs
+    /// that are being replaced. (`take_part`'s check of the checkpoint list
+    /// would not always catch it: a `reattach` of a branch holding only its
+    /// target, with no checkpoint taken while it was detached, leaves the
+    /// same list over other logs and another live state.)
+    fn drop_part(&mut self) {
+        if let Some(p) = self.part.take() {
+            self.give_pre(p.pre);
         }
-        Some(pre)
+    }
+
+    /// The kept `PartPrep` if it is for `id` and still valid; any other is
+    /// given back.
+    fn take_part(&mut self, id: CheckpointId) -> Option<PartPrep> {
+        let p = self.part.take()?;
+        if p.id == id && p.ids == self.ids && p.history_gen == self.history_gen {
+            return Some(p);
+        }
+        if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
+            eprintln!(
+                "[arena] stopped preparation for {} not used for {id} (same ids {}: {} vs {}, gen {} vs {})",
+                p.id,
+                p.ids == self.ids,
+                p.ids.len(),
+                self.ids.len(),
+                p.history_gen,
+                self.history_gen
+            );
+        }
+        self.give_pre(p.pre);
+        None
+    }
+
+    /// `prepare_restore`'s work on `p` (the logs from index `k` on), from
+    /// where it stopped last: true when done, false when `stop` said to
+    /// stop (`p` holds how far it got).
+    fn prepare_go_on(
+        &mut self,
+        p: &mut PartPrep,
+        k: usize,
+        stop: &mut dyn FnMut() -> bool,
+    ) -> bool {
+        // the chunks the logs from the target's on hold
+        let n = self.logs.len() - k;
+        while p.collected < n {
+            if p.collected % STOP_LOGS == STOP_LOGS - 1 && stop() {
+                return false;
+            }
+            for c in self.logs[k + p.collected].chunk_ids() {
+                if !bit(&p.seen, c as usize) {
+                    set_bit(&mut p.seen, c as usize);
+                    p.cs.push(c);
+                }
+            }
+            p.collected += 1;
+        }
+        if !p.sorted {
+            p.cs.sort_unstable();
+            p.buf = vec![0u64; p.cs.len() * CHUNK_WORDS];
+            p.done = vec![[0u64; MASK_WORDS]; p.cs.len()];
+            p.sorted = true;
+        }
+        // their live copies
+        while p.copied < p.cs.len() {
+            if p.copied % STOP_CHUNKS == STOP_CHUNKS - 1 && stop() {
+                return false;
+            }
+            let (i, c) = (p.copied, p.cs[p.copied]);
+            // (from the mapping's own pointer, not an integer: strict
+            // provenance, as the restores' workers since #1493)
+            let live = self.chunk_ptr(c as usize) as *const u64;
+            // SAFETY: a whole live chunk.
+            let src = unsafe { std::slice::from_raw_parts(live, CHUNK_WORDS) };
+            p.buf[i * CHUNK_WORDS..(i + 1) * CHUNK_WORDS].copy_from_slice(src);
+            p.copied += 1;
+        }
+        // rewound through the logs, oldest first, each word once (as
+        // `rewound_until`; the open log last, whole, as it is now)
+        while p.rewound < n {
+            if p.rewound % STOP_LOGS == STOP_LOGS - 1 && stop() {
+                return false;
+            }
+            let log = &self.logs[k + p.rewound];
+            for &(c, q) in &log.entries {
+                if bit(&p.seen, c as usize) {
+                    let i = p.cs.binary_search(&c).unwrap();
+                    // SAFETY: a slab chunk; a chunk of `buf`.
+                    unsafe {
+                        apply_whole_under(
+                            q,
+                            p.buf.as_mut_ptr().add(i * CHUNK_WORDS),
+                            &mut p.done[i],
+                        )
+                    };
+                }
+            }
+            for d in &log.deltas {
+                if bit(&p.seen, d.c as usize) {
+                    let i = p.cs.binary_search(&d.c).unwrap();
+                    // SAFETY: a chunk of `buf`.
+                    unsafe {
+                        d.apply_under(
+                            &log.bytes,
+                            p.buf.as_mut_ptr().add(i * CHUNK_WORDS),
+                            &mut p.done[i],
+                        )
+                    };
+                }
+            }
+            p.rewound += 1;
+        }
+        // the redo made ahead
+        while p.pre.len() < p.cs.len() {
+            if !p.pre.is_empty() && stop() {
+                return false;
+            }
+            let from = p.pre.len();
+            let to = (from + STOP_CHUNKS).min(p.cs.len());
+            let more = self.pre_redo(&p.cs[from..to]);
+            p.pre.extend(more);
+        }
+        p.done = Vec::new();
+        p.seen = Vec::new();
+        true
     }
 
     /// `Prepared::pre` for chunks `cs`: a copy of each live chunk the
@@ -892,7 +1245,7 @@ impl Core {
     /// chunks it will change (the redo), copy in the prepared ones and, for
     /// chunks the open log `open` took since, their pre-images there.
     fn rewind_prepared(&mut self, p: &Prepared, open: Option<&Log>) -> Vec<(u32, ChunkPtr)> {
-        let base = self.base as usize;
+        let base = SharedPtr(self.base as *mut u64);
         let mut extra: Vec<(u32, ChunkPtr)> = vec![];
         if let Some(o) = open {
             for &(c, q) in &o.entries {
@@ -921,19 +1274,19 @@ impl Core {
             redo.push((c, self.slab.take()));
             fresh.push(true);
         }
-        let work: Vec<(usize, usize, usize, bool)> = redo
+        let work: Vec<(SharedPtr, SharedPtr, SharedPtr, bool)> = redo
             .iter()
             .enumerate()
             .map(|(i, &(c, r))| {
                 let src = if i < p.cs.len() {
-                    p.buf[i * CHUNK_WORDS..].as_ptr() as usize
+                    p.buf[i * CHUNK_WORDS..].as_ptr() as *mut u64
                 } else {
-                    extra[i - p.cs.len()].1 as usize
+                    extra[i - p.cs.len()].1
                 };
                 (
-                    base + ((c as usize) << CHUNK_SHIFT),
-                    r as usize,
-                    src,
+                    SharedPtr(base.chunk(c)),
+                    SharedPtr(r),
+                    SharedPtr(src),
                     fresh[i],
                 )
             })
@@ -945,9 +1298,9 @@ impl Core {
             // log's slab chunks).
             unsafe {
                 if fresh {
-                    std::ptr::copy_nonoverlapping(live as *const u64, r as *mut u64, CHUNK_WORDS);
+                    std::ptr::copy_nonoverlapping(live.0 as *const u64, r.0, CHUNK_WORDS);
                 }
-                std::ptr::copy_nonoverlapping(src as *const u64, live as *mut u64, CHUNK_WORDS);
+                std::ptr::copy_nonoverlapping(src.0 as *const u64, live.0, CHUNK_WORDS);
             }
         };
         run_jobs(work.len(), self.workers(), &job);
@@ -956,18 +1309,16 @@ impl Core {
 
     /// Copy whole chunks into the live space.
     fn copy_in(&mut self, chunks: &[(u32, ChunkPtr)]) {
-        let base = self.base as usize;
-        let work: Vec<(usize, usize)> = chunks
+        let base = SharedPtr(self.base as *mut u64);
+        let work: Vec<(SharedPtr, SharedPtr)> = chunks
             .iter()
-            .map(|&(c, p)| (base + ((c as usize) << CHUNK_SHIFT), p as usize))
+            .map(|&(c, p)| (SharedPtr(base.chunk(c)), SharedPtr(p)))
             .collect();
         let job = |k: usize| {
             let (live, src) = work[k];
             // SAFETY: distinct live chunks; sources are slab chunks nobody
             // writes meanwhile.
-            unsafe {
-                std::ptr::copy_nonoverlapping(src as *const u64, live as *mut u64, CHUNK_WORDS)
-            };
+            unsafe { std::ptr::copy_nonoverlapping(src.0 as *const u64, live.0, CHUNK_WORDS) };
         };
         run_jobs(work.len(), self.workers(), &job);
     }
@@ -981,6 +1332,7 @@ impl Core {
 
     /// Restore to `id` and discard every later checkpoint (the plain restart).
     fn restore_discard(&mut self, id: CheckpointId) -> Result<(), String> {
+        self.drop_part();
         let k = self
             .index_of(id)
             .ok_or_else(|| format!("checkpoint {id} is not retained"))?;
@@ -1001,7 +1353,56 @@ impl Core {
         let k = self
             .index_of(id)
             .ok_or_else(|| format!("checkpoint {id} is not retained"))?;
-        let prepared = self.prepared.take();
+        let mut prepared = self.prepared.take();
+        // a preparation newer work stopped: finished here, from where it got
+        // (a whole one, when there is one, is newer: `prepare_restore` drops
+        // the other kind) -- once its rewind is done. Before that, going on
+        // costs more than the plain restore: the rest of a serial rewind
+        // into a copy of every chunk, then the copies in, against `rewind`'s
+        // one parallel pass over the live space (measured on Infinite
+        // Descent x2 with 60 ms between keys: the restore's engine-thread
+        // instructions 82 M plain, 358 M going on from early parts).
+        match self.take_part(id) {
+            Some(p) if prepared.is_some() => self.give_pre(p.pre),
+            Some(p) if p.rewound < self.logs.len() - k => {
+                if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
+                    eprintln!(
+                        "[arena] preparation for {id} dropped: {}/{} logs rewound",
+                        p.rewound,
+                        self.logs.len() - k
+                    );
+                }
+                self.give_pre(p.pre);
+            }
+            Some(mut p) => {
+                if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
+                    eprintln!(
+                        "[arena] preparation for {id} goes on (logs {}/{} looked through, \
+                         {}/{} copied, {} rewound, {} redo)",
+                        p.collected,
+                        self.logs.len() - k,
+                        p.copied,
+                        p.cs.len(),
+                        p.rewound,
+                        p.pre.len()
+                    );
+                }
+                if self.prepare_go_on(&mut p, k, &mut || false) {
+                    prepared = Some(Prepared {
+                        id,
+                        ids: p.ids,
+                        history_gen: p.history_gen,
+                        cs: p.cs,
+                        buf: p.buf,
+                        pre: p.pre,
+                    });
+                } else {
+                    // (not reached: nothing asks it to stop)
+                    self.give_pre(p.pre);
+                }
+            }
+            None => {}
+        }
         if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
             match &prepared {
                 Some(p) => eprintln!(
@@ -1026,6 +1427,15 @@ impl Core {
             }
             None => None,
         };
+        if let Some(p) = &prepared {
+            if std::env::var_os("FLASHTEX_VERIFY_PREPARED").is_some() {
+                if let Err(e) = self.verify_prepared_use(p, k) {
+                    // (a verify mode: loud, so that a sweep fails)
+                    eprintln!("{e}");
+                    std::process::abort();
+                }
+            }
+        }
         let old_logs = self.logs.split_off(k);
         let old_ids = self.ids.split_off(k);
         if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
@@ -1057,6 +1467,7 @@ impl Core {
     /// nothing written since. Jump to the old run's latest state and keep its
     /// checkpoints from `old` on.
     fn converge(&mut self, branch: Branch, old: CheckpointId) -> Result<(), String> {
+        self.drop_part();
         let Some(j) = branch.ids.iter().position(|&x| x == old) else {
             let b = branch;
             self.drop_branch(b);
@@ -1129,6 +1540,7 @@ impl Core {
     /// run's latest state (the redo log) and its checkpoints back -- as if
     /// the restore had not happened.
     fn reattach(&mut self, branch: Branch) -> Result<(), String> {
+        self.drop_part();
         let target = *branch.ids.first().ok_or("empty branch")?;
         let Some(k) = self.index_of(target) else {
             self.drop_branch(branch);
@@ -1201,6 +1613,61 @@ impl Core {
         Ok(())
     }
 
+    /// `FLASHTEX_VERIFY_PREPARED`, where `restore_branch` uses `p` (the
+    /// logs from index `k` on): it holds every chunk the sealed logs from
+    /// its checkpoint on hold, and only chunks those logs or the open one
+    /// hold (the open log may have taken new chunks since: their pre-images
+    /// there are their values at the checkpoint, `rewind_prepared`); each
+    /// chunk is what rewinding the logs as they are now gives; and each
+    /// redo made ahead of a chunk the barrier has not saved since is the
+    /// live chunk.
+    fn verify_prepared_use(&self, p: &Prepared, k: usize) -> Result<(), String> {
+        let logs = &self.logs[k..];
+        let (sealed, open) = logs.split_at(logs.len().saturating_sub(1));
+        let mut must: Vec<u32> = sealed.iter().flat_map(|l| l.chunk_ids()).collect();
+        must.sort_unstable();
+        must.dedup();
+        if let Some(c) = must.iter().find(|c| p.cs.binary_search(c).is_err()) {
+            return Err(format!(
+                "FLASHTEX_VERIFY_PREPARED: chunk {c} of a sealed log is not prepared"
+            ));
+        }
+        let mut open_ids: Vec<u32> = open.iter().flat_map(|l| l.chunk_ids()).collect();
+        open_ids.sort_unstable();
+        let held = |c: &u32| must.binary_search(c).is_ok() || open_ids.binary_search(c).is_ok();
+        if let Some(c) = p.cs.iter().find(|c| !held(c)) {
+            return Err(format!(
+                "FLASHTEX_VERIFY_PREPARED: chunk {c} is prepared, no log holds it"
+            ));
+        }
+        let live = |c: u32| self.chunk_ptr(c as usize) as *const u64;
+        if rewound(self.nchunks, &p.cs, &live, logs) != p.buf {
+            return Err(
+                "FLASHTEX_VERIFY_PREPARED: a prepared chunk differs from the rewound one".into(),
+            );
+        }
+        let saved = self.saved_ref();
+        for (i, &d) in p.pre.iter().enumerate() {
+            let c = p.cs[i] as usize;
+            if d.is_null() || saved[c] != 0 {
+                continue;
+            }
+            // SAFETY: a slab chunk and a live chunk, CHUNK_WORDS words each.
+            let (a, b) = unsafe {
+                (
+                    std::slice::from_raw_parts(d as *const u64, CHUNK_WORDS),
+                    std::slice::from_raw_parts(self.chunk_ptr(c), CHUNK_WORDS),
+                )
+            };
+            if a != b {
+                return Err(format!(
+                    "FLASHTEX_VERIFY_PREPARED: the redo made ahead of chunk {c} is stale"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// `FLASHTEX_VERIFY_PREPARED`: the prepared restore holds exactly the
     /// chunks the logs from its checkpoint on hold, each as rewinding those
     /// logs gives it.
@@ -1237,6 +1704,42 @@ impl Core {
         for (_, p) in b.redo {
             self.slab.give(p);
         }
+    }
+
+    /// `retain` for a detached branch (the old run's future): drop every
+    /// checkpoint of `b` that `keep` rejects, except its first (the restore
+    /// target, in the live chain too) and its newest, merging each dropped
+    /// log into its predecessor. What the branch is for stays exact: the
+    /// old run's state at every checkpoint kept (rewound from its end
+    /// through the logs after it, which are untouched or merged), the
+    /// chunks it wrote after the target (a merged log holds the union of
+    /// its parts'), and `reattach`, which puts back a chain with fewer
+    /// checkpoints.
+    fn retain_branch(&mut self, b: &mut Branch, keep: &dyn Fn(CheckpointId) -> bool) {
+        let _m = crate::memstat::scope(crate::memstat::tag::LOG);
+        let n = b.ids.len();
+        let ids = std::mem::take(&mut b.ids);
+        let logs = std::mem::take(&mut b.logs);
+        let mut out_ids = Vec::with_capacity(n);
+        let mut out_logs: Vec<Log> = Vec::with_capacity(n);
+        for (i, (id, log)) in ids.into_iter().zip(logs).enumerate() {
+            let sealed = |l: &Log| l.entries.is_empty();
+            let dst = out_logs.last_mut();
+            match dst {
+                Some(dst) if i + 1 < n && !keep(id) && sealed(dst) && sealed(&log) => {
+                    let merged = merge_sealed(dst, &log);
+                    self.sealed_bytes += merged.sealed_bytes();
+                    self.sealed_bytes -= dst.sealed_bytes() + log.sealed_bytes();
+                    *dst = merged;
+                }
+                _ => {
+                    out_ids.push(id);
+                    out_logs.push(log);
+                }
+            }
+        }
+        b.ids = out_ids;
+        b.logs = out_logs;
     }
 
     /// Drop every checkpoint `keep` rejects, except the newest, merging each
@@ -1288,10 +1791,12 @@ impl Drop for Core {
 }
 
 /// Arrays that are not the engine's state, which `Arena::diff_branch`
-/// leaves out (the convergence test, DESIGN.md §5.3): the display list's
-/// side table (changes/displaylist.ch), source positions that nothing TeX
-/// computes reads. Only its chunks that hold nothing else are left out;
-/// `crate::incr`'s word comparison drops the rest of it. The convergence
+/// leaves out: the display list's side table (changes/displaylist.ch),
+/// source positions that nothing TeX computes reads. Only its chunks that
+/// hold nothing else are left out. The convergence test compares it node
+/// by node instead (`crate::iso`: a node still to be shipped keeps its
+/// position from the jump), rewinding only the chunks of live nodes
+/// ([`Arena::branch_old_chunks`]). The convergence
 /// jump adopts them like every other array ([`Arena::diff_branch_all`]):
 /// the side table must describe the nodes of the `mem` it adopts (left out,
 /// nodes live at the jump kept the new run's positions for the old run's
@@ -1300,7 +1805,13 @@ impl Drop for Core {
 const UNSTATED: &[&str] = &["dl_side"];
 
 /// Chunks below which a restore runs on one thread.
-const PARALLEL_MIN: usize = (4 << 20) / CHUNK_BYTES;
+const PARALLEL_MIN: usize = if cfg!(miri) {
+    // Miri runs the tests at a fiftieth of their size (tests::space): a lower
+    // bar keeps the parallel paths, and their `Sync` sharing, under its checks.
+    16
+} else {
+    (4 << 20) / CHUNK_BYTES
+};
 
 /// Run `job(0..n)` on up to `workers` scoped threads. A restore is bound by
 /// memory bandwidth and independent per chunk; below the threshold spawning
@@ -1341,6 +1852,9 @@ pub struct Arena {
     /// Old checkpoints' chunk values, as the convergence tests rewound
     /// them (`OldCache`).
     old_cache: std::cell::RefCell<OldCache>,
+    /// `FLASHTEX_VERIFY_OLDCACHE` (read when the space is made): every kept
+    /// chunk a convergence test uses is rewound again and compared.
+    verify_old_cache: bool,
 }
 
 /// The value of chunks at a few checkpoints, as `diff_branch_inner` rewound
@@ -1354,12 +1868,18 @@ pub struct Arena {
 /// place, which tests against the same old checkpoints keystroke after
 /// keystroke, rewinds the old future (O(pages after the edit)) only for
 /// chunks it has not seen there. `FLASHTEX_VERIFY_OLDCACHE=1` rewinds
-/// every chunk anyway and aborts the process on any difference.
+/// the kept chunks too and aborts the process on any difference; what it
+/// keeps is what it keeps without the mode.
 #[derive(Default)]
 struct OldCache {
     /// (checkpoint, history_gen, chunk -> index into `words` / CHUNK_WORDS),
     /// most recently used last.
     at: Vec<OldAt>,
+    /// Chunks `diff_branch_inner` took from here, and rewound, over this
+    /// space's life (for DONE's stages: cumulative). Per space, not
+    /// process-wide: tests running in parallel each read their own.
+    hits: u64,
+    misses: u64,
 }
 
 /// One checkpoint's kept chunks: (checkpoint, history_gen, chunk -> index
@@ -1369,11 +1889,6 @@ type OldAt = (CheckpointId, u64, HashMap<u32, usize>, Vec<u64>);
 /// Checkpoints `OldCache` keeps, and the chunks it keeps in all (1 KB each).
 const OLD_CACHE_CHECKPOINTS: usize = 4;
 const OLD_CACHE_CHUNKS: usize = 16 * 1024;
-
-/// Chunks `diff_branch_inner` took from `OldCache` and rewound (for
-/// DONE's stages: cumulative).
-pub static OLD_CACHE_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-pub static OLD_CACHE_MISSES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl OldCache {
     fn get(&self, id: CheckpointId, gen: u64, c: u32) -> Option<&[u64]> {
@@ -1443,7 +1958,10 @@ impl Arena {
         // extra chunk to get there.
         let map_len = bytes + CHUNK_BYTES;
         let map = os::alloc_zeroed(map_len);
-        let base = (map as usize).next_multiple_of(CHUNK_BYTES) as *mut u8;
+        // Derived from `map` (not cast from an integer), so the pointer keeps
+        // the mapping's provenance and Miri checks every access through it.
+        // SAFETY: at most CHUNK_BYTES - 1 into a mapping of bytes + CHUNK_BYTES.
+        let base = unsafe { map.add(map.addr().next_multiple_of(CHUNK_BYTES) - map.addr()) };
         let core = Box::new(Core {
             map,
             map_len,
@@ -1466,6 +1984,7 @@ impl Arena {
             threads: 0,
             sealed_bytes: 0,
             prepared: None,
+            part: None,
             history_gen: 0,
             prepare_on_reattach: std::env::var_os("FLASHTEX_NO_PREPARE").is_none(),
         });
@@ -1475,6 +1994,7 @@ impl Arena {
             extra: None,
             regions: vec![],
             old_cache: Default::default(),
+            verify_old_cache: std::env::var_os("FLASHTEX_VERIFY_OLDCACHE").is_some(),
         }
     }
 
@@ -1561,6 +2081,127 @@ impl Arena {
         self.core().touched[c] != 0
     }
 
+    /// Give back the memory of the space's pages that were written but hold
+    /// only zeros (`os::zero_pages`): they read as zero as before, and take
+    /// no memory until written again. Nothing the engine or a checkpoint
+    /// can see changes: the bytes are the same, and `touched`, the barrier's
+    /// flags and the logs are left as they are (lane MEM-BASELINE). Most
+    /// such pages are TeX's `initialize` clearing whole tables that the
+    /// format leaves empty: `hash` (its `hash_extra` part, 4.8 MB), and
+    /// `font_info` past the fonts (3.4 MB), on every format load. The host's
+    /// idle trim calls it, on the engine thread. The bytes given back.
+    pub fn release_zero_pages(&mut self) -> usize {
+        let page = os::page_size();
+        let c = self.core();
+        if page < CHUNK_BYTES || !page.is_multiple_of(CHUNK_BYTES) {
+            return 0;
+        }
+        let per = page / CHUNK_BYTES;
+        // whole pages of the space only
+        let lo = (c.base as usize).next_multiple_of(page);
+        let hi = (c.base as usize + c.bytes) / page * page;
+        if hi <= lo {
+            return 0;
+        }
+        let first_chunk = (lo - c.base as usize) / CHUNK_BYTES;
+        let npages = (hi - lo) / page;
+        // Only resident pages are read: reading one given back earlier (or
+        // never written) would bring a page in again.
+        let Some(res) = crate::memstat::resident_pages(lo as *const u8, hi - lo) else {
+            return 0;
+        };
+        let zero = |pg: usize| -> bool {
+            let c0 = first_chunk + pg * per;
+            if !res[pg] || !(c0..c0 + per).any(|k| c.touched[k] != 0) {
+                return false;
+            }
+            // SAFETY: a whole page inside the mapping.
+            let w = unsafe { std::slice::from_raw_parts((lo + pg * page) as *const u64, page / 8) };
+            w.iter().all(|&x| x == 0)
+        };
+        let mut given = 0;
+        let mut pg = 0;
+        while pg < npages {
+            if !zero(pg) {
+                pg += 1;
+                continue;
+            }
+            let start = pg;
+            while pg < npages && zero(pg) {
+                pg += 1;
+            }
+            let (p, len) = ((lo + start * page) as *mut u8, (pg - start) * page);
+            // SAFETY: whole pages of the space's own mapping, all zero; the
+            // caller holds `&mut self`, so nothing else reads or writes the
+            // space meanwhile.
+            if unsafe { os::zero_pages(p, len) } {
+                given += len;
+            }
+        }
+        ZERO_RELEASED.fetch_add(given as u64, std::sync::atomic::Ordering::Relaxed);
+        given
+    }
+
+    /// Put a persisted space's pages into this fresh arena (no checkpoints)
+    /// by mapping them from the file, copy on write (`os::map_file_over`):
+    /// the `i`th of `pages` (each `granule` bytes of the space, ascending)
+    /// is the file's `granule` bytes at `off + i * granule`. False, with
+    /// nothing mapped (the caller copies the chunks then), where the system
+    /// cannot map files (Windows, WASI), the page size does not divide
+    /// `granule`, or a page lies outside the space; a mapping that fails
+    /// aborts (`os::map_file_over`). The chunks it fills are still to be
+    /// marked with [`Arena::mark_loaded`].
+    pub fn map_pages(
+        &mut self,
+        f: &std::fs::File,
+        off: u64,
+        pages: &[u32],
+        granule: usize,
+    ) -> bool {
+        assert!(self.core().ids.is_empty(), "map_pages under a checkpoint");
+        let page = os::page_size();
+        let c = self.core();
+        let (base, end) = (c.base as usize, c.map as usize + c.map_len);
+        if granule == 0
+            || !granule.is_multiple_of(page)
+            || !base.is_multiple_of(page)
+            || !(off as usize).is_multiple_of(page)
+            || pages.windows(2).any(|w| w[0] >= w[1])
+            || pages
+                .last()
+                .is_some_and(|&p| base + (p as usize + 1) * granule > end)
+        {
+            return false;
+        }
+        let mut i = 0;
+        while i < pages.len() {
+            let mut j = i + 1;
+            while j < pages.len() && pages[j] == pages[j - 1] + 1 {
+                j += 1;
+            }
+            let p = (base + pages[i] as usize * granule) as *mut u8;
+            // SAFETY: whole pages inside the space's mapping (checked
+            // above); `&mut self` and no checkpoints: nothing else uses them.
+            // (false only where nothing was mapped: the first call, on a
+            // system that does not map files)
+            if !unsafe { os::map_file_over(f, off + (i * granule) as u64, p, (j - i) * granule) } {
+                return false;
+            }
+            i = j;
+        }
+        true
+    }
+
+    /// Mark chunk `c` as loaded (written, its pre-image needing no copy), as
+    /// [`Arena::load_chunk`] does, for a chunk [`Arena::map_pages`] filled.
+    pub fn mark_loaded(&mut self, c: usize) {
+        assert!(c < self.chunks());
+        assert!(self.core().ids.is_empty(), "mark_loaded under a checkpoint");
+        let core = self.core_mut();
+        core.touched[c] = 1;
+        core.saved()[c] = 1;
+    }
+
     /// Overwrite chunk `c` without the barrier: only for loading a persisted
     /// space into a fresh arena that has no checkpoints.
     pub fn load_chunk(&mut self, c: usize, data: &[u8]) {
@@ -1608,32 +2249,30 @@ impl Arena {
             if !prev.entries.is_empty() {
                 return Err("or_from: the log before the checkpoint is not sealed".into());
             }
-            match prev.deltas.iter().position(|d| d.c == c) {
-                Some(di) if prev.deltas[di].mask[mw] >> b & 1 == 1 => {}
-                Some(di) => {
-                    let d = prev.deltas[di];
-                    let idx = d.at as usize
-                        + d.mask[..mw]
+            let held = prev
+                .deltas
+                .iter()
+                .any(|d| d.c == c && d.mask[mw] >> b & 1 == 1);
+            if !held {
+                let before = prev.sealed_bytes();
+                prev.rewrite(|ds| match ds.iter_mut().find(|e| e.0 == c) {
+                    Some((_, mask, vals)) => {
+                        // the word's place among the delta's words, in bit order
+                        let idx = mask[..mw]
                             .iter()
                             .map(|m| m.count_ones() as usize)
                             .sum::<usize>()
-                        + (d.mask[mw] & ((1u64 << b) - 1)).count_ones() as usize;
-                    prev.words.insert(idx, v);
-                    prev.deltas[di].mask[mw] |= 1u64 << b;
-                    for d2 in prev.deltas.iter_mut() {
-                        if d2.at > d.at {
-                            d2.at += 1;
-                        }
+                            + (mask[mw] & ((1u64 << b) - 1)).count_ones() as usize;
+                        vals.insert(idx, v);
+                        mask[mw] |= 1u64 << b;
                     }
-                }
-                None => {
-                    let at = prev.words.len() as u32;
-                    prev.words.push(v);
-                    let mut mask = [0u64; MASK_WORDS];
-                    mask[mw] = 1u64 << b;
-                    let pos = prev.deltas.partition_point(|d| d.c < c);
-                    prev.deltas.insert(pos, Delta { c, at, mask });
-                }
+                    None => {
+                        let mut mask = [0u64; MASK_WORDS];
+                        mask[mw] = 1u64 << b;
+                        ds.push((c, mask, vec![v]));
+                    }
+                });
+                core.sealed_bytes = core.sealed_bytes + prev.sealed_bytes() - before;
             }
         }
         let mut n = 0;
@@ -1645,17 +2284,26 @@ impl Arena {
                     n += 1;
                 }
             }
-            for d in &log.deltas {
-                if d.c == c && d.mask[mw] >> b & 1 == 1 {
-                    let idx = d.at as usize
-                        + d.mask[..mw]
-                            .iter()
-                            .map(|m| m.count_ones() as usize)
-                            .sum::<usize>()
-                        + (d.mask[mw] & ((1u64 << b) - 1)).count_ones() as usize;
-                    log.words[idx] |= bits;
-                    n += 1;
-                }
+            if log
+                .deltas
+                .iter()
+                .any(|d| d.c == c && d.mask[mw] >> b & 1 == 1)
+            {
+                let before = log.sealed_bytes();
+                log.rewrite(|ds| {
+                    for (dc, mask, vals) in ds.iter_mut() {
+                        if *dc == c && mask[mw] >> b & 1 == 1 {
+                            let idx = mask[..mw]
+                                .iter()
+                                .map(|m| m.count_ones() as usize)
+                                .sum::<usize>()
+                                + (mask[mw] & ((1u64 << b) - 1)).count_ones() as usize;
+                            vals[idx] |= bits;
+                            n += 1;
+                        }
+                    }
+                });
+                core.sealed_bytes = core.sealed_bytes + log.sealed_bytes() - before;
             }
         }
         // SAFETY: inside the mapping, 8-byte aligned.
@@ -1668,9 +2316,21 @@ impl Arena {
     pub fn write_through(&mut self, off: usize, src: &[u8]) {
         let core = self.core_mut();
         assert!(off + src.len() <= core.bytes);
+        // No reference into the space may be live across `save`, which reads
+        // the chunk through the core's own pointer to keep its pre-image: a
+        // `&mut` slice held over it (as this did until 2026-10-04) let the
+        // compiler move the write before that read, which Miri's Stacked
+        // Borrows check reported (scalar_spill_goes_through_the_barrier).
+        // So each comparison borrows the space only for itself, and the
+        // write goes through a raw pointer after the save.
         // SAFETY: inside the mapping.
-        let dst = unsafe { std::slice::from_raw_parts_mut(core.base.add(off), src.len()) };
-        if dst == src {
+        let dst = unsafe { core.base.add(off) };
+        // SAFETY: `lo..hi` lies inside `dst..dst + src.len()`, in the
+        // mapping; the shared borrow ends with the comparison.
+        let same = |lo: usize, hi: usize| unsafe {
+            std::slice::from_raw_parts(dst.add(lo), hi - lo) == &src[lo..hi]
+        };
+        if same(0, src.len()) {
             return;
         }
         let first = off >> CHUNK_SHIFT;
@@ -1678,11 +2338,14 @@ impl Arena {
         for c in first..=last {
             let lo = (c << CHUNK_SHIFT).max(off) - off;
             let hi = ((c + 1) << CHUNK_SHIFT).min(off + src.len()) - off;
-            if dst[lo..hi] != src[lo..hi] {
+            if !same(lo, hi) {
                 if core.saved()[c] == 0 {
                     core.save(c);
                 }
-                dst[lo..hi].copy_from_slice(&src[lo..hi]);
+                // SAFETY: as above; `src` is not in the space (the caller
+                // passes the spilled scalars), and no reference into it is
+                // live.
+                unsafe { std::ptr::copy_nonoverlapping(src[lo..].as_ptr(), dst.add(lo), hi - lo) };
             }
         }
     }
@@ -1722,6 +2385,10 @@ impl Arena {
         self.core_mut().drop_branch(b)
     }
 
+    pub fn retain_branch(&mut self, b: &mut Branch, keep: &dyn Fn(CheckpointId) -> bool) {
+        self.core_mut().retain_branch(b, keep)
+    }
+
     pub fn reattach(&mut self, b: Branch) -> Result<(), String> {
         self.core_mut().reattach(b)
     }
@@ -1735,6 +2402,19 @@ impl Arena {
     /// when it has been idle a while (its memory goes back to the system).
     pub fn drop_old_cache(&self) {
         self.old_cache.borrow_mut().at = Vec::new();
+    }
+
+    /// The convergence tests' old chunks taken from `OldCache` and rewound,
+    /// over this space's life: (kept, rewound).
+    pub fn old_cache_counts(&self) -> (u64, u64) {
+        let c = self.old_cache.borrow();
+        (c.hits, c.misses)
+    }
+
+    /// Give back a stopped preparation's copies (`PartPrep`): an idle trim's
+    /// memory. The next preparation or restore starts afresh.
+    pub fn drop_stopped_preparation(&mut self) {
+        self.core_mut().drop_part();
     }
 
     /// Bytes the old checkpoints' kept chunks hold.
@@ -1781,14 +2461,10 @@ impl Arena {
         cs.sort_unstable();
         let live = |c: u32| core.chunk_ptr(c as usize) as *const u64;
         let bufs = rewound(core.nchunks, &cs, &live, &core.logs[k..]);
-        let mut over: Vec<*const u64> = vec![std::ptr::null(); core.nchunks];
-        for (i, &c) in cs.iter().enumerate() {
-            over[c as usize] = bufs[i * CHUNK_WORDS..].as_ptr();
-        }
         Ok(View {
             arena: self,
-            over,
-            _bufs: bufs,
+            cs,
+            bufs,
         })
     }
 
@@ -1889,6 +2565,91 @@ impl Arena {
         self.diff_branch_inner(b, old, stop, false)
     }
 
+    /// The chunks of region `name` that either run wrote since the restore
+    /// target of `b` (the old run up to its checkpoint `old`, the live run
+    /// since the restore), as a bitmap by chunk: every other chunk of the
+    /// region holds the same words in the old run's state at `old` as now.
+    pub fn branch_written(
+        &self,
+        b: &Branch,
+        old: CheckpointId,
+        name: &str,
+    ) -> Result<Vec<u64>, String> {
+        let core = self.core();
+        let r = *b.ids.first().ok_or("empty branch")?;
+        let kr = core
+            .index_of(r)
+            .ok_or_else(|| format!("restore target {r} is not in the live chain"))?;
+        let jj = b
+            .ids
+            .iter()
+            .position(|&x| x == old)
+            .ok_or_else(|| format!("checkpoint {old} is not in the detached run"))?;
+        let Some(reg) = self.regions.iter().find(|r| r.name == name) else {
+            return Ok(vec![]);
+        };
+        let (lo, hi) = (
+            reg.off / CHUNK_BYTES,
+            (reg.off + reg.bytes).div_ceil(CHUNK_BYTES),
+        );
+        let mut seen = vec![0u64; core.nchunks.div_ceil(64)];
+        for log in b.logs[..jj].iter().chain(&core.logs[kr..]) {
+            for c in log.chunk_ids() {
+                if (lo..hi).contains(&(c as usize)) {
+                    set_bit(&mut seen, c as usize);
+                }
+            }
+        }
+        Ok(seen)
+    }
+
+    /// The old run's value at its checkpoint `old` of each chunk of `cs`
+    /// (sorted, each written since the restore target: `branch_written`),
+    /// rewound only for those chunks: [`diff_branch`](Self::diff_branch)'s
+    /// rule for one chunk. `Ok(None)` when `stop` said to stop.
+    pub fn branch_old_chunks(
+        &self,
+        b: &Branch,
+        old: CheckpointId,
+        cs: &[u32],
+        stop: &mut dyn FnMut() -> bool,
+    ) -> Result<Option<HashMap<u32, Vec<u64>>>, String> {
+        let core = self.core();
+        let r = *b.ids.first().ok_or("empty branch")?;
+        let kr = core
+            .index_of(r)
+            .ok_or_else(|| format!("restore target {r} is not in the live chain"))?;
+        let jj = b
+            .ids
+            .iter()
+            .position(|&x| x == old)
+            .ok_or_else(|| format!("checkpoint {old} is not in the detached run"))?;
+        let want: std::collections::HashSet<u32> = cs.iter().copied().collect();
+        let mut redo_of: HashMap<u32, *const u64> = HashMap::new();
+        for &(c, p) in &b.redo {
+            if want.contains(&c) {
+                redo_of.insert(c, p as *const u64);
+            }
+        }
+        let (in_old, at_r): (Vec<u32>, Vec<u32>) = cs.iter().partition(|c| redo_of.contains_key(c));
+        let n = core.nchunks;
+        let Some(o) = rewound_until(n, &in_old, &|c| redo_of[&c], &b.logs[jj..], stop) else {
+            return Ok(None);
+        };
+        let live = |c: u32| core.chunk_ptr(c as usize) as *const u64;
+        let Some(a) = rewound_until(n, &at_r, &live, &core.logs[kr..], stop) else {
+            return Ok(None);
+        };
+        let mut out = HashMap::with_capacity(cs.len());
+        for (i, &c) in in_old.iter().enumerate() {
+            out.insert(c, o[i * CHUNK_WORDS..(i + 1) * CHUNK_WORDS].to_vec());
+        }
+        for (i, &c) in at_r.iter().enumerate() {
+            out.insert(c, a[i * CHUNK_WORDS..(i + 1) * CHUNK_WORDS].to_vec());
+        }
+        Ok(Some(out))
+    }
+
     fn diff_branch_inner(
         &self,
         b: &Branch,
@@ -1910,21 +2671,33 @@ impl Arena {
         let mut seen = vec![0u64; n.div_ceil(64)];
         let mut cand: Vec<u32> = Vec::new();
         // Chunks wholly inside an array the comparison leaves out
-        // (`UNSTATED`) are not candidates: taken as seen.
+        // (`UNSTATED`) are not candidates. Their old values are rewound
+        // anyway, in the same pass, and kept (`OldCache`): a test that
+        // passes is followed by the jump's comparison at the same
+        // checkpoint, which reads them (`diff_branch_all`), and it then
+        // rewinds nothing (lane P4-TYPING-200WPM (b): on *Infinite Descent*
+        // each rewind is a pass over 3,100 logs, 4.5 M entries, ~140 M
+        // instructions).
+        let mut unstated = vec![0u64; n.div_ceil(64)];
         for r in self
             .regions
             .iter()
             .filter(|r| skip_unstated && UNSTATED.contains(&r.name))
         {
             for c in r.off.div_ceil(CHUNK_BYTES)..(r.off + r.bytes) / CHUNK_BYTES {
-                set_bit(&mut seen, c);
+                set_bit(&mut unstated, c);
             }
         }
+        let mut extra: Vec<u32> = Vec::new();
         for log in b.logs[..jj].iter().chain(&core.logs[kr..]) {
             for c in log.chunk_ids() {
                 if !bit(&seen, c as usize) {
                     set_bit(&mut seen, c as usize);
-                    cand.push(c);
+                    if bit(&unstated, c as usize) {
+                        extra.push(c);
+                    } else {
+                        cand.push(c);
+                    }
                 }
             }
         }
@@ -1939,33 +2712,62 @@ impl Arena {
             cand.iter().partition(|c| redo_of.contains_key(c));
         in_old.sort_unstable();
         at_r.sort_unstable();
+        extra.retain(|c| redo_of.contains_key(c));
         let t = std::time::Instant::now();
         // The old run's values at `old`: those `OldCache` holds, the rest
-        // rewound from the old run's end (every one with
-        // FLASHTEX_VERIFY_OLDCACHE, which compares).
+        // rewound from the old run's end (the kept ones too with
+        // FLASHTEX_VERIFY_OLDCACHE, which compares them and keeps no more).
         let gen = core.history_gen;
-        let verify = std::env::var_os("FLASHTEX_VERIFY_OLDCACHE").is_some();
+        let verify = self.verify_old_cache;
         let (cached, misses): (Vec<u32>, Vec<u32>) = {
             let cache = self.old_cache.borrow();
             in_old
                 .iter()
                 .partition(|&&c| cache.get(old, gen, c).is_some())
         };
-        let rewind: &[u32] = if verify { &in_old } else { &misses };
-        let Some(rew) = rewound_until(n, rewind, &|c| redo_of[&c], &b.logs[jj..], stop) else {
+        // (the unstated ones not kept yet, with them)
+        let extra_misses: Vec<u32> = {
+            let cache = self.old_cache.borrow();
+            extra
+                .iter()
+                .copied()
+                .filter(|&c| cache.get(old, gen, c).is_none())
+                .collect()
+        };
+        // What is rewound and kept is the same with the verify mode as
+        // without it (the sweeps keep chunks on production's schedule):
+        // the misses and, with them, in the same pass, the unstated ones not
+        // kept yet. The verify mode rewinds the kept ones too, only to
+        // compare them.
+        let mut keep: Vec<u32> = misses.clone();
+        if !misses.is_empty() {
+            keep.extend(&extra_misses);
+        }
+        keep.sort_unstable();
+        let mut rewind = keep.clone();
+        if verify {
+            rewind.extend(&cached);
+            rewind.sort_unstable();
+        }
+        // (nothing to rewind: no pass over the logs)
+        let rew = if rewind.is_empty() {
+            Some(Vec::new())
+        } else {
+            rewound_until(n, &rewind, &|c| redo_of[&c], &b.logs[jj..], stop)
+        };
+        let Some(rew) = rew else {
             return Ok(None);
         };
         let mut old_buf = vec![0u64; in_old.len() * CHUNK_WORDS];
         {
             let cache = self.old_cache.borrow();
-            let mut r = 0;
             for (i, &c) in in_old.iter().enumerate() {
                 let dst = &mut old_buf[i * CHUNK_WORDS..(i + 1) * CHUNK_WORDS];
-                let mine = rewind.get(r) == Some(&c);
-                if mine {
+                let mine = rewind.binary_search(&c).ok();
+                if let Some(r) = mine {
                     dst.copy_from_slice(&rew[r * CHUNK_WORDS..(r + 1) * CHUNK_WORDS]);
-                    r += 1;
                 }
+                let mine = mine.is_some();
                 if let Some(v) = cache.get(old, gen, c) {
                     if mine && v != &dst[..] {
                         // (a verify mode: loud, so that a sweep fails)
@@ -1978,16 +2780,20 @@ impl Arena {
                 }
             }
         }
-        OLD_CACHE_HITS.fetch_add(cached.len() as u64, std::sync::atomic::Ordering::Relaxed);
-        OLD_CACHE_MISSES.fetch_add(misses.len() as u64, std::sync::atomic::Ordering::Relaxed);
-        if !misses.is_empty() {
-            // (`rew` holds them in `rewind`'s order, which is in_old's or theirs)
-            let mut mb = Vec::with_capacity(misses.len() * CHUNK_WORDS);
-            for &c in &misses {
+        {
+            let mut cache = self.old_cache.borrow_mut();
+            cache.hits += cached.len() as u64;
+            cache.misses += misses.len() as u64;
+        }
+        // (kept: the misses and the unstated ones rewound with them, none
+        // kept yet)
+        if !keep.is_empty() {
+            let mut mb = Vec::with_capacity(keep.len() * CHUNK_WORDS);
+            for &c in &keep {
                 let i = rewind.binary_search(&c).expect("a rewound chunk");
                 mb.extend_from_slice(&rew[i * CHUNK_WORDS..(i + 1) * CHUNK_WORDS]);
             }
-            self.old_cache.borrow_mut().put(old, gen, &misses, &mb);
+            self.old_cache.borrow_mut().put(old, gen, &keep, &mb);
         }
         let t_old = t.elapsed();
         let live = |c: u32| core.chunk_ptr(c as usize) as *const u64;
@@ -2096,7 +2902,7 @@ impl Arena {
             .sum();
         let sum = |logs: &[Log]| -> (usize, usize, usize) {
             logs.iter().fold((0, 0, 0), |(b, d, w), l| {
-                (b + l.sealed_bytes(), d + l.deltas.len(), w + l.words.len())
+                (b + l.sealed_bytes(), d + l.deltas.len(), w + l.words())
             })
         };
         let (live_b, live_d, live_w) = sum(&c.logs);
@@ -2106,6 +2912,14 @@ impl Arena {
             p.buf.capacity() * 8
                 + p.cs.capacity() * 4
                 + p.ids.capacity() * 8
+                + p.pre.iter().filter(|d| !d.is_null()).count() * CHUNK_BYTES
+        }) + c.part.as_ref().map_or(0, |p| {
+            // (a stopped one, `PartPrep`, kept to go on)
+            p.buf.capacity() * 8
+                + p.cs.capacity() * 4
+                + p.ids.capacity() * 8
+                + p.seen.capacity() * 8
+                + p.done.capacity() * MASK_WORDS * 8
                 + p.pre.iter().filter(|d| !d.is_null()).count() * CHUNK_BYTES
         });
         vec![
@@ -2136,6 +2950,10 @@ impl Arena {
             ("branch_deltas", br_d as i64),
             ("branch_words", br_w as i64),
             ("prepared", prepared as i64),
+            (
+                "zero_released",
+                ZERO_RELEASED.load(std::sync::atomic::Ordering::Relaxed) as i64,
+            ),
             (
                 "bookkeeping",
                 (c.touched.len() + c.nchunks + c.mark.len() * 8 + c.slot.len() * 4) as i64,
@@ -2220,22 +3038,22 @@ impl ChunkDiff {
 /// The space at a checkpoint (`Arena::view_at`).
 pub struct View<'a> {
     arena: &'a Arena,
-    over: Vec<*const u64>,
-    /// Where `over` points.
-    _bufs: Vec<u64>,
+    /// The chunks that differ from the live space, sorted; chunk `cs[i]`'s
+    /// words are `bufs[i * CHUNK_WORDS..]`. (Not a pointer per chunk of
+    /// the space: that was a 4 MB vector, freed after each S₀ save and
+    /// then kept by the macOS allocator; lane MEM-MODES.)
+    cs: Vec<u32>,
+    bufs: Vec<u64>,
 }
 
 impl View<'_> {
     pub fn chunk(&self, c: usize) -> &[u8] {
-        let p = self.over[c];
-        if p.is_null() {
-            let w = self.arena.chunk(c);
-            // SAFETY: a chunk of CHUNK_WORDS words viewed as bytes.
-            unsafe { std::slice::from_raw_parts(w.as_ptr() as *const u8, CHUNK_BYTES) }
-        } else {
-            // SAFETY: a chunk of `_bufs`, alive and unchanged with `self`.
-            unsafe { std::slice::from_raw_parts(p as *const u8, CHUNK_BYTES) }
-        }
+        let w: &[u64] = match self.cs.binary_search(&(c as u32)) {
+            Ok(i) => &self.bufs[i * CHUNK_WORDS..(i + 1) * CHUNK_WORDS],
+            Err(_) => self.arena.chunk(c),
+        };
+        // SAFETY: a chunk of CHUNK_WORDS words viewed as bytes.
+        unsafe { std::slice::from_raw_parts(w.as_ptr() as *const u8, CHUNK_BYTES) }
     }
 }
 
@@ -2657,7 +3475,18 @@ impl Visit for Fill<'_> {
 mod tests {
     use super::*;
 
+    /// Miri interprets every access, so under it the tests run at a
+    /// fiftieth of their size (PARALLEL_MIN is lowered to match).
+    fn miri_scaled(n: usize) -> usize {
+        if cfg!(miri) {
+            (n / 50).max(1024)
+        } else {
+            n
+        }
+    }
+
     fn space(words: usize) -> (Arena, Arr<u64>) {
+        let words = miri_scaled(words);
         let mut p = Plan::new(64);
         let r = p.reserve::<u64>("t", words);
         let a = p.build();
@@ -2666,14 +3495,152 @@ mod tests {
     }
 
     fn scribble(arr: &mut Arr<u64>, seed: u64, n: usize) {
+        let n = if cfg!(miri) { (n / 50).max(10) } else { n };
         let mut x = seed;
         for _ in 0..n {
             x ^= x << 13;
             x ^= x >> 7;
             x ^= x << 17;
             let i = (x as usize) % arr.len();
-            arr[i] = x;
+            arr[i] = shaped(x);
         }
+    }
+
+    /// A word whose halves take every packed width (`pack_words`): zero,
+    /// one, two or four bytes, positive and negative.
+    fn shaped(x: u64) -> u64 {
+        let half = |y: u64| -> u32 {
+            match (y >> 61) & 7 {
+                0 => 0,
+                1 => (y as i8) as i32 as u32,
+                2 => (y as i16) as i32 as u32,
+                3 => y as u32,
+                4 => 1,
+                5 => u32::MAX,
+                6 => (y >> 8) as u16 as u32,
+                _ => 0x8000_0000 | y as u32,
+            }
+        };
+        half(x) as u64 | (half(x.rotate_left(29)) as u64) << 32
+    }
+
+    #[test]
+    fn packed_words_round_trip() {
+        let mut x = 7u64;
+        let mut vals = vec![];
+        for _ in 0..10_000 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            vals.push(shaped(x));
+        }
+        vals.extend([
+            0,
+            1,
+            u64::MAX,
+            0x7f,
+            0x80,
+            0xff,
+            0x7fff,
+            0x8000,
+            0xffff_8000,
+            1 << 32,
+            0x8000_0000_0000_0000,
+        ]);
+        for n in [0usize, 1, 2, 3, 127, 128] {
+            for start in [0usize, 5, 333] {
+                let chunk = &vals[start..start + n];
+                let mut bytes = vec![9u8; 3];
+                pack_words(chunk, &mut bytes);
+                let mut mask = [0u64; MASK_WORDS];
+                // the first n bits set, any n words do
+                for k in 0..n {
+                    mask[k / 64] |= 1 << (k % 64);
+                }
+                let d = Delta { c: 0, at: 3, mask };
+                let mut out = [0u64; CHUNK_WORDS];
+                d.unpack(&bytes, &mut out);
+                assert_eq!(&out[..n], chunk);
+                assert_eq!(d.packed_len(&bytes), bytes.len() - 3);
+                // apply_under with every other word already done
+                let mut dst = [0u64; CHUNK_WORDS];
+                let mut done = [0xaaaa_aaaa_aaaa_aaaau64; MASK_WORDS];
+                // SAFETY: `dst` is CHUNK_WORDS words.
+                unsafe { d.apply_under(&bytes, dst.as_mut_ptr(), &mut done) };
+                for k in 0..n {
+                    let want = if (0xaaaa_aaaa_aaaa_aaaau64 >> (k % 64)) & 1 == 1 {
+                        0
+                    } else {
+                        chunk[k]
+                    };
+                    assert_eq!(dst[k], want, "n {n} start {start} word {k}");
+                }
+            }
+        }
+        // scattered masks, both mask words, only the second needed
+        let mask = [0x8000_0000_0000_0011u64, 0x0100_0000_0000_8001];
+        let chunk = &vals[40..46];
+        let mut bytes = vec![];
+        pack_words(chunk, &mut bytes);
+        let d = Delta { c: 0, at: 0, mask };
+        let mut dst = [0u64; CHUNK_WORDS];
+        let mut done = [u64::MAX, 0];
+        // SAFETY: as above.
+        unsafe { d.apply_under(&bytes, dst.as_mut_ptr(), &mut done) };
+        assert_eq!([dst[64], dst[79], dst[120]], [chunk[3], chunk[4], chunk[5]]);
+        assert_eq!(dst[0] | dst[4] | dst[63], 0);
+    }
+
+    /// MEM-BASELINE: pages written with zeros are given back and read as
+    /// zero; pages with a nonzero word are kept; checkpoints, restores and
+    /// later writes see the same space as without it.
+    #[test]
+    fn zero_pages_are_given_back_and_read_the_same() {
+        let words = 1 << 20; // 8 MB
+        let (mut a, mut arr) = space(words);
+        // TeX's `initialize`: every word cleared, so every page resident
+        for i in 0..words {
+            arr[i] = 0;
+        }
+        // a few nonzero words, one per 64 KB
+        for i in (0..words).step_by(8192) {
+            arr[i] = i as u64 + 1;
+        }
+        let id0 = a.checkpoint();
+        let before = arr.to_vec();
+        let page = os::page_size();
+        let r0 = crate::memstat::resident(arr.as_ptr() as *const u8, words * 8);
+        let given = a.release_zero_pages();
+        let r1 = crate::memstat::resident(arr.as_ptr() as *const u8, words * 8);
+        if cfg!(unix) {
+            // every page but the 128 with a nonzero word
+            assert!(given >= words * 8 - 128 * page - 2 * page, "given {given}");
+            if let (Some(r0), Some(r1)) = (r0, r1) {
+                assert!(
+                    r1 + given <= r0 + page,
+                    "resident {r0} -> {r1}, given {given}"
+                );
+            }
+        }
+        assert!(arr[..] == before[..], "the same bytes");
+        // written again after it: through the barrier, as any write
+        scribble(&mut arr, 3, 4000);
+        let after = arr.to_vec();
+        let id1 = a.checkpoint();
+        assert!(a.release_zero_pages() <= given);
+        // a second trim reads no page it gave back (nothing comes back in)
+        let r2 = crate::memstat::resident(arr.as_ptr() as *const u8, words * 8);
+        assert_eq!(a.release_zero_pages(), 0);
+        assert_eq!(
+            crate::memstat::resident(arr.as_ptr() as *const u8, words * 8),
+            r2
+        );
+        let br = a.restore_branch(id0).unwrap();
+        assert!(arr[..] == before[..], "restore to before");
+        a.converge(br, id0).unwrap();
+        assert!(arr[..] == after[..], "jump back");
+        a.restore_discard(id1).unwrap();
+        assert!(arr[..] == after[..]);
     }
 
     #[test]
@@ -2697,6 +3664,124 @@ mod tests {
         a.restore_discard(ids[5]).unwrap();
         assert!(arr[..] == copies[5][..]);
         assert_eq!(a.checkpoint_ids(), &ids[..=5]);
+    }
+
+    /// P4-TYPING-200WPM (a): a preparation stopped part way (at every kind
+    /// of step: looking through the logs, copying, rewinding, the redo) is
+    /// kept and goes on from there, in the next `prepare_restore` to the
+    /// same target or in the restore itself, also when the live state was
+    /// written in between; the restore equals a plain one and the jump back
+    /// gives the old state. One for another target, or from before a new
+    /// checkpoint, is not used.
+    #[test]
+    fn stopped_preparations_go_on_where_they_stopped() {
+        // (more than STOP_LOGS logs and STOP_CHUNKS chunks: every step can
+        // be stopped)
+        let (mut a, mut arr) = space(400_000);
+        scribble(&mut arr, 3, 20_000);
+        let mut ids = vec![];
+        let mut copies = std::collections::HashMap::new();
+        for k in 0..150u64 {
+            ids.push(a.checkpoint());
+            if [0, 4, 5, 6, 9, 13, 70].contains(&k) {
+                copies.insert(k as usize, arr.to_vec());
+            }
+            scribble(&mut arr, 300 + k, 400);
+        }
+        // a stop after `n` questions
+        let after = |n: usize| {
+            let mut k = 0usize;
+            move || {
+                k += 1;
+                k > n
+            }
+        };
+        let mut round = 0u64;
+        for i in [0usize, 5, 13, 70] {
+            for n in [0usize, 1, 2, 3, 5, 8, 40] {
+                round += 1;
+                let _ = a.prepare_restore(ids[i], &mut after(n));
+                // written in between, then stopped again further on
+                scribble(&mut arr, 900 + round, 150);
+                let _ = a.prepare_restore(ids[i], &mut after(n + 1));
+                scribble(&mut arr, 1900 + round, 150);
+                let end = arr.to_vec();
+                let br = a.restore_branch(ids[i]).unwrap();
+                assert!(
+                    arr[..] == copies[&i][..],
+                    "restore to {i}, stopped after {n}"
+                );
+                a.converge(br, ids[i]).unwrap();
+                assert!(arr[..] == end[..], "jump back from {i}, stopped after {n}");
+            }
+        }
+        // stopped for one target, restored to another: not used
+        let _ = a.prepare_restore(ids[4], &mut after(2));
+        let end = arr.to_vec();
+        let br = a.restore_branch(ids[9]).unwrap();
+        assert!(arr[..] == copies[&9][..], "restore to another target");
+        a.converge(br, ids[9]).unwrap();
+        assert!(arr[..] == end[..]);
+        // stopped, then a checkpoint: not used
+        let _ = a.prepare_restore(ids[6], &mut after(2));
+        scribble(&mut arr, 4000, 100);
+        let last = a.checkpoint();
+        let _ = last;
+        let br = a.restore_branch(ids[6]).unwrap();
+        assert!(arr[..] == copies[&6][..], "restore after a checkpoint");
+        a.drop_branch(br);
+    }
+
+    /// A preparation stopped while a branch was detached, then the branch
+    /// reattached: the part was copied from the abandoned run's state and
+    /// rewound through its logs, so it is not used. (When the branch holds
+    /// only its target and no checkpoint was taken while it was detached,
+    /// the checkpoint list after the reattach is the one the part saw:
+    /// `reattach` drops the part itself.)
+    #[test]
+    fn a_part_from_before_a_reattach_is_not_used() {
+        let after = |n: usize| {
+            let mut k = 0usize;
+            move || {
+                k += 1;
+                k > n
+            }
+        };
+        for n in [1usize, 2, 3, 5] {
+            let (mut a, mut arr) = space(400_000);
+            scribble(&mut arr, 3, 20_000);
+            for k in 0..8u64 {
+                a.checkpoint();
+                scribble(&mut arr, 300 + k, 400);
+            }
+            let target = a.checkpoint();
+            let at_target = arr.to_vec();
+            // the old run writes after its newest checkpoint
+            scribble(&mut arr, 77 + n as u64, 3000);
+            let old_end = arr.to_vec();
+            let br = a.restore_branch(target).unwrap();
+            assert_eq!(br.ids, vec![target]);
+            assert!(arr[..] == at_target[..]);
+            // the new run writes elsewhere, takes no checkpoint, and a
+            // preparation to the same target stops in its copies
+            scribble(&mut arr, 880 + n as u64, 3000);
+            assert!(!a.prepare_restore(target, &mut after(n)));
+            assert!(a.core().part.is_some(), "stopped part way ({n})");
+            let ids = a.checkpoint_ids().to_vec();
+            a.reattach(br).unwrap();
+            assert!(arr[..] == old_end[..]);
+            assert_eq!(a.checkpoint_ids(), &ids[..], "the same checkpoint list");
+            assert!(
+                a.core().part.is_none(),
+                "the reattach dropped the part ({n})"
+            );
+            // the next preparation (`prepare_next`) starts afresh
+            assert!(a.prepare_restore(target, &mut || false));
+            let br = a.restore_branch(target).unwrap();
+            assert!(arr[..] == at_target[..], "restore after the reattach ({n})");
+            a.converge(br, target).unwrap_or_else(|e| panic!("{e}"));
+            assert!(arr[..] == old_end[..], "jump back ({n})");
+        }
     }
 
     /// A prepared restore equals a plain one, also when the live state was
@@ -2728,7 +3813,13 @@ mod tests {
         for (n, i) in [2usize, 15, 9].into_iter().enumerate() {
             assert!(a.prepare_restore(ids[i], &mut || false));
             let p = a.core().prepared.as_ref().unwrap();
-            assert!(p.pre.iter().any(|d| !d.is_null()), "a redo made ahead");
+            // (Miri's 1/50 scale writes too few words for a prepared chunk to
+            // be one the barrier has not saved: the restores below are still
+            // checked there, only not this precondition)
+            assert!(
+                cfg!(miri) || p.pre.iter().any(|d| !d.is_null()),
+                "a redo made ahead"
+            );
             scribble(&mut arr, 1000 + n as u64, 2_000);
             let end = arr.to_vec();
             let br = a.restore_branch(ids[i]).unwrap();
@@ -2751,25 +3842,34 @@ mod tests {
         assert!(!a.prepare_restore(ids[2], &mut || true) || ids.len() < 64);
         // stopped inside the copies (fewer logs than one `STOP_LOGS` but more
         // chunks than one `STOP_CHUNKS`: P4-TYPING-200WPM), at each question
-        // in turn: nothing prepared, every slab chunk given back, and the
-        // next restore is the plain one
+        // in turn: nothing prepared, no slab chunk in use but the kept
+        // part's redo made ahead (`PartPrep`), and the restore after the
+        // stops, which takes the part, equals a plain one
+        // (not at Miri's 1/50 scale, whose space has fewer chunks than one
+        // `STOP_CHUNKS`: no question is asked inside the copies there)
         let live0 = a.core().slab.live;
-        for n in 1..6 {
+        for n in (1..6).filter(|_| !cfg!(miri)) {
             let mut asked = 0;
             assert!(!a.prepare_restore(ids[0], &mut || {
                 asked += 1;
                 asked >= n
             }));
             assert!(a.core().prepared.is_none());
+            let held = a
+                .core()
+                .part
+                .as_ref()
+                .map_or(0, |p| p.pre.iter().filter(|d| !d.is_null()).count());
             assert_eq!(
                 a.core().slab.live,
-                live0,
-                "the redo made ahead is given back ({n})"
+                live0 + held,
+                "only the kept part holds slab chunks ({n})"
             );
         }
         let end = arr.to_vec();
         let br = a.restore_branch(ids[0]).unwrap();
-        assert!(arr[..] == copies[0][..], "a plain restore after the stops");
+        assert!(a.core().part.is_none(), "the restore took the kept part");
+        assert!(arr[..] == copies[0][..], "a restore after the stops");
         a.converge(br, ids[0]).unwrap();
         assert!(arr[..] == end[..]);
     }
@@ -2948,14 +4048,15 @@ mod tests {
         scribble(&mut arr, 3, 20_000);
         let id = a.checkpoint();
         let before = arr.to_vec();
-        // one word in each of 500 chunks
-        for k in 0..500 {
+        // one word in each of 500 chunks (fewer under Miri)
+        let chunks = (arr.len() / CHUNK_WORDS).min(500);
+        for k in 0..chunks {
             arr[k * CHUNK_WORDS + 5] = 42 + k as u64;
         }
         a.checkpoint();
-        assert!(a.log_bytes() < 500 * 64, "{} bytes", a.log_bytes());
+        assert!(a.log_bytes() < chunks * 64, "{} bytes", a.log_bytes());
         // written back to the same value: nothing to keep
-        for k in 0..500 {
+        for k in 0..chunks {
             arr[k * CHUNK_WORDS + 5] = 42 + k as u64;
         }
         a.checkpoint();
@@ -3011,6 +4112,87 @@ mod tests {
     /// (`OldCache`) serve the next, across a jump back and a new restore
     /// (typing in one place), and give exactly the old states; an `or_from`
     /// since makes them stale.
+    /// The verify mode (`FLASHTEX_VERIFY_OLDCACHE`) keeps exactly what a
+    /// space without it keeps, test after test (the sweeps run on
+    /// production's schedule), and its comparisons pass; and an idle trim
+    /// gives a stopped preparation's copies back (`Session::trim_caches`).
+    #[test]
+    fn the_verify_mode_keeps_what_production_keeps() {
+        let run = |verify: bool| -> (Vec<(CheckpointId, Vec<u32>)>, u64, u64) {
+            let mut p = Plan::new(64);
+            let rt = p.reserve::<u64>("t", 150_000);
+            let ru = p.reserve::<u64>("dl_side", 50_000);
+            let mut a = p.build();
+            a.verify_old_cache = verify;
+            let mut t = a.arr(rt, 150_000);
+            let mut u = a.arr(ru, 50_000);
+            scribble(&mut t, 71, 5000);
+            scribble(&mut u, 72, 2000);
+            let mut ids = vec![];
+            for k in 0..12 {
+                ids.push(a.checkpoint());
+                scribble(&mut t, 800 + k, 2000);
+                scribble(&mut u, 900 + k, 800);
+            }
+            let br = a.restore_branch(ids[3]).unwrap();
+            for round in 0..4u64 {
+                // (the last round writes the unstated array only: its tests
+                // find every stated chunk kept, and new unstated ones)
+                if round < 3 {
+                    scribble(&mut t, 1990 + round, 700);
+                }
+                scribble(&mut u, 2990 + round, 300);
+                a.checkpoint();
+                for j in [4usize, 6, 5] {
+                    drop(a.diff_branch(&br, ids[j]).unwrap());
+                    if round == 1 {
+                        drop(a.diff_branch_all(&br, ids[j]).unwrap());
+                    }
+                }
+            }
+            let mut kept: Vec<(CheckpointId, Vec<u32>)> = a
+                .old_cache
+                .borrow()
+                .at
+                .iter()
+                .map(|e| {
+                    let mut cs: Vec<u32> = e.2.keys().copied().collect();
+                    cs.sort_unstable();
+                    (e.0, cs)
+                })
+                .collect();
+            kept.sort();
+            let (hits, misses) = a.old_cache_counts();
+            a.drop_branch(br);
+            (kept, hits, misses)
+        };
+        let (plain, verified) = (run(false), run(true));
+        assert!(!plain.0.is_empty());
+        assert!(plain == verified, "the verify mode kept other chunks");
+        // a stopped preparation, then the idle trim
+        let (mut a, mut arr) = space(400_000);
+        scribble(&mut arr, 3, 20_000);
+        let mut ids = vec![];
+        for k in 0..20u64 {
+            ids.push(a.checkpoint());
+            scribble(&mut arr, 300 + k, 400);
+        }
+        let live0 = a.core().slab.live;
+        let mut asked = 0;
+        assert!(!a.prepare_restore(ids[2], &mut || {
+            asked += 1;
+            asked > 2
+        }));
+        assert!(a.core().part.is_some());
+        a.drop_stopped_preparation();
+        assert!(a.core().part.is_none());
+        assert_eq!(a.core().slab.live, live0, "the part's redo is given back");
+        let end = arr.to_vec();
+        let br = a.restore_branch(ids[2]).unwrap();
+        a.converge(br, ids[2]).unwrap();
+        assert!(arr[..] == end[..]);
+    }
+
     #[test]
     fn kept_old_chunks_never_exceed_the_cap() {
         let mut c = OldCache::default();
@@ -3034,6 +4216,136 @@ mod tests {
         // another history: everything older goes
         c.put(100, 1, &[3], &[2u64; CHUNK_WORDS]);
         assert_eq!(c.at.len(), 1);
+    }
+
+    /// P4-TYPING-200WPM (b): a convergence test rewinds the `UNSTATED`
+    /// arrays' chunks too, in its one pass, and keeps them: the jump's
+    /// comparison at the same checkpoint (`diff_branch_all`) then rewinds
+    /// nothing, and its old values equal a fresh rewind's (nothing kept)
+    /// word for word, the unstated array's too.
+    #[test]
+    fn a_test_keeps_what_the_jump_compares() {
+        let mut p = Plan::new(64);
+        let rt = p.reserve::<u64>("t", 150_000);
+        let ru = p.reserve::<u64>("dl_side", 50_000);
+        let mut a = p.build();
+        let mut t = a.arr(rt, 150_000);
+        let mut u = a.arr(ru, 50_000);
+        scribble(&mut t, 41, 5000);
+        scribble(&mut u, 42, 2000);
+        let mut ids = vec![];
+        for k in 0..12 {
+            ids.push(a.checkpoint());
+            scribble(&mut t, 400 + k, 2000);
+            scribble(&mut u, 500 + k, 800);
+        }
+        let br = a.restore_branch(ids[3]).unwrap();
+        scribble(&mut t, 990, 1500);
+        scribble(&mut u, 991, 600);
+        a.checkpoint();
+        let all_words = |a: &Arena, d: &ChunkDiff| -> Vec<u64> {
+            (0..a.bytes().len() / 8)
+                .filter(|w| d.old_at.contains_key(&(((w * 8) >> CHUNK_SHIFT) as u32)))
+                .map(|w| d.old_word(a, w * 8))
+                .collect()
+        };
+        for j in [4usize, 6] {
+            a.drop_old_cache();
+            drop(a.diff_branch(&br, ids[j]).unwrap());
+            let misses0 = a.old_cache_counts().1;
+            let kept = all_words(&a, &a.diff_branch_all(&br, ids[j]).unwrap());
+            let misses = a.old_cache_counts().1 - misses0;
+            assert_eq!(misses, 0, "the jump's comparison at {j} rewound again");
+            a.drop_old_cache();
+            let fresh = all_words(&a, &a.diff_branch_all(&br, ids[j]).unwrap());
+            assert!(
+                kept == fresh,
+                "at {j}: the kept values differ from a fresh rewind"
+            );
+        }
+        a.drop_branch(br);
+    }
+
+    /// P4-CONVERGE-REWIND: the `UNSTATED` chunks a convergence test kept
+    /// (`OldCache`) are the old run's values at that checkpoint, whatever
+    /// the new run writes after the test: written on (the chunks the test
+    /// saw again, and chunks it never saw, in both arrays), the jump's
+    /// comparison at the same checkpoint gives a fresh rewind's old values
+    /// word for word, and adopting what differs, then converging, gives
+    /// exactly the old run's latest state.
+    #[test]
+    fn values_a_test_kept_hold_for_chunks_written_after_it() {
+        let mut p = Plan::new(64);
+        let rt = p.reserve::<u64>("t", 150_000);
+        let ru = p.reserve::<u64>("dl_side", 50_000);
+        let mut a = p.build();
+        let mut t = a.arr(rt, 150_000);
+        let mut u = a.arr(ru, 50_000);
+        scribble(&mut t, 61, 5000);
+        scribble(&mut u, 62, 2000);
+        let mut ids = vec![];
+        for k in 0..12 {
+            ids.push(a.checkpoint());
+            scribble(&mut t, 600 + k, 2000);
+            scribble(&mut u, 700 + k, 800);
+        }
+        let (t_end, u_end) = (t.to_vec(), u.to_vec());
+        let j = 6;
+        let br = a.restore_branch(ids[3]).unwrap();
+        scribble(&mut t, 1990, 1500);
+        scribble(&mut u, 1991, 600);
+        a.checkpoint();
+        let all_words = |a: &Arena, d: &ChunkDiff| -> Vec<(usize, u64)> {
+            (0..a.bytes().len() / 8)
+                .filter(|w| d.old_at.contains_key(&(((w * 8) >> CHUNK_SHIFT) as u32)))
+                .map(|w| (w, d.old_word(a, w * 8)))
+                .collect()
+        };
+        a.drop_old_cache();
+        // the test, which keeps the unstated chunks it rewinds
+        let seen_by_test = a.diff_branch(&br, ids[j]).unwrap().compared;
+        // the new run writes on: again where it wrote, and elsewhere
+        scribble(&mut t, 2990, 3000);
+        scribble(&mut u, 2991, 3000);
+        a.checkpoint();
+        let kept = all_words(&a, &a.diff_branch_all(&br, ids[j]).unwrap());
+        a.drop_old_cache();
+        let fresh_d = a.diff_branch_all(&br, ids[j]).unwrap();
+        assert!(
+            fresh_d.compared > seen_by_test,
+            "the new run wrote new chunks"
+        );
+        let fresh = all_words(&a, &fresh_d);
+        assert!(kept == fresh, "kept values differ from a fresh rewind");
+        drop(fresh_d);
+        // the jump: the test kept them again, then the comparison adopts
+        // what differs from the old run's state at `j`
+        drop(a.diff_branch(&br, ids[j]).unwrap());
+        let d = a.diff_branch_all(&br, ids[j]).unwrap();
+        let adopt: Vec<(usize, Vec<u8>)> = d
+            .differing
+            .iter()
+            .map(|&(c, old_p, _)| {
+                // SAFETY: a chunk of the comparison's own buffers or the
+                // arena, unchanged while `d` lives.
+                let b = unsafe { std::slice::from_raw_parts(old_p as *const u8, CHUNK_BYTES) };
+                ((c as usize) << CHUNK_SHIFT, b.to_vec())
+            })
+            .collect();
+        drop(d);
+        for (off, b) in &adopt {
+            a.write_through(*off, b);
+        }
+        a.checkpoint();
+        a.converge(br, ids[j]).unwrap();
+        assert!(
+            t[..] == t_end[..],
+            "the jump gives the old run's latest state"
+        );
+        assert!(
+            u[..] == u_end[..],
+            "the jump gives the old run's latest side table"
+        );
     }
 
     #[test]
@@ -3060,7 +4372,7 @@ mod tests {
         };
         let end = arr.to_vec();
         for round in 0..4u64 {
-            let hits0 = OLD_CACHE_HITS.load(std::sync::atomic::Ordering::Relaxed);
+            let hits0 = a.old_cache_counts().0;
             let br = a.restore_branch(ids[3]).unwrap();
             scribble(&mut arr, 900 + round, 1500);
             a.checkpoint();
@@ -3070,7 +4382,7 @@ mod tests {
             }
             if round > 0 {
                 assert!(
-                    OLD_CACHE_HITS.load(std::sync::atomic::Ordering::Relaxed) > hits0,
+                    a.old_cache_counts().0 > hits0,
                     "round {round}: nothing kept was used"
                 );
             }
@@ -3138,6 +4450,43 @@ mod tests {
             best = best.min(t.elapsed().as_secs_f64());
         }
         eprintln!("seal of 2000 chunks: best {:.3} ms", best * 1000.0);
+    }
+
+    /// The cost of a restore through many sealed logs (the tail of a long
+    /// document after an edit near its start), and of the logs' bytes:
+    /// `cargo test --release -p flashtex-engine --lib restore_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn restore_cost() {
+        let (mut a, mut arr) = space(8_000_000);
+        scribble(&mut arr, 5, 1_000_000);
+        let first = a.checkpoint();
+        let mut x = 99u64;
+        // 400 pages, each rewriting 13 words in 2000 of the same 6000 chunks
+        for round in 0..400u64 {
+            for k in 0..2000usize {
+                let c = (k * 3 + round as usize % 3) % 6000;
+                for w in 0..13usize {
+                    x ^= x << 13;
+                    x ^= x >> 7;
+                    x ^= x << 17;
+                    arr[c * CHUNK_WORDS + w * 9] = shaped(x);
+                }
+            }
+            a.checkpoint();
+        }
+        let mut best = f64::MAX;
+        for _ in 0..5 {
+            let t = std::time::Instant::now();
+            let br = a.restore_branch(first).unwrap();
+            best = best.min(t.elapsed().as_secs_f64());
+            a.converge(br, first).unwrap();
+        }
+        eprintln!(
+            "restore through 400 logs: best {:.3} ms; logs {:.1} MB",
+            best * 1000.0,
+            a.log_bytes() as f64 / 1e6
+        );
     }
 
     #[test]

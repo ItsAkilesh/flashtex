@@ -6,8 +6,10 @@
 # The engine host (flashtex-host, GPL-2.0-or-later, a separate program) and
 # the new CLI (flashtex-v3) ship in the app and the macOS CLI tarball, and a
 # release without them fails (app-parity row D5). There is no dry run: a
-# manual run publishes; scripts/tests/package-cli.test.sh checks the
-# packaging without one.
+# manual run publishes; scripts/tests/package-cli.test.sh and
+# packaging-full.yml check the packaging without one. Release notes written
+# ahead of the tag live in docs/release/<tag>-notes.md (checklist:
+# docs/release/<tag>.md) and head the published notes.
 name: Release
 
 on:
@@ -79,8 +81,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          # One workspace holds every helper now that vendor/ is retired.
+          # One workspace holds every helper now that vendor/ is retired;
+          # crates/flashtex-xetex (Unicode mode's host) is its own.
           key: helpers
+          workspaces: |
+            . -> target
+            crates/flashtex-xetex -> target
       - name: Build every bundled helper (release)
         # pipefail: otherwise `tee` hides a failed helper build and the
         # release proceeds with FLASHTEX_* lines missing.
@@ -97,6 +103,17 @@ jobs:
           cargo build --release --locked -p flashtex-engine --bin flashtex-host
           cargo build --release --locked -p flashtex-build --bin flashtex-v3
           ls -l target/release/flashtex-host target/release/flashtex-v3
+      - name: Build Unicode mode's host (release), when the tree has it
+        # crates/flashtex-xetex is its own workspace (own Cargo.lock and
+        # target/). Once it has flashtex-host-unicode (#1732) the app ships
+        # it: make-app.sh is given it, and the packaging step checks it.
+        run: |
+          set -euo pipefail
+          if [ -f crates/flashtex-xetex/src/bin/flashtex-host-unicode.rs ]; then
+            (cd crates/flashtex-xetex && cargo build --release --locked --bin flashtex-host-unicode)
+            ls -l crates/flashtex-xetex/target/release/flashtex-host-unicode
+            echo "ENGINE_HOST_UNICODE=$PWD/crates/flashtex-xetex/target/release/flashtex-host-unicode" >> "$GITHUB_ENV"
+          fi
 
       - name: Import the Developer ID certificate into a temporary keychain (optional)
         id: sign
@@ -151,12 +168,14 @@ jobs:
         run: |
           set -euo pipefail
           args=(--version "$VERSION" --dmg --require-engine-host)
+          if [ -n "${ENGINE_HOST_UNICODE:-}" ]; then args+=(--engine-host-unicode "$ENGINE_HOST_UNICODE"); fi
           if [ -n "${SIGN_IDENTITY:-}" ]; then args+=(--sign "$SIGN_IDENTITY"); fi
           if [ -n "${NOTARY_PROFILE:-}" ]; then args+=(--notarize "$NOTARY_PROFILE"); fi
           echo "make-app.sh ${args[*]}"
           apps/mac/scripts/make-app.sh "${args[@]}"
           test -f apps/mac/build/FlashTeX.dmg
           test -x apps/mac/build/FlashTeX.app/Contents/Helpers/flashtex-host
+          if [ -n "${ENGINE_HOST_UNICODE:-}" ]; then test -x apps/mac/build/FlashTeX.app/Contents/Helpers/flashtex-host-unicode; fi
           cat apps/mac/build/FlashTeX.app/Contents/Resources/components.json
 
       - name: Collect release assets
@@ -349,7 +368,18 @@ jobs:
             echo
             echo "FlashTeX.dmg sha256: \`${{ steps.assets.outputs.dmg_sha }}\`"
             echo
+            # GPL source offer (#1806); the app's About panel shows the same line (AboutPanel.swift).
+            echo "## Source"
+            echo
+            echo "Source code for the FlashTeX engine (GPL-2.0-or-later): https://github.com/flash-tex/flashtex (this release: https://github.com/flash-tex/flashtex/tree/$TAG)"
+            echo
           } > notes.md
+          # The release's own notes, written before the tag (docs/release/),
+          # go first; GitHub's generated PR list (--generate-notes) follows.
+          if [ -f "docs/release/$TAG-notes.md" ]; then
+            { cat "docs/release/$TAG-notes.md"; echo; cat notes.md; } > notes.full.md
+            mv notes.full.md notes.md
+          fi
           cat notes.md
       - name: Create or update the GitHub release
         run: |

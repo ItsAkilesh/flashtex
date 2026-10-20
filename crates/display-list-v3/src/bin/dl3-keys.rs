@@ -4,7 +4,7 @@
 //!
 //!     dl3-keys --socket PATH --root DIR --main main.tex [--output-dir DIR]
 //!         [--keys N] [--at FRACTION] [--gap-ms MS] [--overlap] [--no-viewport]
-//!         [--page INDEX] [--where start|middle|end] [--sentence]
+//!         [--page INDEX] [--where start|middle|end] [--sentence] [--includeonly NAME,...]
 //!
 //! Opens the document (compiles until nothing changes), picks a prose line
 //! whose glyphs are on one page about FRACTION (default 0.5) into the
@@ -199,7 +199,7 @@ fn main() {
     };
     let (Some(socket), Some(root), Some(main)) = (arg("--socket"), arg("--root"), arg("--main"))
     else {
-        eprintln!("usage: dl3-keys --socket PATH --root DIR --main FILE [--output-dir DIR] [--keys N] [--at FRACTION] [--gap-ms MS] [--edit FILE] [--page INDEX [--line N]] [--where start|middle|end] [--kind letter|sentence|newline|split|preamble | --sentence] [--overlap | --interval-ms MS] [--no-viewport]");
+        eprintln!("usage: dl3-keys --socket PATH --root DIR --main FILE [--output-dir DIR] [--keys N] [--at FRACTION] [--gap-ms MS] [--edit FILE] [--page INDEX [--line N]] [--where start|middle|end] [--kind letter|sentence|newline|split|preamble | --sentence] [--overlap | --interval-ms MS] [--no-viewport] [--includeonly NAME,...]");
         std::process::exit(2);
     };
     let keys: usize = arg("--keys").and_then(|v| v.parse().ok()).unwrap_or(40);
@@ -220,6 +220,8 @@ fn main() {
         let mut r = CompileRequest::new(id, &root, &main);
         r.output_dir = arg("--output-dir");
         r.incremental = true;
+        // `--includeonly a,b`: a chapter focus (`\includeonly{a,b}`).
+        r.includeonly = arg("--includeonly").map(|v| v.split(',').map(str::to_string).collect());
         r
     };
     // Open: until nothing changes.
@@ -304,7 +306,13 @@ fn main() {
         }
         (l, p)
     });
+    // A preamble edit types after `\documentclass` and watches page 0: it
+    // needs no prose line, and a book's main file (only `\include`s) has none.
+    let preamble = arg("--kind").as_deref() == Some("preamble");
     let (line, page) = given.unwrap_or_else(|| {
+        if preamble {
+            return (1, 0);
+        }
         (1..=lines.len() as u32)
             .filter(|&l| lines[l as usize - 1].split(' ').count() > 40)
             .filter_map(|l| {

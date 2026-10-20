@@ -31,6 +31,7 @@ final class ShellModel {
             guard activePath != oldValue else { return }
             navigationToken &+= 1; refreshDocumentMirror()
             if engineV3Enabled { engineV3.scheduleCaretMark() }
+            projectPackages.caretMoved()
         }
     }
     /// Bumped by every document switch and every `openAndSwitch` request, so a
@@ -242,6 +243,7 @@ final class ShellModel {
             guard caretUTF16 != oldValue else { return }
             caretFollow.noteCaretMove() // CaretFollow.swift: re-arms across a line/page boundary
             if engineV3Enabled { engineV3.scheduleCaretMark() } // the caret on the v3 page, outside SwiftUI (EngineV3CaretMark.swift)
+            projectPackages.caretMoved() // ProjectPackages.swift: leaving a half-typed \usepackage{…} shows its sheet
         }
     }
     /// Debounced "the preview follows what you are editing" (CaretFollow.swift).
@@ -351,7 +353,7 @@ final class ShellModel {
     private func refreshChrome() {
         var again = false
         withObservationTracking {
-            again = chrome.refresh(from: self)
+            again = MainThreadProbe.time("chrome.refresh") { chrome.refresh(from: self) }
         } onChange: { [weak self] in
             // Observation calls this at the mutation (main actor: every writer is).
             MainActor.assumeIsolated { self?.scheduleChromeRefresh() }
@@ -375,7 +377,7 @@ final class ShellModel {
     }
 
     /// Applies pending chrome changes now (tests, and the bench's paint point).
-    func flushChrome() { chromeRefreshPending = false; refreshChrome() }
+    func flushChrome() { chromeRefreshPending = false; chrome.settleNext = true; refreshChrome() }
 
     private func refreshDocumentMirror() {
         let has = !documents.isEmpty
@@ -733,6 +735,10 @@ final class ShellModel {
     /// shown in the footer. Memoized: ContentView reads this on every body
     /// evaluation and the rebase compares the compiled and current texts.
     var editorMarkReport: EditorDiagnostics.Report {
+        projectPackages.withholding(unheldMarkReport) // ProjectPackages.swift: a half-typed package name is not underlined yet
+    }
+
+    private var unheldMarkReport: EditorDiagnostics.Report {
         // Historical spans are inert: not drawn even when their offsets are in bounds.
         // Under engine v3 the marks are the host's rows (`markSource`), never
         // the old engine's (one engine at a time).
@@ -1213,17 +1219,17 @@ final class ShellModel {
     }
 
     func updateActiveText(_ text: String) {
-        if engineV3Enabled { engineV3.textChanged(model: self, activeText: text) } // EngineV3Session.swift: first, before the model's own work
+        if engineV3Enabled { MainThreadProbe.time("model.v3TextChanged") { engineV3.textChanged(model: self, activeText: text) } } // EngineV3Session.swift: first, before the model's own work
         guard let i = documents.firstIndex(where: { $0.path == activePath }) else { return }
-        guard !documents[i].text.sameBytes(as: text) else { return }
+        guard !MainThreadProbe.time("model.compare", { documents[i].text.sameBytes(as: text) }) else { return }
         let old = documents[i].text, base = editorRevision
-        documents[i].text = text
-        editorRevision += 1
-        TypingBench.shared.noteRevision(editorRevision) // keystroke -> paint instrumentation
+        MainThreadProbe.time("model.store") { documents[i].text = text }
+        MainThreadProbe.time("model.revision") { editorRevision += 1 }
+        MainThreadProbe.time("model.typingBench") { TypingBench.shared.noteRevision(editorRevision) } // keystroke -> paint instrumentation
         if !engineV3Enabled { scheduleAutoCompile() } // with the engine-v3 preview on, the old worker does not auto-compile
-        scheduleAutosave()
-        caretFollow.note(.edit) // CaretFollow.swift: an edit also re-arms following after a manual scroll
-        bridgeTextChanged(path: activePath, old: old, new: text, base: base, revision: editorRevision)
+        MainThreadProbe.time("model.autosave") { scheduleAutosave() }
+        MainThreadProbe.time("model.caretFollow") { caretFollow.note(.edit) } // CaretFollow.swift: an edit also re-arms following after a manual scroll
+        MainThreadProbe.time("model.bridge") { bridgeTextChanged(path: activePath, old: old, new: text, base: base, revision: editorRevision) }
     }
 
     private func scheduleAutoCompile() {
@@ -1345,12 +1351,11 @@ final class ShellModel {
 
     // MARK: worker transport (runtime v1 JSON Lines)
 
-    /// Finds a built FT-002 worker: $FLASHTEX_COMPILER, then
-    /// crates/compiler/target/{release,debug}/flashtex-compiler under the repo root.
     /// Finds a built render pipeline (`flashtex-render`, crates/render-pipeline:
     /// a drop-in runtime-v1 producer measured with Latin Modern metrics, so
-    /// the preview draws Computer Modern-style text): $FLASHTEX_RENDER, the
-    /// app bundle, then crates/render-pipeline/target/{release,debug}.
+    /// the preview draws Computer Modern-style text): $FLASHTEX_RENDER, then
+    /// the app bundle. (The `crates/<crate>/target` probes are gone: the
+    /// workspace builds into ./target, so they never matched; #1236 S1b.)
     static func locateRenderPipeline() -> URL? {
         let fm = FileManager.default
         if let env = ProcessInfo.processInfo.environment["FLASHTEX_RENDER"], fm.isExecutableFile(atPath: env) {
@@ -1360,11 +1365,6 @@ final class ShellModel {
            fm.isExecutableFile(atPath: bundled.path) {
             return bundled
         }
-        guard let root = locateRepoRoot() else { return nil }
-        for profile in ["release", "debug"] {
-            let url = root.appendingPathComponent("crates/render-pipeline/target/\(profile)/flashtex-render")
-            if fm.isExecutableFile(atPath: url.path) { return url }
-        }
         return nil
     }
 
@@ -1372,7 +1372,7 @@ final class ShellModel {
     @discardableResult
     func attachDiscoveredRenderPipeline() -> Bool {
         guard let url = Self.locateRenderPipeline() else {
-            workerStatus = "no built flashtex-render found (build crates/render-pipeline or set FLASHTEX_RENDER)"
+            workerStatus = "no flashtex-render found (set FLASHTEX_RENDER to a built one)"
             return false
         }
         attachWorker(at: url)
@@ -1390,6 +1390,7 @@ final class ShellModel {
         return locateRenderPipeline() ?? locateCompiler()
     }
 
+    /// Finds a built FT-002 worker: $FLASHTEX_COMPILER, then the app bundle.
     static func locateCompiler() -> URL? {
         let fm = FileManager.default
         if let env = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"], fm.isExecutableFile(atPath: env) {
@@ -1399,11 +1400,6 @@ final class ShellModel {
            fm.isExecutableFile(atPath: bundled.path) {
             return bundled
         }
-        guard let root = locateRepoRoot() else { return nil }
-        for profile in ["release", "debug"] {
-            let url = root.appendingPathComponent("crates/compiler/target/\(profile)/flashtex-compiler")
-            if fm.isExecutableFile(atPath: url.path) { return url }
-        }
         return nil
     }
 
@@ -1411,7 +1407,7 @@ final class ShellModel {
     @discardableResult
     func attachDiscoveredWorker() -> Bool {
         guard let url = Self.locateCompiler() else {
-            workerStatus = "no built flashtex-compiler found (build crates/compiler or set FLASHTEX_COMPILER)"
+            workerStatus = "no flashtex-compiler found (set FLASHTEX_COMPILER to a built one)"
             return false
         }
         attachWorker(at: url)
@@ -1470,6 +1466,7 @@ final class ShellModel {
     /// engine the preview shows. Under v3 that is the host (and, after the
     /// host stopped, a restart); otherwise the old engine, as before.
     func compileCommand() {
+        projectPackages.explicitRequest(compiling: true) // ProjectPackages.swift: ⌘B ends the typing grace period
         if engineV3Enabled { engineV3.compileNow(model: self); return }
         if !outputBoundExplicitRetry() { compile() }
     }

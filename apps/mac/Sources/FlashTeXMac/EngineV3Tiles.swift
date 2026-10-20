@@ -31,8 +31,9 @@ enum EngineV3TileGrid {
     /// scroll step usually finds its next row ready.
     static let prefetchPixels: CGFloat = 256
     /// Tile jobs run here in order (visible tiles first); each job draws its
-    /// tiles in parallel.
-    static let queue = DispatchQueue(label: "flashtex.engine-v3.tiles", qos: .userInteractive)
+    /// tiles in parallel. `.workItem`: a job's autoreleased tiles and kept
+    /// rasters are released when the job ends.
+    static let queue = DispatchQueue(label: "flashtex.engine-v3.tiles", qos: .userInteractive, autoreleaseFrequency: .workItem)
 
     struct Index: Hashable { var column: Int; var row: Int }
 
@@ -341,6 +342,19 @@ final class EngineV3PageTiles {
         container.masksToBounds = true
     }
 
+    /// Whether the page layer the container is in is flipped on screen
+    /// (EngineV3PageView.layerShownFlipped: from the view hierarchy, since
+    /// AppKit attaches the page's layer to the tree on a later pass and the
+    /// detached tree reads unflipped). Unset (a container outside a page
+    /// view), the live tree's.
+    var pageShownFlipped: (@MainActor () -> Bool)?
+
+    /// Whether the container is flipped on screen: tiles are framed for it.
+    var shownFlipped: Bool {
+        guard let page = pageShownFlipped else { return container.contentsAreFlipped() }
+        return page() != container.isGeometryFlipped
+    }
+
     /// Queued jobs of a torn-down page skip undrawn; its raster is freed.
     deinit {
         _ = generation.bump()
@@ -551,7 +565,7 @@ final class EngineV3PageTiles {
     private func install(_ surfaces: [IOSurface?], at indices: [EngineV3TileGrid.Index], source s: EngineV3TileSource, compile: Int?, t0: UInt64) {
         let (pw, ph) = s.pixelSize
         let ds = CGFloat(s.pixelsPerViewPoint)
-        let flipped = container.contentsAreFlipped()
+        let flipped = shownFlipped
         let height = container.bounds.height
         let filter: CALayerContentsFilter = pinching || s.stretched ? .linear : .nearest
         CATransaction.begin(); CATransaction.setDisableActions(true)
@@ -613,7 +627,7 @@ final class EngineV3PageTiles {
     private func reframeOutgoing(_ s: EngineV3TileSource) {
         guard !outgoing.isEmpty else { return }
         let k = CGFloat(s.screenPixelsPerPoint / s.displayScale)
-        let flipped = container.contentsAreFlipped(), height = container.bounds.height
+        let flipped = shownFlipped, height = container.bounds.height
         CATransaction.begin(); CATransaction.setDisableActions(true)
         for o in outgoing {
             let r = CGRect(x: o.points.minX * k, y: o.points.minY * k, width: o.points.width * k, height: o.points.height * k)
