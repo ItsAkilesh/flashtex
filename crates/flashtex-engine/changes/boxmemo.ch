@@ -32,6 +32,13 @@
 %
 % GPL-2.0-or-later, like the rest of crates/flashtex-engine.
 
+@x pdftex.web l.4513 (after changes/lineshift.ch) - a list freed takes BOX-MEMO's meanings found equal to it
+  begin ls_free(p); flush_list(p);
+@y
+  begin ls_free(p); if bm_on then flashtex_bm_freed(p);
+  flush_list(p);
+@z
+
 @x pdftex.web l.6585 (after changes/readset.ch) - a name looked up is a read, found or not
 found: if rs_on then flashtex_id_read(j,l,p);
 @y
@@ -450,6 +457,7 @@ bm_on:=flashtex_bm_enabled;
 function flashtex_bm_enabled:boolean; external;
 procedure flashtex_bm_loaded; external;
 procedure flashtex_bm_new_cs(@!p:pointer); external;
+procedure flashtex_bm_freed(@!p:pointer); external;
 procedure flashtex_bm_call(@!n:integer;@!s:integer;@!w:pointer); external;
 procedure flashtex_bm_group(@!c:group_code); external;
 procedure flashtex_bm_unsave; external;

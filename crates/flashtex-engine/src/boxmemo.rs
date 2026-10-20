@@ -742,7 +742,7 @@ pub fn stats() -> String {
     ST.with(|s| {
         let s = s.borrow();
         let mut st = format!("{:#?}", s.stats);
-        st.push('\n');
+        st.push_str(&format!("\nmeanings_seen: {}\n", seen_hits()));
         st
     })
 }
@@ -994,6 +994,8 @@ fn pop_used_up(g: &mut Globals) {
 }
 
 pub fn after_restore(g: &mut Globals) {
+    // (the word space is another state: §12.4's entries say nothing of it)
+    seen_clear();
     if g.bm_rec_on {
         g.bm_rec_on = false;
     }
@@ -1003,6 +1005,129 @@ pub fn after_restore(g: &mut Globals) {
             *s.stats.abandoned.entry("Restore".into()).or_default() += 1;
         }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Meanings found equal (§12.4)
+// ---------------------------------------------------------------------------
+
+/// The macro bodies K3 found equal since the last restore (BOX-MEMO.md
+/// §12.4): location `p` held type `t` and the list at reference count `e`,
+/// whose tokens were the kept body. A macro's list does not change while it
+/// is referenced (TeX makes a new one for every definition), and a list
+/// freed (`delete_token_ref` reaching zero, `flashtex_bm_freed`) takes the
+/// entries naming it with it, so while `eqtb[p]` still holds `t` and `e` its
+/// tokens are still that body and the walk is not made again. Emptied at
+/// every restore of the word space (`after_restore`), at a format load, and
+/// when another engine on this thread notes one (`owner`).
+#[derive(Default)]
+struct Seen {
+    owner: usize,
+    at: HashMap<i32, (i32, i32, std::rc::Rc<[i32]>)>,
+    /// The locations whose entry names list `e`.
+    by_list: HashMap<i32, Vec<i32>>,
+    /// The lists some entry names, a bit each by `mem` index: the free
+    /// hook's test.
+    bits: Vec<u64>,
+    hits: u64,
+}
+
+impl Seen {
+    fn clear(&mut self) {
+        for &e in self.by_list.keys() {
+            if let Some(w) = self.bits.get_mut(e as usize / 64) {
+                *w = 0;
+            }
+        }
+        self.at.clear();
+        self.by_list.clear();
+    }
+
+    fn has_bit(&self, e: i32) -> bool {
+        self.bits
+            .get(e as usize / 64)
+            .is_some_and(|w| w & (1u64 << (e as usize % 64)) != 0)
+    }
+
+    /// `p`'s entry, which names list `e`, goes.
+    fn forget_at(&mut self, p: i32, e: i32) {
+        self.at.remove(&p);
+        if let Some(l) = self.by_list.get_mut(&e) {
+            l.retain(|&q| q != p);
+            if l.is_empty() {
+                self.by_list.remove(&e);
+                if let Some(w) = self.bits.get_mut(e as usize / 64) {
+                    *w &= !(1u64 << (e as usize % 64));
+                }
+            }
+        }
+    }
+}
+
+thread_local! {
+    static SEEN: RefCell<Seen> = RefCell::new(Seen::default());
+    /// Some entry is kept (the free hook's first test).
+    static SEEN_ANY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn owner_of(g: &Globals) -> usize {
+    g as *const Globals as usize
+}
+
+/// Whether `p` holding `t` and `e` was found equal to `toks` since.
+fn seen_is(g: &Globals, p: i32, t: i32, e: i32, toks: &std::rc::Rc<[i32]>) -> bool {
+    if !SEEN_ANY.with(|a| a.get()) {
+        return false;
+    }
+    SEEN.with(|s| {
+        let mut s = s.borrow_mut();
+        if s.owner != owner_of(g) {
+            return false;
+        }
+        let ok = s
+            .at
+            .get(&p)
+            .is_some_and(|(t0, e0, b)| *t0 == t && *e0 == e && std::rc::Rc::ptr_eq(b, toks));
+        if ok {
+            s.hits += 1;
+        }
+        ok
+    })
+}
+
+/// `p` holding `t` and `e` was just found equal to `toks`.
+fn seen_note(g: &Globals, p: i32, t: i32, e: i32, toks: &std::rc::Rc<[i32]>) {
+    SEEN.with(|s| {
+        let mut s = s.borrow_mut();
+        if s.owner != owner_of(g) {
+            s.clear();
+            s.owner = owner_of(g);
+        }
+        if let Some(&(_, e0, _)) = s.at.get(&p) {
+            s.forget_at(p, e0);
+        }
+        let w = e as usize / 64;
+        if s.bits.len() <= w {
+            let n = (w + 1).max(g.mem.len() / 64 + 1);
+            s.bits.resize(n, 0);
+        }
+        s.bits[w] |= 1u64 << (e as usize % 64);
+        s.by_list.entry(e).or_default().push(p);
+        s.at.insert(p, (t, e, toks.clone()));
+    });
+    SEEN_ANY.with(|a| a.set(true));
+}
+
+/// Every entry goes (a restore, a format load).
+fn seen_clear() {
+    if SEEN_ANY.with(|a| a.replace(false)) {
+        SEEN.with(|s| s.borrow_mut().clear());
+    }
+}
+
+/// How many K3 comparisons the entries answered (`Stats::seen`).
+fn seen_hits() -> u64 {
+    SEEN.with(|s| s.borrow().hits)
 }
 
 // ---------------------------------------------------------------------------
@@ -1565,12 +1690,18 @@ impl Globals {
             if *mt != t {
                 return false;
             }
+            if seen_is(self, p, t, e, toks) {
+                return true;
+            }
             let mut q = self.bm_link(e);
             for &x in toks.iter() {
                 if q == 0 || self.bm_info(q) != x {
                     return false;
                 }
                 q = self.bm_link(q);
+            }
+            if q == 0 {
+                seen_note(self, p, t, e, toks);
             }
             return q == 0;
         }
@@ -1733,6 +1864,7 @@ impl Globals {
 
     /// After a format is loaded: mark the registered macros it defines.
     pub fn flashtex_bm_loaded(&mut self) {
+        seen_clear();
         // The fonts' and the exceptions' first versions name the format
         // file loaded (`format_version`): the same unchanged file gives the
         // same versions, so two loads leave the same state (COLD-FIXED's
@@ -1780,6 +1912,24 @@ impl Globals {
                     .zip(n)
                     .all(|(&c, &d)| c == d as i32)
         })
+    }
+
+    /// `delete_token_ref` frees the token list at reference count `p`: the
+    /// meanings found equal to it go (§12.4).
+    #[inline]
+    pub fn flashtex_bm_freed(&mut self, p: i32) {
+        if !SEEN_ANY.with(|a| a.get()) {
+            return;
+        }
+        SEEN.with(|s| {
+            let mut s = s.borrow_mut();
+            if !s.has_bit(p) {
+                return;
+            }
+            for q in s.by_list.get(&p).cloned().unwrap_or_default() {
+                s.forget_at(q, p);
+            }
+        });
     }
 
     /// A control sequence was just entered into the hash.
