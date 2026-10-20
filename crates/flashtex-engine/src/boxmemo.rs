@@ -123,6 +123,10 @@ pub const DEFAULT_NAMES: &[&str] = &[
     "beamer@thc@docolor",
     "beamer@thc@usecolor",
     "pgfusepath",
+    // hyperref's per-`\pdfstringdef` hook, which siunitx fills (about 25 M
+    // instructions a call): recorded anywhere and taken from the intrinsics
+    // (`RECORD_ANYWHERE`, §12.2)
+    "pdfstringdefPreHook",
 ];
 
 /// Whether BOX-MEMO is on when `FLASHTEX_BOXMEMO` does not say: in the
@@ -692,6 +696,27 @@ fn with_config<R>(f: impl FnOnce(&Config) -> R) -> R {
 
 pub fn mode() -> Mode {
     with_config(|c| c.mode)
+}
+
+/// Macros BOX-MEMO records anywhere, not only in an edit's window (§6), and
+/// takes from the intrinsics wherever it is on (`owns`): hyperref's
+/// `\pdfstringdefPreHook` (§12.2). Its calls hit on every later page, a
+/// cold pass's included, and its entries survive the restores that take
+/// the intrinsics' recordings away.
+pub const RECORD_ANYWHERE: &[&str] = &["pdfstringdefPreHook"];
+
+fn record_anywhere() -> &'static [Vec<u8>] {
+    static R: std::sync::OnceLock<Vec<Vec<u8>>> = std::sync::OnceLock::new();
+    R.get_or_init(|| RECORD_ANYWHERE.iter().map(|s| s.as_bytes().to_vec()).collect())
+}
+
+/// Whether BOX-MEMO, on and offering `name`, takes it from the intrinsics
+/// (`intrinsics::config`): one of [`RECORD_ANYWHERE`]. One owner per macro
+/// in a session, so that every run of the session leaves the intrinsics'
+/// state alike (the convergence test compares it, §12.2).
+pub fn owns(name: &[u8]) -> bool {
+    RECORD_ANYWHERE.iter().any(|n| n.as_bytes() == name)
+        && with_config(|c| c.mode != Mode::Off && c.names.iter().any(|x| x == name))
 }
 
 fn debug() -> bool {
@@ -2197,7 +2222,7 @@ impl Globals {
             }
             LAST_KEY.with(|l| l.borrow_mut().insert(cs, now));
         }
-        if WINDOW.with(|w| w.get()) == Some(false) {
+        if WINDOW.with(|w| w.get()) == Some(false) && !self.bm_name_is(cs, record_anywhere()) {
             return;
         }
         let refused = ST.with(|s| s.borrow().aborts.get(&cs).copied().unwrap_or(0) >= ABORT_BUDGET);
