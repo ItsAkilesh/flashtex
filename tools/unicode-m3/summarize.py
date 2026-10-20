@@ -62,7 +62,12 @@ def main(argv):
         out += ["", "Format logs: %d lines, %d differ." % (j["format_log_lines"], j["format_log_differences"]), ""]
     for p, j in load(dirs, "export.json"):
         out += ["### Export: structural against xelatex's PDF", ""]
-        out += by_family(j["cases"], fam, lambda r: bool(r.get("ok")))
+        out += by_family([r for r in j["cases"] if not r.get("excluded")], fam, lambda r: bool(r.get("ok")))
+        if j.get("excluded"):
+            out += ["", "Listed, not counted (R1: the reference wrote no PDF): %s." % ", ".join(j["excluded"])]
+        r1 = [r["case"] for r in j["cases"] if r.get("r1")]
+        if r1:
+            out += ["", "Counted under R1 (xelatex's own error, the same in FlashTeX): %s." % ", ".join(r1)]
         t = j.get("totals", {})
         out += ["", "Structural differences %s; XDV check: %s glyphs over 0.001 bp, max %s bp." % (
             t.get("structural"), t.get("xdv_over"), t.get("xdv_max_bp")), ""]

@@ -5,20 +5,24 @@
 //! and `flashtex-v3` start whichever host the document's mode names, and
 //! a mode switch starts the other program (owner, Q10).
 //!
-//! **This first stage compiles cold.** Each `COMPILE` runs the engine in
-//! full, as a child process of this program invoked as `xelatex` (as the
-//! pdfTeX host's export runs): its pages stream to the client as they are
-//! shipped, through a socket of its own (`FLASHTEX_DISPLAY_LIST`); a run
-//! that changed the `.aux` (or another file LaTeX reads back) is followed
-//! by another, up to five passes, each pass's pages replacing the
+//! **The engine is resident** (`inproc`, `crate::resident`): each run of a
+//! `COMPILE` runs the engine on an engine thread of this process, from the
+//! state kept where the format is loaded (the first run loads it), so a
+//! compile does not wait for a process start, kpathsea's start-up or the
+//! format's undump; and an edit after the preamble runs from S₀, the state
+//! at the document's start (`crate::ckpt`), so it re-runs only the body
+//! (`DONE.mode` `incremental`, `DONE.starts` each pass's start). Its pages
+//! stream to the client as they are shipped. A
+//! run that changed the `.aux` (or another file LaTeX reads back) is
+//! followed by another, up to five passes, each pass's pages replacing the
 //! previous (spec §6.4); then the external tools (`tools`) and their
 //! follow-up compiles. `DONE.pdf` is FlashTeX's own PDF, written from the
-//! display list (PLAN.md §3.2). The next run is started ahead and waits with
-//! the format loaded (`spare`), so a compile does not wait for the process
-//! start and the format's undump. The resident, incremental engine of
-//! Classic (checkpoints, convergence, S₀) is the next stage; its pieces
-//! move into the shared runtime crate then (PLAN.md §3.3). Classic's
-//! `flashtex-host` is not changed by this program.
+//! display list (PLAN.md §3.2). `FLASHTEX_UNICODE_INPROCESS=0` runs each run
+//! as a child process of this program invoked as `xelatex` instead (as the
+//! pdfTeX host's export runs), the next one started ahead with the format
+//! loaded (`spare`). The incremental engine of Classic (S₀, checkpoints,
+//! convergence; docs/design/xetex/INCREMENTAL.md) builds on the resident
+//! one. Classic's `flashtex-host` is not changed by this program.
 //!
 //! The formats are FlashTeX's own (`format`), built from the user's TeX
 //! Live as fmtutil builds them and cached.
@@ -26,14 +30,21 @@
 //! ```text
 //! flashtex-host-unicode --socket PATH [--format NAME]... [--once [--accept-timeout SECONDS]]
 //!     [--external-tools off|auto] [--tool-timeout SECONDS]
-//!     [--profile low-memory|balanced|high-performance] [--no-warm]
+//!     [--profile low-memory|balanced|high-performance] [--no-warm] [--s0-cache DIR]
 //! ```
+//!
+//! `--s0-cache DIR` (or `FLASHTEX_S0_CACHE`): each document's S₀ is saved
+//! in `DIR` after a compile that took a new one, and a host that has no
+//! state for a document opens it from there (`crate::s0file`): a reopened
+//! document runs only its body.
 //!
 //! Invoked as `xetex` or `xelatex` (`argv[0]`), it is the engine itself.
 
 pub mod compile;
+pub mod diag;
 pub mod fonts;
 pub mod format;
+pub mod inproc;
 pub mod proc;
 pub mod spare;
 pub mod tools;
@@ -63,9 +74,12 @@ pub struct Opts {
     /// `--profile`, else `FLASHTEX_PROFILE`, else Balanced: each
     /// connection's mode until its `HELLO` or a `PROFILE` names another.
     pub profile: Mode,
+    /// `--s0-cache DIR`, else `FLASHTEX_S0_CACHE`: where documents' S₀s are
+    /// persisted (`crate::s0file`).
+    pub s0_cache: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: flashtex-host-unicode --socket PATH [--format NAME]... [--once [--accept-timeout SECONDS]] [--external-tools off|auto] [--tool-timeout SECONDS] [--profile low-memory|balanced|high-performance] [--no-warm]";
+const USAGE: &str = "usage: flashtex-host-unicode --socket PATH [--format NAME]... [--once [--accept-timeout SECONDS]] [--external-tools off|auto] [--tool-timeout SECONDS] [--profile low-memory|balanced|high-performance] [--no-warm] [--s0-cache DIR]";
 
 impl Opts {
     pub fn parse(args: &[String]) -> Result<Opts, String> {
@@ -77,6 +91,9 @@ impl Opts {
             external_tools: false,
             tool_timeout: Duration::from_secs(120),
             profile: Mode::from_env(),
+            s0_cache: std::env::var_os("FLASHTEX_S0_CACHE")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from),
         };
         let mut i = 0;
         while i < args.len() {
@@ -106,10 +123,10 @@ impl Opts {
                 }
                 // the pdfTeX host's warm-up has nothing to warm here
                 "--no-warm" => {}
-                // the resident pdfTeX host's S0 cache and checkpoint
-                // interval (the app passes them to either host): a cold
-                // host keeps neither
-                "--s0-cache" | "--timed" => {
+                "--s0-cache" => o.s0_cache = Some(PathBuf::from(val()?)),
+                // the resident pdfTeX host's checkpoint interval (the app
+                // passes it to either host)
+                "--timed" => {
                     val()?;
                 }
                 _ => return Err(format!("unknown option {a}")),
@@ -135,6 +152,9 @@ pub fn main(argv: Vec<String>) -> i32 {
         .unwrap_or_default();
     if matches!(name.as_str(), "xetex" | "xelatex") {
         crate::driver::run(argv);
+    }
+    if argv.get(1).map(String::as_str) == Some("--bundle-font-index") {
+        return bundle_font_index(&argv[2..]);
     }
     if argv.get(1).map(String::as_str) == Some(proc::RUN_TOOL) {
         return proc::run_tool(&argv[2..]);
@@ -165,6 +185,37 @@ pub fn main(argv: Vec<String>) -> i32 {
     let (texmf, formats) = prepare(&exe, &opts, &children);
     println!("flashtex-host-unicode: {texmf}");
     serve(&exe, &opts, texmf, formats, children)
+}
+
+/// `--bundle-font-index ROOT LIST OUT`: the bundle's font-name index
+/// (`fontmgr::catalog::write_bundle_font_index`) of the files LIST names
+/// (absolute paths in the tree at ROOT, one a line), written to OUT.
+/// `tools/bundle/texbundle.py pack` runs it.
+fn bundle_font_index(args: &[String]) -> i32 {
+    let [root, list, out] = args else {
+        eprintln!("usage: flashtex-host-unicode --bundle-font-index ROOT LIST OUT");
+        return 2;
+    };
+    let Ok(text) = std::fs::read_to_string(list) else {
+        eprintln!("flashtex-host-unicode: cannot read {list}");
+        return 1;
+    };
+    let files: Vec<PathBuf> = text
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(PathBuf::from)
+        .collect();
+    let index = crate::fontmgr::catalog::write_bundle_font_index(Path::new(root), &files);
+    if let Some(d) = Path::new(out).parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    match std::fs::write(out, index) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("flashtex-host-unicode: {out}: {e}");
+            1
+        }
+    }
 }
 
 /// The TeX Live the engine reads and each format made ready: `HELLO.texmf`
@@ -255,6 +306,8 @@ fn serve(
         children,
         slots: Arc::new(spare::Slots::from_env()),
         profile: opts.profile,
+        engine: inproc::enabled().then(inproc::Shared::default),
+        s0_cache: opts.s0_cache.clone(),
     });
     let _ = listener.set_nonblocking(opts.once);
     let mut n = 0u64;
@@ -284,6 +337,10 @@ fn serve(
         if opts.once {
             connection(&h, conn, n);
             let _ = std::fs::remove_file(&opts.socket);
+            // the S₀ being written goes to its file before the process ends
+            if let Some(e) = h.engine.as_ref() {
+                e.flush();
+            }
             return 0;
         }
         std::thread::spawn(move || connection(&h, conn, n));
@@ -303,6 +360,11 @@ struct Host {
     /// The connections' spares, bounded together (`spare.rs`).
     slots: Arc<spare::Slots>,
     profile: Mode,
+    /// The engine thread of compiles run in this process (`inproc`), or
+    /// `None` when each run is a child process.
+    engine: Option<inproc::Shared>,
+    /// Where documents' S₀s are persisted (`--s0-cache`).
+    s0_cache: Option<PathBuf>,
 }
 
 impl Host {
@@ -380,6 +442,9 @@ fn connection(host: &Arc<Host>, conn: UnixStream, n: u64) {
         line_state: accepted
             .iter()
             .any(|a| a == flashtex_display_list::accept::LINE_STATE),
+        diag: accepted
+            .iter()
+            .any(|a| a == flashtex_display_list::diag::CAPABILITY),
     };
     let caps = [
         "compile",
@@ -394,13 +459,17 @@ fn connection(host: &Arc<Host>, conn: UnixStream, n: u64) {
         "buffers",
         "edits",
         flashtex_display_list::PROFILE_CAPABILITY,
+        flashtex_display_list::diag::CAPABILITY,
     ];
     // a mode the host does not know is ignored (protocol §6.9)
     let mode = hello
         .str_field("profile")
         .and_then(Mode::parse)
         .unwrap_or(host.profile);
-    let spares = spare::Spares::new(host.slots.clone(), mode);
+    let mut spares = spare::Spares::new(host.slots.clone(), mode);
+    if host.engine.is_some() {
+        spares = spares.off();
+    }
     send_json(
         &out,
         kind::HELLO,
@@ -518,6 +587,9 @@ fn cancel_locked(r: &mut Running) {
     if let Some(g) = r.group {
         proc::kill_group(g);
     }
+    if let Some(s) = r.stop.as_ref() {
+        s.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 fn compile_thread(
@@ -567,7 +639,7 @@ fn compile_thread(
         };
         if superseded {
             let _ = job.apply_files();
-            done(out, &job, "cancelled", None, 0, 0, 0, None, t0, None);
+            done(out, &job, &compile::Outcome::none("cancelled"), t0, None);
             continue;
         }
         run_job(
@@ -607,7 +679,7 @@ fn run_job(
                 ("message", js(e)),
             ]),
         );
-        done(out, job, "failed", None, 0, 0, 0, None, t0, None);
+        done(out, job, &compile::Outcome::none("failed"), t0, None);
         return;
     }
     let fmt_dir = match host.format_dir(&job.format) {
@@ -622,7 +694,7 @@ fn run_job(
                     ("message", js(e)),
                 ]),
             );
-            done(out, job, "failed", None, 0, 0, 0, None, t0, None);
+            done(out, job, &compile::Outcome::none("failed"), t0, None);
             return;
         }
     };
@@ -646,6 +718,18 @@ fn run_job(
             ..job.clone()
         };
         &with_fonts
+    };
+    // the document's persisted S₀ (in-process runs only)
+    let with_s0;
+    let job = match (&host.s0_cache, &host.engine) {
+        (Some(dir), Some(_)) if !job.export => {
+            with_s0 = Job {
+                s0_file: Some(dir.join(job.s0_name())),
+                ..job.clone()
+            };
+            &with_s0
+        }
+        _ => job,
     };
     let auto = job
         .external_tools
@@ -679,21 +763,15 @@ fn run_job(
             scratch,
             &host.children,
             spares,
+            host.engine.as_ref(),
         );
-        done(
-            out,
-            job,
-            o.status,
-            o.exit_code,
-            o.pages,
-            o.diagnostics,
-            o.passes,
-            o.first_page_ms,
-            t0,
-            cause,
-        );
+        done(out, job, &o, t0, cause);
         if job.export || o.status == "cancelled" || o.status == "failed" {
             break;
+        }
+        // a new S₀ goes to its file, after the compile's DONE
+        if let (Some(e), Some(p)) = (host.engine.as_ref(), job.s0_file.as_ref()) {
+            e.save_s0(p.clone(), job.root.clone());
         }
         let (ran, changed) = tools::after_compile(
             job,
@@ -747,19 +825,15 @@ fn started(out: &Out, job: &Job, exe: &Path) {
     );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn done(
-    out: &Out,
-    job: &Job,
-    status: &str,
-    exit_code: Option<i32>,
-    pages: u32,
-    diagnostics: usize,
-    passes: usize,
-    first_page_ms: Option<f64>,
-    t0: Instant,
-    cause: Option<&str>,
-) {
+fn done(out: &Out, job: &Job, o: &compile::Outcome, t0: Instant, cause: Option<&str>) {
+    let (status, exit_code, pages, diagnostics, passes, first_page_ms) = (
+        o.status,
+        o.exit_code,
+        o.pages,
+        o.diagnostics,
+        o.passes,
+        o.first_page_ms,
+    );
     let pdf = job.output_dir.join(format!("{}.pdf", job.jobname));
     let log = job.output_dir.join(format!("{}.log", job.jobname));
     let ms = |v: f64| Json::Num((v * 10.0).round() / 10.0);
@@ -788,7 +862,19 @@ fn done(
         ("log".to_string(), js(log.to_string_lossy().into_owned())),
         (
             "mode".to_string(),
-            js(if job.export { "export" } else { "cold" }),
+            // a compile whose first run went on from S₀ re-ran only the
+            // document's body
+            js(if job.export {
+                "export"
+            } else if matches!(o.starts.first(), Some(&"s0" | &"page")) {
+                "incremental"
+            } else {
+                "cold"
+            }),
+        ),
+        (
+            "starts".to_string(),
+            Json::Arr(o.starts.iter().map(|s| js(*s)).collect()),
         ),
         ("passes".to_string(), Json::Int(passes as i64)),
         ("typeset_pages".to_string(), Json::Int(pages as i64)),

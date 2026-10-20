@@ -126,6 +126,10 @@ pub struct CompileRequest {
     /// line before the main file (a chapter focus), the names as the
     /// document's `\include`s write them. Spec §6.3.
     pub includeonly: Option<Vec<String>>,
+    /// The FONT formats this client draws (spec §5.1, `font_formats`):
+    /// the programs of other formats do not travel. Empty: not sent (the
+    /// host's default, Type 1 only).
+    pub font_formats: Vec<String>,
 }
 
 /// A splice of a file's bytes (spec §6.3, `edits`).
@@ -155,6 +159,7 @@ impl CompileRequest {
             export: false,
             external_tools: None,
             includeonly: None,
+            font_formats: vec![],
         }
     }
 
@@ -191,6 +196,12 @@ impl CompileRequest {
             kv.push((
                 "includeonly".into(),
                 Json::Arr(names.iter().map(|n| s(n.as_str())).collect()),
+            ));
+        }
+        if !self.font_formats.is_empty() {
+            kv.push((
+                "font_formats".into(),
+                Json::Arr(self.font_formats.iter().map(|f| s(f.as_str())).collect()),
             ));
         }
         if !self.buffers.is_empty() {

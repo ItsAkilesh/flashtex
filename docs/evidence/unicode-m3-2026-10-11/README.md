@@ -32,8 +32,8 @@ was not measured.
 
 | # | M3 criterion | Verdict | Numbers (verified unless marked) |
 |---|---|---|---|
-| 1 | Unicode corpus (fontspec, unicode-math, polyglossia, xeCJK; Q2's corpus) at P-T1 100 % | **not met** | **46 of 49** equal (P-T1 log, exit status, XDV): fontspec 15/15, `[fonts]` 6/6, unicode-math 7/7, xeCJK 16/16 (thuthesis included), polyglossia 2/5. Failing: u03 (Hebrew) and u04 (Arabic), XDV differs (no bidi, ranked 1); `polyglossia` (the manual), the port panics (ranked 2). 224.7 M log lines compared |
-| 2 | Export gate per Q2 (structural; 2×/3× pixels) | **not met** | 23 of 49 cases pass structurally. Another 19 differ only in `ToUnicode`; 15 of them because FlashTeX writes a `ToUnicode` where xdvipdfmx writes none (CID-keyed CJK fonts, by design, PLAN.md §4B). 3 differ for real: u03, u04 (no bidi) and u11 (beamer's links); xeCJK-example-mathblock's colour was a fourth, fixed here. 4 are cases the oracle itself errors on (2 with no comparable PDF). 204,703 glyphs compared; positions within 0.0003 bp of TeX's XDV wherever glyphs pair. Core Graphics: 47 pairs, 1 at 0 px; 187,677 px in all at 2×, 432,795 px at 3×. That is a floor, not 0, as the 2026-10-09 ruling expects |
+| 1 | Unicode corpus (fontspec, unicode-math, polyglossia, xeCJK; Q2's corpus) at P-T1 100 % | **met** (2026-10-12) | **49 of 49** equal in run [38226934484](https://github.com/flash-tex/flashtex/actions/runs/38226934484), after ICU's bidi (#1812), the line breaker (#1816) and one font file per name for the oracle (#1822); the measurement of 2026-10-11 follows. Then: **46 of 49** equal (P-T1 log, exit status, XDV): fontspec 15/15, `[fonts]` 6/6, unicode-math 7/7, xeCJK 16/16 (thuthesis included), polyglossia 2/5. Failing: u03 (Hebrew) and u04 (Arabic), XDV differs (no bidi, ranked 1); `polyglossia` (the manual), the port panics (ranked 2). 224.7 M log lines compared |
+| 2 | Export gate per Q2 (structural; 2×/3× pixels) | **met** (2026-10-12, with R1) | Run [38274237575](https://github.com/flash-tex/flashtex/actions/runs/38274237575): **48 of 48** pass (5 of them under R1: fontspec-example, polyglossia, u04, unimath-symbols, xeCJK-example-listings), 0 structural differences, XDV check max 0.000252 bp; xeCJK-example-fallback listed, not counted (xelatex writes no PDF). Before R1, run 38250091155: 2026-10-12, run [38250091155](https://github.com/flash-tex/flashtex/actions/runs/38250091155): **43 of 49 pass, 0 structural differences in all 49**. The 6 others fail only because xelatex itself exits 1 there (R1 below proposes how to count them). The measurement of 2026-10-11 follows. Then: 23 of 49 cases pass structurally. Another 19 differ only in `ToUnicode`; 15 of them because FlashTeX writes a `ToUnicode` where xdvipdfmx writes none (CID-keyed CJK fonts, by design, PLAN.md §4B). 3 differ for real: u03, u04 (no bidi) and u11 (beamer's links); xeCJK-example-mathblock's colour was a fourth, fixed here. 4 are cases the oracle itself errors on (2 with no comparable PDF). 204,703 glyphs compared; positions within 0.0003 bp of TeX's XDV wherever glyphs pair. Core Graphics: 47 pairs, 1 at 0 px; 187,677 px in all at 2×, 432,795 px at 3×. That is a floor, not 0, as the 2026-10-09 ruling expects |
 | 3 | §1.2 latency on xelatex bench documents | **not met** (edit and reopen rows); preamble row **pending the reference Mac** | Every Unicode compile is a full run. Start-up to the format loaded is 848 M instructions. A full run is 1,504 M (article) to 30,554 M (300 pages); xelatex takes 1,514 M to 14,253 M. Host on ubuntu-latest, first page: article 144 ms, unicode-math 663 ms, edit = preamble = reopen. Belief: 848 M instructions take far more than 16 ms (edit) or 100 ms (reopen) on any M-series core |
 | 4 | Incremental soundness sweeps on Unicode | **cannot run as defined** (no incremental Unicode engine, INCREMENTAL.md §5) | What does exist was swept: the host's reuse between compiles (hot spares, `.aux` passes). 53 documents, 318 compiles; host A (spares) equals host B (cold) in pages, fonts, forms and images, frame for frame, in 318 of 318 |
 | 5 | A no-TeX-Live run of the corpus from the bundle | **not met** | macos-15, sandboxed, bundle `dc72dde1…` (HELLO: no TeX Live, resolver `bundle`). 27 of 50 compile cleanly with a PDF. Each of those, except the macOS-only l004, is **byte-identical** to the Linux TeX Live run's PDF (26 of 26). The other 23: 10 need packages the bundle lacks (`bidi`, `thuthesis`, `zhnumber`, `l3draw`, `showexpl`, `typogrid`, `unicode-math.dtx`). 13 end with status `error` and fonts missing: fonts the bundle lacks, or TeX Gyre named by family, which only TeX Live's fontconfig set-up finds here (f01–f04, f06, u08, fontspec-example). fontspec-example and unimath-symbols fail with TeX Live too |
@@ -69,6 +69,33 @@ The other two count as failures: u04 (`Missing number`, and the bidi
 difference) and polyglossia (the missing Syriac font, then the panic).
 
 ## 2. Export (criterion 2)
+
+**2026-10-12 (lane M3-EXPORT), run
+[38250091155](https://github.com/flash-tex/flashtex/actions/runs/38250091155):
+43 of 49 pass; 0 structural differences in every case.** Each class of
+the earlier failures, and what was done:
+
+| class (2026-10-11) | cases | resolution |
+|---|---|---|
+| `ToUnicode` where xdvipdfmx writes none (Adobe-GB1/Japan1 fonts: Fandol, HaranoAji) | 15 CJK + polyglossia, thuthesis | **fixed**: FlashTeX writes none for a standard Adobe collection either (`type0.c` `CIDFont_is_ACCFont`), PLAN.md §4B updated |
+| `ToUnicode` code-point choices and coverage (Amiri's positional forms, TeX Gyre small capitals, `.notdef`, math variants, `visiblespace`) | u04, l007, l008, u08, u09, xeCJK-example-listings, polyglossia | **fixed**: `ToUnicode` is a port of xdvipdfmx's (`tt_cmap.c`, `tt_gsub.c`, `agl.c`, `pdfencoding.c`; `src/out/tounicode.rs`, `src/out/agl.rs`). A Python prototype of the same algorithm matched xelatex's PDFs on 243 of 248 native fonts and 33 of 33 Type 1 fonts before the port; the 5 others were local math-font versions |
+| glyph outline (u03's DavidCLM, polyglossia's LinLibertine: 5 glyphs) | u03, polyglossia | **comparator fixed, not widened**: xdvipdfmx writes a charstring operand within 3.0e-5 of an integer as that integer (`cs_type2.c` `clear_stack`), FlashTeX the font's own value; the outlines differ by at most 3.05e-5 font units, but straddled the digest's 1/100-unit rounding. The comparator now compares coordinates within half of its stated 1/100-unit resolution (`fonts.py` `same_outline`, `test_outline.py`) |
+| Core Graphics pixels | all | **already ruled**: the 2026-10-09 ruling on #1712 makes the gate structural parity with positions within 0.01 bp + 0.005 em, not 0 px; the pixels are reported, not gated |
+| the oracle errors (xelatex exits 1) | fontspec-example, unimath-symbols, xeCJK-example-fallback (no PDF), xeCJK-example-listings, u04, polyglossia | **needs a ruling (R1)**: structurally equal (0 differences) in all five that have a PDF; they fail only on the reference's exit status |
+
+**R1 (approved by the Commander, 2026-10-12; applied in `tools/xetex-pdfparity/run.py`).** As P-T1 counts a case
+whose two engines end in the same TeX error as equal (§1), the export gate
+counts a case whose reference exits non-zero as passing when the candidate
+exits with the same status and the same first error, both write a PDF, and
+it has 0 structural differences and passes the XDV position check (where
+the reference wrote an XDV). A case whose reference writes no PDF
+(xeCJK-example-fallback) cannot be compared: it is listed, not counted, and
+the denominator is the cases with a reference PDF. With R1: **48 of 48**
+expected; measured in run [38274237575](https://github.com/flash-tex/flashtex/actions/runs/38274237575): **48 cases, 48 pass, 0 fail**, 1 more listed and not counted (xeCJK-example-fallback); 0 structural differences; XDV check max 0.000252 bp.
+
+The macOS leg (Core Graphics, run 38250091155): 48 pairs, every one with 0 structural differences; 1 at 0 px; 360,324 px in all at 2×, 783,451 px at 3×, the same totals as before the `ToUnicode` port (it draws nothing). The rise from 187,677 px (2026-10-11) is the polyglossia manual, which now runs to its end (182,476 px over 85 pages). A floor, not 0, under the 2026-10-09 ruling.
+
+Before that (2026-10-11):
 
 `tools/xetex-pdfparity/run.py --cases-dir … --no-visual` on Linux, then
 `tools/unicode-m3/visual.py` on macos-15 over the same PDFs (Core Graphics):
@@ -173,15 +200,34 @@ or `tools/xetex-pdfparity/run.py --engine … --cases-dir C --no-visual`.
    Repros: u03-polyglossia-hebrew, u04-polyglossia-arabic. Size: a lane of its
    own (vendor TeX Live 2026's ICU, port `measure_native_node`'s bidi branch
    and `\XeTeXlinebreaklocale`).
+   **Fixed by lane M3-RTL** (2026-10-12, PR #1812): a port of ICU 78.2's
+   bidi algorithm (`src/native/ubidi`, 2,104 vectors equal to ICU's);
+   u03 and u04 equal in P-T1 and XDV.
 2. **Engine panic on polyglossia's manual.**
    `flashtex-engine/src/ix.rs:44` (index out of bounds) in both passes, after
    the fontspec error for the missing Syriac font that xelatex also reports.
    xelatex exits 1 and writes 106 pages; the port exits 101 with a damaged
    PDF. The message is `index out of bounds: the len is 5000000 but the index is 18446744073441116161`: `mem[null]`, null being min_halfword −0x0FFFFFFF. The frames are `Globals::main_control` ← `tex_body` ← `driver::run`, which fits the native-word merge loop of `main_control` (`main_ppp` walking `link`s, xetex.web's "collapse native words") running off the list. Belief: the earlier divergence is the right-to-left text that is laid out left to right (the bidi warning precedes the panic). Repro: case `polyglossia`.
+   **Root cause (lane M3-PANIC, 2026-10-12), not bidi:** ICU's line breaker was a stub (`linebreak_next` returned `UBRK_DONE` at once), so under `\XeTeXlinebreaklocale` `do_locale_linebreaks` appended nothing. A word merged with the native word before it then left `tail` at the flushed node, and the walk at `body_7.rs:6738` ran off the list (located with `#[track_caller]`, run 38201493482). polyglossia's Chinese sets the locale `zh` (`\textchinese{\chinesenumeral{753}}`). Fixed by `crates/flashtex-xetex/src/native/linebreak.rs`: ICU 78.2's own line-break tables (`third_party/icu`) run by a port of ICU's rule-based break iterator, ICU4X's dictionaries for Thai, Lao, Khmer and Myanmar. With it the manual runs to its end in both passes (exit 1 and 85 pages, as xelatex; the untraced log equal but for the string pool's count). Its box dumps (130,657 lines) still differ in 19 lines: box heights, depths and widths around right-to-left text (Amiri Arabic inside `\beginR`, laid out left to right: failure 1). Belief: all 19 are failure 1. **Measured after #1812:** the box dumps are equal (run 38221376131); the one difference left was at XDV byte 200172, page 7's pointer to page 6, every record equal: the two engines had loaded DejaVu Sans Mono from different files (fontconfig hands xelatex duplicates in hash order). Fixed in the oracle's environment by `tools/unicode-m3/fontconfig.py` (one file per font name, PR #1822): 49 of 49.
 3. **beamer's navigation-symbol links are missing.** 63 links in xelatex's
    PDF are absent from FlashTeX's (3 pages), and FlashTeX writes 3 links
    xelatex has not. They are pgf-drawn icons inside `\hyperlink`. Repro:
    u11-beamer-fontspec.
+   **Fixed by lane M3-LINKS** (2026-10-12, PR #1809). u11 now passes
+   structurally, with 0 differences against the 67 recorded above. That
+   makes 24 of 49 cases equal in the export run
+   [38211798848](https://github.com/flash-tex/flashtex/actions/runs/38211798848);
+   no other case changed. There were three causes:
+   - **Phantom links were dropped.** hyperref's `hdvipdfmx` writes
+     `dvipdfmx:catch_phantom`, which FlashTeX ignored. dvipdfmx widens a
+     link by the kerns inside it, so 60 links had no rectangle. The 3
+     footline links were 1.07 bp short.
+   - **A soft mask's form was never written.** Only a named object
+     (`/SMask <</G @pgfsmask5>>`) referred to it, so it was written as
+     `null`.
+   - **The comparator was too strict about soft masks.** It compared a
+     mask's group by its content-stream tokens; it now compares what the
+     group draws, as it does for other forms.
 4. **The bundle lacks what the corpus reads** (criterion 5's list).
    Owner: BUNDLE-PUBLISH (`tools/bundle/tl2026/extra.txt`).
 5. **`ToUnicode` for `.notdef` is U+FFFF where xelatex writes none** (Fira

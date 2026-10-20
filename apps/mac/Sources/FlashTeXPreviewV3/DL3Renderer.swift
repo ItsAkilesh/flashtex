@@ -70,6 +70,12 @@ public final class DL3RenderFont: @unchecked Sendable {
     /// Whether `code` draws anything.
     public func draws(_ code: Int) -> Bool {
         if let type3 { return type3[code]?.mask != nil }
+        // A glyph id is drawn whatever it is, 0 too: the PDF shows glyph 0
+        // (CID 0, the font's .notdef box) where the shaper found no glyph
+        // (XeTeX keeps those in a native word with inter-word space shaping:
+        // Latin words in an Arabic font were boxes in xelatex's PDF and ours,
+        // and blank in the preview).
+        if glyphIdCount > 0 { return code >= 0 && code < glyphIdCount }
         return glyph(code) != 0
     }
 
@@ -79,7 +85,7 @@ public final class DL3RenderFont: @unchecked Sendable {
     /// character code, and reading it through the cmap drew every letter of
     /// a Unicode-mode page as another (`hello` as `?2HHQ`).
     @inline(__always) public func glyph(_ code: Int) -> CGGlyph {
-        if glyphIdCount > 0 { return code > 0 && code < glyphIdCount ? CGGlyph(code) : 0 }
+        if glyphIdCount > 0 { return code >= 0 && code < glyphIdCount ? CGGlyph(code) : 0 }
         return code >= 0 && code < glyphs.count ? glyphs[code] : 0
     }
 
@@ -253,7 +259,20 @@ public final class DL3RenderImage: @unchecked Sendable {
                   let img = CGImageSourceCreateImageAtIndex(src, 0, [kCGImageSourceShouldCache: true] as CFDictionary) else {
                 return .failure(DL3Error("\(file): cannot decode"))
             }
-            return .success(DL3RenderImage(key: key, payload: .raster(deviceSamples(img)), cost: img.bytesPerRow * img.height))
+            var samples = info["color_space"].flatMap { pdfColored(img, $0) } ?? deviceSamples(img)
+            // A JPEG in the PDF is a DCTDecode stream, which Core Graphics
+            // reads through its JPEG data provider; drawn small, that one
+            // decodes at a reduced size (the DCT's own scaling) where
+            // ImageIO's samples are point-sampled (a frame drawn at 1 px/pt
+            // came out black in the preview, grey in the PDF). So the same
+            // provider here, in the space chosen above.
+            if type != "png", let provider = CGDataProvider(url: url as CFURL), let space = samples.colorSpace,
+               let jpeg = CGImage(jpegDataProviderSource: provider, decode: nil, shouldInterpolate: false, intent: samples.renderingIntent),
+               jpeg.width == samples.width, jpeg.height == samples.height,
+               jpeg.colorSpace?.numberOfComponents == space.numberOfComponents, let recolored = jpeg.copy(colorSpace: space) {
+                samples = recolored
+            }
+            return .success(DL3RenderImage(key: key, payload: .raster(samples), cost: img.bytesPerRow * img.height))
         case "pdf":
             guard let doc = DL3Renderer.openPDF(url), let page = DL3Renderer.page(of: doc, at: Int(info["page"]?.int ?? 1)) else {
                 return .failure(DL3Error("\(file): cannot open page \(info["page"]?.int ?? 1)"))
@@ -306,6 +325,56 @@ public final class DL3RenderImage: @unchecked Sendable {
         }
         return page.getBoxRect(kind)
     }
+}
+
+/// The decoded samples in the colour space the host's PDF gives them
+/// (IMAGE `color_space`, spec §5.2; Unicode mode writes dvipdfmx's): `icc`,
+/// the profile the file embeds (ImageIO tags the samples with it);
+/// `calgray`/`calrgb`, the PDF's CalGray/CalRGB with its numbers; an
+/// indexed image keeps its palette over that base. With the PDF's
+/// `/Intent`, not interpolated. Nil when the description is not one of
+/// these (the caller then takes the device space).
+func pdfColored(_ img: CGImage, _ cs: DL3JSON) -> CGImage? {
+    let nums = { (k: String) -> [CGFloat] in (cs[k]?.array ?? []).compactMap { $0.double }.map { CGFloat($0) } }
+    let indexed = img.colorSpace?.model == .indexed
+    var base: CGColorSpace?
+    switch cs["type"]?.string {
+    case "icc":
+        base = indexed ? img.colorSpace?.baseColorSpace : img.colorSpace
+        guard base?.model == .rgb || base?.model == .monochrome || base?.model == .cmyk else { return nil }
+    case "calgray":
+        let white = nums("white_point")
+        guard white.count == 3, let g = cs["gamma"]?.double else { return nil }
+        base = CGColorSpace(calibratedGrayWhitePoint: white, blackPoint: [0, 0, 0], gamma: CGFloat(g))
+    case "calrgb":
+        let white = nums("white_point"), m = nums("matrix")
+        guard white.count == 3, m.count == 9, let g = cs["gamma"]?.double else { return nil }
+        let gg = [CGFloat](repeating: CGFloat(g), count: 3)
+        base = CGColorSpace(calibratedRGBWhitePoint: white, blackPoint: [0, 0, 0], gamma: gg, matrix: m)
+    default: return nil
+    }
+    guard var space = base else { return nil }
+    if indexed {
+        let n = space.numberOfComponents
+        guard let src = img.colorSpace, src.baseColorSpace?.numberOfComponents == n,
+              let table = src.colorTable, table.count >= n, table.count % n == 0,
+              let ix = CGColorSpace(indexedBaseSpace: space, last: table.count / n - 1, colorTable: table) else { return nil }
+        space = ix
+    } else if img.colorSpace?.numberOfComponents != space.numberOfComponents {
+        return nil
+    }
+    let intent: CGColorRenderingIntent
+    switch cs["intent"]?.string {
+    case "Perceptual": intent = .perceptual
+    case "RelativeColorimetric": intent = .relativeColorimetric
+    case "Saturation": intent = .saturation
+    case "AbsoluteColorimetric": intent = .absoluteColorimetric
+    default: intent = .defaultIntent
+    }
+    guard let provider = img.dataProvider else { return nil }
+    return CGImage(width: img.width, height: img.height, bitsPerComponent: img.bitsPerComponent, bitsPerPixel: img.bitsPerPixel,
+                   bytesPerRow: img.bytesPerRow, space: space, bitmapInfo: img.bitmapInfo, provider: provider,
+                   decode: nil, shouldInterpolate: false, intent: intent)
 }
 
 /// The decoded samples in the PDF's device colour space, as pdfTeX embeds

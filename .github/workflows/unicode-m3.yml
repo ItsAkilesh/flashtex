@@ -72,11 +72,17 @@ jobs:
           workspaces: |
             crates/flashtex-xetex -> target
             . -> target
-      - name: the port, its host, fonts_line, its tests; dl3-client
+      - name: the port, its host, fonts_line, its tests
         run: |
           set -euo pipefail
           (cd crates/flashtex-xetex && cargo build --release --locked --bins --example fonts_line \
              && cargo test --release --locked --test host --no-run)
+      - name: the port's unit tests (no TeX; ICU's bidi vectors among them)
+        working-directory: crates/flashtex-xetex
+        run: cargo test --release --locked --lib
+      - name: dl3-client; the binaries collected
+        run: |
+          set -euo pipefail
           cargo build --release --locked -p flashtex-display-list --bin dl3-client
           mkdir -p "$RUNNER_TEMP/bin"
           cp crates/flashtex-xetex/target/release/{flashtex-xetex,flashtex-host-unicode} \
@@ -130,22 +136,12 @@ jobs:
           tl="$(dirname "$(dirname "${{ steps.tl.outputs.bin }}")")"
           # xetex finds fonts by name through fontconfig; the port through its
           # own index (FLASHTEX_FONT_DIRS, then the system's directories).
-          # Both see TeX Live's OpenType and TrueType trees and /usr/share/fonts.
-          cat > "$RUNNER_TEMP/fonts.conf" <<EOF
-          <?xml version="1.0"?>
-          <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
-          <fontconfig>
-            <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
-            <dir>$tl/texmf-dist/fonts/opentype</dir>
-            <dir>$tl/texmf-dist/fonts/truetype</dir>
-            <cachedir>$RUNNER_TEMP/fc-cache</cachedir>
-          </fontconfig>
-          EOF
-          {
-            echo "FONTCONFIG_FILE=$RUNNER_TEMP/fonts.conf"
-            echo "FLASHTEX_FONT_DIRS=$tl/texmf-dist/fonts/opentype:$tl/texmf-dist/fonts/truetype"
-            echo "FLASHTEX_CACHE_DIR=$RUNNER_TEMP/flashtex-cache"
-          } >> "$GITHUB_ENV"
+          # Both see TeX Live's OpenType and TrueType trees and /usr/share/fonts,
+          # with one file per name (a system copy of a file TeX Live ships is
+          # rejected: fontconfig lists duplicates in hash order, fontconfig.py).
+          # one file per font name in both engines (tools/unicode-m3/fontconfig.py)
+          python3 tools/unicode-m3/fontconfig.py --texlive "$tl" --out "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          export FONTCONFIG_FILE="$RUNNER_TEMP/fonts.conf"
           FONTCONFIG_FILE="$RUNNER_TEMP/fonts.conf" fc-cache -f >/dev/null 2>&1 || true
           FONTCONFIG_FILE="$RUNNER_TEMP/fonts.conf" fc-list : family | grep -c . || true
           xetex --version | head -1
@@ -165,6 +161,7 @@ jobs:
         if: matrix.part == 'export'
         run: |
           set -o pipefail
+          python3 -m unittest discover -s tools/xetex-pdfparity -p 'test_outline.py'
           python3 tools/xetex-pdfparity/run.py --engine "$RUNNER_TEMP/bin/flashtex-xetex" \
             --cases-dir "$OUT/corpus" --jobs 4 --timeout 3600 --no-visual \
             --json "$OUT/export.json" --pdf-dir "$OUT/pdf" 2>&1 | tee "$OUT/export.txt" || true

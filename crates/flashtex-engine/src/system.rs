@@ -4594,7 +4594,11 @@ fn note_lookup(
     }
 }
 
-fn note_file(path: &str) {
+/// The run opened `path` for reading: the read journal's entry (its
+/// content's hash and stat signature when it was opened). The engines' own
+/// file opens call it (the Unicode engine's, `crates/flashtex-xetex`, for
+/// what it finds without the resolver); a lookup that finds a file notes it.
+pub fn note_file(path: &str) {
     note_ahead_read(path);
     READS.with(|r| {
         let mut b = r.borrow_mut();
@@ -4735,7 +4739,8 @@ pub fn mtime_secs(path: &str) -> Option<i64> {
         .map(|d| d.as_secs() as i64)
 }
 
-fn note_output(path: &str) {
+/// The run opened `path` for output (the read journal's `outputs`).
+pub fn note_output(path: &str) {
     READS.with(|r| {
         if let Some(log) = r.borrow_mut().as_mut() {
             if !log.outputs.iter().any(|p| p == path) {

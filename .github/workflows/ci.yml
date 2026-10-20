@@ -1187,8 +1187,14 @@ jobs:
           brew install --cask basictex
           echo /Library/TeX/texbin >> "$GITHUB_PATH"
           export PATH="/Library/TeX/texbin:$PATH"
-          sudo tlmgr update --self
-          sudo tlmgr install lipsum pgf xcolor
+          # Each tlmgr call picks a CTAN mirror: one newer than the last call's
+          # stops the install with "tlmgr itself needs to be updated" (exit
+          # 255, 2026-10-12). Update tlmgr again and retry, up to 4 times.
+          for attempt in 1 2 3 4; do
+            sudo tlmgr update --self && sudo tlmgr install lipsum pgf xcolor && break
+            [ "$attempt" = 4 ] && exit 1
+            echo "tlmgr attempt $attempt failed (mirror skew?): again"; sleep 5
+          done
           kpsewhich pdflatex.ini
           pdflatex --version | head -n 1
           # Unicode mode's tests (EngineV3ModeTests) build xelatex.fmt and

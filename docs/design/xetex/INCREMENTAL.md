@@ -129,10 +129,91 @@ pdfTeX's own, each needing a XeTeX counterpart written against `xetex.web`:
    format image (`fmtimage.ch` for `xetex.web`) and the kpathsea and font
    catalogs kept in the process. Gate: P-T1 lockstep, XDV and the PDF parity
    baseline unchanged; spares removed.
+   *Landed (lane XETEX-INCR, step 1), before R2:* `src/resident.rs`,
+   `src/host/inproc.rs`. The engine is kept between runs, and the state
+   right after the format load is a checkpoint (`changes/resident.ch`'s
+   `flashtex_format_ready`) that later runs of the same command line and
+   unchanged format file restore, then run the rest of the main program
+   (`run_after_format`): no `fmtimage.ch`, no `initialize`/`init_prim` at
+   all. The clock is the session's (as Classic's), the terminal and the
+   output's reports are captured, exits unwind, and a run stops at its host's
+   cancel (`flashtex_poll` between commands and at each macro call). The
+   runtime is still per process, so one engine thread serves the process.
+   Spares remain behind `FLASHTEX_UNICODE_INPROCESS=0`, as the comparison
+   path; `tools/incr-bench/unicode.py --verify` compares every in-process
+   compile with a from-scratch one in a process of its own.
 3. **S₀** at `\begin{document}`, keyed by the read-set (font files and
    directories included). This is the step that matters for unicode-math.
+   *Landed (lane XETEX-INCR, step 2):* `changes/checkpoint.ch` (Classic's
+   arming at `\document` and the hook at `big_switch`, against `xetex.web`;
+   `resume_main_control`), `src/ckpt.rs` (the record: every file global's
+   stream, an output file's bytes so far being written back on a restore;
+   the captured terminal; the run's state outside the word space; each
+   layout engine's shaping state). The key is Classic's `host::Key`, checked
+   by Classic's code, built from the same read journal (this engine's own
+   opens now note their files: the output-directory shortcut, font files,
+   `\filemoddate` and the other whole reads), plus the font directories
+   when the preamble named a font. §4's two beliefs, tested
+   (`ckpt::tests`): HarfBuzz/FreeType answers and TECkit conversions do
+   not depend on what was asked before; but a layout engine keeps the last
+   shaping's shaper and script, which `usingOpenType`/`usingGraphite` read,
+   so the record keeps them and a restore puts them back. S₀ is refused
+   when a page shipped before it (the output's state is not kept yet: step
+   4), and when the preamble ran a shell command.
+   *Persisted (lane UNICODE-POLISH):* with `--s0-cache DIR` (or
+   `FLASHTEX_S0_CACHE`), a compile that took a new S₀ saves it to
+   `DIR/<hash of the command line and directories>.xs0` after its `DONE`
+   (`src/s0file.rs`; the engine thread copies the chunks out, a thread of
+   its own writes them through a temporary file and a rename; Low Memory
+   writes in place, with no copy). A host with no state for a document
+   opens it: the nonzero chunks are mapped copy-on-write (Classic's v5
+   layout), and the state outside the word space is made again: the handle
+   table's objects from their recipes (a layout engine from its font file,
+   face, size and options; a TECkit mapping from its file; glyph-info
+   arrays, pictures' paths and OpenType assemblies as data), the font
+   manager by making its lookups again over the catalog, the source map as
+   it was at S₀. It is refused unless the command line, directories and
+   format file are the same, S₀'s key holds (Classic's checks, the
+   arm-window reads included), the font directories are unchanged, and
+   every font and mapping file its objects are made from has the same
+   content. `tools/incr-bench/unicode_reopen.py` checks a reopen after an
+   edit in the body (from S₀), in the preamble and of a font file
+   (refused) against a from-scratch compile, and times a cold open against
+   a reopen.
 4. **L2 checkpoints** at `\shipout` with §4's state, `checkpoint.ch` for
    `xetex.web`.
+   *Landed (lane XETEX-INCR, step 3), with L3's restart (not its
+   convergence):* after S₀, a checkpoint at the first `big_switch` after
+   each shipout (`ckpt::PageCk`). It keeps the output's document (pages
+   and forms shared, `Arc`), output files by length only (a restore cuts
+   them back while `system::outside_change` says the engine's last write
+   is what is there, and while no file open before the checkpoint was
+   opened again after it), and the terminal by length. A compile whose S₀
+   key holds restarts from the newest page checkpoint before what changed
+   (`resident::Engine::restart_page`): every file read by then unchanged,
+   but a file still open there may have changed after the bytes consumed
+   (the edit's place against the user's files as the last run read them),
+   and no lookup finds another file. The pages before it are sent again
+   from the checkpoint's document (each page's frame made once, kept in
+   its `Built`), then the run goes on to the end: no convergence yet, so
+   the pages after the edit are typeset again (`done` grows with the
+   document), but the edited page comes after a page or two.
+   *Retention (lane UNICODE-POLISH):* the checkpoints are kept within the
+   performance mode's budget (`ckpt::Retention`, `ckpt::thin`, Classic's
+   `incr::thin` without segment checkpoints): the format point, S₀, the
+   newest page's and the restart point stay; within `dense` pages of the
+   last edit every page checkpoint stays; further out they are thinned
+   log-spaced until what they hold (the word space's logs and the source
+   map's side-table copies, `Globals::kept_bytes`) fits half the budget.
+   Balanced and High Performance keep Classic's budgets (1 GiB and up);
+   Low Memory keeps 32 MB (`ckpt::LOW_BUDGET`) and, like Classic's, a
+   resident engine: it used to keep no engine between compiles (55 MB
+   idle, 725 ms a keystroke on a 109-page fontspec document; now 210 MB
+   and 15 ms). The source map's side table, once shared with checkpoints
+   in 64 KB chunks (1.7 MB a page), is shared in 512-byte leaves under
+   1 KB groups (0.15 MB a page), and a fresh run gives back the word
+   space's pages that hold only zeros (77 MB, as Classic's idle trim
+   does): Balanced holds 223 MB on that document where it held 540 MB.
 5. **L3 restart and converge**: `iso.rs` for XeTeX's nodes, the dead-word
    rules from `xetex.web`, line shifting; a soundness case for every rule and
    the soundness sweep (incremental equal to cold, frame by frame).
