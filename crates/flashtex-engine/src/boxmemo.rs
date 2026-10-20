@@ -300,70 +300,6 @@ fn insert_entry(s: &mut State, cs: i32, entry: Entry) {
     }
 }
 
-/// The operations a replay makes: `ops` without the groups that leave
-/// nothing behind. A group (`Begin` .. its `End`) whose operations are all
-/// local (`eq_define`, `eq_word_define`, `sa_def`, `sa_w_def`, in it or in
-/// groups inside it) is undone by its own `unsave`: every location it
-/// assigned is restored to the very word it held before (tex.web §283:
-/// `eq_save` keeps that word, `unsave` puts it back and `eq_destroy`s the
-/// value the group gave it; e-TeX's `restore_sa` likewise), and a
-/// reassignment of the value a location already holds (e-TeX's
-/// "reassigning", which saves nothing) changes nothing either. So the
-/// group's net effect on `eqtb`, the sparse registers and the save stack is
-/// nothing. What it changes besides is memory the program does not read
-/// back: the free lists and the usage statistics (`var_used`, `dyn_used`,
-/// `max_save_stack`), which DESIGN.md §1.1 counts as accounting and the
-/// convergence test treats as dead (free memory, high-water marks). The
-/// recording refuses everything else a group could leave (an
-/// `\aftergroup` token, output, tracing). MACRO-REPLAY.md revision 5,
-/// §11.5.
-fn elide_local_groups(ops: &[Op]) -> Vec<Op> {
-    // (for each `Begin`, the index of its `End`, and whether everything
-    // between them is local)
-    let n = ops.len();
-    let mut end = vec![usize::MAX; n];
-    let mut local = vec![false; n];
-    let mut stack: Vec<(usize, bool)> = vec![];
-    for (i, o) in ops.iter().enumerate() {
-        match o {
-            Op::Begin(_) => stack.push((i, true)),
-            Op::End => {
-                if let Some((b, l)) = stack.pop() {
-                    end[b] = i;
-                    local[b] = l;
-                    if let Some(top) = stack.last_mut() {
-                        top.1 &= l;
-                    }
-                }
-            }
-            Op::Def { kind, .. } | Op::Sa { kind, .. } => {
-                if *kind > 1 {
-                    for x in stack.iter_mut() {
-                        x.1 = false;
-                    }
-                }
-            }
-            // (a control sequence entered stays: no group undoes it)
-            Op::NewCs { .. } => {
-                for x in stack.iter_mut() {
-                    x.1 = false;
-                }
-            }
-        }
-    }
-    let mut out = Vec::with_capacity(n);
-    let mut i = 0;
-    while i < n {
-        if matches!(ops[i], Op::Begin(_)) && end[i] != usize::MAX && local[i] {
-            i = end[i] + 1;
-            continue;
-        }
-        out.push(ops[i].clone());
-        i += 1;
-    }
-    out
-}
-
 /// A register the recording read: an `eqtb` location (`\count` & co. 0-255,
 /// and the `\countdef` and kin that name them), or an e-TeX sparse register
 /// by (type, number).
@@ -522,7 +458,7 @@ struct Entry {
     trailer: Option<i32>,
     ops: Vec<Op>,
     /// What a replay makes: `ops` without the groups that leave nothing
-    /// behind ([`elide_local_groups`]).
+    /// behind or are known by their effect ([`compress_groups`]).
     fast: Vec<Op>,
     /// The control sequences the call entered (`Op::NewCs`: name,
     /// location), in order: an offer checks they would land where they
@@ -991,6 +927,120 @@ impl Scratch {
         g.intr_at_switch = self.intr_at_switch;
         g.bm_at_switch = self.bm_at_switch;
     }
+}
+
+/// A value whose word does not depend on the state where it is made: the
+/// assignment makes the same `equiv` (or word) wherever it is replayed.
+/// `\let` (`LetCs`, the meaning there) and a shared glue (`GlueFrom`, the
+/// specification there) take theirs from the state.
+fn by_value(v: &Val) -> bool {
+    !matches!(v, Val::LetCs(_) | Val::GlueFrom(..))
+}
+
+/// The operations a replay makes: `ops` with every group (`Begin` .. its
+/// `End`) whose net effect can be told from its operations alone replaced
+/// by that effect (BOX-MEMO.md §11.2, §12.5).
+///
+/// At its `unsave` a group puts back every location it assigned locally:
+/// `eq_save` kept the word the location held, `unsave` restores it and
+/// `eq_destroy`s the group's value (tex.web §283; e-TeX's `restore_sa`
+/// likewise), and a reassignment of the value a location already holds
+/// (e-TeX's "reassigning") saves nothing and changes nothing. A location
+/// the group assigned globally (`geq_define`, `geq_word_define`: level one)
+/// is kept ("retaining"), with the value of the group's *last* global
+/// assignment to it: a local assignment after that one saved the global
+/// value, which `unsave` puts back. So the group's net effect on `eqtb`
+/// and the save stack is one global assignment per location it assigned
+/// globally, the last one, made where the group was; a group with none
+/// leaves nothing (revision 2's elision). What it changes besides is memory
+/// the program does not read back: the free lists and the usage statistics
+/// (`var_used`, `dyn_used`, `max_save_stack`), which DESIGN.md §1.1 counts
+/// as accounting and the convergence test treats as dead. The recording
+/// refuses everything else a group could leave (an `\aftergroup` token,
+/// output, tracing).
+///
+/// A group is replayed as recorded (its own groups replaced in turn) when
+/// a global value comes from the state ([`by_value`]: inside the group the
+/// state is the group's own), when it assigns a sparse register globally,
+/// or when it enters a control sequence (no `unsave` takes it away).
+fn compress_groups(ops: &[Op]) -> Vec<Op> {
+    // (each `Begin`'s `End`)
+    let n = ops.len();
+    let mut end = vec![usize::MAX; n];
+    let mut stack = vec![];
+    for (i, o) in ops.iter().enumerate() {
+        match o {
+            Op::Begin(_) => stack.push(i),
+            Op::End => {
+                if let Some(b) = stack.pop() {
+                    end[b] = i;
+                }
+            }
+            _ => {}
+        }
+    }
+    // The net global assignments of the group ops[b] begins, in the order
+    // of their last assignment, or `None` when it is kept.
+    fn net(ops: &[Op], end: &[usize], b: usize) -> Option<Vec<Op>> {
+        let e = end[b];
+        if e == usize::MAX {
+            return None;
+        }
+        let mut last: Vec<(i32, Op)> = vec![];
+        let mut put = |p: i32, o: &Op, last: &mut Vec<(i32, Op)>| {
+            last.retain(|(q, _)| *q != p);
+            last.push((p, o.clone()));
+        };
+        let mut i = b + 1;
+        while i < e {
+            match &ops[i] {
+                Op::Begin(_) => {
+                    for (p, o) in net(ops, end, i)?.into_iter().map(|o| match &o {
+                        Op::Def { p, .. } => (*p, o),
+                        _ => unreachable!(),
+                    }) {
+                        put(p, &o, &mut last);
+                    }
+                    i = end[i] + 1;
+                    continue;
+                }
+                Op::Def { p, v, kind, .. } if *kind > 1 => {
+                    if !by_value(v) {
+                        return None;
+                    }
+                    put(*p, &ops[i], &mut last);
+                }
+                Op::Def { .. } => {}
+                Op::Sa { kind, .. } if *kind > 1 => return None,
+                Op::Sa { .. } => {}
+                Op::NewCs { .. } | Op::End => return None,
+            }
+            i += 1;
+        }
+        Some(last.into_iter().map(|(_, o)| o).collect())
+    }
+    fn walk(ops: &[Op], end: &[usize], from: usize, to: usize, out: &mut Vec<Op>) {
+        let mut i = from;
+        while i < to {
+            if matches!(ops[i], Op::Begin(_)) && end[i] != usize::MAX {
+                match net(ops, end, i) {
+                    Some(v) => out.extend(v),
+                    None => {
+                        out.push(ops[i].clone());
+                        walk(ops, end, i + 1, end[i], out);
+                        out.push(Op::End);
+                    }
+                }
+                i = end[i] + 1;
+                continue;
+            }
+            out.push(ops[i].clone());
+            i += 1;
+        }
+    }
+    let mut out = Vec::with_capacity(n);
+    walk(ops, &end, 0, n, &mut out);
+    out
 }
 
 /// Leave the used-up token lists at the top of the input stack, as the
@@ -3483,7 +3533,7 @@ impl Globals {
                 trailer,
                 voids: rec.voids,
                 line: rec.line_read.then_some(line),
-                fast: elide_local_groups(&rec.ops),
+                fast: compress_groups(&rec.ops),
                 new_cs: rec
                     .ops
                     .iter()
@@ -3919,5 +3969,75 @@ impl Globals {
     /// The end of the run: the statistics.
     pub fn flashtex_bm_finish(&mut self) {
         write_stats(true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn def(p: i32, w: i32, kind: i32) -> Op {
+        Op::Def {
+            p,
+            t: 0,
+            v: Val::Word(w),
+            kind,
+        }
+    }
+
+    #[test]
+    fn groups_stand_for_their_last_global_assignments() {
+        // a local group goes; a group with globals leaves the last global
+        // value of each location, where the group was
+        let ops = vec![
+            def(1, 10, 1),
+            Op::Begin(1),
+            def(2, 20, 1),
+            def(3, 30, 3),
+            Op::Begin(1),
+            def(3, 31, 3),
+            def(4, 40, 3),
+            Op::End,
+            def(3, 32, 1),
+            Op::End,
+            Op::Begin(1),
+            def(5, 50, 1),
+            Op::End,
+            def(6, 60, 1),
+        ];
+        assert_eq!(
+            compress_groups(&ops),
+            vec![def(1, 10, 1), def(3, 31, 3), def(4, 40, 3), def(6, 60, 1)]
+        );
+    }
+
+    #[test]
+    fn a_value_from_the_state_keeps_its_group() {
+        let let_global = Op::Def {
+            p: 7,
+            t: 0,
+            v: Val::LetCs(8),
+            kind: 2,
+        };
+        let ops = vec![
+            Op::Begin(1),
+            def(8, 1, 1),
+            let_global.clone(),
+            Op::Begin(1),
+            def(9, 2, 1),
+            Op::End,
+            Op::End,
+        ];
+        assert_eq!(
+            compress_groups(&ops),
+            vec![Op::Begin(1), def(8, 1, 1), let_global, Op::End]
+        );
+        // a group the call does not close, and an `End` of the caller's
+        // group, are replayed as recorded
+        let open = vec![Op::Begin(1), def(1, 1, 3), Op::End, Op::End, Op::Begin(2)];
+        assert_eq!(
+            compress_groups(&open),
+            vec![def(1, 1, 3), Op::End, Op::Begin(2)]
+        );
     }
 }
