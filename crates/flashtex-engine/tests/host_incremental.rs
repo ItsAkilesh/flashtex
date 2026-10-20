@@ -3183,6 +3183,13 @@ fn a_persisted_s0_checks_the_reads_at_the_document_start() {
         std::fs::write(proj.join("stamp.tex"), "% a file whose date is read\n").unwrap();
         touch(&proj.join("stamp.tex"), t0);
         let cache_env = [("FLASHTEX_S0_CACHE", cache.to_str().unwrap())];
+        // a whole stored S0 (not the writer's `.tmp`)
+        let stored = || {
+            std::fs::read_dir(&cache).is_ok_and(|d| {
+                d.flatten()
+                    .any(|e| e.path().extension().is_some_and(|x| x == "s0"))
+            })
+        };
         {
             let host = start_host_env(&format!("a{case}"), &cache_env);
             let mut c = Client::connect(&host.1).unwrap();
@@ -3193,12 +3200,16 @@ fn a_persisted_s0_checks_the_reads_at_the_document_start() {
                     break;
                 }
             }
+            // The writer thread (`host::s0write`) writes S0 after DONE, and
+            // a host that ends does not wait for it; so wait here (a
+            // generous bound, for a loaded runner) before the host is killed.
+            let deadline = Instant::now() + Duration::from_secs(120);
+            while !stored() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(20));
+            }
             let _ = c.bye();
         }
-        assert!(
-            std::fs::read_dir(&cache).is_ok_and(|mut d| d.next().is_some()),
-            "{case}: no S0 was stored"
-        );
+        assert!(stored(), "{case}: no S0 was stored");
         // the edit, with no host running
         std::fs::write(proj.join("main.tex"), doc(hook, extra)).unwrap();
         if let Some((name, text)) = side {

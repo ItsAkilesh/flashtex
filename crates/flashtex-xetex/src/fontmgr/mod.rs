@@ -249,6 +249,7 @@ pub fn kpse_find_file(name: &str, format: Format) -> Option<String> {
 impl FontMgr {
     /// [`FontMgr::locate_with`] through the engine's kpathsea.
     pub fn locate(&mut self, name: &str, scaled_size: i32) -> Option<Located> {
+        self.lookups.push((name.to_string(), scaled_size));
         self.locate_with(name, scaled_size, &mut kpse_find_file)
     }
 

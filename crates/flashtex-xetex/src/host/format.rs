@@ -49,7 +49,101 @@ pub fn cache_root() -> Option<PathBuf> {
 }
 
 /// The engine build: SHA-256 of the running program.
+///
+/// Hashing the program is most of a host's start-up (an 8.6 MB binary,
+/// about 600 M instructions on ubuntu-latest), and the host asks once per
+/// format. So the digest is kept in the cache root's
+/// `formats-unicode/builds`, for the program file's identity: device, inode,
+/// size, modification and change times, and path. A rebuilt or replaced
+/// program has another inode or change time (no user can set a change
+/// time), so it is hashed again. A digest is not written down while the
+/// file's times are within [`RACY_NS`] of now: a file written in the same
+/// clock tick could still change without its times changing.
 pub fn engine_build(exe: &Path) -> std::io::Result<String> {
+    let Some(id) = file_identity(exe) else {
+        return hash_program(exe);
+    };
+    let store = cache_root().map(|r| r.join("formats-unicode").join("builds"));
+    kept_build(exe, &id, store.as_deref())
+}
+
+/// The digest of program `exe` (identity `id`) from the list at `store`,
+/// else hashed (and added to the list unless the file is racy).
+fn kept_build(exe: &Path, id: &str, store: Option<&Path>) -> std::io::Result<String> {
+    let known = store
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|t| {
+            t.lines()
+                .filter_map(|l| l.split_once('\t'))
+                .find(|(k, _)| *k == id)
+                .map(|(_, d)| d.to_string())
+        })
+        .filter(|d| d.len() == 32 && d.bytes().all(|c| c.is_ascii_hexdigit()));
+    if let Some(d) = known {
+        return Ok(d);
+    }
+    let d = hash_program(exe)?;
+    if let Some(p) = store.filter(|_| !racy(exe)) {
+        remember_build(p, id, &d);
+    }
+    Ok(d)
+}
+
+/// How close to now a file's times may be for its digest to be written down.
+const RACY_NS: i128 = 2_000_000_000;
+
+fn ns(s: i64, n: i64) -> i128 {
+    i128::from(s) * 1_000_000_000 + i128::from(n)
+}
+
+/// The program file's identity, the key a kept digest is valid for (no
+/// tab or newline in it: the list's separators).
+fn file_identity(p: &Path) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let m = fs::metadata(p).ok()?;
+    let id = format!(
+        "{}:{}:{}:{}:{}:{}",
+        m.dev(),
+        m.ino(),
+        m.size(),
+        ns(m.mtime(), m.mtime_nsec()),
+        ns(m.ctime(), m.ctime_nsec()),
+        p.display()
+    );
+    (!id.contains(['\t', '\n'])).then_some(id)
+}
+
+/// Whether `p` was modified or changed within [`RACY_NS`] of now.
+fn racy(p: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(m) = fs::metadata(p) else { return true };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos()) as i128;
+    let newest = ns(m.mtime(), m.mtime_nsec()).max(ns(m.ctime(), m.ctime_nsec()));
+    now - newest < RACY_NS
+}
+
+/// Add `id`'s digest to the list at `p`, by a rename: a line per program,
+/// the newest 16 kept.
+fn remember_build(p: &Path, id: &str, digest: &str) {
+    let old = fs::read_to_string(p).unwrap_or_default();
+    let mut lines: Vec<String> = old
+        .lines()
+        .filter(|l| l.split_once('\t').is_some_and(|(k, _)| k != id))
+        .map(str::to_string)
+        .collect();
+    lines.push(format!("{id}\t{digest}"));
+    let keep = lines.len().saturating_sub(16);
+    let text: String = lines[keep..].iter().map(|l| format!("{l}\n")).collect();
+    if let Some(dir) = p.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let _ = write_atomic(p, text.as_bytes());
+}
+
+/// SHA-256 of the program file: its first 32 hex digits.
+fn hash_program(exe: &Path) -> std::io::Result<String> {
     let mut h = Sha256::new();
     let mut f = File::open(exe)?;
     let mut buf = vec![0u8; 1 << 20];
@@ -328,6 +422,49 @@ pub fn ensure(exe: &Path, fmt: &str, children: &super::proc::Children) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A kept digest is the program's digest; a program replaced by another
+    /// (a new file renamed over it, as a build installs one) is hashed
+    /// again; a racy file's digest is not written down.
+    #[test]
+    fn kept_builds_follow_the_program_file() {
+        let dir = std::env::temp_dir().join(format!("ftx-build-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("prog");
+        let store = dir.join("builds");
+        fs::write(&exe, b"one").unwrap();
+        // just written: racy, hashed and not kept
+        let id = file_identity(&exe).unwrap();
+        assert_eq!(
+            kept_build(&exe, &id, Some(&store)).unwrap(),
+            hash_program(&exe).unwrap()
+        );
+        assert!(!store.exists());
+        // a kept line is what a later lookup returns
+        remember_build(&store, &id, &"ab".repeat(16));
+        assert_eq!(
+            kept_build(&exe, &id, Some(&store)).unwrap(),
+            "ab".repeat(16)
+        );
+        // another program renamed over it: another identity, its own digest
+        let tmp = dir.join("prog.new");
+        fs::write(&tmp, b"two").unwrap();
+        fs::rename(&tmp, &exe).unwrap();
+        let id2 = file_identity(&exe).unwrap();
+        assert_ne!(id, id2);
+        let d2 = kept_build(&exe, &id2, Some(&store)).unwrap();
+        assert_eq!(d2, hash_program(&exe).unwrap());
+        assert_ne!(d2, "ab".repeat(16));
+        // the list keeps the newest 16 programs
+        for i in 0..20 {
+            remember_build(&store, &format!("id{i}"), &"cd".repeat(16));
+        }
+        let t = fs::read_to_string(&store).unwrap();
+        assert_eq!(t.lines().count(), 16);
+        assert!(t.lines().last().unwrap().starts_with("id19\t"));
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn manifests_round_trip_and_read_sets_parse() {

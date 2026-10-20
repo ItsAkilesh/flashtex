@@ -13,7 +13,7 @@
 //!   outlines as a subset that keeps glyph ids in place (`CIDFontType2`,
 //!   `/CIDToGIDMap /Identity`), both by FlashTeX's own subsetters
 //!   (`flashtex_pdf::cff`, `flashtex_pdf::truetype`), with `/W` from the
-//!   font's advances and a `ToUnicode` CMap from its `cmap`.
+//!   font's advances and, as xdvipdfmx writes one, a `ToUnicode` CMap (`tounicode`).
 //! * TFM fonts are `Type1` fonts with a subset of the map file's program
 //!   (`flashtex_pdf::type1`), the encoding as `/Differences`, `/Widths` from
 //!   the TFM.
@@ -29,6 +29,7 @@
 //! them within its own rounding of TeX's positions (PLAN.md §3.5's parity
 //! is structural and visual, not byte-level).
 
+use super::agl::Agl;
 use super::doc::{Doc, Named, Supplement};
 use super::fonts::{FontRes, ResKind};
 use super::images::Kind;
@@ -107,6 +108,9 @@ struct Writer<'a> {
     /// For a native font with CID-keyed CFF outlines: each glyph id's CID
     /// (the font's charset), which the content stream writes as the code.
     cids: BTreeMap<u16, BTreeMap<u16, u16>>,
+    /// The Adobe Glyph List, as xdvipdfmx loads it (`agl_init_map`), read
+    /// when a font first needs a glyph name's text.
+    agl: Option<Agl>,
     /// What the PDF does not carry as the document asks (reported).
     pub warnings: Vec<String>,
 }
@@ -140,8 +144,13 @@ impl<'a> Writer<'a> {
             used: BTreeMap::new(),
             page_group: Vec::new(),
             cids: BTreeMap::new(),
+            agl: None,
             warnings: Vec::new(),
         }
+    }
+
+    fn agl(&mut self) -> &Agl {
+        self.agl.get_or_insert_with(Agl::load)
     }
 
     fn alloc(&mut self) -> u32 {
@@ -216,35 +225,67 @@ impl<'a> Writer<'a> {
         for i in 0..doc.pages.len() {
             self.page(i)?;
         }
-        // Forms, images and fonts the pages used (forms may use forms).
+        // Forms, images and fonts the pages used (forms may use forms), then
+        // the catalog, then named objects (anything above may have
+        // referenced them). A named object may itself refer to a form or an
+        // image no page draws: pgf's soft mask, `/SMask <</G @pgfsmask5>>`
+        // in `@pgfextgs`. So the round repeats until nothing new was
+        // referenced; a form only a named object names is written too.
         let mut done_forms = BTreeSet::new();
+        let mut done_images = BTreeSet::new();
+        let mut done_fonts = BTreeSet::new();
+        let mut catalog = false;
         loop {
-            let todo: Vec<u32> = self
-                .forms
-                .keys()
-                .copied()
-                .filter(|f| !done_forms.contains(f))
+            let mut wrote = false;
+            loop {
+                let todo: Vec<u32> = self
+                    .forms
+                    .keys()
+                    .copied()
+                    .filter(|f| !done_forms.contains(f))
+                    .collect();
+                if todo.is_empty() {
+                    break;
+                }
+                for f in todo {
+                    done_forms.insert(f);
+                    self.form(f)?;
+                }
+                wrote = true;
+            }
+            let imgs: Vec<(u32, u32)> = self
+                .images
+                .iter()
+                .filter(|(k, _)| !done_images.contains(*k))
+                .map(|(&k, &v)| (k, v))
                 .collect();
-            if todo.is_empty() {
+            for (id, num) in imgs {
+                done_images.insert(id);
+                self.image(id, num)?;
+                wrote = true;
+            }
+            let fonts: Vec<(u16, u32)> = self
+                .fonts
+                .iter()
+                .filter(|(k, _)| !done_fonts.contains(*k))
+                .map(|(&k, &v)| (k, v))
+                .collect();
+            for (id, num) in fonts {
+                done_fonts.insert(id);
+                self.font(id, num)?;
+                wrote = true;
+            }
+            if !catalog {
+                catalog = true;
+                self.catalog_and_tree()?;
+            }
+            while let Some(name) = self.named_queue.pop() {
+                self.named_object(&name);
+                wrote = true;
+            }
+            if !wrote {
                 break;
             }
-            for f in todo {
-                done_forms.insert(f);
-                self.form(f)?;
-            }
-        }
-        let imgs: Vec<(u32, u32)> = self.images.iter().map(|(&k, &v)| (k, v)).collect();
-        for (id, num) in imgs {
-            self.image(id, num)?;
-        }
-        let fonts: Vec<(u16, u32)> = self.fonts.iter().map(|(&k, &v)| (k, v)).collect();
-        for (id, num) in fonts {
-            self.font(id, num)?;
-        }
-        self.catalog_and_tree()?;
-        // Named objects, last: anything above may have referenced them.
-        while let Some(name) = self.named_queue.pop() {
-            self.named_object(&name);
         }
         Ok(())
     }
@@ -1059,6 +1100,11 @@ impl<'a> Writer<'a> {
         } else {
             None
         };
+        // xdvipdfmx writes no ToUnicode for a standard Adobe character
+        // collection (Type0Font_attach_ToUnicode_stream)
+        let acc = ros
+            .as_ref()
+            .is_some_and(|(reg, ord, _)| super::tounicode::is_acc_font(reg, ord));
         let csi = match ros {
             Some((r, o, sup)) => {
                 let (mut rs, mut os) = (Vec::new(), Vec::new());
@@ -1082,20 +1128,26 @@ impl<'a> Writer<'a> {
             if cff { "" } else { " /CIDToGIDMap /Identity" }
         );
         self.object(cid, d.as_bytes());
-        // ToUnicode from the font's cmap
-        let cmap_text = super::tounicode::cmap_reverse(&r.program, index);
-        let map: BTreeMap<u16, Vec<char>> =
-            super::tounicode::glyph_text(&r.program, index, &cmap_text, used)
-                .into_iter()
-                .map(|(g, t)| (code_of(g), t))
-                .collect();
-        let tu = self.alloc();
-        let cmap = to_unicode_cmap(&base, &map, true);
-        self.stream(tu, b"", cmap.as_bytes(), true);
+        // ToUnicode as xdvipdfmx derives it (super::tounicode), by code
+        let map = if acc {
+            None
+        } else {
+            let codes: BTreeSet<u16> = used.iter().map(|&g| code_of(g)).collect();
+            super::tounicode::otf_to_unicode(&r.program, index, &codes, self.agl())
+        };
+        let tu = match map {
+            Some(map) => {
+                let tu = self.alloc();
+                let cmap = to_unicode_cmap(&base, &map, true);
+                self.stream(tu, b"", cmap.as_bytes(), true);
+                format!(" /ToUnicode {tu} 0 R")
+            }
+            None => String::new(),
+        };
         let mut d = String::new();
         let _ = write!(
             d,
-            "<</Type /Font /Subtype /Type0 /BaseFont /{base} /Encoding /Identity-H /DescendantFonts [{cid} 0 R] /ToUnicode {tu} 0 R>>"
+            "<</Type /Font /Subtype /Type0 /BaseFont /{base} /Encoding /Identity-H /DescendantFonts [{cid} 0 R]{tu}>>"
         );
         self.object(num, d.as_bytes());
         Ok(())
@@ -1174,20 +1226,28 @@ impl<'a> Writer<'a> {
             prev = Some(c);
         }
         diffs.push_str(" ]");
-        let mut map = BTreeMap::new();
-        for &c in used {
-            if let Some(s) = encoding
-                .get(c as usize)
-                .and_then(|n| glyph_name_to_unicode(n))
-            {
-                map.insert(c, s);
+        // ToUnicode by the encoding's glyph names, as xdvipdfmx writes it
+        // (pdf_create_ToUnicode_CMap): none if a used name has no text
+        let names: BTreeMap<u16, Vec<u8>> = used
+            .iter()
+            .filter_map(|&c| {
+                encoding
+                    .get(c as usize)
+                    .filter(|n| !n.is_empty())
+                    .map(|n| (c, n.clone()))
+            })
+            .collect();
+        let tu = match super::tounicode::encoding_to_unicode(&names, self.agl()) {
+            Some(map) => {
+                let tu = self.alloc();
+                let cmap = to_unicode_cmap(&base, &map, false);
+                self.stream(tu, b"", cmap.as_bytes(), true);
+                format!(" /ToUnicode {tu} 0 R")
             }
-        }
-        let tu = self.alloc();
-        let cmap = to_unicode_cmap(&base, &map, false);
-        self.stream(tu, b"", cmap.as_bytes(), true);
+            None => String::new(),
+        };
         let d = format!(
-            "<</Type /Font /Subtype /Type1 /BaseFont /{base} /FirstChar {first} /LastChar {last} /Widths {wa} /Encoding <</Type /Encoding /Differences {diffs}>> /FontDescriptor {fd} 0 R /ToUnicode {tu} 0 R>>"
+            "<</Type /Font /Subtype /Type1 /BaseFont /{base} /FirstChar {first} /LastChar {last} /Widths {wa} /Encoding <</Type /Encoding /Differences {diffs}>> /FontDescriptor {fd} 0 R{tu}>>"
         );
         self.object(num, d.as_bytes());
         Ok(())
@@ -1668,164 +1728,6 @@ fn to_unicode_cmap(name: &str, map: &BTreeMap<u16, Vec<char>>, two_byte: bool) -
     s
 }
 
-/// A glyph name's Unicode text: `uniXXXX`, `uXXXX[XX]`, a single ASCII
-/// letter or digit, or one of the standard names of TeX's fonts.
-fn glyph_name_to_unicode(name: &[u8]) -> Option<Vec<char>> {
-    let s = std::str::from_utf8(name).ok()?;
-    if let Some(h) = s.strip_prefix("uni") {
-        if h.len() % 4 == 0 && !h.is_empty() {
-            let v: Option<Vec<char>> = h
-                .as_bytes()
-                .chunks(4)
-                .map(|c| {
-                    u32::from_str_radix(std::str::from_utf8(c).ok()?, 16)
-                        .ok()
-                        .and_then(char::from_u32)
-                })
-                .collect();
-            return v;
-        }
-    }
-    if let Some(h) = s.strip_prefix('u') {
-        if (4..=6).contains(&h.len()) {
-            if let Some(c) = u32::from_str_radix(h, 16).ok().and_then(char::from_u32) {
-                return Some(vec![c]);
-            }
-        }
-    }
-    if s.len() == 1 && s.as_bytes()[0].is_ascii_alphanumeric() {
-        return Some(vec![s.as_bytes()[0] as char]);
-    }
-    let t: &str = match s {
-        "space" => " ",
-        "exclam" => "!",
-        "quotedbl" => "\"",
-        "numbersign" => "#",
-        "dollar" => "$",
-        "percent" => "%",
-        "ampersand" => "&",
-        "quoteright" | "quotesingle" => "\u{2019}",
-        "parenleft" => "(",
-        "parenright" => ")",
-        "asterisk" => "*",
-        "plus" => "+",
-        "comma" => ",",
-        "hyphen" => "-",
-        "period" => ".",
-        "slash" => "/",
-        "zero" => "0",
-        "one" => "1",
-        "two" => "2",
-        "three" => "3",
-        "four" => "4",
-        "five" => "5",
-        "six" => "6",
-        "seven" => "7",
-        "eight" => "8",
-        "nine" => "9",
-        "colon" => ":",
-        "semicolon" => ";",
-        "less" => "<",
-        "equal" => "=",
-        "greater" => ">",
-        "question" => "?",
-        "at" => "@",
-        "bracketleft" => "[",
-        "backslash" => "\\",
-        "bracketright" => "]",
-        "asciicircum" | "circumflex" => "^",
-        "underscore" => "_",
-        "quoteleft" => "\u{2018}",
-        "braceleft" => "{",
-        "bar" => "|",
-        "braceright" => "}",
-        "asciitilde" | "tilde" => "~",
-        "ff" => "ff",
-        "fi" => "fi",
-        "fl" => "fl",
-        "ffi" => "ffi",
-        "ffl" => "ffl",
-        "dotlessi" => "\u{131}",
-        "dotlessj" => "\u{237}",
-        "endash" => "\u{2013}",
-        "emdash" => "\u{2014}",
-        "quotedblleft" => "\u{201C}",
-        "quotedblright" => "\u{201D}",
-        "germandbls" => "\u{DF}",
-        "ae" => "\u{E6}",
-        "oe" => "\u{153}",
-        "oslash" => "\u{F8}",
-        "AE" => "\u{C6}",
-        "OE" => "\u{152}",
-        "Oslash" => "\u{D8}",
-        "Gamma" => "\u{393}",
-        "Delta" => "\u{394}",
-        "Theta" => "\u{398}",
-        "Lambda" => "\u{39B}",
-        "Xi" => "\u{39E}",
-        "Pi" => "\u{3A0}",
-        "Sigma" => "\u{3A3}",
-        "Upsilon" => "\u{3A5}",
-        "Phi" => "\u{3A6}",
-        "Psi" => "\u{3A8}",
-        "Omega" => "\u{3A9}",
-        "alpha" => "\u{3B1}",
-        "beta" => "\u{3B2}",
-        "gamma" => "\u{3B3}",
-        "delta" => "\u{3B4}",
-        "epsilon" => "\u{3F5}",
-        "zeta" => "\u{3B6}",
-        "eta" => "\u{3B7}",
-        "theta" => "\u{3B8}",
-        "iota" => "\u{3B9}",
-        "kappa" => "\u{3BA}",
-        "lambda" => "\u{3BB}",
-        "mu" => "\u{3BC}",
-        "nu" => "\u{3BD}",
-        "xi" => "\u{3BE}",
-        "pi" => "\u{3C0}",
-        "rho" => "\u{3C1}",
-        "sigma" => "\u{3C3}",
-        "tau" => "\u{3C4}",
-        "upsilon" => "\u{3C5}",
-        "phi" => "\u{3D5}",
-        "chi" => "\u{3C7}",
-        "psi" => "\u{3C8}",
-        "omega" => "\u{3C9}",
-        "minus" => "\u{2212}",
-        "multiply" => "\u{D7}",
-        "divide" => "\u{F7}",
-        "infinity" => "\u{221E}",
-        "periodcentered" => "\u{B7}",
-        "bullet" => "\u{2022}",
-        "integraltext" | "integraldisplay" | "integral" => "\u{222B}",
-        "contintegraltext" | "contintegraldisplay" => "\u{222E}",
-        "summationtext" | "summationdisplay" | "summation" => "\u{2211}",
-        "producttext" | "productdisplay" | "product" => "\u{220F}",
-        "coproducttext" | "coproductdisplay" => "\u{2210}",
-        "uniontext" | "uniondisplay" => "\u{22C3}",
-        "intersectiontext" | "intersectiondisplay" => "\u{22C2}",
-        "radical" | "radicalbig" | "radicalBig" | "radicalbigg" | "radicalBigg" => "\u{221A}",
-        "arrowright" => "\u{2192}",
-        "arrowleft" => "\u{2190}",
-        "element" => "\u{2208}",
-        "lessequal" => "\u{2264}",
-        "greaterequal" => "\u{2265}",
-        "plusminus" => "\u{B1}",
-        "partialdiff" => "\u{2202}",
-        "prime" => "\u{2032}",
-        "similar" => "\u{223C}",
-        "approxequal" => "\u{2248}",
-        "notequal" => "\u{2260}",
-        "equivalence" => "\u{2261}",
-        "nabla" => "\u{2207}",
-        "angbracketleft" => "\u{27E8}",
-        "angbracketright" => "\u{27E9}",
-        _ => return None,
-    };
-    Some(t.chars().collect())
-}
-
 /// What a PNG says about its colours (dvipdfmx's order: `iCCP`, then
 /// `sRGB`, then `cHRM`/`gAMA`).
 #[derive(Default)]
@@ -1982,6 +1884,114 @@ fn cal_space(col: &PngColor, n: u8) -> Option<String> {
     ))
 }
 
+/// What this writer draws each RULE of `p` with (spec §4.4
+/// `RULE_GEOMETRY`), in item order: the numbers [`Writer::content`] writes
+/// (five decimals), read back, with no CTM translation. The preview then
+/// strokes a fraction bar on the PDF's own coordinates (from sp, a 0.68 bp
+/// rule's end column differed by one coverage level at 4 px/pt).
+pub fn rule_geometry(p: &Page) -> Vec<[f64; 7]> {
+    let h = p.pdf_box[3];
+    let r = |v: f64| n(v, 5).parse::<f64>().unwrap_or(v);
+    p.items
+        .iter()
+        .filter_map(|it| {
+            let Item::Rule {
+                kind,
+                x,
+                y,
+                w,
+                h: rh,
+            } = it
+            else {
+                return None;
+            };
+            let (l, t) = (*x as f64 / K, h - *y as f64 / K);
+            let (wb, hb) = (*w as f64 / K, *rh as f64 / K);
+            let b = t - hb;
+            Some(match kind {
+                RuleKind::Fill => [0.0, 0.0, r(l), r(b), r(wb), r(hb), 0.0],
+                RuleKind::StrokeH => {
+                    let ym = b + hb / 2.0;
+                    [0.0, 0.0, r(l), r(ym), r(l + wb), r(ym), r(hb)]
+                }
+                RuleKind::StrokeV => {
+                    let xm = l + wb / 2.0;
+                    [0.0, 0.0, r(xm), r(b), r(xm), r(t), r(wb)]
+                }
+            })
+        })
+        .collect()
+}
+
+/// The colour space this writer gives a raster image's samples, for the
+/// `IMAGE` resource's `color_space` (spec §5.2), so that the preview draws
+/// the samples as the PDF does: `{"type": "icc"}` (the profile the file
+/// embeds: a PNG's `iCCP`, a JPEG's `ICC_PROFILE`), or `{"type": "calgray"
+/// | "calrgb", "gamma", "white_point", "matrix"}` (a PNG's `sRGB`, or its
+/// `gAMA`/`cHRM`), read from the very array [`cal_space`] writes, with
+/// `intent` when the PDF names one. None: the Device space of the samples
+/// (pdfTeX's rule, and this writer's for every other image).
+pub fn image_color_space(kind: Kind, data: &[u8]) -> Option<flashtex_display_list::json::Json> {
+    use flashtex_display_list::json::Json;
+    let icc = || Some(Json::Obj(vec![("type".into(), Json::Str("icc".into()))]));
+    match kind {
+        Kind::Png => {
+            let p = png_passthrough(data)?;
+            if p.color.icc.is_some() {
+                return icc();
+            }
+            let space = cal_space(&p.color, p.n_base)?;
+            // `[/CalGray <</Gamma g /WhitePoint [x y z]>>]` or `[/CalRGB
+            // <</Gamma [g g g] /Matrix [9] /WhitePoint [x y z]>>]`
+            let mut key = "";
+            let mut nums: Vec<(&str, f64)> = vec![];
+            for tok in space.split(|c: char| c.is_whitespace() || "[]<>".contains(c)) {
+                if let Some(k) = tok.strip_prefix('/') {
+                    key = k;
+                } else if let Ok(v) = tok.parse::<f64>() {
+                    nums.push((key, v));
+                }
+            }
+            let of = |k: &str| -> Vec<Json> {
+                nums.iter()
+                    .filter(|e| e.0 == k)
+                    .map(|e| Json::Num(e.1))
+                    .collect()
+            };
+            let rgb = space.starts_with("[/CalRGB");
+            let mut kv = vec![
+                (
+                    "type".into(),
+                    Json::Str(if rgb { "calrgb" } else { "calgray" }.into()),
+                ),
+                ("gamma".into(), of("Gamma").into_iter().next()?),
+                ("white_point".into(), Json::Arr(of("WhitePoint"))),
+            ];
+            if rgb {
+                kv.push(("matrix".into(), Json::Arr(of("Matrix"))));
+            }
+            if let Some(i) = p.color.srgb_intent {
+                let name = [
+                    "Perceptual",
+                    "RelativeColorimetric",
+                    "Saturation",
+                    "AbsoluteColorimetric",
+                ]
+                .get(i as usize)
+                .copied()
+                .unwrap_or("Perceptual");
+                kv.push(("intent".into(), Json::Str(name.into())));
+            }
+            Some(Json::Obj(kv))
+        }
+        Kind::Jpeg => {
+            jpeg_icc(data)?;
+            icc()
+        }
+        _ => None,
+    }
+}
+
 /// dvipdfmx's numbers: 5 decimals, no leading zero (`.95046`).
 fn n_dot(v: f64) -> String {
     let s = n(v, 5);
@@ -2094,13 +2104,16 @@ mod tests {
                 col: flashtex_display_list::page::NO_COLUMN,
             },
         ];
-        doc.pages.push(Built {
+        doc.pages.push(std::sync::Arc::new(Built {
             dl: p,
             sup: Supplement::default(),
             fonts: vec![res],
             images: vec![],
             forms: vec![],
-        });
+            frame: std::sync::OnceLock::new(),
+            forms_at: 0,
+            replay: None,
+        }));
         let opts = Options {
             producer: "test".into(),
             date: None,
@@ -2157,12 +2170,9 @@ mod tests {
         assert!(program.len() < 30_000, "{} bytes", program.len());
         let base = f.get("BaseFont").and_then(Obj::as_name).unwrap();
         assert_eq!(base.as_bytes()[6], b'+', "{base}");
-        // ToUnicode: the ideograph
-        let tu = pdf
-            .decode_stream(pdf.resolve(f.get("ToUnicode").unwrap()))
-            .unwrap();
-        let tu = String::from_utf8(tu).unwrap();
-        assert!(tu.contains(&format!("<{cid:04X}> <6F22>")), "{tu}");
+        // no ToUnicode: Adobe-Japan1 is a collection viewers know, and
+        // xdvipdfmx writes none for it (CIDFont_is_ACCFont)
+        assert!(f.get("ToUnicode").is_none());
         // its character collection, as xdvipdfmx writes it
         let csi = d.get("CIDSystemInfo").and_then(Obj::as_dict).unwrap();
         assert_eq!(csi.get("Ordering"), Some(&Obj::String(b"Japan1".to_vec())));
@@ -2183,11 +2193,11 @@ mod tests {
             return;
         };
         let data = std::fs::read(&path).unwrap();
-        let rev = super::super::tounicode::cmap_reverse(&data, 0);
+        let rev = super::super::tounicode::cmap_inverse(&data, 0);
         let font = flashtex_pdf::truetype::TrueTypeFont::parse(data).unwrap();
         for c in ['日', '文'] {
             let g = font.glyph_id(c).unwrap();
-            assert_eq!(rev.get(&g), Some(&vec![c]));
+            assert_eq!(rev.get(&g), Some(&c));
         }
     }
 
@@ -2214,5 +2224,115 @@ mod tests {
             ..FaceInfo::default()
         };
         assert!(!editable.embedding_forbidden());
+    }
+
+    /// A grey PNG with an `sRGB` chunk: the IMAGE's `color_space` is the
+    /// `CalGray` the PDF writes, number for number, with its `/Intent`.
+    #[test]
+    fn image_color_space_is_the_pdfs() {
+        let chunk = |kind: &[u8], body: &[u8]| {
+            let mut c = (body.len() as u32).to_be_bytes().to_vec();
+            c.extend_from_slice(kind);
+            c.extend_from_slice(body);
+            c.extend_from_slice(&[0; 4]);
+            c
+        };
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        png.extend(chunk(b"IHDR", &[0, 0, 0, 2, 0, 0, 0, 2, 8, 0, 0, 0, 0]));
+        png.extend(chunk(b"sRGB", &[0]));
+        png.extend(chunk(b"IDAT", &[0x78, 0x9C]));
+        png.extend(chunk(b"IEND", &[]));
+        let p = png_passthrough(&png).unwrap();
+        assert_eq!(
+            cal_space(&p.color, p.n_base).unwrap(),
+            "[/CalGray <</Gamma 2.2 /WhitePoint [.95046 1 1.08906]>>]"
+        );
+        let cs = image_color_space(Kind::Png, &png).unwrap();
+        assert_eq!(
+            cs.to_string(),
+            r#"{"type":"calgray","gamma":2.2,"white_point":[0.95046,1,1.08906],"intent":"Perceptual"}"#
+        );
+        // a PNG without colour chunks, and a JPEG without a profile: Device
+        let mut plain = png.clone();
+        let s = plain.windows(4).position(|w| w == b"sRGB").unwrap() - 4;
+        plain.drain(s..s + 13);
+        assert!(image_color_space(Kind::Png, &plain).is_none());
+        assert!(image_color_space(Kind::Jpeg, &[0xFF, 0xD8, 0xFF, 0xD9]).is_none());
+    }
+
+    /// RULE_GEOMETRY is the numbers the content stream draws each rule with.
+    #[test]
+    fn rule_geometry_is_what_the_content_stream_draws() {
+        let mut p = Page::new(StreamKind::Page, 0);
+        p.pdf_box = [0.0, 0.0, 612.0, 792.0];
+        let (x, y, w, h) = (21851747, 22122140, 2095109, 44560);
+        for kind in [RuleKind::Fill, RuleKind::StrokeH, RuleKind::StrokeV] {
+            p.items.push(Item::Rule { kind, x, y, w, h });
+        }
+        let g = rule_geometry(&p);
+        assert_eq!(g.len(), 3);
+        let (l, t) = (x as f64 / K, 792.0 - y as f64 / K);
+        let (wb, hb) = (w as f64 / K, h as f64 / K);
+        let r = |v: f64| n(v, 5).parse::<f64>().unwrap();
+        assert_eq!(g[0], [0.0, 0.0, r(l), r(t - hb), r(wb), r(hb), 0.0]);
+        let ym = t - hb + hb / 2.0;
+        assert_eq!(g[1], [0.0, 0.0, r(l), r(ym), r(l + wb), r(ym), r(hb)]);
+        assert_eq!(g[1][2], 332.1855);
+        let xm = l + wb / 2.0;
+        assert_eq!(g[2], [0.0, 0.0, r(xm), r(t - hb), r(xm), r(t), r(wb)]);
+    }
+
+    /// A form that only a named object refers to is written: pgf's soft
+    /// mask is a `pdf:bxobj @pgfsmask5` form that no page draws, named
+    /// only by `pdf:put @pgfextgs << /pgfsmask5 << /SMask << /G @pgfsmask5
+    /// >> >> >>` (beamer's shadowed title block, u11-beamer-fontspec in
+    /// the M3 export gate). It was referenced but written as `null`.
+    #[test]
+    fn a_form_only_a_named_object_names_is_written() {
+        use super::super::page::tests::{page_bytes, special, NoTfm};
+        use super::super::page::Builder;
+        let mut doc = Doc::new();
+        let mut body = special("pdf:obj @pgfextgs <<>>");
+        body.extend(special("pdf:put @resources << /ExtGState @pgfextgs >>"));
+        body.extend(special(
+            "pdf:bxobj @pgfsmask5 width 20pt height 10pt depth 0pt",
+        ));
+        body.push(137); // put_rule inside the form
+        body.extend_from_slice(&(5i32 << 16).to_be_bytes());
+        body.extend_from_slice(&(10i32 << 16).to_be_bytes());
+        body.extend(special(
+            "pdf:exobj <</Group <</S/Transparency /CS/DeviceGray>> >>",
+        ));
+        body.extend(special(
+            "pdf:put @pgfextgs << /pgfsmask5 << /SMask << /S /Luminosity /G @pgfsmask5>> >> >>",
+        ));
+        body.extend(special("pdf:code /pgfsmask5 gs"));
+        let built = Builder::page(&mut doc, &NoTfm, 1000, 1, &page_bytes(&body)).unwrap();
+        doc.pages.push(std::sync::Arc::new(built));
+        let opts = Options {
+            producer: "test".into(),
+            date: None,
+            compress: false,
+        };
+        let bytes = write(&doc, &opts).unwrap().0;
+        let text = String::from_utf8_lossy(&bytes);
+        let at = text.find("/G ").expect("the soft mask's /G");
+        let num: String = text[at + 3..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        assert!(text[at + 3 + num.len()..].starts_with(" 0 R"), "{text}");
+        let obj = text
+            .find(&format!("\n{num} 0 obj\n"))
+            .map(|i| &text[i..])
+            .expect("the form's object");
+        let body = &obj[..obj.find("endobj").unwrap()];
+        assert!(
+            body.contains("/Subtype /Form") || body.contains("/Subtype/Form"),
+            "{body}"
+        );
+        assert!(body.contains("/Transparency"), "{body}");
+        let pdf = PdfFile::parse(&bytes).unwrap();
+        assert_eq!(pdf.pages().unwrap().len(), 1);
     }
 }

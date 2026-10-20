@@ -23,6 +23,7 @@
 //! handles as the run that made it.
 
 use crate::generated::Globals;
+use flashtex_engine::arena::CheckpointId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -54,31 +55,68 @@ pub struct GlyphInfo {
 /// The handle allocator of `changes/ext.ch`: a counter and a free list, and
 /// the table behind them. Handle 0 is C's null pointer and never refers to
 /// an object.
+///
+/// Glyph-info arrays, made and freed with every native word, are numbered
+/// apart from the other objects (from [`OTHER_BASE`] on: layout engines,
+/// mappings, features, pictures' paths), so that the others' handles
+/// depend only on the order they are made in, not on how many words were
+/// set before: two runs that load the same fonts in the same order give
+/// them the same handles (the convergence test, `crate::conv`, compares
+/// the font arrays that hold them word for word). No handle's value is
+/// ever printed or written out.
 #[derive(Clone, Default)]
 pub struct Handles {
     /// Slot `h - 1` holds the object of handle `h`, `None` once freed.
     table: Vec<Option<Object>>,
     /// Freed handles, reused last freed first.
     free: Vec<i32>,
+    /// The other objects: slot `h - OTHER_BASE`.
+    other: Vec<Option<Object>>,
+    other_free: Vec<i32>,
 }
+
+/// How a persisted S₀ writes an object of the table (`crate::s0file`).
+pub(crate) type EncObject<'a> = dyn FnMut(&Object, &mut Vec<u8>) -> Result<(), String> + 'a;
+
+/// The first handle of the objects other than glyph-info arrays.
+pub const OTHER_BASE: i32 = 1 << 30;
 
 impl Handles {
     /// A new handle for `o`: the last one freed, else the next unused one.
     pub fn alloc(&mut self, o: Object) -> i32 {
+        if !matches!(o, Object::GlyphInfo(_)) {
+            if let Some(h) = self.other_free.pop() {
+                self.other[(h - OTHER_BASE) as usize] = Some(o);
+                return h;
+            }
+            self.other.push(Some(o));
+            let n = i32::try_from(self.other.len()).expect("handle table overflow");
+            return OTHER_BASE + n - 1;
+        }
         if let Some(h) = self.free.pop() {
             self.table[(h - 1) as usize] = Some(o);
             return h;
         }
         self.table.push(Some(o));
-        i32::try_from(self.table.len()).expect("handle table overflow")
+        let h = i32::try_from(self.table.len()).expect("handle table overflow");
+        assert!(h < OTHER_BASE, "handle table overflow");
+        h
+    }
+
+    /// The slot of handle `h`.
+    fn slot(&self, h: i32) -> Option<&Option<Object>> {
+        if h >= OTHER_BASE {
+            self.other.get((h - OTHER_BASE) as usize)
+        } else if h > 0 {
+            self.table.get((h - 1) as usize)
+        } else {
+            None
+        }
     }
 
     /// The object of handle `h`, if `h` refers to one.
     pub fn get(&self, h: i32) -> Option<&Object> {
-        if h <= 0 {
-            return None;
-        }
-        self.table.get((h - 1) as usize)?.as_ref()
+        self.slot(h)?.as_ref()
     }
 
     /// Free handle `h` (C's `free`); 0 and a handle already free are
@@ -87,16 +125,93 @@ impl Handles {
         if h <= 0 {
             return;
         }
-        if let Some(slot) = self.table.get_mut((h - 1) as usize) {
+        let (slot, free) = if h >= OTHER_BASE {
+            (
+                self.other.get_mut((h - OTHER_BASE) as usize),
+                &mut self.other_free,
+            )
+        } else {
+            (self.table.get_mut((h - 1) as usize), &mut self.free)
+        };
+        if let Some(slot) = slot {
             if slot.take().is_some() {
-                self.free.push(h);
+                free.push(h);
             }
         }
     }
 
+    /// Every handle that refers to an object, with it.
+    pub fn objects(&self) -> impl Iterator<Item = (i32, &Object)> {
+        let glyphs = self
+            .table
+            .iter()
+            .enumerate()
+            .filter_map(|(i, o)| o.as_ref().map(|o| (i as i32 + 1, o)));
+        let other = self
+            .other
+            .iter()
+            .enumerate()
+            .filter_map(|(i, o)| o.as_ref().map(|o| (OTHER_BASE + i as i32, o)));
+        glyphs.chain(other)
+    }
+
+    /// Write the table for a persisted S₀ (`crate::s0file`), each object
+    /// by `obj`.
+    pub(crate) fn enc_with(&self, w: &mut Vec<u8>, obj: &mut EncObject) -> Result<(), String> {
+        use flashtex_engine::persist::Codec;
+        for v in [&self.table, &self.other] {
+            v.len().enc(w);
+            for o in v {
+                match o {
+                    None => 0u8.enc(w),
+                    Some(o) => {
+                        1u8.enc(w);
+                        obj(o, w)?;
+                    }
+                }
+            }
+        }
+        self.free.enc(w);
+        self.other_free.enc(w);
+        Ok(())
+    }
+
+    /// A table as [`enc_with`](Self::enc_with) wrote it, each object made
+    /// again by `obj`.
+    pub(crate) fn dec_with(
+        r: &mut flashtex_engine::persist::Reader,
+        obj: &mut dyn FnMut(&mut flashtex_engine::persist::Reader) -> Result<Object, String>,
+    ) -> Result<Handles, String> {
+        use flashtex_engine::persist::Codec;
+        let mut slots =
+            |r: &mut flashtex_engine::persist::Reader| -> Result<Vec<Option<Object>>, String> {
+                let n = usize::dec(r)?;
+                let mut v = Vec::with_capacity(n.min(1 << 20));
+                for _ in 0..n {
+                    v.push(match u8::dec(r)? {
+                        0 => None,
+                        _ => Some(obj(r)?),
+                    });
+                }
+                Ok(v)
+            };
+        let table = slots(r)?;
+        let other = slots(r)?;
+        Ok(Handles {
+            table,
+            other,
+            free: Vec::dec(r)?,
+            other_free: Vec::dec(r)?,
+        })
+    }
+
     /// How many handles refer to an object.
     pub fn live(&self) -> usize {
-        self.table.iter().filter(|s| s.is_some()).count()
+        self.table
+            .iter()
+            .chain(&self.other)
+            .filter(|s| s.is_some())
+            .count()
     }
 
     /// The glyph-info array of handle `h`.
@@ -139,8 +254,17 @@ pub struct Host {
     /// XeTeXFontMgr's `sReqEngine`: the renderer the last font name asked
     /// for (`/AAT`, `/OT` or `/ICU`, `/GR`), or 0.
     pub req_engine: u8,
-    /// Whether text needing ICU's bidi analysis was reported (once).
-    pub bidi_warned: bool,
+    /// XeTeX_ext.c's `brkIter` (the rules of the line break iterator,
+    /// `crate::native::linebreak`) and `brkLocaleStrNum` (the string number
+    /// of the locale it was opened for). Which iterator is open decides
+    /// later answers, so a checkpoint saves both.
+    pub brk_iter: Option<crate::native::linebreak::Rules>,
+    pub brk_locale_str_num: i32,
+    /// The iterator's text, as the boundaries `ubrk_next` returns for it, and
+    /// how many it has returned. `do_locale_linebreaks` reads them all
+    /// within one command, so a checkpoint does not save them.
+    pub brk_boundaries: Vec<i32>,
+    pub brk_next: usize,
     /// XeTeX_ext.c's `saved_mapping_name`: the `:mapping=` of the TFM font
     /// being loaded, from `check_for_tfm_font_mapping` to
     /// `load_tfm_font_mapping`, both within one `\font`. Each check
@@ -170,6 +294,9 @@ pub struct Host {
     /// The paths `find_pic_file` found, for the output (`crate::out`), which
     /// takes them from here at each page.
     pub pictures: std::collections::BTreeSet<String>,
+    /// The display list's source map (`crate::dlsource`): node positions,
+    /// spans and the markers of the page being shipped.
+    pub dl: crate::dlsource::DlSource,
     /// A hot spare's go-ahead (`crate::host::spare`): the descriptor the
     /// run waits on after the format is loaded, taken at that wait. `None`
     /// for every other run.
@@ -177,6 +304,22 @@ pub struct Host {
     /// What the host that started this run asked of it (`crate::host::spare`).
     #[cfg(unix)]
     pub child_env: crate::host::spare::ChildEnv,
+    /// The clock pinned for the run (seconds, microseconds since the
+    /// epoch): a resident engine's session clock, or `FLASHTEX_PIN_CLOCK`.
+    /// `\time`, `\day`, `\month`, `\year`, the start time, the PDF's
+    /// dates and (through the run's first `seconds_and_micros`) the random
+    /// seed read it (DESIGN.md §4.5).
+    pub clock: Option<(i64, i32)>,
+    /// The run's first `seconds_and_micros` is still to come: it reads
+    /// `clock`; later ones (`\pdfelapsedtime`) read the system's clock.
+    pub seed_pending: bool,
+    /// A run of a resident engine (`crate::resident`): its exits return to
+    /// the host, its terminal is captured.
+    /// `None` for a run that is a process of its own.
+    pub resident: Option<Box<crate::resident::Resident>>,
+    /// The side table bytes only checkpoints held, and the side table's
+    /// copy count, at the last [`Globals::kept_bytes`].
+    pub kept_walk: (usize, usize),
 }
 
 /// `-no-pdf`, true unless set otherwise.
@@ -203,6 +346,11 @@ struct Saved {
     full_name_of_file: Option<String>,
     protrusion: Protrusion,
     handles: Handles,
+    /// The display list's source map (`crate::dlsource`): its side table
+    /// is indexed like `mem`, so it goes back with the word space.
+    dl: crate::dlsource::DlSnap,
+    brk_iter: Option<crate::native::linebreak::Rules>,
+    brk_locale_str_num: i32,
 }
 
 impl Globals {
@@ -218,6 +366,9 @@ impl Globals {
             full_name_of_file: self.host.full_name_of_file.clone(),
             protrusion: self.host.protrusion.clone(),
             handles: self.host.handles.clone(),
+            dl: self.host.dl.snapshot(),
+            brk_iter: self.host.brk_iter,
+            brk_locale_str_num: self.host.brk_locale_str_num,
         };
         self.host.checkpoints.insert(id, saved);
         id
@@ -240,7 +391,149 @@ impl Globals {
         self.host.full_name_of_file = saved.full_name_of_file;
         self.host.protrusion = saved.protrusion;
         self.host.handles = saved.handles;
+        self.host.dl.restore(&saved.dl);
+        self.host.brk_iter = saved.brk_iter;
+        self.host.brk_locale_str_num = saved.brk_locale_str_num;
         Ok(())
+    }
+
+    /// Put checkpoint `id` back as [`restore`](Self::restore) does, keeping
+    /// the run it leaves as a detached branch of the word space (its later
+    /// checkpoints and its latest state), for the convergence test and jump
+    /// (`crate::conv`). The host states saved with the branch's checkpoints
+    /// stay.
+    pub fn restore_branch(
+        &mut self,
+        id: flashtex_engine::arena::CheckpointId,
+    ) -> Result<flashtex_engine::arena::Branch, String> {
+        let saved = self
+            .host
+            .checkpoints
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| format!("no host state saved with checkpoint {id:?}"))?;
+        let b = self.arena.restore_branch(id)?;
+        self.fill_scalars();
+        self.host.font_mgr = saved.font_mgr;
+        self.host.full_name_of_file = saved.full_name_of_file;
+        self.host.protrusion = saved.protrusion;
+        self.host.handles = saved.handles;
+        self.host.dl.restore(&saved.dl);
+        Ok(b)
+    }
+
+    /// The host state saved with checkpoint `id` (a persisted S₀,
+    /// `crate::s0file`): the font manager, `full_name_of_file`, the
+    /// protrusion codes, the handle table and the source map.
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn saved_at(
+        &self,
+        id: CheckpointId,
+    ) -> Option<(
+        Option<&crate::fontmgr::FontMgr>,
+        &Option<String>,
+        &Protrusion,
+        &Handles,
+        &crate::dlsource::DlSnap,
+    )> {
+        let s = self.host.checkpoints.get(&id)?;
+        Some((
+            s.font_mgr.as_deref(),
+            &s.full_name_of_file,
+            &s.protrusion,
+            &s.handles,
+            &s.dl,
+        ))
+    }
+
+    /// How many checkpoints' host states are kept.
+    pub(crate) fn saved_len(&self) -> usize {
+        self.host.checkpoints.len()
+    }
+
+    /// What the checkpoints hold, counted exactly: the word space's undo
+    /// and redo logs, and the source map's side table copies that only
+    /// checkpoints hold (a walk of their tables, a few milliseconds).
+    pub(crate) fn kept_bytes(&mut self) -> usize {
+        let held = self
+            .host
+            .dl
+            .held_bytes(self.host.checkpoints.values().map(|s| &s.dl));
+        self.host.kept_walk = (held, self.host.dl.copied);
+        self.arena.log_bytes() + held
+    }
+
+    /// [`kept_bytes`](Self::kept_bytes) without the walk: an upper bound
+    /// (every side table copy made since the last walk counts as held).
+    pub(crate) fn kept_estimate(&self) -> usize {
+        let (held, copied) = self.host.kept_walk;
+        self.arena.log_bytes() + held + self.host.dl.copied.saturating_sub(copied)
+    }
+
+    /// Drop every checkpoint of the word space's live chain that `keep`
+    /// rejects (but the newest; their logs merge into their predecessors',
+    /// `Arena::retain`), and the host state saved with each.
+    pub(crate) fn retain_checkpoints(
+        &mut self,
+        keep: &dyn Fn(flashtex_engine::arena::CheckpointId) -> bool,
+    ) {
+        let before = self.arena.checkpoint_ids().to_vec();
+        self.arena.retain(keep);
+        let after: std::collections::HashSet<_> =
+            self.arena.checkpoint_ids().iter().copied().collect();
+        for id in before {
+            if !after.contains(&id) {
+                self.host.checkpoints.remove(&id);
+            }
+        }
+    }
+
+    /// Forget the host state of every checkpoint not in the word space's
+    /// live chain (a dropped branch's).
+    pub(crate) fn prune_saved(&mut self) {
+        let ids: std::collections::HashSet<_> =
+            self.arena.checkpoint_ids().iter().copied().collect();
+        self.host.checkpoints.retain(|k, _| ids.contains(k));
+    }
+
+    /// Whether the host state of checkpoint `id` is kept.
+    pub(crate) fn has_saved(&self, id: flashtex_engine::arena::CheckpointId) -> bool {
+        self.host.checkpoints.contains_key(&id)
+    }
+
+    /// What checkpoint `id` saved outside the word space that the live
+    /// state has otherwise (the convergence test, `crate::conv`): `Err`
+    /// names it. With it, the checkpoint's handles and source map.
+    pub(crate) fn host_vs(
+        &self,
+        id: flashtex_engine::arena::CheckpointId,
+    ) -> Result<(&Handles, &crate::dlsource::DlSnap), String> {
+        let s = self
+            .host
+            .checkpoints
+            .get(&id)
+            .ok_or("no host state saved with the old checkpoint")?;
+        // (the font manager is made from the font directories, which S₀'s
+        // key watches: two runs' managers made from the same ones answer
+        // alike, whichever made its own)
+        if s.font_mgr.is_some() != self.host.font_mgr.is_some() {
+            return Err("the font manager differs".into());
+        }
+        if s.full_name_of_file != self.host.full_name_of_file {
+            return Err("full_name_of_file differs".into());
+        }
+        if s.protrusion != self.host.protrusion {
+            return Err("the protrusion codes differ".into());
+        }
+        // XeTeX_ext.c's open line-break iterator and the locale's string
+        // number it was opened for: `linebreak_start` keeps the iterator
+        // while the string number is the same, so which one is open decides
+        // later breaks
+        if s.brk_iter != self.host.brk_iter || s.brk_locale_str_num != self.host.brk_locale_str_num
+        {
+            return Err("the line-break iterator differs".into());
+        }
+        Ok((&s.handles, &s.dl))
     }
 
     /// Copy the scalar globals into the word space's scalar region, through

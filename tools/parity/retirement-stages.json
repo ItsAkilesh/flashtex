@@ -7,7 +7,7 @@
      "other_preconditions": "none"},
     {"id": "S1", "name": "Decouple, no behaviour change (paragraph-layout tests, MIT features table, bundle verifier, check E)", "status": "done (#1400, cba6c3470)", "scoreboard_gate": null,
      "other_preconditions": "none; supported-latex.json excluded until the owner rules (RQ5)"},
-    {"id": "S1b", "name": "S1 follow-ups (check E false negatives, baseline host field, stale probes, review-workflow.json path, S1(c) after RQ5)", "status": "not started", "scoreboard_gate": null,
+    {"id": "S1b", "name": "S1 follow-ups (check E false negatives, baseline host field, stale probes, review-workflow.json path, S1(c) after RQ5)", "status": "partly (check E false negatives and CI self-tests, stale probes, review-workflow.json field done; RQ8 host field and S1(c) open)", "scoreboard_gate": null,
      "other_preconditions": "S1; RQ5 for S1(c)"},
     {"id": "S2", "name": "No-consumer crates deleted (ruling 1): 9 crates, collaboration-core kept", "status": "next", "scoreboard_gate": null,
      "other_preconditions": "S1 landed; #1120 closed; every live reference fixed in the same PR; the reference check with its named allowlist; packaging-selftest.sh; revert check (plan §4.3)"},
