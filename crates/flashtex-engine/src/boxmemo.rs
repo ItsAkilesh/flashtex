@@ -962,7 +962,9 @@ fn by_value(v: &Val) -> bool {
 /// A group is replayed as recorded (its own groups replaced in turn) when
 /// a global value comes from the state ([`by_value`]: inside the group the
 /// state is the group's own), when it assigns a sparse register globally,
-/// or when it enters a control sequence (no `unsave` takes it away).
+/// or when it enters a control sequence (no `unsave` takes it away); less
+/// its local assignments to every location no such value in it reads,
+/// which its `unsave` takes back unread.
 fn compress_groups(ops: &[Op]) -> Vec<Op> {
     // (each `Begin`'s `End`)
     let n = ops.len();
@@ -1019,27 +1021,54 @@ fn compress_groups(ops: &[Op]) -> Vec<Op> {
         }
         Some(last.into_iter().map(|(_, o)| o).collect())
     }
-    fn walk(ops: &[Op], end: &[usize], from: usize, to: usize, out: &mut Vec<Op>) {
+    // `kept`: inside a group replayed as recorded, the locations a value
+    // from the state reads anywhere in it (`None` at the call's level).
+    // There a local assignment to any other location is left out: the
+    // group's `unsave` takes it back, and nothing in the group reads it.
+    fn walk(
+        ops: &[Op],
+        end: &[usize],
+        from: usize,
+        to: usize,
+        kept: Option<&HashSet<i32>>,
+        out: &mut Vec<Op>,
+    ) {
         let mut i = from;
         while i < to {
-            if matches!(ops[i], Op::Begin(_)) && end[i] != usize::MAX {
-                match net(ops, end, i) {
-                    Some(v) => out.extend(v),
-                    None => {
-                        out.push(ops[i].clone());
-                        walk(ops, end, i + 1, end[i], out);
-                        out.push(Op::End);
+            match &ops[i] {
+                Op::Begin(_) if end[i] != usize::MAX => {
+                    match net(ops, end, i) {
+                        Some(v) => out.extend(v),
+                        None => {
+                            let read: HashSet<i32> = ops[i + 1..end[i]]
+                                .iter()
+                                .filter_map(|o| match o {
+                                    Op::Def {
+                                        v: Val::LetCs(q), ..
+                                    } => Some(*q),
+                                    Op::Def {
+                                        v: Val::GlueFrom(a, _),
+                                        ..
+                                    } if *a > 0 => Some(*a),
+                                    _ => None,
+                                })
+                                .collect();
+                            out.push(ops[i].clone());
+                            walk(ops, end, i + 1, end[i], Some(&read), out);
+                            out.push(Op::End);
+                        }
                     }
+                    i = end[i] + 1;
+                    continue;
                 }
-                i = end[i] + 1;
-                continue;
+                Op::Def { p, kind, .. } if *kind <= 1 && kept.is_some_and(|k| !k.contains(p)) => {}
+                o => out.push(o.clone()),
             }
-            out.push(ops[i].clone());
             i += 1;
         }
     }
     let mut out = Vec::with_capacity(n);
-    walk(ops, &end, 0, n, &mut out);
+    walk(ops, &end, 0, n, None, &mut out);
     out
 }
 
@@ -4041,6 +4070,7 @@ mod tests {
         let ops = vec![
             Op::Begin(1),
             def(8, 1, 1),
+            def(10, 5, 1),
             let_global.clone(),
             Op::Begin(1),
             def(9, 2, 1),
