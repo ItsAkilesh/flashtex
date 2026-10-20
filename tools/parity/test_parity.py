@@ -207,6 +207,29 @@ class Levels(unittest.TestCase):
             rs = [self._r("a", 2), self._r("b", 4)]
             self.assertEqual(parity.check_baseline(rs, p), [("a", 3, 2), ("gone", 0, None)])
 
+    def test_baseline_host(self):
+        # RQ8: a baseline names its host; one recorded on another OS is refused,
+        # one on this OS (or a /1 baseline with no host) is checked as before
+        here = parity.baseline_host()
+        self.assertEqual(here["system"], parity.platform.system())
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "b.json")
+            other = "Plan9" if here["system"] != "Plan9" else "Darwin"
+            with open(p, "w") as f:
+                json.dump({"host": {"system": other}, "levels": {"a": 1}}, f)
+            with self.assertRaises(parity.BaselineHostMismatch):
+                parity.check_baseline([self._r("a", 3)], p)
+            for host in (here, None):
+                with open(p, "w") as f:
+                    json.dump({"host": host, "levels": {"a": 1}}, f)
+                self.assertEqual(parity.check_baseline([self._r("a", 3)], p), [])
+
+    def test_committed_fixtures_baseline_names_its_host(self):
+        with open(os.path.join(parity.REPO, "tools", "parity", "baseline-fixtures.json")) as f:
+            b = json.load(f)
+        self.assertEqual(b["schema"], "flashtex-parity-baseline/2")
+        self.assertIn("system", b["host"])
+
     def test_pt_gate(self):
         ok = {"id": "ok", "pt": {"P-T1": True, "P-T2": True, "why": {}}}
         t2 = {"id": "t2", "pt": {"P-T1": True, "P-T2": False, "why": {"P-T2": "page 1 stream"}}}
