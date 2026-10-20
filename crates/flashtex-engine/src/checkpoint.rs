@@ -2061,8 +2061,6 @@ impl Globals {
         None
     }
 
-    /// Called at `big_switch` whenever `ckpt_request` is nonzero
-    /// (changes/checkpoint.ch).
     /// Look at [`PREEMPT_HINT`] (`dl_note_node`): when it moved since this
     /// thread last looked, ask for [`REQ_PREEMPT`] at the next `big_switch`
     /// of a run that takes segment checkpoints (where newer work can stop
@@ -2079,6 +2077,8 @@ impl Globals {
         }
     }
 
+    /// Called at `big_switch` whenever `ckpt_request` is nonzero
+    /// (changes/checkpoint.ch).
     pub fn flashtex_checkpoint_hook(&mut self) {
         let req = std::mem::replace(&mut self.ckpt_request, 0);
         if req == REQ_S0_WAIT {
