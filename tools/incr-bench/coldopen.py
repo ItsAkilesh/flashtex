@@ -4,7 +4,7 @@ DESIGN.md §1.2 "Opening": the visible page <= 1 s after open, the rest streamin
 initial compile as fast as after it).
 
     coldopen.py ENGINE DOCDIR MAIN OUT.jsonl [--reps N] [--viewport P] [--edit-at-ms MS --edit-line N
-        [--edit-file F] [--edit-viewport]] [--keep-aux] [--host-arg ARG]... [--tag TAG]
+        [--edit-file F] [--edit-viewport]] [--keep-aux] [--keep-s0] [--host-arg ARG]... [--tag TAG]
 
 Each rep: a fresh copy of DOCDIR (its output directory empty unless --keep-aux, which keeps the
 previous rep's output as a reopen from the project's last copy would), a fresh host
@@ -49,6 +49,9 @@ def main():
     ap.add_argument('--edit-file')
     ap.add_argument('--edit-viewport', action='store_true')
     ap.add_argument('--keep-aux', action='store_true')
+    ap.add_argument('--keep-s0', action='store_true',
+                    help="one S0 cache for every rep, as the app's persists across launches: with --keep-aux, "
+                         "rep 0 is a cold open and the later reps reopen from the persisted S0")
     ap.add_argument('--external-tools')
     ap.add_argument('--host-arg', action='append', default=[])
     ap.add_argument('--tag', default='')
@@ -66,8 +69,8 @@ def main():
             os.makedirs(f'{work}/out', exist_ok=True)
             if a.keep_aux and keep:
                 shutil.copytree(keep, f'{work}/out', dirs_exist_ok=True)
-            s0 = os.path.join(tmp, f's0-{rep}')
-            os.makedirs(s0)
+            s0 = os.path.join(tmp, 's0' if a.keep_s0 else f's0-{rep}')
+            os.makedirs(s0, exist_ok=True)
             sock = os.path.join(tmp, 'host.sock')
             h = Host(eng, sock, s0, a.out + '.host-stderr', a.host_arg)
             cmd = [f'{S}/to.sh', str(a.timeout), f'{eng}/dl3-coldopen', '--socket', sock, '--root', work,
@@ -91,7 +94,7 @@ def main():
                 sys.exit(1)
             r = json.loads(lines[-1])
             r.update(rep=rep, tag=a.tag, ready_ms=round(h.ready_ms, 1), peak_rss=rss, load1=[l0, load1()],
-                     keep_aux=bool(a.keep_aux and keep))
+                     keep_aux=bool(a.keep_aux and keep), keep_s0=bool(a.keep_s0 and rep))
             # the open's compiles (its tool follow-ups too): passes, their modes, instructions
             mine = [d for d in r['dones'] if d[0] == 1]
             r['passes_all'] = sum(d[3] or 0 for d in mine)

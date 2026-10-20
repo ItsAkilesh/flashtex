@@ -245,19 +245,6 @@ final class EngineV3LayerTarget: @unchecked Sendable {
     }
 }
 
-/// A page view's hosted layer: says when it enters a visible layer tree
-/// (`kCAOnOrderIn`), where the tree's flip, and so the label's place, is known.
-final class EngineV3PageLayer: CALayer {
-    var onOrderIn: (() -> Void)?
-    override init() { super.init() }
-    override init(layer: Any) { super.init(layer: layer) }
-    required init?(coder: NSCoder) { fatalError() }
-    override func action(forKey event: String) -> CAAction? {
-        if event == kCAOnOrderIn { onOrderIn?() }
-        return super.action(forKey: event)
-    }
-}
-
 /// One page on screen: a layer-hosting view whose layer's contents is the
 /// page bitmap (set through `target`, from any thread).
 final class EngineV3PageView: NSView {
@@ -275,7 +262,7 @@ final class EngineV3PageView: NSView {
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
-        let l = EngineV3PageLayer()
+        let l = CALayer()
         l.backgroundColor = CGColor(gray: 1, alpha: 1)
         l.contentsGravity = .resize
         l.shadowOpacity = 0.18
@@ -287,16 +274,14 @@ final class EngineV3PageView: NSView {
         wantsLayer = true
         tiles.container.frame = l.bounds
         l.addSublayer(tiles.container)
+        // Tiles are framed for the page layer's flip on screen, as the label is.
+        tiles.pageShownFlipped = { [weak self] in self?.layerShownFlipped ?? true }
         // "page N" at the bottom right, over the page (the v2 pane's label, gap C17).
         label.fontSize = 11
         label.font = NSFont.systemFont(ofSize: 11)
         label.alignmentMode = .right
         label.zPosition = 5
         l.addSublayer(label)
-        // AppKit may put the hosted layer into its superlayer after
-        // `viewDidMoveToWindow` (in a SwiftUI pane, on a later pass): the
-        // tree's flip is known only then, so the label is placed again.
-        l.onOrderIn = { [weak self] in self?.placeLabelNow() }
     }
 
     /// The page's "page N" label (`DS.Preview` label colours, for the page's appearance).
@@ -317,28 +302,36 @@ final class EngineV3PageView: NSView {
         return CGRect(x: pad, y: bounds.height - h - pad, width: max(0, bounds.width - 2 * pad), height: h)
     }
 
-    /// The label's place depends on whether the layer tree is flipped,
-    /// known once the view is in a window: placed again then.
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        placeLabelNow()
-    }
-
-    override func layout() {
-        super.layout()
-        placeLabelNow()
-    }
-
-    private func placeLabelNow() {
+    /// The label's place depends on the superview it is shown in: placed
+    /// again on a new superview.
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
         CATransaction.begin(); CATransaction.setDisableActions(true)
         placeLabel()
         CATransaction.commit()
     }
 
+    /// Whether the hosted layer is flipped on screen. Not read from the live
+    /// layer tree: AppKit attaches a layer-hosting view's layer to its
+    /// superview's layer on a later pass, with no callback here (no
+    /// `kCAOnOrderIn`, `layout()` or move-to-window), and until then the
+    /// layer has no superlayer and reads unflipped (a label placed then sat
+    /// at the top of the page: testEachPageIsLabelled, 6 of 25 hosted
+    /// rounds on 2026-10-12). Once attached, the layer is shown flipped
+    /// exactly as the superview is: AppKit sets the hosted layer's own
+    /// `geometryFlipped` to make it so. That flag is AppKit's, and it is
+    /// transient while detached: true for a fresh view, false for one
+    /// removed and added again. It is reset when the layer attaches, so it
+    /// is not read here (EngineV3PageFlipTests; hosted measurements,
+    /// 2026-10-12).
+    var layerShownFlipped: Bool {
+        superview?.isFlipped ?? layer?.contentsAreFlipped() ?? isFlipped
+    }
+
     private func placeLabel() {
-        // The hosted layer's own geometry: y up unless the layer tree is flipped.
+        // The hosted layer's own geometry: y up unless it is shown flipped.
         var f = labelFrameInView
-        if let l = layer, !l.contentsAreFlipped() { f.origin.y = bounds.height - f.maxY }
+        if !layerShownFlipped { f.origin.y = bounds.height - f.maxY }
         label.frame = f
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -1029,9 +1022,8 @@ final class EngineV3PagesView: NSView {
         v.index = i
         v.tiles.onCommitted = { [weak self] compile, t0, t1 in self?.recordCommit(compileID: compile, page: i, installNs: t0, commitNs: t1) }
         addSubview(v)
-        // After it is in the layer tree: the label's place depends on whether
-        // the tree is flipped. (Before, a later relayout re-placed it; with one
-        // layout per drain there may be none: the label sat at the top.)
+        // After it has its superview: the label's place depends on it
+        // (EngineV3PageView.layerShownFlipped).
         v.setLabel(number: i + 1, dark: pageAppearance == .dark, contentsScale: backingScale)
         pageViews[i] = v
         return v

@@ -4594,7 +4594,11 @@ fn note_lookup(
     }
 }
 
-fn note_file(path: &str) {
+/// The run opened `path` for reading: the read journal's entry (its
+/// content's hash and stat signature when it was opened). The engines' own
+/// file opens call it (the Unicode engine's, `crates/flashtex-xetex`, for
+/// what it finds without the resolver); a lookup that finds a file notes it.
+pub fn note_file(path: &str) {
     note_ahead_read(path);
     READS.with(|r| {
         let mut b = r.borrow_mut();
@@ -4735,7 +4739,8 @@ pub fn mtime_secs(path: &str) -> Option<i64> {
         .map(|d| d.as_secs() as i64)
 }
 
-fn note_output(path: &str) {
+/// The run opened `path` for output (the read journal's `outputs`).
+pub fn note_output(path: &str) {
     READS.with(|r| {
         if let Some(log) = r.borrow_mut().as_mut() {
             if !log.outputs.iter().any(|p| p == path) {
@@ -5404,9 +5409,12 @@ mod confined_read_tests {
 mod statsig_tests {
     use super::*;
 
-    /// A signature taken within the modification-time granularity of the
-    /// file's time equals none, not even itself; an older one equals its
-    /// twin and not a file changed since.
+    /// A signature taken within the time granularity of the file's
+    /// modification or change time equals none, not even itself; an older
+    /// one equals its twin. (Putting the modification time back moves the
+    /// change time, so that signature is racy until the change time is old
+    /// too; flashtex-runtime's `statsig` tests cover the window on each
+    /// time, a time far ahead, and a rewrite with the time put back.)
     #[test]
     fn racy_signatures_equal_nothing() {
         let d = std::env::temp_dir().join(format!("flashtex-statsig-{}", std::process::id()));
@@ -5426,25 +5434,10 @@ mod statsig_tests {
             .set_modified(old)
             .unwrap();
         let a = StatSig::of(p).unwrap();
-        let b = StatSig::of(p).unwrap();
+        assert!(a.racy || a.ctime_ns == 0, "the change time has just moved");
+        let a = StatSig::of_within(p, 0).unwrap();
+        let b = StatSig::of_within(p, 0).unwrap();
         assert!(!a.racy && a == b);
-        // a time within the tick ahead is racy too; one far ahead is not
-        let soon = std::time::SystemTime::now() + std::time::Duration::from_millis(500);
-        std::fs::File::options()
-            .write(true)
-            .open(&f)
-            .unwrap()
-            .set_modified(soon)
-            .unwrap();
-        assert!(StatSig::of(p).unwrap().racy);
-        let far = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
-        std::fs::File::options()
-            .write(true)
-            .open(&f)
-            .unwrap()
-            .set_modified(far)
-            .unwrap();
-        assert!(!StatSig::of(p).unwrap().racy);
         let _ = std::fs::remove_dir_all(&d);
     }
 }

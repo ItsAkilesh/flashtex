@@ -207,17 +207,32 @@ fn deadline(pid: u32, secs: u64) -> std::sync::mpsc::Sender<()> {
 /// Every cancel ends its compile, whenever it comes (the review's race:
 /// a cancel between the check and the engine's start found nothing to
 /// kill, and the engine looped for ever), and a newer COMPILE supersedes
-/// a running one the same way.
+/// a running one the same way: runs in the host's own process (they stop
+/// at their next poll, `crate::resident`) and runs in processes of their
+/// own (killed).
 #[test]
 fn cancels_are_never_lost() {
     if !texlive() {
         eprintln!("skipped: no TeX Live");
         return;
     }
-    let dir = std::env::temp_dir().join(format!("flashtex-host-cancel-{}", std::process::id()));
+    for inproc in ["1", "0"] {
+        cancels_are_never_lost_in(inproc);
+    }
+}
+
+fn cancels_are_never_lost_in(inproc: &str) {
+    let dir = std::env::temp_dir().join(format!(
+        "flashtex-host-cancel-{}-{inproc}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     let (proj, out) = project(&dir, LOOP);
-    let h = start(&dir);
+    let h = start_with(
+        &dir,
+        &[("FLASHTEX_UNICODE_INPROCESS", inproc)],
+        &dir.join("host.err"),
+    );
     let alarm = deadline(h.child.id(), 600);
     let mut c = Client::connect(&h.sock).unwrap();
     for i in 0..60i64 {
@@ -305,7 +320,9 @@ fn a_late_cancel_does_not_cancel_a_later_compile() {
 }
 
 /// However the host ends, its engine does not outlive it: the engine
-/// watches the host's lifeline (`host/proc.rs`) and kills its group.
+/// watches the host's lifeline (`host/proc.rs`) and kills its group. (Runs
+/// in processes of their own: an engine in the host's own process ends
+/// with it.)
 #[test]
 fn no_engine_outlives_the_host() {
     if !texlive() {
@@ -317,7 +334,11 @@ fn no_engine_outlives_the_host() {
             std::env::temp_dir().join(format!("flashtex-host-orphan-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (proj, out) = project(&dir, LOOP);
-        let h = start(&dir);
+        let h = start_with(
+            &dir,
+            &[("FLASHTEX_UNICODE_INPROCESS", "0")],
+            &dir.join("host.err"),
+        );
         let mut c = Client::connect(&h.sock).unwrap();
         c.compile(&request(1, &proj, &out)).unwrap();
         let t = Instant::now();
@@ -483,6 +504,7 @@ fn spares_stand_for_runs_only_while_what_they_read_is_unchanged() {
         let h = start_with(
             &sub,
             &[
+                ("FLASHTEX_UNICODE_INPROCESS", "0"),
                 ("FLASHTEX_UNICODE_SPARES", spares),
                 ("FLASHTEX_UNICODE_SPARE_DEBUG", "1"),
             ],
@@ -551,7 +573,14 @@ fn low_memory_keeps_no_spare() {
     let _ = std::fs::remove_dir_all(&dir);
     let (proj, out) = project(&dir, DOC);
     let err = dir.join("host.err");
-    let h = start_with(&dir, &[("FLASHTEX_UNICODE_SPARE_DEBUG", "1")], &err);
+    let h = start_with(
+        &dir,
+        &[
+            ("FLASHTEX_UNICODE_INPROCESS", "0"),
+            ("FLASHTEX_UNICODE_SPARE_DEBUG", "1"),
+        ],
+        &err,
+    );
     let mut c = Client::connect_with(&h.sock, &[], Some("low-memory")).unwrap();
     let knobs = c.hello.get("profile").cloned().unwrap();
     assert_eq!(knobs.str_field("mode"), Some("low-memory"));
@@ -595,4 +624,786 @@ fn low_memory_keeps_no_spare() {
     c.bye().unwrap();
     drop(h);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Compiles in the host's own process (`crate::resident`; from the second
+/// run on, from the state kept where the format is loaded, and an edit after
+/// the preamble from S₀) write what runs in processes of their own write,
+/// byte for byte: the PDF, the log and the `.aux`, over two passes, an edit
+/// in the body, a preamble edit, an error, a fatal error (the engine
+/// recovers from it) and an edit back; the same in Low Memory, whose
+/// checkpoints are thinned to a tight budget (here to nothing but the
+/// pinned ones: `FLASHTEX_BUDGET=1`), without S₀ (`FLASHTEX_UNICODE_S0=0`)
+/// and without the kept state (`FLASHTEX_UNICODE_FORMAT_POINT=0`).
+#[test]
+fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-inproc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let texts = [
+        DOC.to_string(),
+        DOC.replace("See section", "Look at section"),
+        DOC.replace("See section", "Look at section").replace(
+            "\\begin{document}",
+            "\\newcommand\\later{x}\n\\begin{document}",
+        ),
+        DOC.replace("See section", "\\undefinedmacro See"),
+        DOC.replace("See section", "\\input{no-such-file} See"),
+        DOC.to_string(),
+    ];
+    type Outs = Vec<(String, Vec<u8>, String, String, String)>;
+    let run = |envs: &[(&str, &str)], profile: Option<&str>| -> Outs {
+        // the same paths every time: the log names them
+        let sub = dir.join("run");
+        let _ = std::fs::remove_dir_all(&sub);
+        let (proj, out) = project(&sub, DOC);
+        let mut e = vec![("FLASHTEX_PIN_CLOCK", "1760000000.5")];
+        e.extend_from_slice(envs);
+        let h = start_with(&sub, &e, &sub.join("host.err"));
+        let mut c = Client::connect_with(&h.sock, &[], profile).unwrap();
+        let mut outs = vec![];
+        for (i, text) in texts.iter().enumerate() {
+            let id = i as i64 + 1;
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.clone())];
+            c.compile(&r).unwrap();
+            let (_, done) = events(&mut c, id);
+            let o = Path::new(&out);
+            outs.push((
+                done.str_field("status").unwrap_or("").to_string(),
+                std::fs::read(o.join("main.pdf")).unwrap_or_default(),
+                std::fs::read_to_string(o.join("main.log")).unwrap(),
+                std::fs::read_to_string(o.join("main.aux")).unwrap_or_default(),
+                // where the compile's first run started
+                done.get("starts")
+                    .and_then(Json::as_array)
+                    .and_then(|a| a.first())
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            ));
+        }
+        c.bye().unwrap();
+        drop(h);
+        outs
+    };
+    let own = run(&[("FLASHTEX_UNICODE_INPROCESS", "0")], None);
+    let statuses: Vec<&str> = own.iter().map(|o| o.0.as_str()).collect();
+    assert_eq!(statuses, ["ok", "ok", "ok", "error", "error", "ok"]);
+    let no_point = [("FLASHTEX_UNICODE_FORMAT_POINT", "0")];
+    let no_s0 = [("FLASHTEX_UNICODE_S0", "0")];
+    let tiny = [("FLASHTEX_BUDGET", "1")];
+    for (what, envs, profile) in [
+        ("in process", &[][..], None),
+        ("in process, Low Memory", &tiny[..], Some("low-memory")),
+        ("in process, no S0", &no_s0[..], None),
+        ("in process, no kept state", &no_point[..], None),
+    ] {
+        let got = run(envs, profile);
+        for (i, (a, b)) in got.iter().zip(&own).enumerate() {
+            assert_eq!(a.0, b.0, "{what}: compile {}: the status", i + 1);
+            assert!(a.1 == b.1, "{what}: compile {}: the PDFs differ", i + 1);
+            assert_eq!(a.2, b.2, "{what}: compile {}: the logs differ", i + 1);
+            assert_eq!(a.3, b.3, "{what}: compile {}: the .aux differs", i + 1);
+        }
+        let starts: Vec<&str> = got.iter().map(|o| o.4.as_str()).collect();
+        if what == "in process" || what == "in process, Low Memory" {
+            // the body edits go on from S₀; the preamble edits (one, then
+            // its removal) run from the format and take a new S₀; the fatal
+            // error's second pass read the `.aux` its first pass left, and
+            // its S₀ stands for the edit back
+            assert_eq!(
+                starts,
+                ["fresh", "s0", "format", "format", "s0", "s0"],
+                "{what}"
+            );
+        } else if what == "in process, no S0" {
+            assert_eq!(
+                starts,
+                ["fresh", "format", "format", "format", "format", "format"],
+                "{what}"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// S₀ is taken at the real `\begin{document}`, not where a package expanded
+/// `\document` into a new definition to patch it (bidi does, for
+/// polyglossia's right-to-left languages): an edit in the preamble after
+/// the patch runs from the format, a body edit goes on from S₀, and every
+/// compile writes what a run of its own writes.
+#[test]
+fn s0_is_not_taken_where_document_is_patched() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-patch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let doc = "\\documentclass{article}\n\\makeatletter\n\\expandafter\\def\\expandafter\\document\\expandafter{\\document\\relax}\n\\makeatother\n\\newcommand\\later{late}\n\\begin{document}\nA body, \\later.\n\\end{document}\n";
+    let texts = [
+        doc.to_string(),
+        doc.replace("A body", "The body"),
+        doc.replace("{late}", "{later}"),
+    ];
+    let run = |envs: &[(&str, &str)]| -> Vec<(Vec<u8>, String, String)> {
+        let sub = dir.join("run");
+        let _ = std::fs::remove_dir_all(&sub);
+        let (proj, out) = project(&sub, doc);
+        let mut e = vec![("FLASHTEX_PIN_CLOCK", "1760000000.5")];
+        e.extend_from_slice(envs);
+        let h = start_with(&sub, &e, &sub.join("host.err"));
+        let mut c = Client::connect(&h.sock).unwrap();
+        let mut outs = vec![];
+        for (i, text) in texts.iter().enumerate() {
+            let id = i as i64 + 1;
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.clone())];
+            c.compile(&r).unwrap();
+            let (_, done) = events(&mut c, id);
+            let o = Path::new(&out);
+            outs.push((
+                std::fs::read(o.join("main.pdf")).unwrap_or_default(),
+                std::fs::read_to_string(o.join("main.log")).unwrap_or_default(),
+                done.get("starts")
+                    .and_then(Json::as_array)
+                    .and_then(|a| a.first())
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            ));
+        }
+        c.bye().unwrap();
+        drop(h);
+        outs
+    };
+    let own = run(&[("FLASHTEX_UNICODE_INPROCESS", "0")]);
+    let got = run(&[]);
+    for (i, (a, b)) in got.iter().zip(&own).enumerate() {
+        assert!(a.0 == b.0, "compile {}: the PDFs differ", i + 1);
+        assert_eq!(a.1, b.1, "compile {}: the logs differ", i + 1);
+    }
+    let starts: Vec<&str> = got.iter().map(|o| o.2.as_str()).collect();
+    assert_eq!(starts, ["fresh", "s0", "format"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A persisted S₀ (`--s0-cache`, `crate::s0file`): a host saves the
+/// document's S₀ after its compile; a new host whose document was edited
+/// in its body while closed goes on from it (no format, no preamble), and
+/// writes what a from-scratch compile of the same directory writes (the
+/// PDF, the log and the `.aux`, byte for byte); a font file the preamble
+/// loaded, changed while closed, refuses it (from the start), and the
+/// output is again a from-scratch compile's.
+#[test]
+fn a_reopened_document_goes_on_from_its_persisted_s0() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let find = |n: &str| {
+        flashtex_engine::system::find_file(n, flashtex_engine::resolver::Format::OpenType)
+            .expect("Latin Modern (TeX Live)")
+    };
+    let dir = std::env::temp_dir().join(format!("flashtex-host-reopen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let doc = "\\documentclass{article}\n\\usepackage{fontspec}\n\\font\\mine=\"[myfont.otf]\" at 11pt\n\\begin{document}\n\\section{One}\\label{one}\n{\\mine Our own font, ffi.} See section~\\ref{one}.\n\\end{document}\n";
+    let (proj, out) = project(&dir, doc);
+    std::fs::copy(find("lmroman10-regular.otf"), proj.join("myfont.otf")).unwrap();
+    let cache = dir.join("cache");
+    let cache_s = cache.to_string_lossy().into_owned();
+    let with_cache = [
+        ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+        ("FLASHTEX_S0_CACHE", cache_s.as_str()),
+    ];
+    let scratch = [
+        ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+        ("FLASHTEX_UNICODE_INPROCESS", "0"),
+    ];
+    let outs = |o: &Path| -> Vec<Vec<u8>> {
+        ["main.pdf", "main.log", "main.aux"]
+            .iter()
+            .map(|n| std::fs::read(o.join(n)).unwrap_or_default())
+            .collect()
+    };
+    // one compile by a new host; the host ends (and its S₀ is written)
+    let compile = |envs: &[(&str, &str)], tag: &str| -> (String, String, Vec<Vec<u8>>) {
+        let h = start_with(&dir, envs, &dir.join(format!("{tag}.err")));
+        let mut c = Client::connect(&h.sock).unwrap();
+        c.compile(&request(1, &proj, &out)).unwrap();
+        let (_, done) = events(&mut c, 1);
+        c.bye().unwrap();
+        let mut h = h;
+        let t = Instant::now();
+        while h.child.try_wait().unwrap().is_none() {
+            assert!(
+                t.elapsed() < Duration::from_secs(120),
+                "the host did not end"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let start = done
+            .get("starts")
+            .and_then(Json::as_array)
+            .and_then(|a| a.first())
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string();
+        (
+            done.str_field("status").unwrap_or("").to_string(),
+            start,
+            outs(Path::new(&out)),
+        )
+    };
+    // a compile by a host with the cache, and the same from scratch from
+    // the same output directory
+    let against_scratch = |what: &str| -> String {
+        let o = Path::new(&out);
+        let before: Vec<(PathBuf, Vec<u8>)> = std::fs::read_dir(o)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .map(|p| (p.clone(), std::fs::read(&p).unwrap()))
+            .collect();
+        let (status, start, got) = compile(&with_cache, what);
+        let _ = std::fs::remove_dir_all(o);
+        std::fs::create_dir_all(o).unwrap();
+        for (p, b) in &before {
+            std::fs::write(p, b).unwrap();
+        }
+        let (rstatus, _, want) = compile(&scratch, &format!("{what}-ref"));
+        assert_eq!(status, rstatus, "{what}: the status");
+        for (n, (a, b)) in ["PDF", "log", ".aux"].iter().zip(got.iter().zip(&want)) {
+            assert!(
+                a == b,
+                "{what}: the {n} differs from a from-scratch compile's"
+            );
+        }
+        start
+    };
+    let (status, _, _) = compile(&with_cache, "first");
+    assert_eq!(status, "ok");
+    let saved: Vec<_> = std::fs::read_dir(&cache)
+        .expect("the S0 cache")
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        saved.len() == 1 && saved[0].ends_with(".xs0"),
+        "one S0 saved: {saved:?}"
+    );
+    // edited in its body while closed: from S₀
+    std::fs::write(
+        proj.join("main.tex"),
+        doc.replace("See section", "Added while closed. See section"),
+    )
+    .unwrap();
+    assert_eq!(against_scratch("body"), "s0", "a body edit goes on from S0");
+    // its font file changed while closed: S₀ refused
+    std::fs::copy(find("lmroman12-regular.otf"), proj.join("myfont.otf")).unwrap();
+    assert_eq!(
+        against_scratch("font"),
+        "fresh",
+        "a changed font file refuses S0"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Page checkpoints (`crate::ckpt::PageCk`): an edit on a document's last
+/// page restarts after the pages before it, which are sent again from the
+/// checkpoint (`DONE.starts` `page`); an edit on its first page goes on
+/// from S₀; the output files, display list and all, are byte for byte a
+/// run of its own's.
+#[test]
+fn an_edit_late_in_a_long_document_restarts_near_it() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-pages-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let para = "Words and more words that fill the page, again and again, until the \
+                paragraph is long enough to break into several lines of text. ";
+    let mut body = String::new();
+    for i in 1..=6 {
+        body.push_str(&format!("\\section{{Part {i}}}\\label{{p{i}}}\n"));
+        for _ in 0..8 {
+            body.push_str(&para.repeat(3));
+            body.push_str("\n\n");
+        }
+    }
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\\begin{{document}}\n{body}See~\\ref{{p2}}.\n\\end{{document}}\n"
+    );
+    let texts = [
+        doc.clone(),
+        doc.replace("See~", "Look at~"),
+        doc.replacen("Words and more", "Wards and more", 1),
+        doc.clone(),
+    ];
+    type Outs = Vec<(String, Vec<u8>, String, String, Vec<Vec<u8>>)>;
+    let run = |envs: &[(&str, &str)]| -> Outs {
+        let sub = dir.join("run");
+        let _ = std::fs::remove_dir_all(&sub);
+        let (proj, out) = project(&sub, &doc);
+        let mut e = vec![("FLASHTEX_PIN_CLOCK", "1760000000.5")];
+        e.extend_from_slice(envs);
+        let h = start_with(&sub, &e, &sub.join("host.err"));
+        let mut c = Client::connect(&h.sock).unwrap();
+        let mut outs = vec![];
+        for (i, text) in texts.iter().enumerate() {
+            let id = i as i64 + 1;
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.clone())];
+            c.compile(&r).unwrap();
+            let (ev, done) = events(&mut c, id);
+            let pages: Vec<Vec<u8>> = ev
+                .iter()
+                .filter_map(|e| match e {
+                    Event::Page(p) => Some(p.encode()),
+                    _ => None,
+                })
+                .collect();
+            let starts = done
+                .get("starts")
+                .and_then(Json::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
+                .unwrap_or_default();
+            let o = Path::new(&out);
+            outs.push((
+                starts,
+                std::fs::read(o.join("main.pdf")).unwrap_or_default(),
+                std::fs::read_to_string(o.join("main.log")).unwrap(),
+                std::fs::read_to_string(o.join("main.aux")).unwrap_or_default(),
+                pages,
+            ));
+        }
+        c.bye().unwrap();
+        drop(h);
+        outs
+    };
+    let own = run(&[("FLASHTEX_UNICODE_INPROCESS", "0")]);
+    let got = run(&[]);
+    let starts: Vec<&str> = got.iter().map(|o| o.0.as_str()).collect();
+    assert!(starts[1].starts_with("page"), "{starts:?}");
+    assert!(starts[2].starts_with("s0"), "{starts:?}");
+    for (i, (a, b)) in got.iter().zip(&own).enumerate() {
+        assert!(a.1 == b.1, "compile {}: the PDFs differ", i + 1);
+        assert_eq!(a.2, b.2, "compile {}: the logs differ", i + 1);
+        assert_eq!(a.3, b.3, "compile {}: the .aux differs", i + 1);
+        assert!(a.4.len() > 4, "compile {}: {} pages", i + 1, a.4.len());
+        assert!(a.4 == b.4, "compile {}: the pages differ", i + 1);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A compile cancelled while it runs from S₀ or a page leaves the output
+/// files as the last complete run left them (`resident::Resident::guard`):
+/// the next compile still goes on from S₀ or a page (its `.aux` was cut
+/// back by the cancelled run, and S₀'s key reads it), and writes what a run
+/// of its own writes.
+#[test]
+fn a_cancelled_compile_leaves_the_next_one_incremental() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-cancelled-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let para = "Words and more words that fill the page, again and again, until the \
+                paragraph is long enough to break into several lines of text. ";
+    let mut body = String::new();
+    for i in 1..=40 {
+        body.push_str(&format!("\\section{{Part {i}}}\\label{{p{i}}}\n"));
+        for _ in 0..4 {
+            body.push_str(&para.repeat(3));
+            body.push_str("\n\n");
+        }
+    }
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\\begin{{document}}\n{body}See~\\ref{{p2}}.\n\\end{{document}}\n"
+    );
+    let first_edit = doc.replacen("Words and more", "Wards and more", 1);
+    let second_edit = doc.replacen("Words and more", "Wordz and more", 1);
+    let sub = dir.join("run");
+    let (proj, out) = project(&sub, &doc);
+    let h = start_with(
+        &sub,
+        &[("FLASHTEX_PIN_CLOCK", "1760000000.5")],
+        &sub.join("host.err"),
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    let compile = |c: &mut Client, id: i64, text: &str, cancel_after: Option<u64>| -> Json {
+        let mut r = request(id, &proj, &out);
+        r.buffers = vec![("main.tex".into(), text.to_string())];
+        c.compile(&r).unwrap();
+        if let Some(ms) = cancel_after {
+            std::thread::sleep(Duration::from_millis(ms));
+            c.cancel(id).unwrap();
+        }
+        events(c, id).1
+    };
+    compile(&mut c, 1, &doc, None);
+    compile(&mut c, 2, &doc, None);
+    let cancelled = compile(&mut c, 3, &first_edit, Some(40));
+    let done = compile(&mut c, 4, &second_edit, None);
+    let start = done
+        .get("starts")
+        .and_then(Json::as_array)
+        .and_then(|a| a.first())
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .to_string();
+    assert!(
+        start == "s0" || start == "page",
+        "after {cancelled:?}: {done:?}"
+    );
+    let o = Path::new(&out);
+    let got = (
+        std::fs::read(o.join("main.pdf")).unwrap(),
+        std::fs::read_to_string(o.join("main.aux")).unwrap(),
+    );
+    c.bye().unwrap();
+    drop(h);
+    // a run of its own on the same text
+    let h = start_with(
+        &sub,
+        &[
+            ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+            ("FLASHTEX_UNICODE_INPROCESS", "0"),
+        ],
+        &sub.join("host2.err"),
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    compile(&mut c, 1, &second_edit, None);
+    let want = (
+        std::fs::read(o.join("main.pdf")).unwrap(),
+        std::fs::read_to_string(o.join("main.aux")).unwrap(),
+    );
+    c.bye().unwrap();
+    drop(h);
+    assert!(got.0 == want.0, "the PDFs differ");
+    assert_eq!(got.1, want.1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// An edit saved while a compile runs, and that compile cancelled: the next
+/// compile sees the edit (`resident`'s `texts` are the files as they were
+/// before a run read them, and a cancelled run puts back the last complete
+/// run's). The edit is early in the document, before the page checkpoint
+/// the cancelled run restarted from; the save comes while that run pauses
+/// between looking for the edit and restoring its checkpoint
+/// (`FLASHTEX_UNICODE_TEST_START_PAUSE_MS`), at several points of the pause.
+#[test]
+fn an_edit_saved_while_a_cancelled_compile_runs_is_seen() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-saved-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let para = "Words and more words that fill the page, again and again, until the \
+                paragraph is long enough to break into several lines of text. ";
+    let mut body = String::new();
+    for i in 1..=40 {
+        body.push_str(&format!("\\section{{Part {i}}}\\label{{p{i}}}\n"));
+        for _ in 0..4 {
+            body.push_str(&para.repeat(3));
+            body.push_str("\n\n");
+        }
+    }
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\\begin{{document}}\n{body}See~\\ref{{p2}}.\n\\end{{document}}\n"
+    );
+    // the cancelled compile's edit, late; the one saved while it runs, early
+    let late = doc.replace("See~\\ref{p2}.", "See~\\ref{p2} too.");
+    let saved = late.replacen("Words and more", "Wordz and more, early,", 1);
+    let sub = dir.join("run");
+    let (proj, out) = project(&sub, &doc);
+    let h = start_with(
+        &sub,
+        &[
+            ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+            ("FLASHTEX_UNICODE_TEST_START_PAUSE_MS", "60"),
+        ],
+        &sub.join("host.err"),
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    let compile = |c: &mut Client, id: i64, text: &str, save_then_cancel: Option<u64>| -> Json {
+        let mut r = request(id, &proj, &out);
+        r.buffers = vec![("main.tex".into(), text.to_string())];
+        c.compile(&r).unwrap();
+        if let Some(ms) = save_then_cancel {
+            std::thread::sleep(Duration::from_millis(ms));
+            std::fs::write(proj.join("main.tex"), &saved).unwrap();
+            std::thread::sleep(Duration::from_millis(60));
+            c.cancel(id).unwrap();
+        }
+        events(c, id).1
+    };
+    let o = Path::new(&out);
+    let mut got = vec![];
+    let mut id = 1;
+    for ms in [20u64, 40] {
+        compile(&mut c, id, &doc, None);
+        compile(&mut c, id + 1, &doc, None);
+        compile(&mut c, id + 2, &late, Some(ms));
+        let done = compile(&mut c, id + 3, &saved, None);
+        got.push((
+            ms,
+            done,
+            std::fs::read(o.join("main.pdf")).unwrap(),
+            std::fs::read_to_string(o.join("main.aux")).unwrap(),
+        ));
+        id += 4;
+    }
+    c.bye().unwrap();
+    drop(h);
+    // a run of its own on the saved text
+    let h = start_with(
+        &sub,
+        &[
+            ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+            ("FLASHTEX_UNICODE_INPROCESS", "0"),
+        ],
+        &sub.join("host2.err"),
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    compile(&mut c, 1, &saved, None);
+    let want_pdf = std::fs::read(o.join("main.pdf")).unwrap();
+    let want_aux = std::fs::read_to_string(o.join("main.aux")).unwrap();
+    c.bye().unwrap();
+    drop(h);
+    for (ms, done, pdf, aux) in got {
+        assert!(
+            pdf == want_pdf,
+            "saved after {ms} ms: the PDFs differ ({done:?})"
+        );
+        assert_eq!(aux, want_aux, "saved after {ms} ms");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Convergence, measurement only (`crate::conv`, step 1): an edit early in
+/// a long document; the restarted run finds a page after which its state
+/// is the last complete run's, and every page after it is the old run's
+/// (the measurement checks its claim against the run's own pages).
+#[test]
+fn the_convergence_measurement_finds_a_point_that_holds() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-conv-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let para = "Words and more words that fill the page, again and again, until the \
+                paragraph is long enough to break into several lines of text. ";
+    let mut body = String::new();
+    for i in 1..=30 {
+        body.push_str(&format!("\\section{{Part {i}}}\n"));
+        for _ in 0..4 {
+            body.push_str(&para.repeat(3));
+            body.push_str("\n\n");
+        }
+    }
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\\begin{{document}}\n{body}\\end{{document}}\n"
+    );
+    let edited = doc.replacen("Words and more", "Wards and more", 1);
+    let sub = dir.join("run");
+    let (proj, out) = project(&sub, &doc);
+    let err = sub.join("host.err");
+    let h = start_with(
+        &sub,
+        &[
+            ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+            ("FLASHTEX_UNICODE_CONV_DEBUG", "1"),
+        ],
+        &err,
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    for (id, text) in [(1, &doc), (2, &doc), (3, &edited)] {
+        let mut r = request(id, &proj, &out);
+        r.buffers = vec![("main.tex".into(), text.to_string())];
+        c.compile(&r).unwrap();
+        events(&mut c, id);
+    }
+    c.bye().unwrap();
+    drop(h);
+    let log = std::fs::read_to_string(&err).unwrap();
+    let runs: Vec<&str> = log
+        .lines()
+        .filter(|l| l.starts_with("[conv] run:"))
+        .collect();
+    assert!(!log.contains("UNSOUND"), "{log}");
+    assert!(
+        runs.iter().any(|l| l.contains("holds")),
+        "no claim that holds: {runs:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The convergence jump (`crate::conv`): an edit early in a long document
+/// with labels; the restarted run converges a few pages on and goes on from
+/// the old run's newest page checkpoint. Its PDF, `.aux` and log are a run
+/// of its own's, and the next edit (from a carried checkpoint) too.
+#[test]
+fn a_converged_run_writes_what_a_run_of_its_own_writes() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-jump-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let para = "Words and more words that fill the page, again and again, until the \
+                paragraph is long enough to break into several lines of text. ";
+    let mut body = String::new();
+    for i in 1..=30 {
+        body.push_str(&format!("\\section{{Part {i}}}\\label{{p{i}}}\n"));
+        for _ in 0..4 {
+            body.push_str(&para.repeat(3));
+            body.push_str("\n\n");
+        }
+        body.push_str(&format!("See~\\ref{{p{}}}.\n\n", 31 - i));
+    }
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\\begin{{document}}\n{body}\\end{{document}}\n"
+    );
+    let first = doc.replacen("Words and more", "Wards and more", 1);
+    let second = first.replacen("Part 25}", "Part 25 again}", 1);
+    let sub = dir.join("run");
+    let (proj, out) = project(&sub, &doc);
+    let err = sub.join("host.err");
+    let o = Path::new(&out);
+    let outputs = || {
+        (
+            std::fs::read(o.join("main.pdf")).unwrap(),
+            std::fs::read_to_string(o.join("main.aux")).unwrap(),
+            std::fs::read_to_string(o.join("main.log")).unwrap(),
+        )
+    };
+    let compile = |c: &mut Client, id: i64, text: &str| {
+        let mut r = request(id, &proj, &out);
+        r.buffers = vec![("main.tex".into(), text.to_string())];
+        c.compile(&r).unwrap();
+        events(c, id).1
+    };
+    let h = start_with(
+        &sub,
+        &[
+            ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+            ("FLASHTEX_UNICODE_CONV_DEBUG", "1"),
+        ],
+        &err,
+    );
+    let mut c = Client::connect(&h.sock).unwrap();
+    compile(&mut c, 1, &doc);
+    compile(&mut c, 2, &doc);
+    compile(&mut c, 3, &first);
+    let got1 = outputs();
+    let done = compile(&mut c, 4, &second);
+    let got2 = outputs();
+    c.bye().unwrap();
+    drop(h);
+    let log = std::fs::read_to_string(&err).unwrap();
+    assert!(log.contains("[conv] jumped"), "no jump: {log}");
+    assert!(!log.contains("UNSOUND"), "{log}");
+    for (text, got) in [(&first, got1), (&second, got2)] {
+        let h = start_with(
+            &sub,
+            &[
+                ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+                ("FLASHTEX_UNICODE_INPROCESS", "0"),
+            ],
+            &sub.join("host2.err"),
+        );
+        let mut c = Client::connect(&h.sock).unwrap();
+        // (twice: the reference's .aux settles as the measured run's did)
+        compile(&mut c, 1, text);
+        compile(&mut c, 2, text);
+        let want = outputs();
+        c.bye().unwrap();
+        drop(h);
+        assert!(got.0 == want.0, "the PDFs differ ({done:?})");
+        assert_eq!(got.1, want.1);
+        assert_eq!(got.2, want.2);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The bundle's fonts by name (#1783) in both kinds of run: in the host's
+/// own process (`crate::resident`'s kept catalog, the app's default) and in
+/// a process of its own. Opt-in: `FLASHTEX_TEST_FONT_BUNDLE=<digest>@<url>`
+/// names a bundle with the font-name index (texbundle-tl2026-4 or later, or
+/// one `texbundle.py pack --font-index-tool` made); the resolver is forced
+/// to it, so TeX Live's fonts are not what is found.
+#[test]
+fn bundle_fonts_are_found_by_name_resident_or_not() {
+    let Some((digest, url)) = std::env::var("FLASHTEX_TEST_FONT_BUNDLE")
+        .ok()
+        .and_then(|v| {
+            v.split_once('@')
+                .map(|(d, u)| (d.to_string(), u.to_string()))
+        })
+    else {
+        eprintln!("skipped: FLASHTEX_TEST_FONT_BUNDLE is not set");
+        return;
+    };
+    let doc = "\\documentclass{article}\n\\usepackage{fontspec}\n\
+               \\setmainfont{TeX Gyre Pagella}\n\\begin{document}\nHello, \\textbf{bold}.\n\\end{document}\n";
+    // short: the bundle's paths stay well under XDV's 255 bytes
+    let cache = PathBuf::from(format!("/tmp/ftxbfi-{}", std::process::id()));
+    for inproc in ["1", "0"] {
+        let dir =
+            std::env::temp_dir().join(format!("flashtex-bfi-{}-{inproc}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (proj, out) = project(&dir, doc);
+        let allow = format!("{digest}@{url}");
+        let envs = [
+            ("FLASHTEX_UNICODE_INPROCESS", inproc),
+            ("FLASHTEX_RESOLVER", "bundle"),
+            ("FLASHTEX_BUNDLE_URL", url.as_str()),
+            ("FLASHTEX_BUNDLE_DIGEST", digest.as_str()),
+            ("FLASHTEX_BUNDLE_ALLOW_FETCH", allow.as_str()),
+            ("FLASHTEX_BUNDLE_CACHE_DIR", cache.to_str().unwrap()),
+        ];
+        let h = start_with(&dir, &envs, &dir.join("err.txt"));
+        let mut c = Client::connect(&h.sock).unwrap();
+        // twice: the second run of a resident engine reuses its kept catalog
+        for id in [1, 2] {
+            c.compile(&request(id, &proj, &out)).unwrap();
+            let (ev, done) = events(&mut c, id);
+            assert_eq!(
+                done.str_field("status"),
+                Some("ok"),
+                "inproc={inproc} run {id}: {done:?}"
+            );
+            let fonts: Vec<_> = ev
+                .iter()
+                .filter_map(|e| match e {
+                    Event::Font(f) => Some(f.info.str_field("ps_name").unwrap_or("").to_string()),
+                    _ => None,
+                })
+                .collect();
+            if id == 1 {
+                for want in ["TeXGyrePagella-Regular", "TeXGyrePagella-Bold"] {
+                    assert!(
+                        fonts.iter().any(|p| p == want),
+                        "inproc={inproc}: {fonts:?}"
+                    );
+                }
+            }
+        }
+        c.bye().unwrap();
+        drop(h);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    let _ = std::fs::remove_dir_all(&cache);
 }
