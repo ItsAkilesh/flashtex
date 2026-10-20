@@ -306,7 +306,13 @@ fn main() {
         }
         (l, p)
     });
+    // A preamble edit types after `\documentclass` and watches page 0: it
+    // needs no prose line, and a book's main file (only `\include`s) has none.
+    let preamble = arg("--kind").as_deref() == Some("preamble");
     let (line, page) = given.unwrap_or_else(|| {
+        if preamble {
+            return (1, 0);
+        }
         (1..=lines.len() as u32)
             .filter(|&l| lines[l as usize - 1].split(' ').count() > 40)
             .filter_map(|l| {
