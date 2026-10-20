@@ -4399,41 +4399,8 @@ fn recording_reads() -> bool {
     READS.with(|r| r.borrow().is_some())
 }
 
-/// An entry of [`ReadLog::dirs`] (`host::Key::dirs`) for a lookup whose
-/// dependencies are not known (`FileResolver::lookup_dirs`, #1562): it has
-/// no signature, so it never equals the one recorded, and the lookups are
-/// made again at every check.
-pub const DEP_UNKNOWN: &str = "\0lookup dependencies not known";
-
-/// The prefix of an entry of [`ReadLog::dirs`] for a lookup's answer found
-/// on disk, which must stay a readable file (kpathsea's
-/// `kpathsea_readable_file`): a file made unreadable keeps its directory's
-/// listing (#1562). Its "signature" says whether it is readable.
-const DEP_READABLE: &str = "\0readable\0";
-
-/// The entry of [`ReadLog::dirs`] for an answer found on disk at `path`
-/// ([`DEP_READABLE`]).
-pub(crate) fn readable_dep(path: &str) -> String {
-    format!("{DEP_READABLE}{path}")
-}
-
-/// The signature of an entry of [`ReadLog::dirs`]: a directory's
-/// `StatSig`; for [`DEP_READABLE`], whether the file is readable; for
-/// [`DEP_UNKNOWN`], none.
-pub fn dep_sig(entry: &str) -> Option<StatSig> {
-    if let Some(p) = entry.strip_prefix(DEP_READABLE) {
-        // (kpathsea's READABLE: `access(R_OK)`, and not a directory)
-        let ok = std::fs::metadata(p).is_ok_and(|m| !m.is_dir()) && File::open(p).is_ok();
-        return Some(StatSig {
-            len: ok as u64,
-            ..StatSig::default()
-        });
-    }
-    if entry.starts_with('\0') {
-        return None;
-    }
-    StatSig::of(entry)
-}
+use flashtex_runtime::lookupproof::DEP_READABLE;
+pub use flashtex_runtime::lookupproof::{dep_sig, DEP_UNKNOWN};
 
 /// `entry` among `log.dirs`, signed now if it is new.
 fn note_dep(log: &mut ReadLog, entry: &str) {
@@ -4888,20 +4855,7 @@ fn in_offset<R: std::io::Seek>(r: &mut R, path: &Option<String>) -> Result<(Stri
     Ok((p, off))
 }
 
-/// Debugging (`FLASHTEX_FILE_TRACE=FILE`): append one line per change the
-/// checkpoint layer makes to an output file.
-pub fn file_trace(msg: impl FnOnce() -> String) {
-    static T: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-    if let Some(p) = T.get_or_init(|| std::env::var("FLASHTEX_FILE_TRACE").ok()) {
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(p)
-        {
-            let _ = writeln!(f, "{}", msg());
-        }
-    }
-}
+pub use flashtex_runtime::trace::file_trace;
 
 /// The length of `path` on disk now (`None`: no such file).
 pub fn disk_len(path: &str) -> Option<u64> {
@@ -5418,9 +5372,12 @@ mod confined_read_tests {
 mod statsig_tests {
     use super::*;
 
-    /// A signature taken within the modification-time granularity of the
-    /// file's time equals none, not even itself; an older one equals its
-    /// twin and not a file changed since.
+    /// A signature taken within the time granularity of the file's
+    /// modification or change time equals none, not even itself; an older
+    /// one equals its twin. (Putting the modification time back moves the
+    /// change time, so that signature is racy until the change time is old
+    /// too; flashtex-runtime's `statsig` tests cover the window on each
+    /// time, a time far ahead, and a rewrite with the time put back.)
     #[test]
     fn racy_signatures_equal_nothing() {
         let d = std::env::temp_dir().join(format!("flashtex-statsig-{}", std::process::id()));
@@ -5440,25 +5397,10 @@ mod statsig_tests {
             .set_modified(old)
             .unwrap();
         let a = StatSig::of(p).unwrap();
-        let b = StatSig::of(p).unwrap();
+        assert!(a.racy || a.ctime_ns == 0, "the change time has just moved");
+        let a = StatSig::of_within(p, 0).unwrap();
+        let b = StatSig::of_within(p, 0).unwrap();
         assert!(!a.racy && a == b);
-        // a time within the tick ahead is racy too; one far ahead is not
-        let soon = std::time::SystemTime::now() + std::time::Duration::from_millis(500);
-        std::fs::File::options()
-            .write(true)
-            .open(&f)
-            .unwrap()
-            .set_modified(soon)
-            .unwrap();
-        assert!(StatSig::of(p).unwrap().racy);
-        let far = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
-        std::fs::File::options()
-            .write(true)
-            .open(&f)
-            .unwrap()
-            .set_modified(far)
-            .unwrap();
-        assert!(!StatSig::of(p).unwrap().racy);
         let _ = std::fs::remove_dir_all(&d);
     }
 }
