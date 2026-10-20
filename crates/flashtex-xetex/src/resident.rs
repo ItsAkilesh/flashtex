@@ -469,6 +469,25 @@ pub struct Engine {
     /// The last run was in Low Memory: S₀ is written on the engine thread,
     /// from the engine (no copy of it).
     lean_save: bool,
+    /// A save of S₀ asked for and not made yet ([`Engine::save_s0`],
+    /// [`Engine::save_pending`]).
+    pending_save: Option<PendingSave>,
+}
+
+/// A save of S₀ asked for after a compile's DONE: what it writes, taken
+/// then, so that a save made later (when the engine is idle, after other
+/// runs) writes the bytes it would have written then. The chunks' words
+/// are S₀'s (and the format point's) whenever they are read: both are
+/// checkpoints.
+struct PendingSave {
+    id: CheckpointId,
+    path: PathBuf,
+    root: PathBuf,
+    meta: crate::s0file::Meta,
+    base: Option<crate::s0file::BaseSpec>,
+    touched: Vec<u64>,
+    lean: bool,
+    asked: std::time::Instant,
 }
 
 /// Resets every file of the engine: closed, as at the start of a run.
@@ -572,6 +591,7 @@ impl Engine {
             bases_in_use: vec![],
             writers: vec![],
             lean_save: false,
+            pending_save: None,
         }
     }
 
@@ -585,6 +605,7 @@ impl Engine {
     /// Forget the engine, its point, S₀ and the pages (memory back; the
     /// next run starts from the start).
     pub fn clear(&mut self) {
+        self.pending_save = None;
         self.pages.clear();
         self.s0 = None;
         self.point = None;
@@ -684,14 +705,23 @@ impl Engine {
         ))
     }
 
-    /// Persist S₀ to `path` (`crate::s0file`) if it is not there yet: the
-    /// engine thread takes it out of the engine, a thread of its own writes
-    /// it (through a temporary file and a rename). The note to report.
+    /// Ask for S₀ to be persisted to `path` (`crate::s0file`) if it is not
+    /// there yet. What the file holds besides the word space is taken now
+    /// (the key, the record, the texts read, the base it is a delta against,
+    /// the chunks written so far); the copy of S₀'s chunks, the bulk of the
+    /// work, is made by [`Engine::save_pending`] when no run waits, so that
+    /// a keystroke right after a cold compile does not wait for it. The note
+    /// to report.
     pub fn save_s0(&mut self, path: &Path, root: &Path) -> Result<Option<String>, String> {
         let Some(s0) = self.s0.as_ref() else {
             return Ok(None);
         };
         if self.s0_saved == Some(s0.id) {
+            return Ok(None);
+        }
+        // (asked for again by a later compile: the first ask's record
+        // stands, its texts and chunks are S₀'s time's)
+        if self.pending_save.as_ref().is_some_and(|p| p.id == s0.id) {
             return Ok(None);
         }
         let (k, f) = match (&self.point, &self.opened) {
@@ -715,15 +745,13 @@ impl Engine {
             _ => None,
         };
         // (the engine's document is still this one: another document's
-        // run may have come between its compile and this save; the paths
-        // it read are relative to its directory)
-        if k.root != root || std::env::set_current_dir(root).is_err() {
+        // run may have come between its compile and this save)
+        if k.root != root {
             return Ok(None);
         }
-        let Some(g) = self.g.as_mut() else {
+        let Some(g) = self.g.as_ref() else {
             return Ok(None);
         };
-        let t = std::time::Instant::now();
         let texts = s0
             .rec
             .files
@@ -749,10 +777,57 @@ impl Engine {
                 self.bases_in_use.push(b);
             }
         }
+        self.pending_save = Some(PendingSave {
+            id: s0.id,
+            path: path.to_path_buf(),
+            root: root.to_path_buf(),
+            meta,
+            base,
+            touched: crate::s0file::touched(g),
+            lean: self.lean_save,
+            asked: std::time::Instant::now(),
+        });
+        Ok(None)
+    }
+
+    /// A save of S₀ is asked for and not made yet.
+    pub fn has_pending_save(&self) -> bool {
+        self.pending_save.is_some()
+    }
+
+    /// Make the save [`Engine::save_s0`] asked for: the engine thread takes
+    /// S₀ out of the engine (or, in Low Memory, writes it from the engine),
+    /// a thread of its own writes the copy (through a temporary file and a
+    /// rename). It is dropped if the engine no longer holds that S₀ for
+    /// that document (a later run took another, or another document's run
+    /// came). When `stop` says so (a run is waiting), the save stops,
+    /// leaving nothing, and stays asked for. The note to report.
+    pub fn save_pending(&mut self, stop: &dyn Fn() -> bool) -> Result<Option<String>, String> {
+        let Some(p) = self.pending_save.take() else {
+            return Ok(None);
+        };
+        let same = self.s0.as_ref().is_some_and(|s0| s0.id == p.id) && self.s0_saved != Some(p.id);
+        let root_now = match (&self.point, &self.opened) {
+            (Some(pt), _) => Some(pt.key.root.clone()),
+            (None, Some(o)) => Some(o.0.root.clone()),
+            _ => None,
+        };
+        if !same || root_now.as_deref() != Some(p.root.as_path()) {
+            return Ok(None);
+        }
+        // (the paths it read are relative to its directory)
+        if std::env::set_current_dir(&p.root).is_err() {
+            return Ok(None);
+        }
+        let Some(g) = self.g.as_mut() else {
+            return Ok(None);
+        };
+        let t = std::time::Instant::now();
+        let waited_ms = p.asked.elapsed().as_secs_f64() * 1e3;
         // after the save, the bases no S₀ in the cache refers to any more
         // (old formats and engine builds) go
         let collect = {
-            let dir = path.parent().map(Path::to_path_buf);
+            let dir = p.path.parent().map(Path::to_path_buf);
             let keep = self.bases_in_use.clone();
             move || {
                 if let Some(d) = dir {
@@ -765,45 +840,65 @@ impl Engine {
                 }
             }
         };
-        if self.lean_save {
+        let stopped = |t: std::time::Instant| {
+            eprintln!(
+                "flashtex-host-unicode: the S0 save stopped for a request ({:.1} ms in)",
+                t.elapsed().as_secs_f64() * 1e3
+            );
+        };
+        if p.lean {
             // (Low Memory: no copy of the chunks; written here)
-            if let Some(d) = path.parent() {
+            if let Some(d) = p.path.parent() {
                 let _ = std::fs::create_dir_all(d);
             }
-            let bytes = crate::s0file::write_in_place(
+            let Some(bytes) = crate::s0file::write_in_place(
                 g,
-                s0.id,
-                &meta,
-                &path.to_string_lossy(),
-                base.as_ref(),
-            )?;
-            self.s0_saved = Some(s0.id);
+                p.id,
+                &p.meta,
+                &p.path.to_string_lossy(),
+                p.base.as_ref(),
+                &p.touched,
+                stop,
+            )?
+            else {
+                stopped(t);
+                self.pending_save = Some(p);
+                return Ok(None);
+            };
+            self.s0_saved = Some(p.id);
             eprintln!(
-                "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{:.1},\"in_place\":true}}",
-                path.display().to_string(),
+                "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{:.1},\"after_ms\":{waited_ms:.1},\"in_place\":true}}",
+                p.path.display().to_string(),
                 t.elapsed().as_secs_f64() * 1e3
             );
             collect();
             return Ok(None);
         }
-        let image = crate::s0file::prepare(g, s0.id, &meta, base.as_ref())?;
-        self.s0_saved = Some(s0.id);
+        let Some(image) =
+            crate::s0file::prepare(g, p.id, &p.meta, p.base.as_ref(), &p.touched, stop)?
+        else {
+            stopped(t);
+            self.pending_save = Some(p);
+            return Ok(None);
+        };
+        self.s0_saved = Some(p.id);
         let prepare_ms = t.elapsed().as_secs_f64() * 1e3;
+        let [head_ms, view_ms, copy_ms] = image.ms;
         let held = image.bytes();
-        let p = path.to_path_buf();
+        let path = p.path;
         self.writers.retain(|w| !w.is_finished());
         let w = std::thread::Builder::new()
             .name("unicode-s0-write".into())
             .spawn(move || {
-                if let Some(d) = p.parent() {
+                if let Some(d) = path.parent() {
                     let _ = std::fs::create_dir_all(d);
                 }
                 let t = std::time::Instant::now();
-                match image.write(&p.to_string_lossy()) {
+                match image.write(&path.to_string_lossy()) {
                     Ok(bytes) => {
                         eprintln!(
-                            "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{prepare_ms:.1},\"write_ms\":{:.1}}}",
-                            p.display().to_string(),
+                            "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{prepare_ms:.1},\"header_ms\":{head_ms:.1},\"view_ms\":{view_ms:.1},\"copy_ms\":{copy_ms:.1},\"after_ms\":{waited_ms:.1},\"write_ms\":{:.1}}}",
+                            path.display().to_string(),
                             t.elapsed().as_secs_f64() * 1e3
                         );
                         collect();

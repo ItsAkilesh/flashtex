@@ -121,6 +121,8 @@ pub struct Image {
     chunks: Vec<u32>,
     data: Vec<u8>,
     base: Option<ImageBase>,
+    /// Milliseconds taken by the header, S₀'s view and the copy.
+    pub ms: [f64; 3],
 }
 
 /// A file an object of the handle table is made from, with its content's
@@ -423,13 +425,63 @@ impl Against<'_> {
     }
 }
 
-/// The nonzero chunks of the space at checkpoint `view` (`touched`: the
-/// arena's, now: a chunk never written is zero then too).
-fn nonzero(arena: &flashtex_engine::arena::Arena, view: &flashtex_engine::arena::View) -> Vec<u32> {
-    (0..arena.chunks())
-        .filter(|&c| arena.touched(c) && view.chunk(c).iter().any(|&b| b != 0))
-        .map(|c| c as u32)
-        .collect()
+/// The chunks of the space written so far (`Arena::touched`), one bit
+/// each: taken when a save is asked for, so that a save made later
+/// (`crate::resident::Engine::save_pending`, after other runs touched more
+/// chunks) writes the chunks it would have written then.
+pub fn touched(g: &Globals) -> Vec<u64> {
+    let mut t = vec![0u64; g.arena.chunks().div_ceil(64)];
+    for c in 0..g.arena.chunks() {
+        if g.arena.touched(c) {
+            t[c >> 6] |= 1 << (c & 63);
+        }
+    }
+    t
+}
+
+fn bit(t: &[u64], c: usize) -> bool {
+    t.get(c >> 6).is_some_and(|w| w >> (c & 63) & 1 == 1)
+}
+
+/// How many chunks are copied or written between two reads of `stop`.
+const STOP_EVERY: usize = 64;
+
+/// The nonzero chunks of the space at checkpoint `view`, among `touched`
+/// (taken when the save was asked for: a chunk not written by then is
+/// zero at the checkpoint too). `None` when `stop` said so first.
+fn nonzero(
+    space: usize,
+    view: &flashtex_engine::arena::View,
+    touched: &[u64],
+    stop: &dyn Fn() -> bool,
+) -> Option<Vec<u32>> {
+    let mut out = vec![];
+    for c in 0..space {
+        if c % STOP_EVERY == 0 && stop() {
+            return None;
+        }
+        if bit(touched, c) && view.chunk(c).iter().any(|&b| b != 0) {
+            out.push(c as u32);
+        }
+    }
+    Some(out)
+}
+
+/// A copy of `chunks` of `view`, `CHUNK_BYTES` each; `None` when `stop`
+/// said so first.
+fn copy_chunks(
+    view: &flashtex_engine::arena::View,
+    chunks: &[u32],
+    stop: &dyn Fn() -> bool,
+) -> Option<Vec<u8>> {
+    let mut data = Vec::with_capacity(chunks.len() * CHUNK_BYTES);
+    for (i, &c) in chunks.iter().enumerate() {
+        if i % STOP_EVERY == 0 && stop() {
+            return None;
+        }
+        data.extend_from_slice(view.chunk(c as usize));
+    }
+    Some(data)
 }
 
 /// Split S₀'s nonzero `chunks` (`mine`: S₀'s chunk, of a space of
@@ -569,62 +621,97 @@ enum ImageBase {
 /// the base to write it against (`base`: where the bases are; `None`:
 /// none): the base file there is, else a copy of the format point to make
 /// one from. The writer ([`Image::write`]) compares, off the engine thread.
+/// The chunks are those among `touched` (taken when the save was asked
+/// for). S₀ and the format point are checkpoints: their words are the same
+/// whatever runs came after them. `None` when `stop` said so before the
+/// copy was done (a run is waiting: the copy is made again later).
 pub fn prepare(
     g: &mut Globals,
     id: CheckpointId,
     meta: &Meta,
     base: Option<&BaseSpec>,
-) -> Result<Image, String> {
-    let head = header(g, id, meta)?;
-    let view = g.arena.view_at(id)?;
-    let chunks = nonzero(&g.arena, &view);
-    let mut data = Vec::with_capacity(chunks.len() * CHUNK_BYTES);
-    for &c in &chunks {
-        data.extend_from_slice(view.chunk(c as usize));
+    touched: &[u64],
+    stop: &dyn Fn() -> bool,
+) -> Result<Option<Image>, String> {
+    if stop() {
+        return Ok(None);
     }
-    let base = base.and_then(|spec| {
-        let path = base_path(spec, g);
-        // (a base that does not open, truncated or not a base, is made
-        // again: written through a rename, it replaces the file)
-        if BaseFile::open(&path).is_ok() {
-            return Some(ImageBase::File(path));
+    let t = std::time::Instant::now();
+    let head = header(g, id, meta)?;
+    let t_head = t.elapsed().as_secs_f64() * 1e3;
+    if stop() {
+        return Ok(None);
+    }
+    let t = std::time::Instant::now();
+    let view = g.arena.view_at(id)?;
+    let t_view = t.elapsed().as_secs_f64() * 1e3;
+    let t = std::time::Instant::now();
+    let space = g.arena.chunks();
+    let Some(chunks) = nonzero(space, &view, touched, stop) else {
+        return Ok(None);
+    };
+    let Some(data) = copy_chunks(&view, &chunks, stop) else {
+        return Ok(None);
+    };
+    let base = match base {
+        None => None,
+        Some(spec) => {
+            let path = base_path(spec, g);
+            // (a base that does not open, truncated or not a base, is made
+            // again: written through a rename, it replaces the file)
+            if BaseFile::open(&path).is_ok() {
+                Some(ImageBase::File(path))
+            } else {
+                match spec.point.map(|p| g.arena.view_at(p)) {
+                    Some(Ok(pv)) => {
+                        let Some(chunks) = nonzero(space, &pv, touched, stop) else {
+                            return Ok(None);
+                        };
+                        let Some(data) = copy_chunks(&pv, &chunks, stop) else {
+                            return Ok(None);
+                        };
+                        let nonce = new_nonce(&path);
+                        Some(ImageBase::New {
+                            path,
+                            nonce,
+                            chunks,
+                            data,
+                        })
+                    }
+                    _ => None,
+                }
+            }
         }
-        let pv = g.arena.view_at(spec.point?).ok()?;
-        let chunks = nonzero(&g.arena, &pv);
-        let mut data = Vec::with_capacity(chunks.len() * CHUNK_BYTES);
-        for &c in &chunks {
-            data.extend_from_slice(pv.chunk(c as usize));
-        }
-        let nonce = new_nonce(&path);
-        Some(ImageBase::New {
-            path,
-            nonce,
-            chunks,
-            data,
-        })
-    });
-    Ok(Image {
+    };
+    let ms = [t_head, t_view, t.elapsed().as_secs_f64() * 1e3];
+    Ok(Some(Image {
         head,
-        space: g.arena.chunks(),
+        space,
         chunks,
         data,
         base,
-    })
+        ms,
+    }))
 }
 
 /// Write S₀ to `path` from the engine itself, with no copy of its chunks
 /// (Low Memory: the copy is the size of the file), against the base there
-/// is or, made first from the format point, a new one. Returns the file's
-/// bytes.
+/// is or, made first from the format point, a new one; the chunks as
+/// [`prepare`] takes them. Returns the file's bytes, or `None` when `stop`
+/// said so first (nothing is left at a temporary name; a base already
+/// written stays, and serves the save made again).
 pub fn write_in_place(
     g: &mut Globals,
     id: CheckpointId,
     meta: &Meta,
     path: &str,
     base: Option<&BaseSpec>,
-) -> Result<u64, String> {
+    touched: &[u64],
+    stop: &dyn Fn() -> bool,
+) -> Result<Option<u64>, String> {
     let body = header(g, id, meta)?;
     let g: &Globals = g;
+    let space = g.arena.chunks();
     let view = g.arena.view_at(id)?;
     let mut against: Option<(Against, String, [u64; 2])> = None;
     if let Some(spec) = base {
@@ -634,28 +721,34 @@ pub fn write_in_place(
             against = Some((Against::File(b), file_name(&bp), nonce));
         } else if let Some(Ok(pv)) = spec.point.map(|p| g.arena.view_at(p)) {
             let nonce = new_nonce(&bp);
-            let chunks = nonzero(&g.arena, &pv);
-            let made = write_file(
+            let Some(chunks) = nonzero(space, &pv, touched, stop) else {
+                return Ok(None);
+            };
+            match write_file(
                 base_header(nonce),
                 &chunks,
                 &|i| pv.chunk(chunks[i] as usize),
                 &bp.to_string_lossy(),
-            );
-            if made.is_ok() {
-                against = Some((Against::Point(pv), file_name(&bp), nonce));
+                stop,
+            ) {
+                Ok(Some(_)) => against = Some((Against::Point(pv), file_name(&bp), nonce)),
+                Ok(None) => return Ok(None),
+                Err(_) => {}
             }
         }
     }
-    let chunks = nonzero(&g.arena, &view);
+    let Some(chunks) = nonzero(space, &view, touched, stop) else {
+        return Ok(None);
+    };
     let (own, from_base, name) = match &against {
         Some((a, name, nonce)) => {
-            let (own, from_base) = split(g.arena.chunks(), &chunks, &|c| view.chunk(c as usize), a);
+            let (own, from_base) = split(space, &chunks, &|c| view.chunk(c as usize), a);
             (own, from_base, Some((name.clone(), *nonce)))
         }
         None => (chunks, vec![], None),
     };
     let head = finish_head(body, name, &from_base);
-    write_file(head, &own, &|i| view.chunk(own[i] as usize), path)
+    write_file(head, &own, &|i| view.chunk(own[i] as usize), path, stop)
 }
 
 /// The file's header from its key on, up to the base's chunks
@@ -667,7 +760,16 @@ fn header(g: &mut Globals, id: CheckpointId, meta: &Meta) -> Result<Vec<u8>, Str
         g.saved_at(id).ok_or("no host state saved with S0")?;
     mgr.map(|m| m.lookups.clone()).enc(&mut head);
     full_name.enc(&mut head);
-    protrusion.enc(&mut head);
+    // (in key order, which the HashMap's own encoding is not: the same S₀
+    // makes the same file, whichever process writes it; read back as the
+    // map it was)
+    let mut codes: Vec<(&(i32, u32, i32), &i32)> = protrusion.iter().collect();
+    codes.sort_unstable();
+    codes.len().enc(&mut head);
+    for (k, v) in codes {
+        k.enc(&mut head);
+        v.enc(&mut head);
+    }
     let mut made: Vec<Made> = vec![];
     let mut objects = vec![];
     handles.enc_with(&mut objects, &mut |o, w| enc_object(o, w, &mut made))?;
@@ -707,6 +809,7 @@ impl Image {
             chunks,
             data,
             base,
+            ..
         } = self;
         let against = match base {
             None => None,
@@ -724,6 +827,7 @@ impl Image {
                 &bc,
                 &|i| &bd[i * CHUNK_BYTES..(i + 1) * CHUNK_BYTES],
                 &bp.to_string_lossy(),
+                &|| false,
             )
             .ok()
             .map(|_| (Against::Copy(bc, bd), file_name(&bp), nonce)),
@@ -742,18 +846,21 @@ impl Image {
             None => (chunks.clone(), vec![], None),
         };
         let head = finish_head(head, name, &from_base);
-        write_file(head, &own, &|i| mine(own[i]), path)
+        write_file(head, &own, &|i| mine(own[i]), path, &|| false)
+            .map(|n| n.expect("a write nothing stops"))
     }
 }
 
 /// Write the file: `head`, the list of the nonzero `chunks` and of their
 /// pages, then those pages whole (`chunk(i)` is the `i`th chunk's bytes).
+/// `None` when `stop` said so before the end (the temporary file removed).
 fn write_file<'a>(
     mut head: Vec<u8>,
     chunks: &[u32],
     chunk: &dyn Fn(usize) -> &'a [u8],
     path: &str,
-) -> Result<u64, String> {
+    stop: &dyn Fn() -> bool,
+) -> Result<Option<u64>, String> {
     use std::io::Write;
     chunks.to_vec().enc(&mut head);
     let per = (S0_PAGE / CHUNK_BYTES) as u32;
@@ -794,7 +901,12 @@ fn write_file<'a>(
         .map_err(|e| gone(format!("{tmp}: {e}")))?;
     let zero = [0u8; CHUNK_BYTES];
     let mut next = chunks.iter().enumerate().peekable();
-    for &pg in &pages {
+    for (n, &pg) in pages.iter().enumerate() {
+        if n % STOP_EVERY == 0 && n > 0 && stop() {
+            drop(f);
+            let _ = std::fs::remove_file(&tmp);
+            return Ok(None);
+        }
         for c in pg * per..(pg + 1) * per {
             let d = match next.peek() {
                 Some(&(i, &pc)) if pc == c => {
@@ -811,7 +923,7 @@ fn write_file<'a>(
     drop(f);
     std::fs::rename(&tmp, path).map_err(|e| gone(format!("{path}: {e}")))?;
     std::fs::metadata(path)
-        .map(|m| m.len())
+        .map(|m| Some(m.len()))
         .map_err(|e| format!("{path}: {e}"))
 }
 
