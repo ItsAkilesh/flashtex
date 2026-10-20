@@ -88,6 +88,26 @@ pub struct Built {
     pub fonts: Vec<u16>,
     pub images: Vec<u32>,
     pub forms: Vec<u32>,
+    /// Its `PAGE`/`FORM` body (`out::encode`), once made: a resident run
+    /// restarted after this page sends it again (`Output::resume`).
+    pub frame: std::sync::OnceLock<Vec<u8>>,
+    /// A page: how many forms had been made when it shipped.
+    pub forms_at: usize,
+    /// A resident run's page: what it was built from, so that a later run
+    /// that converges with this one builds it again into its own document
+    /// (`crate::conv`, `out::replay_page`).
+    pub replay: Option<std::sync::Arc<Replay>>,
+}
+
+/// What a page was built from ([`Built::replay`]): its XDV bytes, the
+/// source map's markers in them, `\mag`, and the pictures the engine's
+/// lookup found for it.
+#[derive(Debug)]
+pub struct Replay {
+    pub xdv: Vec<u8>,
+    pub marks: Vec<(u32, u32, u16)>,
+    pub mag: i32,
+    pub pictures: Vec<String>,
 }
 
 /// A link annotation being tracked between `pdf:bann` and `pdf:eann`.
@@ -101,8 +121,27 @@ pub struct Tracking {
     pub rect: Option<[f64; 4]>,
 }
 
-/// The document.
-#[derive(Default)]
+/// `dvipdfmx:catch_phantom` (dvipdfmx's dvi.c, `catch_phantom`): whether a
+/// move to the right inside a link widens the link, and how high and deep
+/// the box it crosses is. hyperref's `hdvipdfmx` and beamer's navigation
+/// symbols set it so that a link over empty space has a rectangle. Like
+/// dvipdfmx's, it lasts past the link and the page.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Phantom {
+    /// `catch_phantom false`, and dvipdfmx's start.
+    #[default]
+    Off,
+    /// `catch_phantom true` alone: the current font's size high, 0 deep.
+    FontSize,
+    /// `catch_phantom true height … depth …` (DVI units, truncated as
+    /// dvipdfmx's `spt_t` assignment truncates).
+    Box { height: i32, depth: i32 },
+}
+
+/// The document. A resident engine's page checkpoint keeps a copy
+/// (`crate::ckpt`): the pages and forms are shared, so a copy costs a
+/// pointer a page.
+#[derive(Clone, Default)]
 pub struct Doc {
     pub fonts: Fonts,
     pub images: Images,
@@ -119,13 +158,18 @@ pub struct Doc {
     /// (with `@page<n>` for its page).
     pub dests: Vec<(Vec<u8>, Obj)>,
     /// Forms by id - 1.
-    pub forms: Vec<Built>,
+    pub forms: Vec<std::sync::Arc<Built>>,
     /// `pdf:majorversion`, `pdf:minorversion` (dvipdfmx's default 1.7 is
     /// TeX Live's `dvipdfmx.cfg`'s `V 7`).
     pub version: (u32, u32),
     /// dvipdfmx's colour stack: (fill, stroke). It lasts across pages.
     pub colors: Vec<(Col, Col)>,
     pub tracking: Option<Tracking>,
+    /// `dvipdfmx:catch_phantom`'s mode.
+    pub phantom: Phantom,
+    /// `pdf:nolink` (until `pdf:link`): what is drawn does not widen the
+    /// link being tracked (dvipdfmx's `link_annot` off).
+    pub nolink: bool,
     /// Specials not understood, by their first word, with their count.
     pub unknown: BTreeMap<String, u32>,
     /// Specials understood but not carried out, by name, with their count.
@@ -136,7 +180,7 @@ pub struct Doc {
     /// The size the last `pdf:pagesize`/`papersize` gave, kept for later
     /// pages (dvipdfmx keeps it).
     pub paper: Option<(Fx, Fx)>,
-    pub pages: Vec<Built>,
+    pub pages: Vec<std::sync::Arc<Built>>,
     /// The XDV preamble's comment (` XeTeX output ...`): xdvipdfmx's
     /// `/Creator` when the document gives none.
     pub dvi_comment: Option<Vec<u8>>,
