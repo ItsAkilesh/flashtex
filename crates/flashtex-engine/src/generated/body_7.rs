@@ -6803,6 +6803,9 @@ impl Globals {
                     { let __ix2107 = (self.cur_list.tail_field).wrapping_add(1i32); let __v2108 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(0i32)) as usize)]; __av_mem[crate::ix::U((__ix2107) as usize)].set_int(__v2108); }
                     { let __ix2109 = (self.cur_list.tail_field).wrapping_add(2i32); let __v2110 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(1i32)) as usize)]; __av_mem[crate::ix::U((__ix2109) as usize)].set_int(__v2110); }
                     { let __ix2111 = (self.cur_list.tail_field).wrapping_add(3i32); let __v2112 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(2i32)) as usize)]; __av_mem[crate::ix::U((__ix2111) as usize)].set_int(__v2112); }
+                    if self.bm_rec_on {
+                        self.flashtex_bm_obj_ref(obj_type_xform, self.cur_val);
+                    }
                 }
             }
             pdf_refximage_node => {
@@ -6816,6 +6819,9 @@ impl Globals {
                     { let __ix2115 = (self.cur_list.tail_field).wrapping_add(1i32); let __v2116 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(0i32)) as usize)]; __av_mem[crate::ix::U((__ix2115) as usize)].set_int(__v2116); }
                     { let __ix2117 = (self.cur_list.tail_field).wrapping_add(2i32); let __v2118 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(1i32)) as usize)]; __av_mem[crate::ix::U((__ix2117) as usize)].set_int(__v2118); }
                     { let __ix2119 = (self.cur_list.tail_field).wrapping_add(3i32); let __v2120 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(2i32)) as usize)]; __av_mem[crate::ix::U((__ix2119) as usize)].set_int(__v2120); }
+                    if self.bm_rec_on {
+                        self.flashtex_bm_obj_ref(obj_type_ximage, self.cur_val);
+                    }
                 }
             }
             pdf_save_pos_node => {
@@ -6863,6 +6869,9 @@ impl Globals {
                     { let __ix2125 = (self.cur_list.tail_field).wrapping_add(5i32); let __v2126 = self.scan_action(); __av_mem[crate::ix::U((__ix2125) as usize)].set_hh_rh(__v2126); }
                     { let __ix2127 = (self.cur_list.tail_field).wrapping_add(6i32); __av_mem[crate::ix::U((__ix2127) as usize)].set_int(k); }
                     self.pdf_last_link = k;
+                    if self.bm_rec_on {
+                        self.flashtex_bm_new_obj(k);
+                    }
                 }
             }
             pdf_start_thread_node => {

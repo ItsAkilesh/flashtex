@@ -300,7 +300,9 @@ fn k2_plan() -> &'static [(i32, i32, K2Kind)] {
 fn k2_hash_of(k2: &[i32]) -> u64 {
     let mut h: u64 = 0x243f_6a88_85a3_08d3;
     for &x in k2 {
-        h = (h ^ x as u32 as u64).wrapping_mul(0x0100_0000_01b3).rotate_left(23);
+        h = (h ^ x as u32 as u64)
+            .wrapping_mul(0x0100_0000_01b3)
+            .rotate_left(23);
     }
     h
 }
@@ -493,9 +495,12 @@ struct Fast {
     seen: Vec<u32>,
 }
 
+/// A key by location (`bm_key_by_loc`): each location and its values.
+type KeyByLoc = Vec<(i32, Vec<i32>)>;
+
 thread_local! {
     /// Debugging misses: the key by location of the last recording, per macro.
-    static LAST_KEY: RefCell<HashMap<i32, Vec<(i32, Vec<i32>)>>> = RefCell::new(HashMap::new());
+    static LAST_KEY: RefCell<HashMap<i32, KeyByLoc>> = RefCell::new(HashMap::new());
     static FAST: RefCell<Fast> = RefCell::new(Fast::default());
     static CONFIG: RefCell<Option<Config>> = const { RefCell::new(None) };
     static ST: RefCell<State> = RefCell::new(State::default());
@@ -669,8 +674,12 @@ impl Scratch {
             dig: (0..g.dig.len()).map(|i| g.dig[i]).collect(),
             trick_buf: (0..g.trick_buf.len()).map(|i| g.trick_buf[i]).collect(),
             pstack: (0..g.pstack.len()).map(|i| g.pstack[i]).collect(),
-            total_stretch: (0..g.total_stretch.len()).map(|i| g.total_stretch[i]).collect(),
-            total_shrink: (0..g.total_shrink.len()).map(|i| g.total_shrink[i]).collect(),
+            total_stretch: (0..g.total_stretch.len())
+                .map(|i| g.total_stretch[i])
+                .collect(),
+            total_shrink: (0..g.total_shrink.len())
+                .map(|i| g.total_shrink[i])
+                .collect(),
             cur_cmd: g.cur_cmd,
             cur_chr: g.cur_chr,
             cur_cs: g.cur_cs,
@@ -1160,9 +1169,17 @@ impl Globals {
             RegId::Sa(t, n) => {
                 let e = self.bm_sa_find(t, n);
                 match t {
-                    INT_VAL | DIMEN_VAL => v.push(if e == 0 { 0 } else { self.mem[(e + 2) as usize].int() }),
+                    INT_VAL | DIMEN_VAL => v.push(if e == 0 {
+                        0
+                    } else {
+                        self.mem[(e + 2) as usize].int()
+                    }),
                     GLUE_VAL | MU_VAL => {
-                        let q = if e == 0 { k::zero_glue } else { self.bm_link(e + 1) };
+                        let q = if e == 0 {
+                            k::zero_glue
+                        } else {
+                            self.bm_link(e + 1)
+                        };
                         if q <= LO_MEM_STAT_MAX {
                             v.push(-1);
                             v.push(q);
@@ -1531,7 +1548,11 @@ impl Globals {
     /// them (`obj_xform_width` & co.: `pdf_mem` at its `obj_data_ptr`).
     fn bm_obj_dims(&self, n: i32) -> [i32; 3] {
         let d = self.obj_tab[n as usize].int4;
-        [self.pdf_mem[d as usize], self.pdf_mem[(d + 1) as usize], self.pdf_mem[(d + 2) as usize]]
+        [
+            self.pdf_mem[d as usize],
+            self.pdf_mem[(d + 1) as usize],
+            self.pdf_mem[(d + 2) as usize],
+        ]
     }
 
     /// Whether object `n` is one of type `t` (`pdf_check_obj`'s walk).
@@ -1674,8 +1695,7 @@ impl Globals {
                         .chain(&e.holes)
                         .all(|(n, v)| self.bm_box_key(self.bm_box_value(*n)) == *v)
                     && e.k3.iter().all(|(p, m)| self.bm_meaning_is(*p, m))
-                    && e
-                        .obj_refs
+                    && e.obj_refs
                         .iter()
                         .all(|r| self.bm_obj_is(r.t, r.n) && self.bm_obj_dims(r.n) == r.dims)
                     && e.font_glues.iter().all(|(f, w)| {
@@ -1717,19 +1737,18 @@ impl Globals {
                 let (bad, regs) = ST.with(|s| {
                     let s = s.borrow();
                     let e = &s.store[&cs][i];
-                    let bad: Vec<String> = e
-                        .k3
-                        .iter()
-                        .filter(|(p, m)| !self.bm_meaning_is(*p, m))
-                        .take(4)
-                        .map(|(p, m)| {
-                            format!(
-                                "\\{} was {m:?} now {:?}",
-                                self.cs_name_string(*p),
-                                self.bm_meaning(*p)
-                            )
-                        })
-                        .collect();
+                    let bad: Vec<String> =
+                        e.k3.iter()
+                            .filter(|(p, m)| !self.bm_meaning_is(*p, m))
+                            .take(4)
+                            .map(|(p, m)| {
+                                format!(
+                                    "\\{} was {m:?} now {:?}",
+                                    self.cs_name_string(*p),
+                                    self.bm_meaning(*p)
+                                )
+                            })
+                            .collect();
                     let regs: Vec<String> = e
                         .kr
                         .iter()
@@ -1753,13 +1772,18 @@ impl Globals {
                     let om: HashMap<i32, &Vec<i32>> = old.iter().map(|(p, v)| (*p, v)).collect();
                     now.iter()
                         .filter(|(p, v)| om.get(p).is_none_or(|o| *o != v))
-                        .map(|(p, v)| format!("{}={:?}", self.bm_loc_name(*p), &v[..v.len().min(3)]))
+                        .map(|(p, v)| {
+                            format!("{}={:?}", self.bm_loc_name(*p), &v[..v.len().min(3)])
+                        })
                         .take(12)
                         .collect()
                 })
             });
             if !diff.is_empty() {
-                eprintln!("boxmemo: \\{} miss, key differs at {diff:?}", self.cs_name_string(cs));
+                eprintln!(
+                    "boxmemo: \\{} miss, key differs at {diff:?}",
+                    self.cs_name_string(cs)
+                );
             }
             LAST_KEY.with(|l| l.borrow_mut().insert(cs, now));
         }
@@ -2122,7 +2146,9 @@ impl Globals {
             // assignment between them: the one the recording read is the
             // source `scan_glue` took it from, as it is in LaTeX's
             // `\parskip\z@skip\relax`, where the current token is past it)
-            let read: Vec<RegId> = self.bm_with_rec(|r| r.kr.iter().map(|x| x.0).collect()).unwrap_or_default();
+            let read: Vec<RegId> = self
+                .bm_with_rec(|r| r.kr.iter().map(|x| x.0).collect())
+                .unwrap_or_default();
             found.retain(|v| match v {
                 Val::GlueFrom(p, 0) if *p > 0 => read.contains(&RegId::Eqtb(*p)),
                 Val::GlueFrom(t, n) if *t < 0 => read.contains(&RegId::Sa(-*t, *n)),
@@ -2254,7 +2280,9 @@ impl Globals {
     #[cold]
     #[inline(never)]
     pub fn flashtex_bm_box(&mut self, n: i32) {
-        let pending = self.bm_with_rec(|r| r.pending_box.is_some()).unwrap_or(false);
+        let pending = self
+            .bm_with_rec(|r| r.pending_box.is_some())
+            .unwrap_or(false);
         if pending {
             // the previous fetch was not a dimension, a test or a move: the
             // box's contents were read (`\copy`, `\unhbox`, `\vsplit`, ...)
@@ -2584,7 +2612,10 @@ impl Globals {
             // only in restricted horizontal mode may a call append: no
             // paragraph, no page builder
             Some("OuterList")
-        } else if self.bm_with_rec(|r| r.pending_box.is_some()).unwrap_or(false) {
+        } else if self
+            .bm_with_rec(|r| r.pending_box.is_some())
+            .unwrap_or(false)
+        {
             Some("BoxContent")
         } else if end.page != start.page {
             Some("Page")
@@ -2596,8 +2627,12 @@ impl Globals {
             .bm_with_rec(|r| {
                 // only the links' objects, made one after the other
                 r.new_objs.len() as i32 == end.obj_ptr - start.obj_ptr
-                    && r.new_objs.iter().zip(start.obj_ptr + 1..).all(|(&o, n)| o == n)
-                    && (self.pdf_last_link == r.last_link || r.new_objs.contains(&self.pdf_last_link))
+                    && r.new_objs
+                        .iter()
+                        .zip(start.obj_ptr + 1..)
+                        .all(|(&o, n)| o == n)
+                    && (self.pdf_last_link == r.last_link
+                        || r.new_objs.contains(&self.pdf_last_link))
             })
             .unwrap_or(false)
         {
@@ -2729,7 +2764,15 @@ impl Globals {
             let font_glues: Vec<(i32, [i32; 5])> = {
                 let mut fs: Vec<i32> = frag.as_ref().map(|f| f.fonts.clone()).unwrap_or_default();
                 for o in &rec.ops {
-                    if let Op::Def { v: Val::GlueFrom(0, f), .. } | Op::Sa { v: Val::GlueFrom(0, f), .. } = o {
+                    if let Op::Def {
+                        v: Val::GlueFrom(0, f),
+                        ..
+                    }
+                    | Op::Sa {
+                        v: Val::GlueFrom(0, f),
+                        ..
+                    } = o
+                    {
                         if !fs.contains(f) {
                             fs.push(*f);
                         }
@@ -2740,20 +2783,20 @@ impl Globals {
                     .collect()
             };
             let rs_locs = {
-                    let mut v: Vec<i32> = rec.k3.iter().map(|(p, _)| *p).collect();
-                    v.push(rec.cs);
-                    for o in &rec.ops {
-                        if let Op::Def { p, v: val, .. } = o {
-                            v.push(*p);
-                            if let Val::LetCs(s) = val {
-                                v.push(*s);
-                            }
+                let mut v: Vec<i32> = rec.k3.iter().map(|(p, _)| *p).collect();
+                v.push(rec.cs);
+                for o in &rec.ops {
+                    if let Op::Def { p, v: val, .. } = o {
+                        v.push(*p);
+                        if let Val::LetCs(s) = val {
+                            v.push(*s);
                         }
                     }
-                    v.sort_unstable();
-                    v.dedup();
-                    v
-                };
+                }
+                v.sort_unstable();
+                v.dedup();
+                v
+            };
             let entry = Entry {
                 hash: key_hash(&rec.k1, &rec.ctx, &[], &[]),
                 k2hash,
@@ -2859,7 +2902,11 @@ impl Globals {
             let fd = match (&e.frag, frag) {
                 (Some(a), Some(b)) => crate::boxfrag::frag_diff(a, b),
                 (None, None) => None,
-                (a, b) => Some(format!("output {} normal path {}", a.is_some(), b.is_some())),
+                (a, b) => Some(format!(
+                    "output {} normal path {}",
+                    a.is_some(),
+                    b.is_some()
+                )),
             };
             if let Some(d) = fd {
                 diffs.push("the output nodes differ".to_string());
@@ -3107,9 +3154,7 @@ impl Globals {
                 std::mem::take(&mut e.rs_locs),
             ))
         });
-        let Some((ops, last_badness, rs_locs)) = taken else {
-            return None;
-        };
+        let (ops, last_badness, rs_locs) = taken?;
         // the body, used up: as `get_next` pops it
         self.end_token_list();
         // the L5 read-set (DESIGN.md §5.5), as D9's `intr_report_reads`
@@ -3153,7 +3198,13 @@ impl Globals {
         let draw = ST.with(|s| {
             let s = s.borrow();
             let e = s.store.get(&cs)?.get(i)?;
-            Some((e.holes.clone(), e.frag.clone(), e.aux, e.new_objs, e.last_link))
+            Some((
+                e.holes.clone(),
+                e.frag.clone(),
+                e.aux,
+                e.new_objs,
+                e.last_link,
+            ))
         });
         // the links' objects, as `pdf_new_objnum` made them on the normal
         // path (nothing else the call did makes or reads an object)

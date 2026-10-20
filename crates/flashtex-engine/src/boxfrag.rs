@@ -204,7 +204,10 @@ pub fn first_diff(a: &[Node], b: &[Node]) -> Option<String> {
         if x.len() != y.len() {
             return false;
         }
-        let (t, st) = (((x[0] >> 48) & 0xffff) as i32, ((x[0] >> 32) & 0xffff) as i32);
+        let (t, st) = (
+            ((x[0] >> 48) & 0xffff) as i32,
+            ((x[0] >> 32) & 0xffff) as i32,
+        );
         x.iter()
             .zip(y)
             .enumerate()
@@ -215,8 +218,18 @@ pub fn first_diff(a: &[Node], b: &[Node]) -> Option<String> {
             continue;
         }
         if let (
-            Node::Big { words: wa, fields: fa, size: sa, .. },
-            Node::Big { words: wb, fields: fb, size: sb, .. },
+            Node::Big {
+                words: wa,
+                fields: fa,
+                size: sa,
+                ..
+            },
+            Node::Big {
+                words: wb,
+                fields: fb,
+                size: sb,
+                ..
+            },
         ) = (x, y)
         {
             if sa == sb && fa.len() == fb.len() {
@@ -241,7 +254,11 @@ pub fn first_diff(a: &[Node], b: &[Node]) -> Option<String> {
                     .filter(|(_, (p, q))| p != q)
                     .map(|(j, (p, q))| format!("word {j}: {p:#x} / {q:#x}"))
                     .collect();
-                return Some(format!("{i} (size {sa}, type word {:#x}): {}", wa[0], w.join(", ")));
+                return Some(format!(
+                    "{i} (size {sa}, type word {:#x}): {}",
+                    wa[0],
+                    w.join(", ")
+                ));
             }
         }
         return Some(format!("{i}: {x:?} / {y:?}").chars().take(300).collect());
@@ -261,7 +278,10 @@ pub fn frag_diff(a: &Frag, b: &Frag) -> Option<String> {
         x[0] == y[0] && (1..4).all(|j| (x[j] ^ y[j]) & 0xffff_ffff == 0)
     };
     if a.specs.len() != b.specs.len()
-        || a.specs.iter().zip(&b.specs).any(|(x, y)| x.1 != y.1 || !spec_same(&x.0, &y.0))
+        || a.specs
+            .iter()
+            .zip(&b.specs)
+            .any(|(x, y)| x.1 != y.1 || !spec_same(&x.0, &y.0))
     {
         return Some(format!("glue {:?} / {:?}", a.specs, b.specs));
     }
@@ -285,7 +305,10 @@ pub fn frag_diff(a: &Frag, b: &Frag) -> Option<String> {
             && (x.words[3] ^ y.words[3]) & m3 == 0
     };
     if a.actions.len() != b.actions.len()
-        || a.actions.iter().zip(&b.actions).any(|(x, y)| x.1 != y.1 || !act_same(&x.0, &y.0))
+        || a.actions
+            .iter()
+            .zip(&b.actions)
+            .any(|(x, y)| x.1 != y.1 || !act_same(&x.0, &y.0))
     {
         return Some(format!("actions {:?} / {:?}", a.actions, b.actions));
     }
@@ -428,7 +451,11 @@ impl Ser<'_> {
         // the pointer fields and the reference count are set again
         words[2] &= !0xffff_ffffu64;
         for (w, left, _) in &fields {
-            let m = if *left { !(0xffff_ffffu64 << 32) } else { !0xffff_ffffu64 };
+            let m = if *left {
+                !(0xffff_ffffu64 << 32)
+            } else {
+                !0xffff_ffffu64
+            };
             words[*w as usize] &= m;
         }
         self.frag.actions.push((
@@ -454,19 +481,17 @@ impl Ser<'_> {
         }
     }
 
-    fn big(
-        &mut self,
-        p: i32,
-        size: i32,
-        synctex: bool,
-        fields: Vec<(i32, bool, Ref)>,
-    ) -> Node {
+    fn big(&mut self, p: i32, size: i32, synctex: bool, fields: Vec<(i32, bool, Ref)>) -> Node {
         let copy = if synctex { size - SYNCTEX_FIELDS } else { size };
         let mut words: Vec<u64> = (0..copy).map(|w| self.g.mem[(p + w) as usize].0).collect();
         // addresses are not kept: the link, and each pointer field
         words[0] &= !0xffff_ffffu64;
         for (w, left, _) in &fields {
-            let m = if *left { !(0xffff_ffffu64 << 32) } else { !0xffff_ffffu64 };
+            let m = if *left {
+                !(0xffff_ffffu64 << 32)
+            } else {
+                !0xffff_ffffu64
+            };
             words[*w as usize] &= m;
         }
         Node::Big {
@@ -498,7 +523,12 @@ impl Ser<'_> {
             t if t == k::glue_node => {
                 let s = Ref::Spec(self.spec(self.hh(p + 1).lh())?);
                 let l = self.sub(self.hh(p + 1).rh())?;
-                Ok(self.big(p, k::medium_node_size, true, vec![(1, true, s), (1, false, l)]))
+                Ok(self.big(
+                    p,
+                    k::medium_node_size,
+                    true,
+                    vec![(1, true, s), (1, false, l)],
+                ))
             }
             t if t == k::kern_node || t == k::math_node || t == k::penalty_node => {
                 Ok(self.big(p, k::medium_node_size, true, vec![]))
@@ -510,7 +540,12 @@ impl Ser<'_> {
             t if t == k::disc_node => {
                 let a = self.sub(self.hh(p + 1).lh())?;
                 let b = self.sub(self.hh(p + 1).rh())?;
-                Ok(self.big(p, k::small_node_size, false, vec![(1, true, a), (1, false, b)]))
+                Ok(self.big(
+                    p,
+                    k::small_node_size,
+                    false,
+                    vec![(1, true, a), (1, false, b)],
+                ))
             }
             t if t == k::whatsit_node => match st {
                 s if s == k::write_node
