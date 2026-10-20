@@ -102,7 +102,44 @@ final class EngineChoiceTests: XCTestCase {
         XCTAssertEqual(r(nil, nil, record, nil, .new), EngineChoice(preferred: .previous, source: .record), "a record outranks the built-in default")
         XCTAssertEqual(r(nil, nil, nil, nil, .new), EngineChoice(preferred: .new, source: .builtInDefault))
         XCTAssertEqual(r(nil, nil, nil, nil), EngineChoice(preferred: .previous, source: .builtInDefault))
-        XCTAssertEqual(EngineChoice.defaultForNewDocuments, .previous, "the P5 flip is the owner's gate, not this lane's")
+        XCTAssertEqual(EngineChoice.defaultForNewDocuments, .new, "S5: new documents default to the new engine")
+    }
+
+    /// S5 (retirement plan §5.3, ruling 4): with the shipping default, not a
+    /// test stand-in, a document already typeset keeps its recorded engine
+    /// and says so; only a document with no entry follows the new default.
+    func testTheShippedDefaultNeverSwitchesAnExistingDocument() throws {
+        let shipped = EngineChoice.defaultForNewDocuments
+        XCTAssertEqual(shipped, .new)
+        let recorded = EngineChoiceStore.Entry(engine: .previous, source: .record)
+        let mine = EngineChoiceStore.Entry(engine: .previous, source: .user)
+        for entry in [recorded, mine] {
+            let c = EngineChoice.resolve(environment: nil, window: nil, entry: entry, appSetting: nil,
+                                         builtInDefault: shipped, blocker: { nil })
+            XCTAssertEqual(c.effective, .previous, "\(entry.source): an existing document must not switch")
+            XCTAssertEqual(c.source, entry.source)
+            XCTAssertNotEqual(c.source, .builtInDefault)
+        }
+        XCTAssertEqual(EngineChoice.resolve(environment: nil, window: nil, entry: nil, appSetting: nil,
+                                            builtInDefault: shipped, blocker: { nil }),
+                       EngineChoice(preferred: .new, source: .builtInDefault))
+
+        // End to end: a document typeset under the old default keeps the
+        // previous engine after the shipping default takes over.
+        try fakeTeXLive()
+        let seen = try texFile()
+        EngineChoice.builtInDefaultForTests = .previous
+        let before = model { nil }
+        defer { before.engineV3.stop() }
+        XCTAssertEqual(before.openTex(at: seen, dirty: .discard), .opened)
+        XCTAssertEqual(EngineChoiceStore.entry(for: seen), .init(engine: .previous, source: .record))
+        EngineChoice.builtInDefaultForTests = shipped
+        let after = model { nil }
+        defer { after.engineV3.stop() }
+        XCTAssertEqual(after.openTex(at: seen, dirty: .discard), .opened)
+        XCTAssertFalse(after.engineV3Enabled, "the record outranks the flipped default")
+        XCTAssertEqual(after.engineChoice.source, .record)
+        XCTAssertEqual(EngineChoiceStore.entry(for: seen), .init(engine: .previous, source: .record), "the record is not rewritten")
     }
 
     func testFallbackRulesApplyOnlyToAnUnforcedNewEngine() {

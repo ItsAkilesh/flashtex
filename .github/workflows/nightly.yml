@@ -170,8 +170,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         if: env.WANT == 'true'
         with:
-          workspaces: crates/flashtex-cli
-          key: parity-cli
+          key: parity-engine
       - name: pdflatex is the oracle and must be installed
         if: env.WANT == 'true'
         run: |
@@ -194,12 +193,11 @@ jobs:
             if [ -d "$docs" ]; then echo "PARITY_CORPUS_TEXMF=$docs"
             else echo "PARITY_CORPUS_TEXMF=$(kpsewhich -var-value TEXMFDIST)"; fi
           } | tee -a "$GITHUB_ENV"
-      - name: build the flashtex CLI (release)
+      - name: build the new engine and its formats (release)
+        # S5 (retirement plan §1.7): the tier measures the new engine by
+        # default; the old flashtex-cli build goes at S7.
         if: env.WANT == 'true'
-        run: |
-          set -o pipefail
-          cargo build --release --locked \
-            --manifest-path crates/flashtex-cli/Cargo.toml --bin flashtex
+        run: scripts/engine-parity.sh --work "$RUNNER_TEMP/engine-parity" build
       - name: fetch and verify the pinned corpus
         if: env.WANT == 'true'
         # corpus.py verifies every SHA-256 and sends at most one arXiv request
@@ -218,7 +216,10 @@ jobs:
           TIER: ${{ matrix.tier }}
         run: |
           set -euo pipefail
+          ew="$RUNNER_TEMP/engine-parity"
           python3 tools/parity/parity.py --tier "$TIER" -j 6 \
+            --engine "$ew/eng/flashtex-initex" \
+            --engine-env "FLASHTEX_FORMATS=$ew/fmt" --engine-env "FLASHTEX_POOL=$ew/eng/pdftex.pool" \
             --texbin "$PARITY_TEXBIN" --oracle-pdftex "$PARITY_ORACLE" --texmf "$PARITY_TEXMF" \
             --corpus-texmf "$PARITY_CORPUS_TEXMF" \
             --out "$RUNNER_TEMP/parity" --work "$RUNNER_TEMP/parity-work"

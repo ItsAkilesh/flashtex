@@ -59,8 +59,9 @@ For the open document, highest first:
    a stored `true` applies only to a document with no entry yet and becomes
    that document's own choice; a stored `false` is removed once at launch (the
    toggle wrote it on every toggle-off, so it is no choice).
-7. The built-in default, `EngineChoice.defaultForNewDocuments`: still the
-   previous engine. Flipping it to `.new` is the P5 switch-over (owner gate).
+7. The built-in default, `EngineChoice.defaultForNewDocuments`: the new
+   engine since the P5 switch-over (retirement plan S5). Documents already
+   typeset keep their recorded engine (5).
 
 A change of the setting or the default applies when a document opens; an open
 window keeps its engine until you switch it from the status bar. The engine is
