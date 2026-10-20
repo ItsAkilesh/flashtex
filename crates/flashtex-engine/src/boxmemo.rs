@@ -3171,6 +3171,9 @@ impl Globals {
                     e.last_badness
                 ));
             }
+            if diffs.is_empty() && debug() {
+                eprintln!("boxmemo: verified \\{name}");
+            }
             if !diffs.is_empty() {
                 s.stats.verify_differences += 1;
                 eprintln!("boxmemo verify: \\{name}: {diffs:?}");
