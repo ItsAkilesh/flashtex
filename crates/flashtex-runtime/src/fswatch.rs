@@ -61,6 +61,12 @@ const MAX_WATCHES: usize = 8192;
 thread_local! {
     /// Inside [`check`] on this thread.
     static IN_CHECK: Cell<bool> = const { Cell::new(false) };
+    /// The check's own answers for paths no watch vouches for (the
+    /// document's files): one `stat` each per check, the check taken as of
+    /// one moment (a change between two `stat`s of one check is a change
+    /// after it, as for one `stat`). Emptied by every [`check`].
+    static MEMO: std::cell::RefCell<HashMap<String, (Option<Option<StatSig>>, Option<bool>)>> =
+        std::cell::RefCell::new(HashMap::new());
 }
 
 static W: Mutex<Option<Watch>> = Mutex::new(None);
@@ -126,6 +132,7 @@ pub struct Check {
 
 pub fn check() -> Check {
     sync();
+    MEMO.with(|m| m.borrow_mut().clear());
     let was = IN_CHECK.with(|c| c.replace(true));
     Check { was }
 }
@@ -151,18 +158,27 @@ pub fn sig(path: &str) -> Option<StatSig> {
         count(0);
         return s;
     }
+    if let Some(s) = MEMO.with(|m| m.borrow().get(path).and_then(|e| e.0)) {
+        return s;
+    }
     count(1);
     let deps = w.arm(path);
     let s = StatSig::of(path);
     if debug() {
         eprintln!(
             "[fswatch] stat {path}: {}",
-            if deps.is_none() { "not watched" } else if s.is_some_and(|s| s.racy) { "racy" } else { "kept" }
+            if deps.is_none() {
+                "not watched"
+            } else if s.is_some_and(|s| s.racy) {
+                "racy"
+            } else {
+                "kept"
+            }
         );
     }
-    if let Some(deps) = deps {
-        let e = w.entry(path, deps);
-        e.sig = (!s.is_some_and(|s| s.racy)).then_some(s);
+    match deps {
+        Some(deps) if !s.is_some_and(|s| s.racy) => w.entry(path, deps).sig = Some(s),
+        _ => MEMO.with(|m| m.borrow_mut().entry(path.to_string()).or_default().0 = Some(s)),
     }
     s
 }
@@ -186,11 +202,15 @@ pub fn readable(path: &str) -> bool {
         count(0);
         return r;
     }
+    if let Some(r) = MEMO.with(|m| m.borrow().get(path).and_then(|e| e.1)) {
+        return r;
+    }
     count(1);
     let deps = w.arm(path);
     let r = test(path);
-    if let Some(deps) = deps {
-        w.entry(path, deps).readable = Some(r);
+    match deps {
+        Some(deps) => w.entry(path, deps).readable = Some(r),
+        None => MEMO.with(|m| m.borrow_mut().entry(path.to_string()).or_default().1 = Some(r)),
     }
     r
 }

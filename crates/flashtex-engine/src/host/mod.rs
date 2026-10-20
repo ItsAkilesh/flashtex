@@ -286,6 +286,13 @@ impl Key {
                 .iter()
                 .zip(&now)
                 .all(|((_, s), n)| n.as_ref() == Some(s));
+        if !dirs_same && std::env::var_os("FLASHTEX_FSWATCH_DEBUG").is_some() {
+            for ((d, s), n) in self.dirs.iter().zip(&now) {
+                if n.as_ref() != Some(s) {
+                    eprintln!("[fswatch] key dir {d:?} differs: {s:?} now {n:?}");
+                }
+            }
+        }
         // Whether the answers depend on nothing the key does not watch (a
         // lookup that finds the same may depend on more than when S₀ was
         // taken, #1562): if they do, the signatures stay as they were, and
