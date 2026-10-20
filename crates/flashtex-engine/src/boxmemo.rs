@@ -97,8 +97,35 @@ struct Config {
     verify_fail: bool,
 }
 
-/// The macros offered by default (BOX-MEMO.md §2).
-pub const DEFAULT_NAMES: &[&str] = &["fb@sizeofframe", "*@framecommand"];
+/// The macros offered by default (BOX-MEMO.md §2, §11): framed.sty's frame
+/// measurement and ntheorem's frame commands; xcolor's `\colorlet` body,
+/// which beamer's `\usebeamercolor` calls hundreds of times a slide; pgf's
+/// length and point computations; LaTeX's page head and foot (beamer's
+/// headline, sidebars, navigation symbols and footline, as draw calls);
+/// beamer's head and foot measurement and its frame title.
+pub const DEFAULT_NAMES: &[&str] = &[
+    "fb@sizeofframe",
+    "*@framecommand",
+    "XC@col@rlet",
+    "pgfmathsetlength",
+    "pgf@process",
+    "pgfpoint",
+    "@oddhead",
+    "@oddfoot",
+    "beamer@typesetheadorfoot",
+    "beamer@@tmpl@frametitle",
+];
+
+/// Whether BOX-MEMO is on when `FLASHTEX_BOXMEMO` does not say: in the
+/// engine host (`set_default_on`, where it records only in an edit's
+/// window), not on the command line.
+static DEFAULT_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The engine host: BOX-MEMO is on unless `FLASHTEX_BOXMEMO=off`. Call
+/// before the first engine starts.
+pub fn set_default_on() {
+    DEFAULT_ON.store(true, std::sync::atomic::Ordering::Relaxed);
+}
 
 #[derive(Default, Debug)]
 pub struct Stats {
@@ -513,6 +540,8 @@ fn with_config<R>(f: impl FnOnce(&Config) -> R) -> R {
             let mode = match std::env::var("FLASHTEX_BOXMEMO").as_deref() {
                 Ok("on") | Ok("1") => Mode::On,
                 Ok("verify") => Mode::Verify,
+                Ok("off") | Ok("0") => Mode::Off,
+                _ if DEFAULT_ON.load(std::sync::atomic::Ordering::Relaxed) => Mode::On,
                 _ => Mode::Off,
             };
             let names = match std::env::var("FLASHTEX_BOXMEMO_NAMES") {
