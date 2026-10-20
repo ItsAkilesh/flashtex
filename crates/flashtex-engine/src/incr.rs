@@ -2919,16 +2919,33 @@ impl Obs {
             .preempt
             .as_ref()
             .is_some_and(|p| p(self.pass, self.new_pages.len()));
-        if stop {
-            self.preempted = true;
-            if std::env::var_os("FLASHTEX_PREEMPT_DEBUG").is_some() {
+        if std::env::var_os("FLASHTEX_PREEMPT_DEBUG").is_some() {
+            thread_local! {
+                static LAST: std::cell::Cell<Option<(Instant, f64, usize)>> = const { std::cell::Cell::new(None) };
+            }
+            let now = Instant::now();
+            let (gap, max, at) = LAST.with(|l| {
+                let (gap, mut max, mut at) = match l.get() {
+                    Some((t, m, a)) => ((now - t).as_secs_f64() * 1e3, m, a),
+                    None => (0.0, 0.0, 0),
+                };
+                if gap > max {
+                    (max, at) = (gap, self.pages_so_far());
+                }
+                l.set(if stop { None } else { Some((now, max, at)) });
+                (gap, max, at)
+            });
+            if stop {
                 eprintln!(
-                    "[preempt] stopped {:?} after page {}, output {}",
+                    "[preempt] stopped {:?} after page {}, output {}, {gap:.2} ms after the last check (longest {max:.2} at page {at})",
                     std::time::SystemTime::now(),
                     self.pages_so_far(),
                     g.output_active
                 );
             }
+        }
+        if stop {
+            self.preempted = true;
         }
         stop
     }
