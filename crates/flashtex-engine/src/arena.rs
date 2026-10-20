@@ -704,7 +704,15 @@ pub(crate) struct Core {
     /// Bumped by every change to the logs' contents that keeps the
     /// checkpoint list (`or_from`): a `Prepared` from before it is stale.
     history_gen: u64,
+    /// The buffer of the last `Prepared` a restore used, kept for the next
+    /// `reattach`'s: a fresh one of megabytes faults its pages in at every
+    /// abandoned compile (1 ms of a typed key's 2 on a 1,000-page
+    /// document, lane T7-LAST12). At most [`SPARE_MAX`] bytes.
+    spare: Vec<u64>,
 }
+
+/// The largest buffer `Core::spare` keeps.
+const SPARE_MAX: usize = 64 << 20;
 
 /// The state at checkpoint `id` of the chunks the logs from `id` on hold,
 /// worked out while the engine was idle: a later `restore_branch(id)` of
@@ -1449,7 +1457,13 @@ impl Core {
             );
         }
         let redo = match prepared {
-            Some(p) => self.rewind_prepared(&p, old_logs.last()),
+            Some(p) => {
+                let redo = self.rewind_prepared(&p, old_logs.last());
+                if p.buf.capacity() * 8 <= SPARE_MAX && p.buf.capacity() > self.spare.capacity() {
+                    self.spare = p.buf;
+                }
+                redo
+            }
             None => self.rewind(&old_logs, true),
         };
         self.ids.push(old_ids[0]);
@@ -1566,12 +1580,14 @@ impl Core {
         let prepared = if self.prepare_on_reattach {
             let mut cs: Vec<u32> = redo.iter().map(|&(c, _)| c).collect();
             cs.sort_unstable();
-            let mut buf = vec![0u64; cs.len() * CHUNK_WORDS];
-            for (i, &c) in cs.iter().enumerate() {
+            let mut buf = std::mem::take(&mut self.spare);
+            buf.clear();
+            buf.reserve(cs.len() * CHUNK_WORDS);
+            for &c in &cs {
                 // SAFETY: a live chunk of CHUNK_WORDS words.
                 let src =
                     unsafe { std::slice::from_raw_parts(self.chunk_ptr(c as usize), CHUNK_WORDS) };
-                buf[i * CHUNK_WORDS..(i + 1) * CHUNK_WORDS].copy_from_slice(src);
+                buf.extend_from_slice(src);
             }
             Some((cs, buf))
         } else {
@@ -2002,6 +2018,7 @@ impl Arena {
             part: None,
             history_gen: 0,
             prepare_on_reattach: std::env::var_os("FLASHTEX_NO_PREPARE").is_none(),
+            spare: Vec::new(),
         });
         Arena {
             core: Box::into_raw(core),
