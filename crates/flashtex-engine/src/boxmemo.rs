@@ -201,6 +201,37 @@ enum Op {
     },
 }
 
+/// Keep `entry` among `cs`'s variants: the least recently used is dropped
+/// past `MAX_VARIANTS`, and the least recently used of all past
+/// `MAX_BYTES`.
+fn insert_entry(s: &mut State, cs: i32, entry: Entry) {
+    s.bytes += entry.bytes;
+    s.stale.insert(cs);
+    let v = s.store.entry(cs).or_default();
+    if v.len() >= MAX_VARIANTS {
+        let (i, _) = v
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, e)| e.last_used)
+            .unwrap();
+        let old = v.remove(i);
+        s.bytes = s.bytes.saturating_sub(old.bytes);
+    }
+    s.store.entry(cs).or_default().push(entry);
+    // over the budget: drop the least recently used entries
+    while s.bytes > MAX_BYTES {
+        let victim = s
+            .store
+            .iter()
+            .flat_map(|(&cs, v)| v.iter().enumerate().map(move |(i, e)| (e.last_used, cs, i)))
+            .min();
+        let Some((_, cs, i)) = victim else { break };
+        s.stale.insert(cs);
+        let e = s.store.get_mut(&cs).unwrap().remove(i);
+        s.bytes = s.bytes.saturating_sub(e.bytes);
+    }
+}
+
 /// The operations a replay makes: `ops` without the groups that leave
 /// nothing behind. A group (`Begin` .. its `End`) whose operations are all
 /// local (`eq_define`, `eq_word_define`, `sa_def`, `sa_w_def`, in it or in
@@ -366,6 +397,12 @@ fn key_hash(k1: &[i32], ctx: &Context, k2: &[i32], k4: &[i32]) -> u64 {
 }
 
 struct Entry {
+    /// A recording of this key was abandoned (`bm_abort`): the call reads
+    /// the same values up to the same refusal, so a call that matches it is
+    /// expanded for real without recording again, and the calls inside it
+    /// are offered (a recording would refuse them). Its operations are
+    /// empty.
+    doomed: bool,
     hash: u64,
     /// `bm_k2_hash` of K2.
     k2hash: u64,
@@ -630,6 +667,25 @@ fn fresh_version() -> i32 {
     use std::sync::atomic::{AtomicI32, Ordering};
     static NEXT: AtomicI32 = AtomicI32::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// The fonts' version after the change `change` (what changed, and the
+/// value it got) to version `parent`: the same number for the same parent
+/// and change, a fresh one otherwise. A version thus names the sequence of
+/// changes since the engine's start (whose version is fresh), so two runs
+/// that make the same changes -- an edit's window typed in again, which
+/// loads the same font and sets its `\hyphenchar` again -- reach the same
+/// version, and equal versions name equal font arrays. (A fresh number at
+/// every change, as revision 1 had it, kept every call after a font load
+/// in the window from ever hitting.)
+fn next_version(parent: i32, change: [i32; 4]) -> i32 {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static TABLE: Mutex<Option<HashMap<(i32, [i32; 4]), i32>>> = Mutex::new(None);
+    let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+    *t.get_or_insert_with(HashMap::new)
+        .entry((parent, change))
+        .or_insert_with(fresh_version)
 }
 
 thread_local! {
@@ -1622,6 +1678,20 @@ impl Globals {
         self.bm_with_rec(|rec| rec.new_objs.push(n));
     }
 
+    /// A font parameter was set (changes/boxmemo.ch): `n` -1 for
+    /// `\fontdimen` (`a` its place in `font_info`), else `assign_font_int`'s
+    /// code (`a` the font, `b` the character), and `v` the value.
+    #[cold]
+    #[inline(never)]
+    pub fn flashtex_bm_font_set(&mut self, n: i32, a: i32, b: i32, v: i32) {
+        self.bm_font_version = next_version(self.bm_font_version, [n, a, b, v]);
+    }
+
+    /// A version no other state has (the engine's start).
+    pub fn flashtex_bm_fresh(&mut self) -> i32 {
+        fresh_version()
+    }
+
     #[cold]
     #[inline(never)]
     pub fn flashtex_bm_font_changed(&mut self) {
@@ -1740,6 +1810,12 @@ impl Globals {
             (best.map(|b| b.1), partial.map(|p| p.1))
         });
         let mut why = "NotRecorded";
+        let doomed = found.is_some_and(|i| {
+            ST.with(|s| s.borrow().store.get(&cs).is_some_and(|v| v[i].doomed))
+        });
+        if doomed {
+            return self.bm_miss("Doomed");
+        }
         if let Some(i) = found {
             if m == Mode::Verify {
                 // the full verifier. In the host its restore replaces
@@ -1944,6 +2020,43 @@ impl Globals {
                 }
             } else {
                 *s.aborts.entry(rec.cs).or_default() += 1;
+                // (what the call read up to the refusal is its key: the same
+                // reads take it to the same refusal)
+                s.clock += 1;
+                let now = s.clock;
+                let k2hash = k2_hash_of(&rec.k2);
+                let bytes = 4 * (rec.k1.len() + rec.k2.len()) + 64;
+                let entry = Entry {
+                    doomed: true,
+                    hash: key_hash(&rec.k1, &rec.ctx, &[], &[]),
+                    k2hash,
+                    k1: rec.k1,
+                    ctx: rec.ctx,
+                    k2: rec.k2.into(),
+                    k4: rec.k4,
+                    k3: rec.k3,
+                    absent: rec.absent,
+                    kr: rec.kr,
+                    kb: rec.kb,
+                    holes: rec.holes.iter().map(|h| (h.0, h.2.clone())).collect(),
+                    frag: None,
+                    aux: 0,
+                    trailer: None,
+                    voids: rec.voids,
+                    line: rec.line_read.then_some(self.line),
+                    fast: vec![],
+                    last_link: None,
+                    obj_refs: rec.obj_refs,
+                    new_objs: 0,
+                    font_glues: vec![],
+                    rs_locs: vec![],
+                    ops: vec![],
+                    last_badness: 0,
+                    last_used: now,
+                    hits: 0,
+                    bytes,
+                };
+                insert_entry(&mut s, rec.cs, entry);
             }
         });
         write_stats(false);
@@ -2827,6 +2940,7 @@ impl Globals {
                 v
             };
             let entry = Entry {
+                doomed: false,
                 hash: key_hash(&rec.k1, &rec.ctx, &[], &[]),
                 k2hash,
                 k1: rec.k1,
@@ -2865,34 +2979,8 @@ impl Globals {
                     bytes
                 );
             }
-            s.bytes += bytes;
-            s.stale.insert(rec.cs);
-            let v = s.store.entry(rec.cs).or_default();
-            if v.len() >= MAX_VARIANTS {
-                let (i, _) = v
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(_, e)| e.last_used)
-                    .unwrap();
-                let old = v.remove(i);
-                s.bytes = s.bytes.saturating_sub(old.bytes);
-            }
-            s.store.entry(rec.cs).or_default().push(entry);
+            insert_entry(&mut s, rec.cs, entry);
             s.stats.committed += 1;
-            // over the budget: drop the least recently used entries
-            while s.bytes > MAX_BYTES {
-                let victim = s
-                    .store
-                    .iter()
-                    .flat_map(|(&cs, v)| {
-                        v.iter().enumerate().map(move |(i, e)| (e.last_used, cs, i))
-                    })
-                    .min();
-                let Some((_, cs, i)) = victim else { break };
-                s.stale.insert(cs);
-                let e = s.store.get_mut(&cs).unwrap().remove(i);
-                s.bytes = s.bytes.saturating_sub(e.bytes);
-            }
         });
         write_stats(false);
     }

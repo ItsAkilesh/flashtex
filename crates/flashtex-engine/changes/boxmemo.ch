@@ -275,18 +275,39 @@ if bm_rec_on then if q<>register then flashtex_bm_reg_loc(l,e);
     new_hyph_exceptions; goto done;
 @z
 
-@x pdftex.web l.32894 - changed font parameters are a new version of the fonts
+@x pdftex.web l.32894 - a changed font parameter makes the fonts' next version, named by what changed
 assign_font_dimen: begin find_font_dimen(true); k:=cur_val;
+  scan_optional_equals; scan_normal_dimen; font_info[k].sc:=cur_val;
+  end;
+assign_font_int: begin n:=cur_chr; scan_font_ident; f:=cur_val;
+  if n = no_lig_code then set_no_ligatures(f)
+  else if n < lp_code_base then begin
+    scan_optional_equals; scan_int;
+    if n=0 then hyphen_char[f]:=cur_val@+else skew_char[f]:=cur_val;
+  end
 @y
-assign_font_dimen: begin if bm_on then flashtex_bm_font_changed;
-  find_font_dimen(true); k:=cur_val;
+assign_font_dimen: begin find_font_dimen(true); k:=cur_val;
+  scan_optional_equals; scan_normal_dimen; font_info[k].sc:=cur_val;
+  if bm_on then flashtex_bm_font_set(-1, k, 0, cur_val);
+  end;
+assign_font_int: begin n:=cur_chr; scan_font_ident; f:=cur_val;
+  if n = no_lig_code then begin set_no_ligatures(f);
+    if bm_on then flashtex_bm_font_set(n, f, 0, 0);
+    end
+  else if n < lp_code_base then begin
+    scan_optional_equals; scan_int;
+    if n=0 then hyphen_char[f]:=cur_val@+else skew_char[f]:=cur_val;
+    if bm_on then flashtex_bm_font_set(n, f, 0, cur_val);
+  end
 @z
 
-@x pdftex.web l.32897
-assign_font_int: begin n:=cur_chr; scan_font_ident; f:=cur_val;
+@x pdftex.web l.32899 - ... and so does a pdfTeX font code
+    kn_ac_code_base: set_kn_ac_code(f, p, cur_val);
+    end;
 @y
-assign_font_int: begin if bm_on then flashtex_bm_font_changed;
-  n:=cur_chr; scan_font_ident; f:=cur_val;
+    kn_ac_code_base: set_kn_ac_code(f, p, cur_val);
+    end;
+    if bm_on then flashtex_bm_font_set(n, f, p, cur_val);
 @z
 
 @x pdftex.web l.33519 (after changes/intrinsics.ch) - registered names are found once the format is loaded
@@ -408,7 +429,8 @@ restore keeps them; the guard checks every value they depend on.
 @!bm_hyph_version:integer; {names the state of the hyphenation exceptions}
 
 @ @<Set init...@>=
-bm_rec_on:=false; bm_at_switch:=false; bm_font_version:=0; bm_hyph_version:=0;
+bm_rec_on:=false; bm_at_switch:=false;
+bm_font_version:=flashtex_bm_fresh; bm_hyph_version:=flashtex_bm_fresh;
 bm_on:=flashtex_bm_enabled;
 
 @ @<Declare the routines of pdf\TeX's C parts@>=
@@ -435,6 +457,8 @@ procedure flashtex_bm_sa_read(@!p:pointer); external;
 procedure flashtex_bm_reg_loc(@!l:pointer;@!e:boolean); external;
 procedure flashtex_bm_abort(@!r:integer); external;
 procedure flashtex_bm_font_changed; external;
+procedure flashtex_bm_font_set(@!n:integer;@!a:integer;@!b:integer;@!v:integer); external;
+function flashtex_bm_fresh:integer; external;
 procedure flashtex_bm_hyph_changed; external;
 procedure flashtex_bm_obj_ref(@!t:integer;@!n:integer); external;
 procedure flashtex_bm_new_obj(@!n:integer); external;
