@@ -163,15 +163,23 @@ fn the_memo_answers_as_kpathsea_does() {
     look(&mut r, "flashother.sty", "twice");
     look(&mut r, "flashother.sty", "twice again");
 
-    // a racy directory (changed within the file system's time granularity)
-    // proves nothing: no answer from the memo until it is old enough
+    // a racy directory (changed within the file system's time granularity):
+    // its signature proves nothing, so the memo lists it again before it
+    // answers (a project's directory made just now is racy for a while)
     std::fs::write(sub.join("flashfresh.sty"), "% fresh\n").unwrap();
     let (p, _) = look(&mut r, "flashfresh.sty", "fresh");
     assert!(found_in(&p, &sub), "{p:?}");
-    assert!(
-        !look(&mut r, "flashfresh.sty", "fresh again").1,
-        "a racy directory answered"
-    );
+    let (p, hit) = look(&mut r, "flashfresh.sty", "fresh again");
+    assert!(found_in(&p, &sub) && hit, "racy, listed again: {p:?}");
+    // the name made in the working directory (searched first) within the
+    // window, and removed again: the listing sees both
+    std::fs::write(cwd.join("flashfresh.sty"), "% fresh here\n").unwrap();
+    let (p, hit) = look(&mut r, "flashfresh.sty", "fresh in the working directory");
+    assert!(found_in(&p, &cwd) && !hit, "{p:?}");
+    std::fs::remove_file(cwd.join("flashfresh.sty")).unwrap();
+    let (p, hit) = look(&mut r, "flashfresh.sty", "gone from the working directory");
+    assert!(found_in(&p, &sub) && !hit, "{p:?}");
+    set_back(&cwd);
     set_back(&sub);
     look(&mut r, "flashfresh.sty", "no longer racy");
     assert!(
