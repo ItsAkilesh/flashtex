@@ -1735,7 +1735,10 @@ fn a_dormant_line_is_kept_until_it_is_read() {
         c.bye().unwrap();
         drop(h);
         let log = std::fs::read_to_string(&err).unwrap();
-        assert!(log.contains("a dormant line"), "{name}: no dormant line: {log}");
+        assert!(
+            log.contains("a dormant line"),
+            "{name}: no dormant line: {log}"
+        );
         assert!(log.contains("[conv] jumped"), "{name}: no jump: {log}");
         assert!(!log.contains("UNSOUND"), "{name}: {log}");
         for (text, got) in keys.iter().zip(got) {

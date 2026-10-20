@@ -291,7 +291,8 @@ web2rust needs no new feature, so the barrier lives in the WEB, where every othe
 hook lives (`checkpoint.ch`, `readset.ch`, `lineshift.ch`). A web2rust read barrier is §4's
 rejected design.
 
-**The cost** was measured in Phase 2 (§11): +0.11 % to +0.56 % instructions on cold compiles,
+**The cost** was measured in Phase 2 (§11): −0.14 % to +0.57 % instructions on Classic cold
+compiles, +0.36 % and +0.63 % on in-body keystrokes, and under +0.1 % on Unicode cold compiles,
 within the 1 % target.
 
 ## 7. How it composes
@@ -367,6 +368,7 @@ Three keystrokes go at that line's start, and every compile equals scratch runs 
 1. **`end`.** The line is `\end{document}`'s. Keystrokes 2 and 3 jump, kept to the last page.
 2. **`read`.** The line is read before more pages are typeset from it. The jump stops at the
    page before the read.
+   **`mid`** (Phase 2) reads it before more pages than the jump would keep: no jump (§5.1).
 3. **`late`.** The line opens a file at once after a `\clearpage`. An edit of that file then
    restarts at the kept, corrected checkpoint (measured: `restart_pages` equals `rerun_from`).
 4. **`show`.** A `\showthe` in the middle of the pages prints the line. The jump stops before
@@ -380,3 +382,38 @@ fontspec. Each compile's PDF, `.aux` and log equal a fresh process's; the log re
 and no `UNSOUND` check fires.
 
 `FLASHTEX_DORMANT=off` turns the rule off.
+
+## 11. Phase 2: what was measured
+
+The evidence is in `docs/evidence/read-track-2026-10-20/` (NixOS PC, callgrind, main against
+the branch; Classic sessions with their checkpoints pinned to shipouts, because the timed
+checkpoints make a session's count depend on the load).
+
+**The Unicode M3 row.** b4's keystroke at the end, to the edited page: keystroke 1 128.7 M
+(unchanged), keystrokes 2 and 3 **502.0 M → 322.6 M**. The row takes the median of the three:
+502.0 M → 322.6 M. The EDITPOINT row and b2–b3 are unchanged; b1 costs +0.6 M (+0.9 %), the
+watch on its last page. The Phase 1 belief of 150 M (§9) left out two costs that every Unicode
+convergence pays: the structural walk (107 M here; the Unicode test walks even when every word is
+equal, because the glyph handles and the source map live outside the word space), and the
+kept pages built again and sent (40 M). The walk is the next lever, in the general test.
+
+**Classic.** Pages re-run per keystroke at c1's and c2's end: 8 and 13 on main; on the branch
+8 and 13 at keystroke 1, then 2. Instructions over three keystrokes: c2 −23.9 %, c1 +5.8 %.
+c1's keystroke 2 pays a structural walk after BOX-MEMO's replays (§7); from keystroke 3 on, c1
+costs 27 % less per keystroke and c2 60 % less.
+
+**The cost.** Cold compiles: plain-100 +0.30 %, full-100 +0.57 %, c1 +0.12 %, c2 −0.14 %.
+In-body keystrokes (T7's kind, three in a section title): plain-100 +0.36 %, full-100 +0.63 %.
+The watch in `pop_input` is most of it.
+
+**Three corrections the measurements forced:**
+- the jump writes the new line's words from `loc` up to `first`, not only those that differ
+  (§5.2: the old run's `\csname` scratch);
+- the worth rule (§5.1): a dormant line in the middle of a document no longer loses a later
+  convergence (c1, a keystroke in `\section{Three}`: +12 % before it, main's pages after it);
+- a failed test that the rule let past the edited file's stream turns the rule off for the run,
+  as one that set words aside did. In-body edits otherwise paid a diff per page (full-100: 304
+  diffs against main's 202).
+
+Rejected after measuring: no structural walk past a dormant line. It saved c1's keystroke 2
+but lost c2's (13 pages re-run instead of 2).

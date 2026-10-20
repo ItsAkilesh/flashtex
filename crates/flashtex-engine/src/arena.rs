@@ -2237,7 +2237,11 @@ impl Arena {
     /// word had held it from `from` on (READ-TRACK, `crate::dormant`: words
     /// no state from `from` on read). The checkpoints before `from` keep
     /// their values. One pass over the logs for all the words.
-    pub fn set_from(&mut self, from: CheckpointId, words: &[(usize, u64)]) -> Result<usize, String> {
+    pub fn set_from(
+        &mut self,
+        from: CheckpointId,
+        words: &[(usize, u64)],
+    ) -> Result<usize, String> {
         let offs: Vec<usize> = words.iter().map(|w| w.0).collect();
         self.rewrite_from(from, &offs, &|i, _| words[i].1, "set_from")
     }
@@ -2279,7 +2283,10 @@ impl Arena {
         // the word's place among a delta's words, in bit order
         let place = |mask: &[u64; MASK_WORDS], w: usize| {
             let (mw, b) = (w / 64, w % 64);
-            mask[..mw].iter().map(|m| m.count_ones() as usize).sum::<usize>()
+            mask[..mw]
+                .iter()
+                .map(|m| m.count_ones() as usize)
+                .sum::<usize>()
                 + (mask[mw] & ((1u64 << b) - 1)).count_ones() as usize
         };
         // The checkpoints before `from` keep the words as they were: the log
@@ -2291,7 +2298,9 @@ impl Arena {
             let at = rewound(core.nchunks, &cs, &live, &core.logs[k..]);
             let prev = &mut core.logs[k - 1];
             if !prev.entries.is_empty() {
-                return Err(format!("{what}: the log before the checkpoint is not sealed"));
+                return Err(format!(
+                    "{what}: the log before the checkpoint is not sealed"
+                ));
             }
             let missing: Vec<(u32, usize, u64)> = pos
                 .iter()

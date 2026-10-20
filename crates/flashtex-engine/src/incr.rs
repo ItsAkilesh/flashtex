@@ -1595,8 +1595,9 @@ fn same_words(
     // aside for the caller
     let left: Vec<_> = match dorm.as_deref_mut() {
         Some(a) => {
-            let (aside, rest): (Vec<_>, Vec<_>) =
-                left.into_iter().partition(|w| a.level.set_aside(g, &layout, w));
+            let (aside, rest): (Vec<_>, Vec<_>) = left
+                .into_iter()
+                .partition(|w| a.level.set_aside(g, &layout, w));
             a.words = aside;
             rest
         }

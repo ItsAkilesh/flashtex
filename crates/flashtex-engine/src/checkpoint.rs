@@ -1065,7 +1065,8 @@ impl Globals {
         let Some(at) = chain.iter().position(|&i| i == id) else {
             return;
         };
-        let after: std::collections::HashSet<CheckpointId> = chain[at + 1..].iter().copied().collect();
+        let after: std::collections::HashSet<CheckpointId> =
+            chain[at + 1..].iter().copied().collect();
         for (i, r) in self.layer().records.iter_mut() {
             if after.contains(i) {
                 f(r);

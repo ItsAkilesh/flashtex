@@ -495,7 +495,13 @@ mod tests {
         assert!(!quiet_since(&b, &Dorm { opens: 3, ..b }, 0, 5, 200));
         assert!(!quiet_since(&b, &Dorm { shown: 2, ..b }, 0, 5, 200));
         assert!(!quiet_since(&b, &b, 0, 100, 200));
-        assert!(!quiet_since(&Dorm { epoch: 0, ..b }, &Dorm { epoch: 0, ..b }, 0, 5, 200));
+        assert!(!quiet_since(
+            &Dorm { epoch: 0, ..b },
+            &Dorm { epoch: 0, ..b },
+            0,
+            5,
+            200
+        ));
         // b4: compared at 12 of 19 pages, live from 18; a line in the middle
         // of c1-lipsum: compared at 4, live from 6
         assert!(worth(12, 18, 19));

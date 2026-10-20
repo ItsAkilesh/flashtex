@@ -5818,6 +5818,10 @@ fn a_dormant_line_is_kept_until_it_is_read() {
         ("end", doc("", "", "", "")),
         // read, then more pages from the same line: kept up to the read
         ("read", doc("", "", "", "Zword \\more\n")),
+        // read, then more pages from the same line than the jump would keep:
+        // not worth it (`dormant::worth`), the run converges or re-runs as
+        // without the rule
+        ("mid", doc("", "", "", "Zword \\more\\more\\more\n")),
         // read at a page's start (`\clearpage`), opening a file at once: an
         // edit of that file restarts at the kept page, whose state must hold
         // the line as the last keystroke left it
@@ -5860,6 +5864,12 @@ fn a_dormant_line_is_kept_until_it_is_read() {
                 dormant += 1;
                 assert_ne!(field(&r, "rerun_from"), "null", "{what}: {r}");
             }
+        }
+        if *name == "mid" {
+            assert_eq!(
+                dormant, 0,
+                "dormant mid: a jump that keeps fewer pages than it re-runs"
+            );
         }
         if matches!(*name, "end" | "csname" | "read" | "late") {
             assert!(dormant >= 1, "dormant {name}: no jump");

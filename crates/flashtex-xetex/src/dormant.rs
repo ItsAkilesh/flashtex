@@ -24,7 +24,9 @@ use crate::generated::consts::{buf_size, macro_, token_list};
 use crate::generated::types::in_state_record;
 use crate::generated::Globals;
 use crate::statediff::{ScalarSlot, WordDiff};
-use flashtex_engine::dormant::{buffer_rest_only, bytes_within, first_grow, limit_only, quiet_since};
+use flashtex_engine::dormant::{
+    buffer_rest_only, bytes_within, first_grow, limit_only, quiet_since,
+};
 
 /// The innermost input level reading a file, as an index into
 /// `input_stack`, when every level above it is a token list (and the top,
@@ -92,7 +94,10 @@ impl Level {
         if r.name_field <= 19 || g.first != r.limit_field + 1 || r.loc_field < r.start_field {
             return None;
         }
-        Some(Level { j, loc: r.loc_field })
+        Some(Level {
+            j,
+            loc: r.loc_field,
+        })
     }
 
     /// Whether word `w` of the comparison's differences is a dormant one
