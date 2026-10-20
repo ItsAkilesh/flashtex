@@ -81,6 +81,8 @@ pub mod resolver;
 pub mod revalidate;
 #[cfg(not(feature = "tex82"))]
 pub mod statediff;
+#[cfg(not(feature = "tex82"))]
+pub mod strsearch;
 pub mod system;
 #[cfg(not(feature = "tex82"))]
 pub mod texlines;

@@ -2307,7 +2307,6 @@ impl Globals {
     pub fn search_string(&mut self, mut search: str_number) -> str_number {
         let mut search_string: str_number = 0;
         let mut result: str_number = 0; // §1883
-        let mut s: str_number = 0; // §1883
         let mut len: i32 = 0; // §1883
         'l_found_f: {
             result = 0i32;
@@ -2318,22 +2317,7 @@ impl Globals {
                     break 'l_found_f;
                 }
             } else {
-                {
-                    s = (search).wrapping_sub(1i32);
-                    while (s > 255i32) {
-                        {
-                            if ((self.str_start[crate::ix::U(((s).wrapping_add(1i32)) as usize)]).wrapping_sub(self.str_start[crate::ix::U((s) as usize)]) == len) {
-                                if self.str_eq_str(s, search) {
-                                    {
-                                        result = s;
-                                        break 'l_found_f;
-                                    }
-                                }
-                            }
-                            s = (s).wrapping_sub(1i32);
-                        }
-                    }
-                }
+                result = self.flashtex_search_pool(search, len);
             }
         }
         search_string = result;
