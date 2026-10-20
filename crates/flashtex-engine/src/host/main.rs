@@ -46,10 +46,18 @@ fn main() {
     #[cfg(target_os = "macos")]
     flashtex_engine::profile::space_efficient_reexec(&argv);
     flashtex_engine::host::crash::install();
-    // BOX-MEMO is on in the host, unless `FLASHTEX_BOXMEMO=off`: it records
-    // in an edit's window and replays (docs/design/engine-v2/BOX-MEMO.md
-    // §11); the command-line engine above keeps it off
-    flashtex_engine::boxmemo::set_default_on();
+    // BOX-MEMO is on in the host that serves edits (the socket, `serve`,
+    // `iserve`), unless `FLASHTEX_BOXMEMO=off`: it records in an edit's
+    // window and replays (docs/design/engine-v2/BOX-MEMO.md §11). The
+    // command-line engine above and the host's other tools (`selftest`,
+    // which compares resumed runs word for word, `bench`, `open`, `layout`)
+    // keep it off.
+    if !matches!(
+        argv.get(1).map(String::as_str),
+        Some("selftest" | "bench" | "open" | "layout")
+    ) {
+        flashtex_engine::boxmemo::set_default_on();
+    }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     flashtex_engine::logalloc::set_enabled(std::env::var_os("FLASHTEX_NO_LOG_MAPS").is_none());
     // (the host's large blocks in mappings of their own, macOS; not under Low

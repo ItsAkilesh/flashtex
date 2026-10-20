@@ -429,8 +429,7 @@ restore keeps them; the guard checks every value they depend on.
 @!bm_hyph_version:integer; {names the state of the hyphenation exceptions}
 
 @ @<Set init...@>=
-bm_rec_on:=false; bm_at_switch:=false;
-bm_font_version:=flashtex_bm_fresh; bm_hyph_version:=flashtex_bm_fresh;
+bm_rec_on:=false; bm_at_switch:=false; bm_font_version:=0; bm_hyph_version:=0;
 bm_on:=flashtex_bm_enabled;
 
 @ @<Declare the routines of pdf\TeX's C parts@>=
@@ -458,7 +457,6 @@ procedure flashtex_bm_reg_loc(@!l:pointer;@!e:boolean); external;
 procedure flashtex_bm_abort(@!r:integer); external;
 procedure flashtex_bm_font_changed; external;
 procedure flashtex_bm_font_set(@!n:integer;@!a:integer;@!b:integer;@!v:integer); external;
-function flashtex_bm_fresh:integer; external;
 procedure flashtex_bm_hyph_changed; external;
 procedure flashtex_bm_obj_ref(@!t:integer;@!n:integer); external;
 procedure flashtex_bm_new_obj(@!n:integer); external;

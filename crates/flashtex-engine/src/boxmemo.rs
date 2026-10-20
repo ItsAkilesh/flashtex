@@ -711,6 +711,30 @@ fn fresh_version() -> i32 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
+/// The version that names format file `path` as it is now: its path and
+/// signature (length, modification time, identity), interned; a fresh one
+/// when there is no path or the signature is racy (it then proves nothing,
+/// `StatSig::racy`).
+fn format_version(path: Option<&str>) -> i32 {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static TABLE: Mutex<Option<HashMap<String, i32>>> = Mutex::new(None);
+    let Some(p) = path else {
+        return fresh_version();
+    };
+    let Some(s) = crate::system::StatSig::of(p) else {
+        return fresh_version();
+    };
+    if s.racy {
+        return fresh_version();
+    }
+    let key = format!("{p}\t{}\t{}\t{}", s.len, s.mtime_ns, s.ino);
+    let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+    *t.get_or_insert_with(HashMap::new)
+        .entry(key)
+        .or_insert_with(fresh_version)
+}
+
 /// The fonts' version after the change `change` (what changed, and the
 /// value it got) to version `parent`: the same number for the same parent
 /// and change, a fresh one otherwise. A version thus names the sequence of
@@ -1622,6 +1646,13 @@ impl Globals {
 
     /// After a format is loaded: mark the registered macros it defines.
     pub fn flashtex_bm_loaded(&mut self) {
+        // The fonts' and the exceptions' first versions name the format
+        // file loaded (`format_version`): the same unchanged file gives the
+        // same versions, so two loads leave the same state (COLD-FIXED's
+        // image stands for the second), and another format other versions.
+        let v = format_version(self.fmt_file.path());
+        self.bm_font_version = v;
+        self.bm_hyph_version = v;
         let names = with_config(|c| c.names.clone());
         for p in 1..=k::eqtb_top {
             if !Self::bm_is_cs(p) || p < k::hash_base {
@@ -1728,11 +1759,6 @@ impl Globals {
     #[inline(never)]
     pub fn flashtex_bm_font_set(&mut self, n: i32, a: i32, b: i32, v: i32) {
         self.bm_font_version = next_version(self.bm_font_version, [n, a, b, v]);
-    }
-
-    /// A version no other state has (the engine's start).
-    pub fn flashtex_bm_fresh(&mut self) -> i32 {
-        fresh_version()
     }
 
     #[cold]
