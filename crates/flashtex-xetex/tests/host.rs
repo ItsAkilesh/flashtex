@@ -1196,8 +1196,9 @@ fn an_s0_saved_after_a_keystroke_is_the_one_saved_at_once() {
     // Two hosts that save at once write the same file but for the stat
     // signatures S₀'s key holds of the files it read (`StatSig`: the
     // `.aux` the first pass wrote has times of its own in each host).
-    // Those bytes, each with the 7 on either side (a signature's field is
-    // 8 bytes), are the only ones a deferred save may differ in.
+    // Those bytes (times and inode numbers, within the header), each with
+    // the 7 on either side (a signature's field is 8 bytes), are the only
+    // ones a deferred save may differ in.
     let again = saved(&dir.join("cache-c"), &[doc], "at-once-again");
     assert_eq!(at_once.len(), again.len(), "two hosts' S0 files' sizes");
     let head = u64::from_le_bytes(at_once[..8].try_into().unwrap()) as usize + 8;
@@ -1213,7 +1214,7 @@ fn an_s0_saved_after_a_keystroke_is_the_one_saved_at_once() {
         );
     }
     assert!(
-        differ <= 64,
+        differ <= 256,
         "two hosts' S0 files differ in {differ} bytes: {}",
         diff(&at_once, &again)
     );
