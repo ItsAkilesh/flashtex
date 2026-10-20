@@ -185,6 +185,14 @@ enum RegId {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Meaning {
     Plain(i32, i32),
+    /// The control sequence a `\csname` (`id_lookup`) found by this name:
+    /// the name must still lead to this location. A name's place in the
+    /// hash depends on the order names were made in (a colliding name takes
+    /// the next free slot, tex.web §260), which two runs can differ in --
+    /// the same `\csname` then names another location, which the meaning
+    /// at the recorded location cannot show (sweep C, framed-tikz-theorems,
+    /// verify mode).
+    Name(Vec<i32>),
     Macro(i32, Vec<i32>),
     /// A `\countdef` (and kin) of an e-TeX sparse register: the command,
     /// the register's type and number.
@@ -272,7 +280,10 @@ struct Entry {
     /// A last `\\ignorespaces` (its token), run after the replay.
     trailer: Option<i32>,
     ops: Vec<Op>,
-    last_badness: i32,
+    /// `last_badness` after the call, when the call packed a box: a call that
+    /// packs none leaves it as it was, which a replay must then do too (it
+    /// is the state's, not the call's).
+    last_badness: Option<i32>,
     last_used: u64,
     hits: u64,
     bytes: usize,
@@ -333,6 +344,8 @@ struct Rec {
     /// (register, box node, key) of each box moved out of a foreign register
     holes: Vec<(i32, i32, Vec<i32>)>,
     ops: Vec<Op>,
+    /// The call packed a box (`hpack`, `vpackage`), so it set `last_badness`.
+    packed: bool,
     /// Verifying the entry of this index (of `store[cs]`).
     verify: Option<usize>,
 }
@@ -1041,6 +1054,15 @@ impl Globals {
         Some(Meaning::Plain(t, e))
     }
 
+    /// Whether K3's entry `(p, m)` holds now: `p`'s meaning is `m`, or for a
+    /// name looked up, the name still leads to `p`.
+    fn bm_k3_holds(&self, p: i32, m: &Meaning) -> bool {
+        match m {
+            Meaning::Name(n) => self.bm_find_cs(n) == Some(p),
+            _ => self.bm_meaning(p).as_ref() == Some(m),
+        }
+    }
+
     /// The control sequence named `name` (internal codes, two or more), as
     /// `id_lookup` finds it, without entering it.
     fn bm_find_cs(&self, name: &[i32]) -> Option<i32> {
@@ -1246,6 +1268,13 @@ impl Globals {
         }
     }
 
+    /// A recording packed a box (changes/boxmemo.ch: `hpack`, `vpackage`).
+    #[cold]
+    #[inline(never)]
+    pub fn flashtex_bm_packed(&mut self) {
+        self.bm_with_rec(|r| r.packed = true);
+    }
+
     #[cold]
     #[inline(never)]
     pub fn flashtex_bm_font_changed(&mut self) {
@@ -1333,11 +1362,7 @@ impl Globals {
                 && kb
                     .iter()
                     .all(|(n, v)| self.bm_box_key(self.bm_box_value(*n)) == *v);
-            if absent_ok
-                && k3
-                    .iter()
-                    .all(|(p, m)| self.bm_meaning(*p).as_ref() == Some(m))
-            {
+            if absent_ok && k3.iter().all(|(p, m)| self.bm_k3_holds(*p, m)) {
                 if m == Mode::Verify {
                     // the full verifier. In the host its restore replaces
                     // the edit's pending branch, so a compile with a
@@ -1360,7 +1385,7 @@ impl Globals {
             if debug() {
                 let bad: Vec<String> = k3
                     .iter()
-                    .filter(|(p, m)| self.bm_meaning(*p).as_ref() != Some(m))
+                    .filter(|(p, m)| !self.bm_k3_holds(*p, m))
                     .take(4)
                     .map(|(p, m)| {
                         format!(
@@ -1455,6 +1480,7 @@ impl Globals {
             kb: vec![],
             holes: vec![],
             ops: vec![],
+            packed: false,
             verify,
         };
         // the macro's own meaning is part of K1; mark it seen
@@ -1607,6 +1633,17 @@ impl Globals {
     #[inline(never)]
     pub fn flashtex_bm_id(&mut self, j: i32, l: i32, p: i32) {
         if p != UNDEFINED_CS {
+            // the name leads to `p` (part of the key), and `p`'s meaning
+            let name: Vec<i32> = (j..j + l).map(|i| self.buffer[i as usize]).collect();
+            self.bm_with_rec(|r| {
+                if !r
+                    .k3
+                    .iter()
+                    .any(|(q, m)| *q == p && matches!(m, Meaning::Name(n) if *n == name))
+                {
+                    r.k3.push((p, Meaning::Name(name)));
+                }
+            });
             return self.bm_note_cs(p);
         }
         let name: Vec<i32> = (j..j + l).map(|i| self.buffer[i as usize]).collect();
@@ -2242,7 +2279,7 @@ impl Globals {
             }
         }
         let aux = self.cur_list.aux_field.0;
-        let last_badness = self.last_badness;
+        let last_badness = rec.packed.then_some(self.last_badness);
         if let Some(i) = rec.verify {
             let (cs, scanner) = (rec.cs, rec.scanner);
             self.bm_verified(rec, i, last_badness, &frag, trailer);
@@ -2261,7 +2298,7 @@ impl Globals {
     fn bm_commit(
         &mut self,
         rec: Rec,
-        last_badness: i32,
+        last_badness: Option<i32>,
         frag: Option<crate::boxfrag::Frag>,
         aux: u64,
         trailer: Option<i32>,
@@ -2272,7 +2309,7 @@ impl Globals {
                 .k3
                 .iter()
                 .map(|(_, m)| match m {
-                    Meaning::Macro(_, v) => 16 + 4 * v.len(),
+                    Meaning::Macro(_, v) | Meaning::Name(v) => 16 + 4 * v.len(),
                     _ => 16,
                 })
                 .sum::<usize>()
@@ -2370,7 +2407,7 @@ impl Globals {
         &mut self,
         rec: Rec,
         i: usize,
-        last_badness: i32,
+        last_badness: Option<i32>,
         frag: &Option<crate::boxfrag::Frag>,
         trailer: Option<i32>,
     ) {
@@ -2404,7 +2441,7 @@ impl Globals {
             }
             if e.last_badness != last_badness {
                 diffs.push(format!(
-                    "last_badness: recorded {} normal path {last_badness}",
+                    "last_badness: recorded {:?} normal path {last_badness:?}",
                     e.last_badness
                 ));
             }
@@ -2686,7 +2723,9 @@ impl Globals {
                 }
             }
         }
-        self.last_badness = last_badness;
+        if let Some(b) = last_badness {
+            self.last_badness = b;
+        }
         // a draw call: the boxes it moved out of their registers, then its
         // output appended to the current list
         let draw = ST.with(|s| {
