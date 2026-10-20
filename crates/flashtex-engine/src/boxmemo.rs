@@ -648,7 +648,12 @@ pub const RECORD_ANYWHERE: &[&str] = &["pdfstringdefPreHook"];
 
 fn record_anywhere() -> &'static [Vec<u8>] {
     static R: std::sync::OnceLock<Vec<Vec<u8>>> = std::sync::OnceLock::new();
-    R.get_or_init(|| RECORD_ANYWHERE.iter().map(|s| s.as_bytes().to_vec()).collect())
+    R.get_or_init(|| {
+        RECORD_ANYWHERE
+            .iter()
+            .map(|s| s.as_bytes().to_vec())
+            .collect()
+    })
 }
 
 /// Whether BOX-MEMO, on and offering `name`, takes it from the intrinsics
@@ -800,7 +805,6 @@ thread_local! {
 pub fn record_window(open: bool) {
     WINDOW.with(|w| w.set(Some(open)));
 }
-
 
 /// The engine restored a checkpoint (`Globals::fill_scalars`): a recording
 /// in progress, in this timeline or in the one left, cannot continue.
@@ -1021,9 +1025,7 @@ fn compress_groups(ops: &[Op]) -> Vec<Op> {
                         if !from_entry(&o, &touched) {
                             return None;
                         }
-                        let Op::Def { p, .. } = o else {
-                            unreachable!()
-                        };
+                        let Op::Def { p, .. } = o else { unreachable!() };
                         put(p, &o, &mut last);
                     }
                     touched.extend(t);
@@ -1206,10 +1208,9 @@ fn seen_is(g: &Globals, p: i32, t: i32, e: i32, toks: &std::rc::Rc<[i32]>) -> bo
         if s.owner != owner_of(g) {
             return false;
         }
-        let ok = s
-            .at
-            .get(&p)
-            .is_some_and(|(t0, e0, b)| *t0 == t && *e0 == e && std::rc::Rc::ptr_eq(b, toks));
+        let ok =
+            s.at.get(&p)
+                .is_some_and(|(t0, e0, b)| *t0 == t && *e0 == e && std::rc::Rc::ptr_eq(b, toks));
         if ok {
             s.hits += 1;
         }
