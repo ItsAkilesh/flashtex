@@ -3447,7 +3447,11 @@ pub fn exit_process(g: &mut Globals, code: i32) -> ! {
     // FLASHTEX_BOXMEMO_VERIFY_FAIL: a BOX-MEMO verification difference
     // makes the run fail (exit status 3), for the gates
     #[cfg(not(feature = "tex82"))]
-    let code = if crate::boxmemo::fail_on_difference() { 3 } else { code };
+    let code = if crate::boxmemo::fail_on_difference() {
+        3
+    } else {
+        code
+    };
     let _ = std::io::stdout().flush();
     g.log_file.flush();
     for f in g.write_file.iter_mut() {

@@ -93,7 +93,12 @@ fn check(tag: &str, src: &str) -> String {
         "{tag}: {}",
         verify.stats
     );
-    assert_eq!(stat(&verify.stats, "full_differences"), 0, "{tag}: {}", verify.stats);
+    assert_eq!(
+        stat(&verify.stats, "full_differences"),
+        0,
+        "{tag}: {}",
+        verify.stats
+    );
     assert_eq!(
         stat(&verify.stats, "verified"),
         stat(&on.stats, "hits"),
