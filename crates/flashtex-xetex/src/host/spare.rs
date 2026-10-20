@@ -137,7 +137,7 @@ pub fn hints(g: &crate::Globals) {
 /// (`flashtex_font_discovery`'s walk: links followed, hidden entries left
 /// out, at most 6 levels down), each with its identity, and the directory
 /// [`crate::fontmgr::catalog::os_extra_dirs`] lists.
-fn font_dirs() -> Vec<(PathBuf, Option<Ident>)> {
+pub(crate) fn font_dirs() -> Vec<(PathBuf, Option<Ident>)> {
     fn tree(dir: &Path, depth: usize, out: &mut Vec<(PathBuf, Option<Ident>)>) {
         if depth > 6 {
             return;
@@ -146,14 +146,18 @@ fn font_dirs() -> Vec<(PathBuf, Option<Ident>)> {
         let Ok(rd) = std::fs::read_dir(dir) else {
             return;
         };
+        // (an entry's type from the directory listing: a status call only
+        // for a link, which is followed; a walk of the macOS font
+        // directories took 12 ms with one for every font file)
         let mut subs: Vec<PathBuf> = rd
             .flatten()
-            .map(|e| e.path())
-            .filter(|p| {
-                !p.file_name()
-                    .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+            .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+            .filter(|e| match e.file_type() {
+                Ok(t) if t.is_symlink() => std::fs::metadata(e.path()).is_ok_and(|m| m.is_dir()),
+                Ok(t) => t.is_dir(),
+                Err(_) => std::fs::metadata(e.path()).is_ok_and(|m| m.is_dir()),
             })
-            .filter(|p| std::fs::metadata(p).is_ok_and(|m| m.is_dir()))
+            .map(|e| e.path())
             .collect();
         subs.sort();
         for s in subs {
@@ -177,6 +181,14 @@ fn font_dirs() -> Vec<(PathBuf, Option<Ident>)> {
     out
 }
 
+/// Whether a walk of the font directories now would give `walked`, an
+/// earlier [`font_dirs`]: every directory it lists has its identity still.
+/// (A directory's list of subdirectories changes only with its own
+/// identity, so no listing is read: one status call a directory.)
+pub(crate) fn font_dirs_unchanged(walked: &[(PathBuf, Option<Ident>)]) -> bool {
+    walked.iter().all(|(d, id)| ident(d) == *id)
+}
+
 /// In the engine, at its second reading of the clock: get ready, then wait
 /// for the go-ahead. Without it (the host ended the spare) the process
 /// ends, having written nothing.
@@ -188,7 +200,7 @@ pub fn wait(g: &mut crate::Globals, fd: RawFd) {
     // the directories it was made from, read first
     let fonts = (g.host.child_env.fonts && g.host.font_mgr.is_none()).then(|| {
         let dirs = font_dirs();
-        let catalog = crate::fontmgr::FontCatalog::system_cached(None);
+        let catalog = crate::fontmgr::FontCatalog::for_lookup();
         (dirs, crate::fontmgr::FontMgr::new(Arc::new(catalog)))
     });
     // SAFETY: the descriptor was inherited for this wait alone.
@@ -470,6 +482,8 @@ pub struct Spares {
     enabled: bool,
     /// The connection's performance mode allows spares (not Low Memory).
     profile_allows: bool,
+    /// The connection's performance mode.
+    mode: flashtex_engine::profile::Mode,
     slots: Arc<Slots>,
     ttl: Duration,
     spare: Option<Spare>,
@@ -493,12 +507,20 @@ impl Spares {
         Spares {
             enabled,
             profile_allows: allows(mode),
+            mode,
             slots,
             ttl: Duration::from_secs(ttl),
             spare: None,
             fonts: false,
             runs: 0,
         }
+    }
+
+    /// No spares: compiles run in the host's own process (`inproc`), where
+    /// the format stays loaded.
+    pub fn off(mut self) -> Spares {
+        self.enabled = false;
+        self
     }
 
     /// The number of the next run started on this connection.
@@ -521,9 +543,16 @@ impl Spares {
         self.enabled && self.profile_allows
     }
 
+    /// How much of its checkpoints the resident engine keeps in the
+    /// connection's mode (Low Memory: a tight budget).
+    pub fn retention(&self) -> crate::ckpt::Retention {
+        crate::ckpt::Retention::of(self.mode)
+    }
+
     /// The connection's performance mode changed (`PROFILE`): Low Memory
     /// keeps no spare, and ends the one there is.
     pub fn set_mode(&mut self, mode: flashtex_engine::profile::Mode) {
+        self.mode = mode;
         self.profile_allows = allows(mode);
         if !self.profile_allows {
             self.clear();
@@ -640,6 +669,21 @@ pub fn go(mut go: File) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A walk of the font directories now is unchanged, and the check of
+    /// each one's identity says so.
+    #[test]
+    fn the_font_directories_walk_and_check() {
+        let d = font_dirs();
+        assert_eq!(d, font_dirs());
+        assert!(font_dirs_unchanged(&d));
+        let mut moved = d.clone();
+        if let Some(first) = moved.first_mut() {
+            first.1 = None;
+            let missing = ident(&first.0).is_none();
+            assert!(!font_dirs_unchanged(&moved) || missing);
+        }
+    }
 
     /// A process in a group of its own, standing for a spare.
     fn sleeper() -> Child {

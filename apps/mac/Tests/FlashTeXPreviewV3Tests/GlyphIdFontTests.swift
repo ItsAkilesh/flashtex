@@ -60,7 +60,8 @@ final class GlyphIdFontTests: XCTestCase {
         XCTAssertEqual(font.glyph(300), 300)
         XCTAssertTrue(font.draws(300))
         XCTAssertFalse(font.draws(cg.numberOfGlyphs))
-        XCTAssertFalse(font.draws(0), ".notdef")
+        XCTAssertTrue(font.draws(0), ".notdef: glyph 0 is drawn, as the PDF draws CID 0 (its box)")
+        XCTAssertEqual(font.glyph(0), 0)
     }
 
     /// The page drawn through `DL3Renderer` equals Core Graphics' rendering
