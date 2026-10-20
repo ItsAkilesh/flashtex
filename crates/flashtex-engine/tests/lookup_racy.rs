@@ -87,8 +87,13 @@ fn racy_directories_are_listed_again() {
         std::fs::rename(d.join(from), d.join(to)).unwrap();
         std::fs::File::open(d).unwrap().set_modified(t).unwrap();
         let after = StatSig::of(s).unwrap();
+        // (The change time, which no call can put back, may still show the
+        // rename (`StatSig::ctime_ns`, #1842); the answers below must be
+        // right either way.)
         assert!(
-            before.racy && after.racy && before.same_fields(&after),
+            before.racy
+                && after.racy
+                && (before.mtime_ns, before.len) == (after.mtime_ns, after.len),
             "the signature shows the rename: {before:?} -> {after:?}"
         );
     };
