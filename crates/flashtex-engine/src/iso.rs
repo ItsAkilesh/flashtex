@@ -783,8 +783,9 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
         // list's side table. Nothing TeX computes reads it, but the node is
         // live: a later page ships it, and its glyphs name that position,
         // which the convergence takes over from the old run. Spans are the
-        // host's and move with their lines, so equal entries are the same
-        // place.
+        // host's and move with their lines; an edited line's material has a
+        // new span in each run, so entries are compared as places (file,
+        // line, column: `displaylist::same_place`), not as span ids.
         if let Some(written) = self.side_written {
             // (the live state's entry; the old run's is the live one where
             // neither run wrote the table since the restore target, and is
@@ -794,7 +795,7 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
                 Some(c) if bit(written, c as i32) => self.side_later.push((a, sn)),
                 Some(_) => {
                     let so = self.n.side(a);
-                    if so != sn {
+                    if !crate::displaylist::same_place(so, sn) {
                         fail!(
                             self,
                             "a node's source position differs ({so:#x} vs {sn:#x})"
@@ -2655,7 +2656,7 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
                 let at = off + a as usize * 8;
                 let c = (at >> CHUNK_SHIFT) as u32;
                 let so = old[&c][(at & (CHUNK_BYTES - 1)) >> 3];
-                if so != sn {
+                if !crate::displaylist::same_place(so, sn) {
                     return Err(format!(
                         "a node's source position differs ({so:#x} vs {sn:#x}, node {a})"
                     ));
