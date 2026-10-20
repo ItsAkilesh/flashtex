@@ -3556,9 +3556,28 @@ impl Globals {
                 bytes,
             };
             if let Some(n) = &name {
+                // (what the replay makes: groups kept, assignments at the
+                // call's level, and those from the state)
+                let mut depth = 0;
+                let (mut groups, mut top, mut state) = (0, 0, 0);
+                for o in &entry.fast {
+                    match o {
+                        Op::Begin(_) => {
+                            groups += usize::from(depth == 0);
+                            depth += 1;
+                        }
+                        Op::End => depth -= 1,
+                        Op::Def { v, .. } => {
+                            top += usize::from(depth <= 0);
+                            state += usize::from(!by_value(v));
+                        }
+                        _ => {}
+                    }
+                }
                 eprintln!(
-                    "boxmemo: recorded \\{n}: {} ops, {} meanings, {} bytes",
+                    "boxmemo: recorded \\{n}: {} ops ({} replayed: {groups} groups kept, {top} at the call's level, {state} from the state), {} meanings, {} bytes",
                     entry.ops.len(),
+                    entry.fast.len(),
                     entry.k3.len(),
                     bytes
                 );
