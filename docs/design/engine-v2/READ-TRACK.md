@@ -150,6 +150,15 @@ rule does not apply.
 Its \csname scratch never reached `buf_size`: `max_buf_stack` at *k′* plus the growth of
 `first` must be below `buf_size`.
 
+**Only where it is worth it** (`dormant::worth`, added in Phase 2). The jump keeps the pages
+from *k* to *k′* and typesets the rest of the document again. It is taken only where it keeps
+at least as many pages as it typesets again. Between *k* and *k′* the line differs, so no
+ordinary test passes there either, and a run without the rule typesets at least to *k′*. So
+with this condition the rule never costs more pages than a run without it. Without it, a
+dormant line in the middle of a document lost a later convergence: in c1-lipsum,
+`\lipsum[16-35]` peeks at `\section{Three}`, and a keystroke in that title jumped from page 4
+to page 6 and typeset the 13 pages after it, where main converges at page 8 (§11).
+
 **The jump.** This is the existing jump to a barrier's re-run point (Classic: `rerun_point` /
 `rerun_from`; Unicode: `conv_jump` to its target). The old run's pages *k*…*k′* are kept, the
 old checkpoint *k′* is restored, and the run goes on live from there. Before it goes on, the new

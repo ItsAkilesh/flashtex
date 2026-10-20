@@ -761,6 +761,42 @@ impl Obs {
         self.base + self.new_pages.len()
     }
 
+    /// READ-TRACK (`crate::dormant::worth`): whether a jump past a dormant
+    /// line of level `j` from old checkpoint `old` (record `o`), going on
+    /// live from `live` (its jump point when `None`), keeps at least as many
+    /// pages as it typesets again.
+    fn dormant_worth(
+        &self,
+        g: &Globals,
+        old: CheckpointId,
+        o: &ExtRecord,
+        j: i32,
+        live: Option<CheckpointId>,
+    ) -> bool {
+        let live = match live {
+            Some(c) => c,
+            None => {
+                let pages: std::collections::HashSet<CheckpointId> =
+                    self.old_pages.iter().filter_map(|p| p.ckpt).collect();
+                match crate::dormant::jump_point(g, old, o, &pages, j, 0) {
+                    Some(c) => c,
+                    None => return false,
+                }
+            }
+        };
+        // (pages shipped at a checkpoint of the old run's)
+        let shipped = |c: CheckpointId| {
+            self.old_pages
+                .iter()
+                .position(|p| p.ckpt == Some(c))
+                .map(|i| i + 1)
+        };
+        match (shipped(old), shipped(live)) {
+            (Some(a), Some(b)) => crate::dormant::worth(a, b, self.old_pages.len()),
+            _ => false,
+        }
+    }
+
     /// The PDF bytes written since the previous page.
     fn frame(&mut self, rec: &ExtRecord) -> ([u64; 2], u64) {
         let now = rec.files.iter().find_map(|f| match &f.stream {
@@ -848,6 +884,13 @@ impl Obs {
                     || !edited
                     || (a.buf, a.at_eof, a.err) != (b.buf, b.at_eof, b.err)
                 {
+                    return Err("an input file's lookahead differs".into());
+                }
+                // (before the diff the rule would cost: a jump from here
+                // that is not worth it, `dormant::worth`, at its latest
+                // point, is not worth it at an earlier one either)
+                if !self.dormant_worth(g, old, &o, level.map_or(-1, |l| l.j), None) {
+                    self.dormant_off = true;
                     return Err("an input file's lookahead differs".into());
                 }
                 dorm_stream = Some(i);
@@ -1104,20 +1147,7 @@ impl Obs {
                             Some(m) if at(m) <= at(to) => m,
                             _ => to,
                         };
-                        // (pages shipped at a checkpoint of the old run's)
-                        let shipped = |c: CheckpointId| {
-                            self.old_pages
-                                .iter()
-                                .position(|p| p.ckpt == Some(c))
-                                .map(|i| i + 1)
-                        };
-                        let worth = match (shipped(old), shipped(live_from)) {
-                            (Some(a), Some(b)) => {
-                                crate::dormant::worth(a, b, self.old_pages.len())
-                            }
-                            _ => false,
-                        };
-                        if !worth {
+                        if !self.dormant_worth(g, old, &o, a.level.j, Some(live_from)) {
                             self.dormant_off = true;
                             Err(format!(
                                 "a dormant line ({} words): the jump would typeset more pages \
