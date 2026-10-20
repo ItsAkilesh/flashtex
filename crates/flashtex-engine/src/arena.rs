@@ -4039,7 +4039,7 @@ mod tests {
         let quiet = (0..arr.len())
             .find(|&i| copies.iter().all(|c| c[i] == end[i]) && i != w)
             .unwrap();
-        let value = 0x5eed_0f_da7a_u64;
+        let value = 0x005e_ed0f_da7a_u64;
         let off = |i: usize| (&arr[i] as *const u64 as usize) - (a.bytes().as_ptr() as usize);
         let words = [(off(w), value), (off(quiet), value)];
         a.set_from(ids[7], &words).unwrap();

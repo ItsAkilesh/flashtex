@@ -22,7 +22,7 @@ mut() {
 mut "the return count"  's/\(d\.epoch, d\.fired, d\.opens, d\.shown, d\.level\) == \(b\.epoch, b\.fired,/(d.epoch, b.fired, d.opens, d.shown, d.level) == (b.epoch, b.fired,/'
 mut "the print count"   's/        bump\(&self\.shown\);/        let _ = \&self.shown;/'
 mut "the open count"    's/        bump\(&self\.opens\);/        let _ = \&self.opens;/'
-mut "the words put in"  's/        g\.arena\.set_from\(old, off, v\)\?;/        let _ = (off, v);/'
+mut "the words put in"  's/    g\.arena\.set_from\(old, &dj\.words\)\?;/    let _ = &dj.words;/'
 mut "the stream put in" 's/                \*f = snap\.clone\(\);/                let _ = (f, snap);/'
 cp /tmp/rt-dormant.rs $D
 touch $D

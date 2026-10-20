@@ -6,7 +6,7 @@ tl=$HOME/texlive/2026
 export FLASHTEX_FONT_DIRS=$tl/texmf-dist/fonts/opentype:$tl/texmf-dist/fonts/truetype
 O=~/rt/ucg; rm -rf $O; mkdir -p $O
 cd ~/code/flashtex-readtrack
-for v in base:$HOME/code/flashtex-readtrack-exp new:$HOME/code/flashtex-readtrack; do
+for v in base:$HOME/code/flashtex-readtrack-base new:$HOME/code/flashtex-readtrack; do
   n=${v%%:*}; w=${v#*:}
   for at in end EDITPOINT; do
     for doc in tools/unicode-m3/bench/b*.tex; do
