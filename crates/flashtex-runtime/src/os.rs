@@ -241,6 +241,12 @@ pub fn thread_counts() -> Option<(u64, u64)> {
 /// the samples of `perf record -k CLOCK_MONOTONIC` between them are the
 /// typesetting to the edited page alone.
 pub fn perf_mark(on: bool) {
+    perf_mark_as(if on { 'b' } else { 'e' });
+}
+
+/// [`perf_mark`] with the mark's letter given (the host's `a`: a compile's
+/// start, so that `a`..`b` is what comes before the typesetting).
+pub fn perf_mark_as(mark: char) {
     use std::io::Write;
     static MARKS: std::sync::OnceLock<Option<std::sync::Mutex<std::fs::File>>> =
         std::sync::OnceLock::new();
@@ -259,7 +265,7 @@ pub fn perf_mark(on: bool) {
         #[cfg(not(unix))]
         let ns = 0u64;
         if let Ok(mut f) = f.lock() {
-            let _ = writeln!(f, "{} {ns}", if on { 'b' } else { 'e' });
+            let _ = writeln!(f, "{mark} {ns}");
         }
     }
 }

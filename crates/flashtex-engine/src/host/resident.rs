@@ -832,6 +832,7 @@ impl Engine {
     /// the host starts itself after external tools changed an input.
     fn compile(&mut self, conn: Arc<Conn>, req: Json, t0: Instant, cause: Option<&'static str>) {
         let queue_ms = t0.elapsed().as_secs_f64() * 1e3;
+        crate::os::perf_mark_as('a');
         // (Low Memory: the pages packed since the last compile)
         self.live.borrow_mut().take_packed();
         // what the engine thread did while this request waited (LIVE-30MS)

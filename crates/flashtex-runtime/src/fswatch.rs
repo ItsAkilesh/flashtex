@@ -69,6 +69,12 @@ static W: Mutex<Option<Watch>> = Mutex::new(None);
 /// `stat`s made inside checks, drains that found events, overflows.
 static COUNTS: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
 
+/// `FLASHTEX_FSWATCH_DEBUG`: each `stat` a check makes, and why.
+fn debug() -> bool {
+    static D: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *D.get_or_init(|| std::env::var_os("FLASHTEX_FSWATCH_DEBUG").is_some())
+}
+
 fn count(i: usize) {
     COUNTS[i].fetch_add(1, Ordering::Relaxed);
 }
@@ -148,6 +154,12 @@ pub fn sig(path: &str) -> Option<StatSig> {
     count(1);
     let deps = w.arm(path);
     let s = StatSig::of(path);
+    if debug() {
+        eprintln!(
+            "[fswatch] stat {path}: {}",
+            if deps.is_none() { "not watched" } else if s.is_some_and(|s| s.racy) { "racy" } else { "kept" }
+        );
+    }
     if let Some(deps) = deps {
         let e = w.entry(path, deps);
         e.sig = (!s.is_some_and(|s| s.racy)).then_some(s);
