@@ -3554,26 +3554,28 @@ impl Globals {
                     assign_font_dimen => {
                         // §1431
                         {
-                            if self.bm_on {
-                                self.flashtex_bm_font_changed();
-                            }
                             self.find_font_dimen(true);
                             k = self.cur_val;
                             self.scan_optional_equals();
                             self.scan_dimen(false, false, false);
                             { let __v1862 = self.cur_val; self.font_info[crate::ix::U((k) as usize)].set_int(__v1862); }
+                            if self.bm_on {
+                                self.flashtex_bm_font_set((1i32).wrapping_neg(), k, 0i32, self.cur_val);
+                            }
                         }
                     }
                     assign_font_int => {
                         {
-                            if self.bm_on {
-                                self.flashtex_bm_font_changed();
-                            }
                             n = self.cur_chr;
                             self.scan_font_ident();
                             f = self.cur_val;
                             if (n == no_lig_code) {
-                                self.set_no_ligatures(f);
+                                {
+                                    self.set_no_ligatures(f);
+                                    if self.bm_on {
+                                        self.flashtex_bm_font_set(n, f, 0i32, 0i32);
+                                    }
+                                }
                             } else {
                                 if (n < lp_code_base) {
                                     {
@@ -3583,6 +3585,9 @@ impl Globals {
                                             { let __v1863 = self.cur_val; self.hyphen_char[crate::ix::U((f) as usize)] = __v1863; }
                                         } else {
                                             { let __v1864 = self.cur_val; self.skew_char[crate::ix::U((f) as usize)] = __v1864; }
+                                        }
+                                        if self.bm_on {
+                                            self.flashtex_bm_font_set(n, f, 0i32, self.cur_val);
                                         }
                                     }
                                 } else {
@@ -3620,6 +3625,9 @@ impl Globals {
                                                 self.set_kn_ac_code(f, p, self.cur_val);
                                             }
                                             _ => {}
+                                        }
+                                        if self.bm_on {
+                                            self.flashtex_bm_font_set(n, f, p, self.cur_val);
                                         }
                                     }
                                 }
@@ -6803,6 +6811,9 @@ impl Globals {
                     { let __ix2107 = (self.cur_list.tail_field).wrapping_add(1i32); let __v2108 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(0i32)) as usize)]; __av_mem[crate::ix::U((__ix2107) as usize)].set_int(__v2108); }
                     { let __ix2109 = (self.cur_list.tail_field).wrapping_add(2i32); let __v2110 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(1i32)) as usize)]; __av_mem[crate::ix::U((__ix2109) as usize)].set_int(__v2110); }
                     { let __ix2111 = (self.cur_list.tail_field).wrapping_add(3i32); let __v2112 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(2i32)) as usize)]; __av_mem[crate::ix::U((__ix2111) as usize)].set_int(__v2112); }
+                    if self.bm_rec_on {
+                        self.flashtex_bm_obj_ref(obj_type_xform, self.cur_val);
+                    }
                 }
             }
             pdf_refximage_node => {
@@ -6816,6 +6827,9 @@ impl Globals {
                     { let __ix2115 = (self.cur_list.tail_field).wrapping_add(1i32); let __v2116 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(0i32)) as usize)]; __av_mem[crate::ix::U((__ix2115) as usize)].set_int(__v2116); }
                     { let __ix2117 = (self.cur_list.tail_field).wrapping_add(2i32); let __v2118 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(1i32)) as usize)]; __av_mem[crate::ix::U((__ix2117) as usize)].set_int(__v2118); }
                     { let __ix2119 = (self.cur_list.tail_field).wrapping_add(3i32); let __v2120 = self.pdf_mem[crate::ix::U(((self.obj_tab[crate::ix::U((self.cur_val) as usize)].int4).wrapping_add(2i32)) as usize)]; __av_mem[crate::ix::U((__ix2119) as usize)].set_int(__v2120); }
+                    if self.bm_rec_on {
+                        self.flashtex_bm_obj_ref(obj_type_ximage, self.cur_val);
+                    }
                 }
             }
             pdf_save_pos_node => {
@@ -6863,6 +6877,9 @@ impl Globals {
                     { let __ix2125 = (self.cur_list.tail_field).wrapping_add(5i32); let __v2126 = self.scan_action(); __av_mem[crate::ix::U((__ix2125) as usize)].set_hh_rh(__v2126); }
                     { let __ix2127 = (self.cur_list.tail_field).wrapping_add(6i32); __av_mem[crate::ix::U((__ix2127) as usize)].set_int(k); }
                     self.pdf_last_link = k;
+                    if self.bm_rec_on {
+                        self.flashtex_bm_new_obj(k);
+                    }
                 }
             }
             pdf_start_thread_node => {

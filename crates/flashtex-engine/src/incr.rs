@@ -1538,16 +1538,18 @@ fn same_words(
 pub(crate) fn same_state(g: &mut Globals, n: CheckpointId) -> Result<usize, String> {
     let debug = std::env::var_os("FLASHTEX_BOXMEMO_DEBUG").is_some();
     let mut char_or = vec![];
-    let r = same_words(
-        g,
-        n,
-        false,
-        false,
-        true,
-        debug,
-        Box::new(|| false),
-        &mut char_or,
-    );
+    let r = crate::iso::align_by_words(|| {
+        same_words(
+            g,
+            n,
+            false,
+            false,
+            true,
+            debug,
+            Box::new(|| false),
+            &mut char_or,
+        )
+    });
     if r.is_ok() && !char_or.is_empty() {
         return Err(format!("pdf_char_used differs in {} words", char_or.len()));
     }

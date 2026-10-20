@@ -72,9 +72,9 @@ const MAX_LIST: usize = 1 << 16;
 /// Variants kept per macro, least recently used dropped first.
 /// (A page of *Infinite Descent* measures a dozen frames, each with its
 /// own key, and a typed letter alternates two states of each: 8 thrashed.)
-const MAX_VARIANTS: usize = 64;
+const MAX_VARIANTS: usize = 1024;
 /// Bytes of recordings kept in all, roughly.
-const MAX_BYTES: usize = 64 << 20;
+const MAX_BYTES: usize = 32 << 20;
 /// Recordings abandoned in a row before a macro is no longer recorded.
 const ABORT_BUDGET: u32 = 64;
 
@@ -97,8 +97,35 @@ struct Config {
     verify_fail: bool,
 }
 
-/// The macros offered by default (BOX-MEMO.md §2).
-pub const DEFAULT_NAMES: &[&str] = &["fb@sizeofframe", "*@framecommand"];
+/// The macros offered by default (BOX-MEMO.md §2, §11): framed.sty's frame
+/// measurement and ntheorem's frame commands; xcolor's `\colorlet` body,
+/// which beamer's `\usebeamercolor` calls hundreds of times a slide; pgf's
+/// length and point computations; LaTeX's page head and foot (beamer's
+/// headline, sidebars, navigation symbols and footline, as draw calls);
+/// beamer's head and foot measurement and its frame title.
+pub const DEFAULT_NAMES: &[&str] = &[
+    "fb@sizeofframe",
+    "*@framecommand",
+    "XC@col@rlet",
+    "pgfmathsetlength",
+    "pgf@process",
+    "pgfpoint",
+    "@oddhead",
+    "@oddfoot",
+    "beamer@typesetheadorfoot",
+    "beamer@@tmpl@frametitle",
+];
+
+/// Whether BOX-MEMO is on when `FLASHTEX_BOXMEMO` does not say: in the
+/// engine host (`set_default_on`, where it records only in an edit's
+/// window), not on the command line.
+static DEFAULT_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The engine host: BOX-MEMO is on unless `FLASHTEX_BOXMEMO=off`. Call
+/// before the first engine starts.
+pub fn set_default_on() {
+    DEFAULT_ON.store(true, std::sync::atomic::Ordering::Relaxed);
+}
 
 #[derive(Default, Debug)]
 pub struct Stats {
@@ -146,7 +173,9 @@ enum Val {
     FreshShape(Vec<i32>),
     /// The glue specification a skip register holds when the assignment is
     /// made (`\skip1=\skip2` shares it): an `eqtb` location, or a sparse
-    /// register (type, number) as `(-type, number)`.
+    /// register (type, number) as `(-type, number)`, or font `f`'s
+    /// interword glue as `(0, f)` (beamer's `\beamer@lastskip=\lastskip`
+    /// after an interword space).
     GlueFrom(i32, i32),
 }
 
@@ -172,6 +201,135 @@ enum Op {
     },
 }
 
+thread_local! {
+    /// The macro bodies the kept keys read (K3), each once: a beamer slide's
+    /// `\colorlet` calls read the same few hundred xcolor and beamer macros,
+    /// so the variants share them. A body no entry holds any more is
+    /// dropped when the pool is pruned (`insert_entry`).
+    static TOKENS: RefCell<HashSet<std::rc::Rc<[i32]>>> = RefCell::new(HashSet::new());
+    /// The pool's size in bytes, roughly (part of `MAX_BYTES`).
+    static TOKEN_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// `v`, shared with the pool's equal body if there is one.
+fn intern_tokens(v: Vec<i32>) -> std::rc::Rc<[i32]> {
+    TOKENS.with(|t| {
+        let mut t = t.borrow_mut();
+        if let Some(r) = t.get(&v[..]) {
+            return r.clone();
+        }
+        let r: std::rc::Rc<[i32]> = v.into();
+        TOKEN_BYTES.with(|b| b.set(b.get() + 32 + 4 * r.len()));
+        t.insert(r.clone());
+        r
+    })
+}
+
+/// Drop the pooled bodies no entry holds.
+fn prune_tokens() {
+    TOKENS.with(|t| {
+        let mut t = t.borrow_mut();
+        t.retain(|r| std::rc::Rc::strong_count(r) > 1);
+        let n: usize = t.iter().map(|r| 32 + 4 * r.len()).sum();
+        TOKEN_BYTES.with(|b| b.set(n));
+    });
+}
+
+/// Keep `entry` among `cs`'s variants: the least recently used is dropped
+/// past `MAX_VARIANTS`, and the least recently used of all past
+/// `MAX_BYTES`.
+fn insert_entry(s: &mut State, cs: i32, entry: Entry) {
+    s.bytes += entry.bytes;
+    s.stale.insert(cs);
+    let v = s.store.entry(cs).or_default();
+    if v.len() >= MAX_VARIANTS {
+        let (i, _) = v
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, e)| e.last_used)
+            .unwrap();
+        let old = v.remove(i);
+        s.bytes = s.bytes.saturating_sub(old.bytes);
+    }
+    s.store.entry(cs).or_default().push(entry);
+    // over the budget: drop the least recently used entries (the pooled
+    // bodies first pruned of the ones only dropped entries held)
+    if s.bytes + TOKEN_BYTES.with(|b| b.get()) > MAX_BYTES {
+        prune_tokens();
+    }
+    while s.bytes + TOKEN_BYTES.with(|b| b.get()) > MAX_BYTES {
+        let victim = s
+            .store
+            .iter()
+            .flat_map(|(&cs, v)| v.iter().enumerate().map(move |(i, e)| (e.last_used, cs, i)))
+            .min();
+        let Some((_, cs, i)) = victim else { break };
+        s.stale.insert(cs);
+        let e = s.store.get_mut(&cs).unwrap().remove(i);
+        s.bytes = s.bytes.saturating_sub(e.bytes);
+        drop(e);
+        prune_tokens();
+    }
+}
+
+/// The operations a replay makes: `ops` without the groups that leave
+/// nothing behind. A group (`Begin` .. its `End`) whose operations are all
+/// local (`eq_define`, `eq_word_define`, `sa_def`, `sa_w_def`, in it or in
+/// groups inside it) is undone by its own `unsave`: every location it
+/// assigned is restored to the very word it held before (tex.web §283:
+/// `eq_save` keeps that word, `unsave` puts it back and `eq_destroy`s the
+/// value the group gave it; e-TeX's `restore_sa` likewise), and a
+/// reassignment of the value a location already holds (e-TeX's
+/// "reassigning", which saves nothing) changes nothing either. So the
+/// group's net effect on `eqtb`, the sparse registers and the save stack is
+/// nothing. What it changes besides is memory the program does not read
+/// back: the free lists and the usage statistics (`var_used`, `dyn_used`,
+/// `max_save_stack`), which DESIGN.md §1.1 counts as accounting and the
+/// convergence test treats as dead (free memory, high-water marks). The
+/// recording refuses everything else a group could leave (an
+/// `\aftergroup` token, output, tracing). MACRO-REPLAY.md revision 5,
+/// §11.5.
+fn elide_local_groups(ops: &[Op]) -> Vec<Op> {
+    // (for each `Begin`, the index of its `End`, and whether everything
+    // between them is local)
+    let n = ops.len();
+    let mut end = vec![usize::MAX; n];
+    let mut local = vec![false; n];
+    let mut stack: Vec<(usize, bool)> = vec![];
+    for (i, o) in ops.iter().enumerate() {
+        match o {
+            Op::Begin(_) => stack.push((i, true)),
+            Op::End => {
+                if let Some((b, l)) = stack.pop() {
+                    end[b] = i;
+                    local[b] = l;
+                    if let Some(top) = stack.last_mut() {
+                        top.1 &= l;
+                    }
+                }
+            }
+            Op::Def { kind, .. } | Op::Sa { kind, .. } => {
+                if *kind > 1 {
+                    for x in stack.iter_mut() {
+                        x.1 = false;
+                    }
+                }
+            }
+        }
+    }
+    let mut out = Vec::with_capacity(n);
+    let mut i = 0;
+    while i < n {
+        if matches!(ops[i], Op::Begin(_)) && end[i] != usize::MAX && local[i] {
+            i = end[i] + 1;
+            continue;
+        }
+        out.push(ops[i].clone());
+        i += 1;
+    }
+    out
+}
+
 /// A register the recording read: an `eqtb` location (`\count` & co. 0-255,
 /// and the `\countdef` and kin that name them), or an e-TeX sparse register
 /// by (type, number).
@@ -193,7 +351,9 @@ enum Meaning {
     /// at the recorded location cannot show (sweep C, framed-tikz-theorems,
     /// verify mode).
     Name(Vec<i32>),
-    Macro(i32, Vec<i32>),
+    /// A macro's type and its tokens, shared by every variant that read
+    /// the same body (`intern_tokens`).
+    Macro(i32, std::rc::Rc<[i32]>),
     /// A `\countdef` (and kin) of an e-TeX sparse register: the command,
     /// the register's type and number.
     Sparse(i32, i32, i32),
@@ -208,6 +368,51 @@ struct Context {
     par_token: i32,
     font_version: i32,
     hyph_version: i32,
+    /// The current list's `aux` (`\spacefactor` and `clang`, or
+    /// `\prevdepth`) at the call: a draw call's first spaces and lines
+    /// depend on it.
+    aux: u64,
+}
+
+/// How K2 keeps the value at one `eqtb` location.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum K2Kind {
+    Glue,
+    Shape,
+    List,
+    Equiv,
+    Int,
+}
+
+/// K2's locations, `glue_base..=eqtb_size` in order, as runs `[a, b)` of
+/// one kind ([`Globals::bm_k2_kind`]), the locations it leaves out
+/// skipped.
+fn k2_plan() -> &'static [(i32, i32, K2Kind)] {
+    static PLAN: std::sync::OnceLock<Vec<(i32, i32, K2Kind)>> = std::sync::OnceLock::new();
+    PLAN.get_or_init(|| {
+        let mut v: Vec<(i32, i32, K2Kind)> = vec![];
+        for p in GLUE_BASE..=EQTB_SIZE {
+            let Some(k) = Globals::bm_k2_kind(p) else {
+                continue;
+            };
+            match v.last_mut() {
+                Some((_, b, kk)) if *b == p && *kk == k => *b = p + 1,
+                _ => v.push((p, p + 1, k)),
+            }
+        }
+        v
+    })
+}
+
+/// [`Globals::bm_k2_hash`] of a K2 kept as values.
+fn k2_hash_of(k2: &[i32]) -> u64 {
+    let mut h: u64 = 0x243f_6a88_85a3_08d3;
+    for &x in k2 {
+        h = (h ^ x as u32 as u64)
+            .wrapping_mul(0x0100_0000_01b3)
+            .rotate_left(23);
+    }
+    h
 }
 
 /// A hash of K1, the context, K2 and K4: a variant is compared in full only
@@ -230,6 +435,8 @@ fn key_hash(k1: &[i32], ctx: &Context, k2: &[i32], k4: &[i32]) -> u64 {
         ctx.par_token,
         ctx.font_version,
         ctx.hyph_version,
+        ctx.aux as i32,
+        (ctx.aux >> 32) as i32,
         k1.len() as i32,
         k2.len() as i32,
         k4.len() as i32,
@@ -239,24 +446,24 @@ fn key_hash(k1: &[i32], ctx: &Context, k2: &[i32], k4: &[i32]) -> u64 {
     h
 }
 
-/// A variant whose K1, context, K2 and K4 hold: its index, and the K3
-/// meanings, absent names and void boxes left to check.
-type Candidate = (
-    usize,
-    Vec<(i32, Meaning)>,
-    Vec<Vec<i32>>,
-    Vec<i32>,
-    Vec<(RegId, Vec<i32>)>,
-    Vec<(i32, Vec<i32>)>,
-);
-
 struct Entry {
+    /// A recording of this key was abandoned (`bm_abort`): the call reads
+    /// the same values up to the same refusal, so a call that matches it is
+    /// expanded for real without recording again, and the calls inside it
+    /// are offered (a recording would refuse them). Its operations are
+    /// empty.
+    doomed: bool,
     hash: u64,
+    /// `bm_k2_hash` of K2.
+    k2hash: u64,
     /// K1: the macro's body and its arguments.
     k1: Vec<i32>,
     ctx: Context,
-    /// K2 and K4, as one stream of values.
-    k2: Vec<i32>,
+    /// K2 and K4, as one stream of values. K2 is shared by the variants
+    /// of a macro recorded in the same state (a typed letter's two states,
+    /// recorded at each call), so it is kept once and compared once per
+    /// offer.
+    k2: std::rc::Rc<[i32]>,
     k4: Vec<i32>,
     /// K3: the meanings looked at, by location.
     k3: Vec<(i32, Meaning)>,
@@ -280,6 +487,25 @@ struct Entry {
     /// A last `\\ignorespaces` (its token), run after the replay.
     trailer: Option<i32>,
     ops: Vec<Op>,
+    /// What a replay makes: `ops` without the groups that leave nothing
+    /// behind ([`elide_local_groups`]).
+    fast: Vec<Op>,
+    /// Existing forms and images the call referred to (`\pdfrefxform`,
+    /// `\pdfrefximage`): each must still be one of its type with the same
+    /// dimensions (part of the key).
+    obj_refs: Vec<ObjRef>,
+    /// Objects the call made (a `\pdfstartlink`'s), made again by a replay.
+    new_objs: usize,
+    /// Fonts whose interword glue the call shares (an assignment's
+    /// `GlueFrom(0, f)`, a fragment's `Spec::Font`), with its fields: each
+    /// must be there with the same fields (part of the key).
+    font_glues: Vec<(i32, [i32; 5])>,
+    /// `\pdflastlink` after the call, when the call set it: the `i`-th of
+    /// its new objects.
+    last_link: Option<usize>,
+    /// The control sequences a replay reports to the L5 read-set: the
+    /// macro, K3's, and every one `ops` assigns or `\let`s from.
+    rs_locs: Vec<i32>,
     /// `last_badness` after the call, when the call packed a box: a call that
     /// packs none leaves it as it was, which a replay must then do too (it
     /// is the state's, not the call's).
@@ -313,8 +539,20 @@ struct Frame {
     lines: (u64, Vec<(i32, i32)>, bool),
 }
 
+/// An existing object a recording referred to: its type, its number, and
+/// its width, height and depth (`obj_xform_width` & co.).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ObjRef {
+    t: i32,
+    n: i32,
+    dims: [i32; 3],
+}
+
 struct Rec {
     cs: i32,
+    obj_refs: Vec<ObjRef>,
+    new_objs: Vec<i32>,
+    last_link: i32,
     /// The input level of the body.
     base: i32,
     /// `save_scanner_status`: the status the body runs with.
@@ -353,6 +591,11 @@ struct Rec {
 #[derive(Default)]
 struct State {
     store: HashMap<i32, Vec<Entry>>,
+    /// Per macro, its variants' indices by the hash of K1 and the context
+    /// (`Entry::hash`), made again from `store` after a variant is added
+    /// or dropped (`stale`).
+    index: HashMap<i32, HashMap<u64, Vec<usize>>>,
+    stale: HashSet<i32>,
     aborts: HashMap<i32, u32>,
     rec: Option<Rec>,
     clock: u64,
@@ -389,6 +632,8 @@ fn with_config<R>(f: impl FnOnce(&Config) -> R) -> R {
             let mode = match std::env::var("FLASHTEX_BOXMEMO").as_deref() {
                 Ok("on") | Ok("1") => Mode::On,
                 Ok("verify") => Mode::Verify,
+                Ok("off") | Ok("0") => Mode::Off,
+                _ if DEFAULT_ON.load(std::sync::atomic::Ordering::Relaxed) => Mode::On,
                 _ => Mode::Off,
             };
             let names = match std::env::var("FLASHTEX_BOXMEMO_NAMES") {
@@ -477,6 +722,50 @@ fn fresh_version() -> i32 {
     use std::sync::atomic::{AtomicI32, Ordering};
     static NEXT: AtomicI32 = AtomicI32::new(1);
     NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// The version that names format file `path` as it is now: its path and
+/// signature (length, modification time, identity), interned; a fresh one
+/// when there is no path or the signature is racy (it then proves nothing,
+/// `StatSig::racy`).
+fn format_version(path: Option<&str>) -> i32 {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static TABLE: Mutex<Option<HashMap<String, i32>>> = Mutex::new(None);
+    let Some(p) = path else {
+        return fresh_version();
+    };
+    let Some(s) = crate::system::StatSig::of(p) else {
+        return fresh_version();
+    };
+    if s.racy {
+        return fresh_version();
+    }
+    let key = format!("{p}\t{}\t{}\t{}", s.len, s.mtime_ns, s.ino);
+    let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+    *t.get_or_insert_with(HashMap::new)
+        .entry(key)
+        .or_insert_with(fresh_version)
+}
+
+/// The fonts' version after the change `change` (what changed, and the
+/// value it got) to version `parent`: the same number for the same parent
+/// and change, a fresh one otherwise. A version thus names the sequence of
+/// changes since the engine's start (whose version is fresh), so two runs
+/// that make the same changes -- an edit's window typed in again, which
+/// loads the same font and sets its `\hyphenchar` again -- reach the same
+/// version, and equal versions name equal font arrays. (A fresh number at
+/// every change, as revision 1 had it, kept every call after a font load
+/// in the window from ever hitting.)
+fn next_version(parent: i32, change: [i32; 4]) -> i32 {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    type Versions = HashMap<(i32, [i32; 4]), i32>;
+    static TABLE: Mutex<Option<Versions>> = Mutex::new(None);
+    let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+    *t.get_or_insert_with(HashMap::new)
+        .entry((parent, change))
+        .or_insert_with(fresh_version)
 }
 
 thread_local! {
@@ -722,38 +1011,177 @@ impl Globals {
     /// registers, pointers by what they point to.
     fn bm_k2(&self) -> Vec<i32> {
         let mut v = Vec::with_capacity(8192);
-        for p in GLUE_BASE..=EQTB_SIZE {
-            if (BOX_BASE..BOX_BASE + 256).contains(&p) || Self::bm_is_register(p) {
-                continue;
-            }
-            let w = self.bm_eq(p);
-            if p < LOCAL_BASE {
-                // glue parameters
-                let e = w.hh().rh();
-                if e <= LO_MEM_STAT_MAX {
-                    v.push(-1);
-                    v.push(e);
-                } else {
-                    v.extend_from_slice(&self.bm_glue_fields(e));
-                }
-            } else if p == PAR_SHAPE_LOC || (ETEX_PEN_BASE..ETEX_PENS).contains(&p) {
-                let e = w.hh().rh();
-                match self.bm_shape_words(e) {
-                    Some(s) => {
-                        v.push(s.len() as i32);
-                        v.extend(s);
+        self.bm_k2_each(|x| {
+            v.push(x);
+            true
+        });
+        v
+    }
+
+    /// Whether K2 now is `want`, compared as it is made (no copy of the
+    /// state is built), stopping at the first difference.
+    fn bm_k2_is(&self, want: &[i32]) -> bool {
+        // (`bm_k2_each`'s walk, a run of fixed-width values compared as one
+        // slice)
+        let mut at = 0usize;
+        let mut take = |n: usize| -> Option<&[i32]> {
+            let s = want.get(at..at + n)?;
+            at += n;
+            Some(s)
+        };
+        for &(a, b, kind) in k2_plan() {
+            let words = &self.eqtb[(a - 1) as usize..(b - 1) as usize];
+            match kind {
+                K2Kind::Equiv => match take(words.len()) {
+                    Some(w) if words.iter().map(|x| x.hh().rh()).eq(w.iter().copied()) => {}
+                    _ => return false,
+                },
+                K2Kind::Int => match take(words.len()) {
+                    Some(w) if words.iter().map(|x| x.int()).eq(w.iter().copied()) => {}
+                    _ => return false,
+                },
+                K2Kind::Glue => {
+                    for x in words {
+                        let e = x.hh().rh();
+                        let ok = if e <= LO_MEM_STAT_MAX {
+                            take(2) == Some(&[-1, e][..])
+                        } else {
+                            take(5) == Some(&self.bm_glue_fields(e)[..])
+                        };
+                        if !ok {
+                            return false;
+                        }
                     }
-                    None => v.push(-2),
                 }
-            } else if (OUTPUT_ROUTINE_LOC..TOKS_BASE + 256).contains(&p) {
-                self.bm_push_list(w.hh().rh(), &mut v);
-            } else if p < INT_BASE {
-                v.push(w.hh().rh());
-            } else {
-                v.push(w.int());
+                K2Kind::Shape => {
+                    for x in words {
+                        let ok = match self.bm_shape_words(x.hh().rh()) {
+                            Some(v) => {
+                                take(1) == Some(&[v.len() as i32][..])
+                                    && take(v.len()) == Some(&v[..])
+                            }
+                            None => take(1) == Some(&[-2][..]),
+                        };
+                        if !ok {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::List => {
+                    for x in words {
+                        let e = x.hh().rh();
+                        if e == 0 {
+                            if take(1) != Some(&[-1][..]) {
+                                return false;
+                            }
+                            continue;
+                        }
+                        let mut q = self.bm_link(e);
+                        while q != 0 {
+                            if take(1) != Some(&[self.bm_info(q)][..]) {
+                                return false;
+                            }
+                            q = self.bm_link(q);
+                        }
+                        if take(1) != Some(&[-3][..]) {
+                            return false;
+                        }
+                    }
+                }
             }
         }
-        v
+        at == want.len()
+    }
+
+    /// K2's values in order, each handed to `f` until it returns false;
+    /// false then. A token list is its tokens and the end marker -3 (a
+    /// token is never negative), the null list -1; a glue specification
+    /// -1 and the pointer when it is static, else its five fields. The
+    /// locations are walked by runs of one kind ([`k2_plan`]).
+    fn bm_k2_each(&self, mut f: impl FnMut(i32) -> bool) -> bool {
+        for &(a, b, kind) in k2_plan() {
+            let words = &self.eqtb[(a - 1) as usize..(b - 1) as usize];
+            match kind {
+                K2Kind::Glue => {
+                    for w in words {
+                        let e = w.hh().rh();
+                        if e <= LO_MEM_STAT_MAX {
+                            if !(f(-1) && f(e)) {
+                                return false;
+                            }
+                        } else if !self.bm_glue_fields(e).into_iter().all(&mut f) {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::Shape => {
+                    for w in words {
+                        let ok = match self.bm_shape_words(w.hh().rh()) {
+                            Some(v) => f(v.len() as i32) && v.into_iter().all(&mut f),
+                            None => f(-2),
+                        };
+                        if !ok {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::List => {
+                    for w in words {
+                        let e = w.hh().rh();
+                        if e == 0 {
+                            if !f(-1) {
+                                return false;
+                            }
+                            continue;
+                        }
+                        let mut q = self.bm_link(e);
+                        while q != 0 {
+                            if !f(self.bm_info(q)) {
+                                return false;
+                            }
+                            q = self.bm_link(q);
+                        }
+                        if !f(-3) {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::Equiv => {
+                    for w in words {
+                        if !f(w.hh().rh()) {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::Int => {
+                    for w in words {
+                        if !f(w.int()) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// The kind of K2 value at `eqtb` location `p`, `None` for a location
+    /// K2 leaves out (the box registers, and the registers KR keys
+    /// precisely, BOX-MEMO.md §10.1).
+    fn bm_k2_kind(p: i32) -> Option<K2Kind> {
+        if (BOX_BASE..BOX_BASE + 256).contains(&p) || Self::bm_is_register(p) {
+            None
+        } else if p < LOCAL_BASE {
+            Some(K2Kind::Glue)
+        } else if p == PAR_SHAPE_LOC || (ETEX_PEN_BASE..ETEX_PENS).contains(&p) {
+            Some(K2Kind::Shape)
+        } else if (OUTPUT_ROUTINE_LOC..TOKS_BASE + 256).contains(&p) {
+            Some(K2Kind::List)
+        } else if p < INT_BASE {
+            Some(K2Kind::Equiv)
+        } else {
+            Some(K2Kind::Int)
+        }
     }
 
     /// Debugging misses: K2 and K4 by location (`eqtb` location, or
@@ -831,7 +1259,7 @@ impl Globals {
     }
 
     /// The sparse array elements of type `t`, in order: (number, element).
-    fn bm_sa_walk(&self, t: i32, f: &mut dyn FnMut(i32, i32)) {
+    pub(crate) fn bm_sa_walk(&self, t: i32, f: &mut dyn FnMut(i32, i32)) {
         let root = self.sa_root[t as usize];
         if root == 0 {
             return;
@@ -874,16 +1302,13 @@ impl Globals {
     /// `\muskip`, `\toks` 0-255)? Registers are read only explicitly,
     /// never by a primitive behind the scenes, so the key holds those the
     /// recording read (KR) rather than all of them.
+    #[inline]
     fn bm_is_register(p: i32) -> bool {
-        [
-            k::count_base,
-            k::scaled_base,
-            k::skip_base,
-            k::mu_skip_base,
-            TOKS_BASE,
-        ]
-        .iter()
-        .any(|&b| (b..b + 256).contains(&p))
+        (k::count_base..k::count_base + 256).contains(&p)
+            || (k::scaled_base..k::scaled_base + 256).contains(&p)
+            || (k::skip_base..k::skip_base + 256).contains(&p)
+            || (k::mu_skip_base..k::mu_skip_base + 256).contains(&p)
+            || (TOKS_BASE..TOKS_BASE + 256).contains(&p)
     }
 
     /// A register's value as KR keeps it.
@@ -1040,7 +1465,7 @@ impl Globals {
             if !self.bm_tokens(self.bm_link(e), &mut v) {
                 return None;
             }
-            return Some(Meaning::Macro(t, v));
+            return Some(Meaning::Macro(t, intern_tokens(v)));
         }
         if (t == REGISTER || t == TOKS_REGISTER) && e > LO_MEM_STAT_MAX {
             let st = self.mem[e as usize].hh().b0() / 16;
@@ -1054,13 +1479,31 @@ impl Globals {
         Some(Meaning::Plain(t, e))
     }
 
-    /// Whether K3's entry `(p, m)` holds now: `p`'s meaning is `m`, or for a
-    /// name looked up, the name still leads to `p`.
-    fn bm_k3_holds(&self, p: i32, m: &Meaning) -> bool {
-        match m {
-            Meaning::Name(n) => self.bm_find_cs(n) == Some(p),
-            _ => self.bm_meaning(p).as_ref() == Some(m),
+    /// Whether the meaning of `p` is `m` ([`bm_meaning`](Self::bm_meaning)
+    /// compared in place, without copying a macro's tokens).
+    fn bm_meaning_is(&self, p: i32, m: &Meaning) -> bool {
+        if let Meaning::Name(n) = m {
+            return self.bm_find_cs(n) == Some(p);
         }
+        let w = self.bm_eq(p).hh();
+        let (t, e) = (w.b0(), w.rh());
+        if (CALL..=LONG_OUTER_CALL).contains(&t) && e != 0 {
+            let Meaning::Macro(mt, toks) = m else {
+                return false;
+            };
+            if *mt != t {
+                return false;
+            }
+            let mut q = self.bm_link(e);
+            for &x in toks.iter() {
+                if q == 0 || self.bm_info(q) != x {
+                    return false;
+                }
+                q = self.bm_link(q);
+            }
+            return q == 0;
+        }
+        self.bm_meaning(p).as_ref() == Some(m)
     }
 
     /// The control sequence named `name` (internal codes, two or more), as
@@ -1134,6 +1577,7 @@ impl Globals {
             par_token: self.par_token,
             font_version: self.bm_font_version,
             hyph_version: self.bm_hyph_version,
+            aux: self.cur_list.aux_field.0,
         }
     }
 
@@ -1218,6 +1662,13 @@ impl Globals {
 
     /// After a format is loaded: mark the registered macros it defines.
     pub fn flashtex_bm_loaded(&mut self) {
+        // The fonts' and the exceptions' first versions name the format
+        // file loaded (`format_version`): the same unchanged file gives the
+        // same versions, so two loads leave the same state (COLD-FIXED's
+        // image stands for the second), and another format other versions.
+        let v = format_version(self.fmt_file.path());
+        self.bm_font_version = v;
+        self.bm_hyph_version = v;
         let names = with_config(|c| c.names.clone());
         for p in 1..=k::eqtb_top {
             if !Self::bm_is_cs(p) || p < k::hash_base {
@@ -1268,11 +1719,69 @@ impl Globals {
         }
     }
 
+    /// The dimensions of object `n` (a form or an image) as pdfTeX keeps
+    /// them (`obj_xform_width` & co.: `pdf_mem` at its `obj_data_ptr`).
+    fn bm_obj_dims(&self, n: i32) -> [i32; 3] {
+        let d = self.obj_tab[n as usize].int4;
+        [
+            self.pdf_mem[d as usize],
+            self.pdf_mem[(d + 1) as usize],
+            self.pdf_mem[(d + 2) as usize],
+        ]
+    }
+
+    /// Whether object `n` is one of type `t` (`pdf_check_obj`'s walk).
+    fn bm_obj_is(&self, t: i32, n: i32) -> bool {
+        if n <= 0 || n > self.obj_ptr {
+            return false;
+        }
+        let mut k = self.head_tab[(t - 1) as usize];
+        while k != 0 && k != n {
+            k = self.obj_tab[k as usize].int1;
+        }
+        k == n
+    }
+
+    /// A recording referred to existing object `n` of type `t` (pdftex.web's
+    /// `\pdfrefxform`, `\pdfrefximage`; changes/boxmemo.ch): the node
+    /// copied its dimensions, so the object joins the key.
+    #[cold]
+    #[inline(never)]
+    pub fn flashtex_bm_obj_ref(&mut self, t: i32, n: i32) {
+        let r = ObjRef {
+            t,
+            n,
+            dims: self.bm_obj_dims(n),
+        };
+        self.bm_with_rec(|rec| {
+            if !rec.obj_refs.contains(&r) {
+                rec.obj_refs.push(r);
+            }
+        });
+    }
+
     /// A recording packed a box (changes/boxmemo.ch: `hpack`, `vpackage`).
     #[cold]
     #[inline(never)]
     pub fn flashtex_bm_packed(&mut self) {
         self.bm_with_rec(|r| r.packed = true);
+    }
+
+    /// A recording made object `n` (a `\pdfstartlink`'s `pdf_new_objnum`;
+    /// changes/boxmemo.ch): a replay makes its own.
+    #[cold]
+    #[inline(never)]
+    pub fn flashtex_bm_new_obj(&mut self, n: i32) {
+        self.bm_with_rec(|rec| rec.new_objs.push(n));
+    }
+
+    /// A font parameter was set (changes/boxmemo.ch): `n` -1 for
+    /// `\fontdimen` (`a` its place in `font_info`), else `assign_font_int`'s
+    /// code (`a` the font, `b` the character), and `v` the value.
+    #[cold]
+    #[inline(never)]
+    pub fn flashtex_bm_font_set(&mut self, n: i32, a: i32, b: i32, v: i32) {
+        self.bm_font_version = next_version(self.bm_font_version, [n, a, b, v]);
     }
 
     #[cold]
@@ -1314,95 +1823,144 @@ impl Globals {
         }
         let k1 = self.bm_k1(cs, n);
         let ctx = self.bm_ctx(scanner);
-        let k2 = self.bm_k2();
-        let k4 = self.bm_k4();
-        let hash = key_hash(&k1, &ctx, &k2, &k4);
-        // the variants whose K1, context, K2 and K4 hold (most recent first)
-        let candidates: Vec<Candidate> = ST.with(|s| {
+        // K1 and the context select the variants (by their hash, then in
+        // full); K2 and the rest are compared in place, without a copy of
+        // the state: an offer that hits builds no key.
+        let hash = key_hash(&k1, &ctx, &[], &[]);
+        let k4_now = self.bm_k4();
+        // (the most recent variant whose whole key holds; whether one held
+        // up to K3 or K7 but not them)
+        ST.with(|s| {
+            let mut s = s.borrow_mut();
+            if s.stale.remove(&cs) {
+                let mut ix: HashMap<u64, Vec<usize>> = HashMap::new();
+                for (i, e) in s.store.get(&cs).into_iter().flatten().enumerate() {
+                    ix.entry(e.hash).or_default().push(i);
+                }
+                s.index.insert(cs, ix);
+            }
+        });
+        let (found, partial) = ST.with(|s| {
             let s = s.borrow();
-            let Some(v) = s.store.get(&cs) else {
-                return vec![];
+            let (Some(v), Some(ix)) = (
+                s.store.get(&cs),
+                s.index.get(&cs).and_then(|ix| ix.get(&hash)),
+            ) else {
+                return (None, None);
             };
-            let mut c: Vec<_> = v
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| {
-                    e.hash == hash
-                        && e.k1 == k1
-                        && e.ctx == ctx
-                        && e.k2 == k2
-                        && e.k4 == k4
-                        && e.line.is_none_or(|l| l == self.line)
-                })
-                .map(|(i, e)| {
-                    (
-                        e.last_used,
-                        i,
-                        e.k3.clone(),
-                        e.absent.clone(),
-                        e.voids.clone(),
-                        e.kr.clone(),
-                        e.kb.iter().chain(&e.holes).cloned().collect::<Vec<_>>(),
-                    )
-                })
-                .collect();
-            c.sort_by_key(|x| std::cmp::Reverse(x.0));
-            c.into_iter()
-                .map(|(_, i, a, b, d, r, x)| (i, a, b, d, r, x))
-                .collect()
+            let mut best: Option<(u64, usize)> = None;
+            let mut partial = None;
+            let mut k2_seen: Vec<(*const i32, bool)> = vec![];
+            for (i, e) in ix.iter().map(|&i| (i, &v[i])) {
+                if best.is_some_and(|(u, _)| u >= e.last_used) {
+                    continue;
+                }
+                if e.hash != hash
+                    || e.k1 != k1
+                    || e.ctx != ctx
+                    || e.k4 != k4_now
+                    || !e.line.is_none_or(|l| l == self.line)
+                {
+                    continue;
+                }
+                // (K2 in place, once per kept K2)
+                let k2p = std::rc::Rc::as_ptr(&e.k2) as *const i32;
+                let k2_ok = match k2_seen.iter().find(|(q, _)| *q == k2p) {
+                    Some(&(_, ok)) => ok,
+                    None => {
+                        let ok = self.bm_k2_is(&e.k2);
+                        k2_seen.push((k2p, ok));
+                        ok
+                    }
+                };
+                if !k2_ok {
+                    continue;
+                }
+                let rest_ok = e.absent.iter().all(|n| match self.bm_find_cs(n) {
+                    None => true,
+                    Some(p) => self.bm_eq(p).hh().b0() == k::undefined_cs,
+                }) && e.voids.iter().all(|&n| self.bm_box_value(n) == 0)
+                    && e.kr.iter().all(|(r, v)| self.bm_reg_value(*r) == *v)
+                    && e.kb
+                        .iter()
+                        .chain(&e.holes)
+                        .all(|(n, v)| self.bm_box_key(self.bm_box_value(*n)) == *v)
+                    && e.k3.iter().all(|(p, m)| self.bm_meaning_is(*p, m))
+                    && e.obj_refs
+                        .iter()
+                        .all(|r| self.bm_obj_is(r.t, r.n) && self.bm_obj_dims(r.n) == r.dims)
+                    && e.font_glues.iter().all(|(f, w)| {
+                        let q = self.font_glue[*f as usize];
+                        q > LO_MEM_STAT_MAX && self.bm_glue_fields(q) == *w
+                    });
+                if rest_ok {
+                    best = Some((e.last_used, i));
+                } else if partial.is_none_or(|(u, _)| u < e.last_used) {
+                    partial = Some((e.last_used, i));
+                }
+            }
+            (best.map(|b| b.1), partial.map(|p| p.1))
         });
         let mut why = "NotRecorded";
-        // ... and of those, the first whose K3 and K7 hold
-        for (i, k3, absent, voids, kr, kb) in candidates {
-            let absent_ok = absent.iter().all(|n| match self.bm_find_cs(n) {
-                None => true,
-                Some(p) => self.bm_eq(p).hh().b0() == k::undefined_cs,
-            }) && voids.iter().all(|&n| self.bm_box_value(n) == 0)
-                && kr.iter().all(|(r, v)| self.bm_reg_value(*r) == *v)
-                && kb
-                    .iter()
-                    .all(|(n, v)| self.bm_box_key(self.bm_box_value(*n)) == *v);
-            if absent_ok && k3.iter().all(|(p, m)| self.bm_k3_holds(*p, m)) {
-                if m == Mode::Verify {
-                    // the full verifier. In the host its restore replaces
-                    // the edit's pending branch, so a compile with a
-                    // verified call does not converge: verify is a gate
-                    // mode, and the output must still equal a full run's
-                    {
-                        if let Ok(ck) = self.checkpoint() {
-                            FULL.with(|f| *f.borrow_mut() = Some(FullVerify { ck, warn }));
-                        }
+        let doomed = found
+            .is_some_and(|i| ST.with(|s| s.borrow().store.get(&cs).is_some_and(|v| v[i].doomed)));
+        if doomed {
+            return self.bm_miss("Doomed");
+        }
+        if let Some(i) = found {
+            if m == Mode::Verify {
+                // the full verifier, on the command line only. Its
+                // admission checkpoint stays the base of the state the run
+                // goes on from, so it cannot be dropped after the
+                // comparison; in the host it was left among the restart
+                // points with no page count (the verify sweep: "restart
+                // point without a page count" on beamer-fragile, a compile
+                // interrupted by the next edit), and its restore replaced
+                // the edit's pending branch. The host verifies each
+                // admitted call's operation log and output (`bm_verified`).
+                if WINDOW.with(|w| w.get()).is_none() {
+                    if let Ok(ck) = self.checkpoint() {
+                        FULL.with(|f| *f.borrow_mut() = Some(FullVerify { ck, warn }));
                     }
-                    return self.bm_start(cs, n, scanner, k1, ctx, k2, k4, Some(i));
                 }
-                if let Some(t) = self.bm_replay(cs, i) {
-                    self.cur_tok = t;
-                    self.back_input();
-                }
-                return;
+                let (k2, k4) = (self.bm_k2(), k4_now);
+                return self.bm_start(cs, n, scanner, k1, ctx, k2, k4, Some(i));
             }
+            if let Some(t) = self.bm_replay(cs, i) {
+                self.cur_tok = t;
+                self.back_input();
+            }
+            return;
+        }
+        if let Some(i) = partial {
             why = "Meanings";
             if debug() {
-                let bad: Vec<String> = k3
-                    .iter()
-                    .filter(|(p, m)| !self.bm_k3_holds(*p, m))
-                    .take(4)
-                    .map(|(p, m)| {
-                        format!(
-                            "\\{} was {m:?} now {:?}",
-                            self.cs_name_string(*p),
-                            self.bm_meaning(*p)
-                        )
-                    })
-                    .collect();
-                let regs: Vec<String> = kr
-                    .iter()
-                    .filter(|(r, v)| self.bm_reg_value(*r) != *v)
-                    .take(6)
-                    .map(|(r, v)| format!("{r:?} was {v:?} now {:?}", self.bm_reg_value(*r)))
-                    .collect();
+                let (bad, regs) = ST.with(|s| {
+                    let s = s.borrow();
+                    let e = &s.store[&cs][i];
+                    let bad: Vec<String> =
+                        e.k3.iter()
+                            .filter(|(p, m)| !self.bm_meaning_is(*p, m))
+                            .take(4)
+                            .map(|(p, m)| {
+                                format!(
+                                    "\\{} was {m:?} now {:?}",
+                                    self.cs_name_string(*p),
+                                    self.bm_meaning(*p)
+                                )
+                            })
+                            .collect();
+                    let regs: Vec<String> = e
+                        .kr
+                        .iter()
+                        .filter(|(r, v)| self.bm_reg_value(*r) != *v)
+                        .take(6)
+                        .map(|(r, v)| format!("{r:?} was {v:?} now {:?}", self.bm_reg_value(*r)))
+                        .collect();
+                    (bad, regs)
+                });
                 eprintln!(
-                    "boxmemo: \\{} key differs: absent ok {absent_ok}; {bad:?}; registers {regs:?}",
+                    "boxmemo: \\{} key differs: {bad:?}; registers {regs:?}",
                     self.cs_name_string(cs)
                 );
             }
@@ -1437,6 +1995,7 @@ impl Globals {
         if refused {
             return;
         }
+        let (k2, k4) = (self.bm_k2(), k4_now);
         self.bm_start(cs, n, scanner, k1, ctx, k2, k4, None);
     }
 
@@ -1461,6 +2020,9 @@ impl Globals {
         let start = self.bm_frame();
         let rec = Rec {
             cs,
+            obj_refs: vec![],
+            new_objs: vec![],
+            last_link: self.pdf_last_link,
             base: self.input_ptr,
             scanner,
             start,
@@ -1544,6 +2106,7 @@ impl Globals {
                     ));
                 }
                 // drop the entry: the guard let through a call it should not have
+                s.stale.insert(rec.cs);
                 if let Some(v) = s.store.get_mut(&rec.cs) {
                     if let Some(i) = rec.verify {
                         if i < v.len() {
@@ -1554,6 +2117,51 @@ impl Globals {
                 }
             } else {
                 *s.aborts.entry(rec.cs).or_default() += 1;
+                // (what the call read up to the refusal is its key: the same
+                // reads take it to the same refusal)
+                s.clock += 1;
+                let now = s.clock;
+                let k2hash = k2_hash_of(&rec.k2);
+                let bytes = 4 * (rec.k1.len() + rec.k2.len()) + 64;
+                let entry = Entry {
+                    doomed: true,
+                    hash: key_hash(&rec.k1, &rec.ctx, &[], &[]),
+                    k2hash,
+                    k1: rec.k1,
+                    ctx: rec.ctx,
+                    k2: s
+                        .store
+                        .get(&rec.cs)
+                        .and_then(|v| {
+                            v.iter()
+                                .find(|e| e.k2hash == k2hash && *e.k2 == rec.k2[..])
+                                .map(|e| e.k2.clone())
+                        })
+                        .unwrap_or_else(|| rec.k2.into()),
+                    k4: rec.k4,
+                    k3: rec.k3,
+                    absent: rec.absent,
+                    kr: rec.kr,
+                    kb: rec.kb,
+                    holes: rec.holes.iter().map(|h| (h.0, h.2.clone())).collect(),
+                    frag: None,
+                    aux: 0,
+                    trailer: None,
+                    voids: rec.voids,
+                    line: rec.line_read.then_some(self.line),
+                    fast: vec![],
+                    last_link: None,
+                    obj_refs: rec.obj_refs,
+                    new_objs: 0,
+                    font_glues: vec![],
+                    rs_locs: vec![],
+                    ops: vec![],
+                    last_badness: None,
+                    last_used: now,
+                    hits: 0,
+                    bytes,
+                };
+                insert_entry(&mut s, rec.cs, entry);
             }
         });
         write_stats(false);
@@ -1686,7 +2294,26 @@ impl Globals {
                 return Ok(Val::StaticGlue(e));
             }
             if self.bm_link(e) != 0 {
-                return self.bm_glue_source(e).ok_or("SharedGlue");
+                let mut src = self.bm_glue_source(e);
+                // `\skip49=\lastskip` (beamer's `\reset@color`): the last
+                // glue of the current list, which is a list the call made
+                // (`flashtex_bm_internal` refuses the call's outer one), so
+                // only the call's own nodes share the specification. Made
+                // fresh by the replay, it is shared as the normal path
+                // shares it from then on: a node the call's output keeps
+                // takes it from the register (`boxfrag`'s `Spec::Eqtb`) or
+                // as its own.
+                if src.is_none() && self.cur_cmd == k::last_item && self.cur_chr == GLUE_VAL {
+                    src = Some(Val::FreshGlue(self.bm_glue_fields(e)));
+                }
+                if src.is_none() && debug() {
+                    eprintln!(
+                        "boxmemo: {} gets a shared glue specification ({e}, {} more references) of no single register",
+                        self.bm_loc_name(p),
+                        self.bm_link(e)
+                    );
+                }
+                return src.ok_or("SharedGlue");
             }
             return Ok(Val::FreshGlue(self.bm_glue_fields(e)));
         }
@@ -1763,6 +2390,27 @@ impl Globals {
                 if self.bm_link(q + 1) == e {
                     found.push(Val::GlueFrom(-t, n));
                 }
+            });
+        }
+        if found.is_empty() {
+            for f in 0..=self.font_ptr {
+                if self.font_glue[f as usize] == e {
+                    found.push(Val::GlueFrom(0, f));
+                }
+            }
+        }
+        if found.len() > 1 {
+            // (several registers hold it, as `\z@skip` and another after an
+            // assignment between them: the one the recording read is the
+            // source `scan_glue` took it from, as it is in LaTeX's
+            // `\parskip\z@skip\relax`, where the current token is past it)
+            let read: Vec<RegId> = self
+                .bm_with_rec(|r| r.kr.iter().map(|x| x.0).collect())
+                .unwrap_or_default();
+            found.retain(|v| match v {
+                Val::GlueFrom(p, 0) if *p > 0 => read.contains(&RegId::Eqtb(*p)),
+                Val::GlueFrom(t, n) if *t < 0 => read.contains(&RegId::Sa(-*t, *n)),
+                _ => false,
             });
         }
         if found.len() == 1 {
@@ -2102,6 +2750,12 @@ impl Globals {
                 k::pdf_save_node,
                 k::pdf_restore_node,
                 k::pdf_save_pos_node,
+                // a link: its object is made again by a replay; an
+                // existing form or image: part of the key
+                k::pdf_start_link_node,
+                k::pdf_end_link_node,
+                k::pdf_refxform_node,
+                k::pdf_refximage_node,
             ]
             .contains(&chr)
         } else if [
@@ -2227,7 +2881,19 @@ impl Globals {
             Some("Fonts")
         } else if end.marks != start.marks {
             Some("Marks")
-        } else if end.obj_ptr != start.obj_ptr {
+        } else if !self
+            .bm_with_rec(|r| {
+                // only the links' objects, made one after the other
+                r.new_objs.len() as i32 == end.obj_ptr - start.obj_ptr
+                    && r.new_objs
+                        .iter()
+                        .zip(start.obj_ptr + 1..)
+                        .all(|(&o, n)| o == n)
+                    && (self.pdf_last_link == r.last_link
+                        || r.new_objs.contains(&self.pdf_last_link))
+            })
+            .unwrap_or(false)
+        {
             Some("Objects")
         } else if end.interaction != start.interaction || end.arm != start.arm {
             Some("State")
@@ -2272,7 +2938,7 @@ impl Globals {
                 return self.bm_abort_taken(rec, "Hole");
             }
             let first = self.bm_link(start.tail);
-            match self.frag_take(first, 0, &holes) {
+            match self.frag_take(first, 0, &holes, &rec.new_objs) {
                 Ok(f) if self.cur_list.tail_field == end.tail => frag = Some(f),
                 Ok(_) => return self.bm_abort_taken(rec, "Tail"),
                 Err(w) => return self.bm_abort_taken(rec, w),
@@ -2304,15 +2970,9 @@ impl Globals {
         trailer: Option<i32>,
     ) {
         let line = self.line;
-        let bytes = 4 * (rec.k1.len() + rec.k2.len() + rec.k4.len())
-            + rec
-                .k3
-                .iter()
-                .map(|(_, m)| match m {
-                    Meaning::Macro(_, v) | Meaning::Name(v) => 16 + 4 * v.len(),
-                    _ => 16,
-                })
-                .sum::<usize>()
+        let mut bytes = 4 * (rec.k1.len() + rec.k2.len() + rec.k4.len())
+            // (a macro's tokens are shared: `intern_tokens` counts them once)
+            + 16 * rec.k3.len()
             + rec
                 .ops
                 .iter()
@@ -2342,11 +3002,60 @@ impl Globals {
             s.clock += 1;
             let now = s.clock;
             s.aborts.remove(&rec.cs);
+            let k2hash = k2_hash_of(&rec.k2);
+            let k2: std::rc::Rc<[i32]> = s
+                .store
+                .get(&rec.cs)
+                .and_then(|v| {
+                    v.iter()
+                        .find(|e| e.k2hash == k2hash && *e.k2 == rec.k2[..])
+                        .map(|e| e.k2.clone())
+                })
+                .inspect(|k2| bytes -= 4 * k2.len())
+                .unwrap_or_else(|| rec.k2.into());
+            let font_glues: Vec<(i32, [i32; 5])> = {
+                let mut fs: Vec<i32> = frag.as_ref().map(|f| f.fonts.clone()).unwrap_or_default();
+                for o in &rec.ops {
+                    if let Op::Def {
+                        v: Val::GlueFrom(0, f),
+                        ..
+                    }
+                    | Op::Sa {
+                        v: Val::GlueFrom(0, f),
+                        ..
+                    } = o
+                    {
+                        if !fs.contains(f) {
+                            fs.push(*f);
+                        }
+                    }
+                }
+                fs.into_iter()
+                    .map(|f| (f, self.bm_glue_fields(self.font_glue[f as usize])))
+                    .collect()
+            };
+            let rs_locs = {
+                let mut v: Vec<i32> = rec.k3.iter().map(|(p, _)| *p).collect();
+                v.push(rec.cs);
+                for o in &rec.ops {
+                    if let Op::Def { p, v: val, .. } = o {
+                        v.push(*p);
+                        if let Val::LetCs(s) = val {
+                            v.push(*s);
+                        }
+                    }
+                }
+                v.sort_unstable();
+                v.dedup();
+                v
+            };
             let entry = Entry {
-                hash: key_hash(&rec.k1, &rec.ctx, &rec.k2, &rec.k4),
+                doomed: false,
+                hash: key_hash(&rec.k1, &rec.ctx, &[], &[]),
+                k2hash,
                 k1: rec.k1,
                 ctx: rec.ctx,
-                k2: rec.k2,
+                k2,
                 k4: rec.k4,
                 k3: rec.k3,
                 absent: rec.absent,
@@ -2358,6 +3067,14 @@ impl Globals {
                 trailer,
                 voids: rec.voids,
                 line: rec.line_read.then_some(line),
+                fast: elide_local_groups(&rec.ops),
+                last_link: (self.pdf_last_link != rec.last_link)
+                    .then(|| rec.new_objs.iter().position(|&o| o == self.pdf_last_link))
+                    .flatten(),
+                obj_refs: rec.obj_refs,
+                new_objs: rec.new_objs.len(),
+                font_glues,
+                rs_locs,
                 ops: rec.ops,
                 last_badness,
                 last_used: now,
@@ -2372,32 +3089,8 @@ impl Globals {
                     bytes
                 );
             }
-            s.bytes += bytes;
-            let v = s.store.entry(rec.cs).or_default();
-            if v.len() >= MAX_VARIANTS {
-                let (i, _) = v
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(_, e)| e.last_used)
-                    .unwrap();
-                let old = v.remove(i);
-                s.bytes = s.bytes.saturating_sub(old.bytes);
-            }
-            s.store.entry(rec.cs).or_default().push(entry);
+            insert_entry(&mut s, rec.cs, entry);
             s.stats.committed += 1;
-            // over the budget: drop the least recently used entries
-            while s.bytes > MAX_BYTES {
-                let victim = s
-                    .store
-                    .iter()
-                    .flat_map(|(&cs, v)| {
-                        v.iter().enumerate().map(move |(i, e)| (e.last_used, cs, i))
-                    })
-                    .min();
-                let Some((_, cs, i)) = victim else { break };
-                let e = s.store.get_mut(&cs).unwrap().remove(i);
-                s.bytes = s.bytes.saturating_sub(e.bytes);
-            }
         });
         write_stats(false);
     }
@@ -2433,8 +3126,18 @@ impl Globals {
                     break;
                 }
             }
-            if e.frag != *frag {
+            let fd = match (&e.frag, frag) {
+                (Some(a), Some(b)) => crate::boxfrag::frag_diff(a, b),
+                (None, None) => None,
+                (a, b) => Some(format!(
+                    "output {} normal path {}",
+                    a.is_some(),
+                    b.is_some()
+                )),
+            };
+            if let Some(d) = fd {
                 diffs.push("the output nodes differ".to_string());
+                diffs.push(d.chars().take(400).collect());
             }
             if e.trailer != trailer {
                 diffs.push("the last \\ignorespaces differs".to_string());
@@ -2619,6 +3322,9 @@ impl Globals {
             Val::GlueFrom(a, b) => {
                 let e = if *a > 0 {
                     self.bm_eq(*a).hh().rh()
+                } else if *a == 0 {
+                    // (the key holds it: `font_glues`)
+                    self.font_glue[*b as usize]
                 } else {
                     self.find_sa_element(-*a, *b, false);
                     let q = self.cur_ptr;
@@ -2670,27 +3376,17 @@ impl Globals {
             e.last_used = now;
             e.hits += 1;
             Some((
-                std::mem::take(&mut e.ops),
+                std::mem::take(&mut e.fast),
                 e.last_badness,
-                e.k3.iter().map(|(p, _)| *p).collect::<Vec<i32>>(),
+                std::mem::take(&mut e.rs_locs),
             ))
         });
-        let (ops, last_badness, k3) = taken?;
+        let (ops, last_badness, rs_locs) = taken?;
         // the body, used up: as `get_next` pops it
         self.end_token_list();
         // the L5 read-set (DESIGN.md §5.5), as D9's `intr_report_reads`
         if self.rs_on {
-            let mut locs = k3;
-            locs.push(cs);
-            for o in &ops {
-                if let Op::Def { p, v, .. } = o {
-                    locs.push(*p);
-                    if let Val::LetCs(s) = v {
-                        locs.push(*s);
-                    }
-                }
-            }
-            for p in locs {
+            for &p in &rs_locs {
                 if Self::bm_is_cs(p) && !self.rs_seen[p as usize] {
                     self.flashtex_cs_read(p);
                 }
@@ -2731,9 +3427,24 @@ impl Globals {
         let draw = ST.with(|s| {
             let s = s.borrow();
             let e = s.store.get(&cs)?.get(i)?;
-            Some((e.holes.clone(), e.frag.clone(), e.aux))
+            Some((
+                e.holes.clone(),
+                e.frag.clone(),
+                e.aux,
+                e.new_objs,
+                e.last_link,
+            ))
         });
-        if let Some((holes, Some(frag), aux)) = draw {
+        // the links' objects, as `pdf_new_objnum` made them on the normal
+        // path (nothing else the call did makes or reads an object)
+        let mut objs = vec![];
+        if let Some((_, _, _, n, last)) = &draw {
+            objs = (0..*n).map(|_| self.pdf_new_objnum()).collect();
+            if let Some(l) = last {
+                self.pdf_last_link = objs[*l];
+            }
+        }
+        if let Some((holes, Some(frag), aux, _, _)) = draw {
             let mut nodes = vec![];
             for (n, _) in &holes {
                 nodes.push(self.bm_box_value(*n));
@@ -2741,7 +3452,7 @@ impl Globals {
             }
             let save = self.scanner_status;
             self.scanner_status = 0;
-            let (first, last) = self.frag_make(&frag, &nodes);
+            let (first, last) = self.frag_make(&frag, &nodes, &objs);
             self.scanner_status = save;
             if first != 0 {
                 let t = self.cur_list.tail_field;
@@ -2754,7 +3465,8 @@ impl Globals {
         ST.with(|s| {
             let mut s = s.borrow_mut();
             if let Some(e) = s.store.get_mut(&cs).and_then(|v| v.get_mut(i)) {
-                e.ops = ops;
+                e.fast = ops;
+                e.rs_locs = rs_locs;
             }
             s.stats.hits += 1;
             s.stats.replayed_ops += n;

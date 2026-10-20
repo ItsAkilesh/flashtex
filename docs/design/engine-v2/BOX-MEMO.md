@@ -1,8 +1,9 @@
 # BOX-MEMO: guarded replay of macro calls that typeset only what they throw away
 
 Lane **P6-INFDESC-PAGE** (Commander, 2026-10-06: "attributes Infinite Descent's 800 M-instruction
-page and builds picture/box memoisation"). Status: **design, revision 1, for review, with a measured prototype.** The prototype
-behind it is off by default.
+page and builds picture/box memoisation"). Status: **revision 2 (T7-BEAMER, 2026-10-20): on in the engine host** (§11): it records in an
+edit's window and replays; the command-line engine keeps it off unless `FLASHTEX_BOXMEMO=on`.
+Revision 1 (the framed.sty prototype, off by default) is §2-§10.
 
 It is DESIGN.md §12 P6's "picture memoisation" and §5.5's "tikz/pgfplots picture memoisation", in
 its first, narrowest form. DESIGN.md stays the source of truth: where the two disagree, DESIGN.md
@@ -217,19 +218,20 @@ reports any other scalar that differs.
 4. `last_badness` is set.
 
 The log of a `\fb@sizeofframe` around a TikZ frame holds a few thousand operations. Its replay
-costs a few M instructions, against 37–40 M for the call. Eliding operations whose group closes
-inside the call is MACRO-REPLAY revision 5's §11.5 and is not done here.
+costs a few M instructions, against 37–40 M for the call. A replay skips the groups whose
+operations are all local (§11.2, MACRO-REPLAY revision 5's §11.5).
 
 ## 6. Storage, checkpoints and restores
 
 - **Where the entries live.** In Rust, outside the word space (`src/boxmemo.rs`), per macro.
-  - There are up to 64 variants per macro, least recently used dropped first, within a total cap
-    of 64 MB.
-  - Each variant carries a 64-bit hash of K1, the context, K2 and K4. The hash only filters
-    candidates; the full comparison decides.
-  - All variants whose K1–K4 match are tried, most recent first, until one also passes K3 and K7.
-  - Why 64: a page of *Infinite Descent* measures a dozen frames, each with its own key, and a
-    typed letter alternates between two states of each.
+  - There are up to 1,024 variants per macro, least recently used dropped first, within a total
+    cap of 64 MB (revision 1: 64; a beamer slide makes about 360-710 `\colorlet` calls, §11).
+  - Each variant carries a 64-bit hash of K1 and the context, through which an index finds the
+    variants to compare (§11.2). The hash only filters candidates; the full comparison decides.
+  - Of the variants whose K1, context, K2 and K4 match, the most recent that also passes K3, K7
+    and the object and font keys (§11.3) is replayed.
+  - Why so many: a page of *Infinite Descent* measures a dozen frames, each with its own key, and a
+    typed letter alternates between two states of each; a beamer slide's calls are hundreds.
 - **Why outside the word space.** An edit's restore rolls the word space back to before the edited
   window, which would delete every recording made in it. Out here they survive, and they stay sound
   because the guard checks every value in full.
@@ -295,9 +297,15 @@ before it reads. Each item is cited:
 Each of these was found by the verifier as a false positive on *Infinite Descent*. Once covered, 0
 differences remained.
 
-- **In the host,** the verifier's restore replaces the edit's pending branch, so a compile with a
-  verified call does not converge. That is acceptable in a gate mode, where the output must still
-  equal a full run's.
+- **In the host** (revision 2) the full-state check is off. Each admitted call's operation log,
+  output and `last_badness` are still compared with the normal path's (`bm_verified`, steps 2–3).
+  - The admission checkpoint C stays the base of the state the run continues from, so it cannot be
+    dropped after the comparison. In the host every verification left one among the restart
+    points, with no page count, and a compile interrupted by the next edit restarted there.
+  - Its restore also replaced the edit's pending branch, so a verified compile never converged.
+- Inside an alignment, the comparison takes the preamble (`link(align_head)`: tabskip glue and
+  alignrecords, which the walk does not know) by its words. Neither path made it
+  (`iso::align_by_words`).
 - `FLASHTEX_BOXMEMO_VERIFY_FAIL=1` exits with status 3 at the first difference. The sweeps run with
   both settings (`tools/incr-bench/sweeps.py`).
 
@@ -410,3 +418,115 @@ Expected gain, from the Step 1 profiles: frame draws are 9–25 % of a window an
 where present.
 
 - **Automatic candidates.** Calls the macro profiler shows above a cost threshold, instead of names.
+
+## 11. Revision 2: beamer (lane T7-BEAMER, 2026-10-20)
+
+Every beamer row of T7 missed §1.2 (PR #1850's evidence). A frame's body is a macro argument,
+typeset at `\end{frame}`, so an edit in it restarts at the frame's start and the whole slide is
+typeset again: about 200 M instructions per key on the default theme (beamer-5) and 457 M on
+Madrid (beamer-30), against pdfTeX's 134 M and 312 M per such slide (x86 callgrind, NixOS PC). No
+interpreter speed-up reaches 11 ms there; the slide's templates are the cost.
+
+### 11.1 Where the slide's instructions go (measured, the edit window)
+
+`FLASHTEX_MACRO_PROFILE_CLOCK=instr` with roots (each instruction charged to the innermost listed
+macro), letter@middle, NixOS PC:
+
+| | beamer-5 | beamer-30 |
+|---|---:|---:|
+| xcolor's `\XC@col@rlet` (beamer's `\usebeamercolor` calls `\colorlet` ~8 times) | 60 % (363 calls) | 49 % (709 calls) |
+| pgfmath | 13 % | 16 % |
+| the output routine, inclusive (headline, sidebars, navigation symbols, footline) | 90 % | 54 % |
+| Madrid's block (`\beamerboxesrounded` and its end), inclusive | - | 38 % |
+
+### 11.2 Cheap hits
+
+At revision 1 a hit cost about as much as a `\colorlet` (100 K instructions): every offer built
+K2 (2,250 values), hashed it, and copied K3's macros to compare them. Now:
+- **An index.** The variants of a macro are found by the hash of K1 and the context.
+- **K2 in place.** K2 is compared against each kept K2 as it is walked, run by run (a fixed plan of
+  `eqtb` runs of one kind), stopping at the first difference; the variants recorded in the same
+  state share one K2 (an `Rc`), compared once per offer. Nothing is built for a hit.
+- **K3 in place.** A macro's meaning is compared token by token in `mem`.
+- **Local groups elided.** A replay skips every group whose operations are all local
+  (`elide_local_groups`): its `unsave` restores each location to the word it held (tex.web §283),
+  and e-TeX's "reassigning" saves nothing, so the group's net effect on `eqtb`, the sparse
+  registers and the save stack is nothing. It leaves only free-list order and the usage statistics,
+  which DESIGN.md §1.1 counts as accounting and the convergence test treats as dead. The full
+  operation log is kept for the verifier.
+
+### 11.3 Draw calls that beamer's templates make (phase 3, §10.3, built for these)
+
+`\@oddhead` (headline, sidebars, navigation symbols) and `\@oddfoot` (footline) are draw calls in
+`\hb@xt@\textwidth{...}`. They needed:
+- **Links.** `\pdfstartlink` makes an object (`pdf_new_objnum`). That object is a *relative effect*:
+  the recording notes the objects the call made (they must be consecutive, and nothing else may
+  make one), the fragment refers to them by index, and a replay makes its own in the same order
+  (`pdf_new_objnum` again, so pdfTeX's tables and its C part see the same calls) and writes them
+  into the rebuilt nodes; `\pdflastlink` follows. A link's action structure is kept by value, its
+  token lists as `delete_action_ref` owns them. `\pdflastlink` read inside a call still refuses it.
+- **Forms and images.** `\pdfrefxform` and `\pdfrefximage` copy the object's dimensions into the
+  node. Each object the call referred to joins the key: it must still be in its type's list
+  (`pdf_check_obj`'s walk) with the same dimensions.
+- **Shared glue.** A specification shared with a sparse skip register (`Spec::Sparse`) or with a
+  font's interword glue (`font_glue[f]`: an interword space, or beamer's `\beamer@lastskip=\lastskip`
+  after one; the font glue's fields join the key), and `\skip=\lastskip` of a glue the call made
+  itself (beamer's `\reset@color`: only the call's own nodes share it, so a replay makes it fresh and
+  shares it from then on as the normal path does).
+- **The current list's `aux`** at the call is part of the context: a draw call's first space reads
+  `\spacefactor`.
+- **The verifier** compares fragments in the bits the program reads (`boxfrag::meaningful`: a word
+  holding one `scaled` leaves its other half as `get_node` found it; an action's unused fields), and
+  reports the first difference.
+
+### 11.4 On by default where edits are served, and what is offered
+
+BOX-MEMO is on in the hosts that serve edits (`flashtex-host --socket`, `serve`, `iserve`;
+`set_default_on`) unless `FLASHTEX_BOXMEMO=off`. The command-line engine and the host's other tools
+(`selftest`, which compares resumed runs word for word, `bench`, `open`, `layout`) keep it off. In
+the host it records only in an edit's window (§6) and replays anywhere; the store is at most 32 MB,
+the macro bodies of the keys interned once (a 58-page Madrid deck: +57 MB peak RSS over a mixed
+T7 session, 245 MB against 188 MB).
+
+`DEFAULT_NAMES`: framed.sty's and ntheorem's (revision 1), `XC@col@rlet`, `pgfmathsetlength`,
+`pgf@process`, `pgfpoint`, `@oddhead`, `@oddfoot`, `beamer@typesetheadorfoot` and
+`beamer@@tmpl@frametitle`. Naming a macro only offers it; the guard decides. What still refuses
+(measured): Madrid's block ends (`\unskip` of the outer list, and the shadow's
+`\immediate\pdfobj`), `\beamer@calculateheadfoot` (a box register set at the call's level), the
+first frame's font loads.
+
+### 11.5 Font versions named by their changes, and abandoned keys
+
+- **Font versions.** Revision 1 gave the fonts a fresh version at every `\fontdimen` or
+  `\hyphenchar` & co. An edit's window that loads a font (NFSS sets the new font's `\hyphenchar`)
+  then reached a new version at every keystroke, and no call after it ever hit (beamer-30's first
+  block frame: 667 M instructions a key). Now a version is named by its parent and the change
+  (`next_version`, an interned table): the same changes from the same version reach the same
+  version, and equal versions still name equal font arrays. Each engine start takes a fresh base.
+- **Doomed entries.** An abandoned recording's key, as far as it read, is kept: the same reads take
+  the call to the same refusal, so a call matching it runs for real, unrecorded, and the calls
+  inside it are offered (a recording would have refused them). beamer's
+  `\beamer@typesetheadorfoot`, which makes a shading object on a deck's first block frame, no
+  longer hides its `\colorlet` calls.
+
+### 11.6 Two holes the verify sweep found (fixed in revision 1's code too, #1692)
+
+- **A `\csname`'s location.** K3 kept the meaning at the location a `\csname` led to, not that
+  the name leads there. A name's place in the hash depends on the order names were made in
+  (tex.web §260: a colliding name takes the next free slot), so after an edit that makes names
+  in another order (sweep C's labels and sections) the same `\csname` leads elsewhere. Now the
+  name and its location are part of the key (`Meaning::Name`). Found: framed-tikz-theorems,
+  `\fb@sizeofframe`'s operation 1380 defined location 65499 where the normal path defined 65500.
+- **`last_badness` of a call that packs nothing.** It was always set by a replay, to the value
+  the recording ended with, though a call that packs no box leaves it as the state had it. Now it
+  is kept only when the call packed (a hook in `hpack` and `vpackage`). Found: `\XC@col@rlet`
+  replayed 19 where the normal path left 0.
+
+### 11.7 Measured
+
+`docs/evidence/t7-beamer-2026-10-20/`: T7's beamer rows, instructions per key to the edited page
+(the gated quantity's engine share, load-independent), main against BOX-MEMO on, NixOS PC:
+beamer-5 200 M → 37.5 M (−81 %) on every in-body and typing row, beamer-30 470 M → 132 M (−72 %),
+its first block frame 486 M → 168 M (−65 %). Convergence is unchanged. 0 differences in verify
+mode (host and command line).
+

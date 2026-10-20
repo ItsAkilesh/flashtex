@@ -27,6 +27,8 @@ fn scratch(tag: &str) -> PathBuf {
 struct Run {
     log: String,
     stats: String,
+    /// The PDF, when the test made one.
+    pdf: Option<Vec<u8>>,
 }
 
 /// Run `\input t` in INITEX with BOX-MEMO in `mode`, offering `names`.
@@ -50,9 +52,12 @@ fn run(dir: &Path, mode: &str, names: &str) -> Run {
         .expect("run flashtex-initex");
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(!err.contains("boxmemo verify"), "{err}");
+    let pdf = std::fs::read(dir.join("t.pdf")).ok();
+    let _ = std::fs::remove_file(dir.join("t.pdf"));
     Run {
         log: std::fs::read_to_string(dir.join("t.log")).unwrap(),
         stats: std::fs::read_to_string(&stats).unwrap_or_default(),
+        pdf,
     }
 }
 
@@ -76,6 +81,11 @@ fn check(tag: &str, src: &str) -> String {
     let on = run(&d, "on", "measure");
     let verify = run(&d, "verify", "measure");
     assert_eq!(off.log, on.log, "{tag}: log with BOX-MEMO on differs");
+    assert!(off.pdf == on.pdf, "{tag}: PDF with BOX-MEMO on differs");
+    assert!(
+        off.pdf == verify.pdf,
+        "{tag}: PDF in verification mode differs"
+    );
     assert_eq!(
         off.log, verify.log,
         "{tag}: log in verification mode differs"
@@ -203,4 +213,84 @@ fn draw_calls_replay_with_their_hole() {
          \\one{3pt}\\one{3pt}\\one{3pt}\\one{4pt}\\one{4pt}\\one{3pt}\\end\n",
     );
     assert!(stat(&s, "hits") >= 3, "{s}");
+}
+
+/// pdfTeX's output in INITEX: pages of rules, a link's object, a form.
+const PDF_PRELUDE: &str = "\\catcode`\\{=1 \\catcode`\\}=2 \\catcode`\\#=6 \\scrollmode\n\
+    \\pdfoutput=1 \\pdfpagewidth=100pt \\pdfpageheight=100pt \\pdfcompresslevel=0\n";
+
+#[test]
+fn links_replay_with_their_objects() {
+    // a draw call that makes two links (beamer's navigation symbols): a
+    // replay makes the links' objects again, in order, writes them into the
+    // rebuilt nodes and sets \pdflastlink; the pages' annotations are the
+    // normal path's, byte for byte
+    let s = check(
+        "links",
+        &[
+            PDF_PRELUDE,
+            "\\def\\measure#1{\\begingroup\\pdfstartlink user{/S /URI /URI (#1)}\\vrule width 2pt height 1pt\\pdfendlink\
+             \\kern1pt\\pdfstartlink attr{/Border[0 0 0]} goto page 1 {/Fit}\\vrule width 3pt height 1pt\\pdfendlink\\endgroup}\n\
+             \\def\\one{\\setbox1\\hbox{\\measure{a}}\\message{[\\the\\pdflastlink]}\\shipout\\box1 }\n\
+             \\one\\one\\one\\one\\end\n",
+        ]
+        .concat(),
+    );
+    assert!(stat(&s, "hits") >= 2, "{s}");
+}
+
+#[test]
+fn form_references_are_part_of_the_key() {
+    // \pdfrefxform of an existing form (a pgf shading's): the node copies
+    // the form's dimensions, so the form joins the key; another form is
+    // another key
+    let s = check(
+        "forms",
+        &[
+            PDF_PRELUDE,
+            "\\setbox2\\hbox{\\vrule width 5pt height 2pt}\\immediate\\pdfxform2 \\edef\\f{\\the\\pdflastxform}\n\
+             \\def\\measure#1{\\begingroup\\pdfrefxform\\f\\kern#1\\endgroup}\n\
+             \\def\\one{\\setbox1\\hbox{\\measure{1pt}}\\shipout\\box1 }\n\
+             \\one\\one\\one\n\
+             \\setbox2\\hbox{\\vrule width 7pt height 2pt}\\immediate\\pdfxform2 \\edef\\f{\\the\\pdflastxform}\n\
+             \\one\\one\\end\n",
+        ]
+        .concat(),
+    );
+    assert!(stat(&s, "hits") >= 2, "{s}");
+}
+
+#[test]
+fn lastskip_glue_and_local_groups() {
+    // `\\skip0=\\lastskip` of a glue the call made (beamer's
+    // `\\reset@color`), removed and put back, and a group whose
+    // assignments are all local (a replay skips it); both replay to the
+    // normal path's state
+    let s = check(
+        "lastskip",
+        "\\catcode`\\{=1 \\catcode`\\}=2 \\catcode`\\#=6 \\scrollmode\n\
+         \\showboxdepth=100 \\showboxbreadth=100 \\tracingonline=0\n\
+         \\def\\measure#1{\\begingroup\\begingroup\\def\\a{#1}\\count5=3 \\dimen5=\\a pt\\endgroup\
+         \\hbox{\\hskip 3pt plus 1pt\\skip0=\\lastskip\\unskip\\vrule width 1pt\\hskip\\skip0}\\endgroup}\n\
+         \\def\\one{\\setbox1\\hbox{\\measure{2}}\\showbox1 }\n\
+         \\one\\one\\one\\end\n",
+    );
+    assert!(stat(&s, "hits") >= 2, "{s}");
+}
+
+#[test]
+fn font_parameters_are_part_of_the_key() {
+    // a call that reads a font parameter: a \fontdimen assignment makes the
+    // fonts' next version, so the call after it is another key; versions
+    // are named by their changes (`next_version`), and the logs agree
+    let s = check(
+        "fontdimen",
+        "\\catcode`\\{=1 \\catcode`\\}=2 \\catcode`\\#=6 \\scrollmode\n\
+         \\def\\measure#1{\\begingroup\\dimen0=\\fontdimen2\\nullfont\\advance\\dimen0 by #1\\global\\dimen1=\\dimen0 \\endgroup}\n\
+         \\def\\show{\\message{[\\the\\dimen1]}}\n\
+         \\measure{1pt}\\show\\measure{1pt}\\show\\fontdimen2\\nullfont=3pt \\measure{1pt}\\show\
+         \\measure{1pt}\\show\\fontdimen2\\nullfont=4pt \\measure{1pt}\\show\\measure{1pt}\\show\\end\n",
+    );
+    assert!(stat(&s, "hits") >= 3, "{s}");
+    assert!(stat(&s, "recordings") >= 3, "{s}");
 }
