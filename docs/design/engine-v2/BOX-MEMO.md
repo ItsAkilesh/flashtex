@@ -490,7 +490,7 @@ T7 session, 245 MB against 188 MB).
 
 `DEFAULT_NAMES`: framed.sty's and ntheorem's (revision 1), `XC@col@rlet`, `pgfmathsetlength`,
 `pgf@process`, `pgfpoint`, `@oddhead`, `@oddfoot`, `beamer@typesetheadorfoot` and
-`beamer@@tmpl@frametitle`. Naming a macro only offers it; the guard decides. What still refuses
+`beamer@@tmpl@frametitle` (revision 3 adds five, §12). Naming a macro only offers it; the guard decides. What still refuses
 (measured): Madrid's block ends (`\unskip` of the outer list, and the shadow's
 `\immediate\pdfobj`), `\beamer@calculateheadfoot` (a box register set at the call's level), the
 first frame's font loads.
@@ -530,3 +530,48 @@ beamer-5 200 M → 37.5 M (−81 %) on every in-body and typing row, beamer-30 4
 its first block frame 486 M → 168 M (−65 %). Convergence is unchanged. 0 differences in verify
 mode (host and command line).
 
+
+## 12. Revision 3: more names, and the intrinsics' first page (lane T7-LAST12, 2026-10-20)
+
+After revision 2, nine of beamer-30's rows and full-10 letter@start still missed §1.2 on the
+reference Mac (PR #1855). Evidence: `docs/evidence/t7-last12-2026-10-20/`.
+
+### 12.1 Names (measured, NixOS PC, `FLASHTEX_BOXMEMO_NAMES`)
+
+Added to `DEFAULT_NAMES`, each measured alone and together on beamer-30 letter@middle (typesetting
+instructions to the edited page, revision 2: 125 M):
+- `pgf@parsefunc`, pgf's parse of a shading's colour function, which Madrid's block shadow runs
+  four times a block (`\pgfdeclareradialshading` and kin declare their shading at every block,
+  `pgfcoreshade.code.tex`): 107 M. The `\immediate\pdfxform` after the parse still runs for real;
+  only the parse is replayed.
+- `beamer@thc@docolor` and `beamer@thc@usecolor` (beamer's colour templates) and `pgfusepath`
+  (a path's use: its PDF literals are a draw call's fragment, §11.3): together 101 M (−19 %).
+- Tried and left out, no gain or a loss: `pgftransformcm` and `pgf@transformcm`, `pgf@sys@bp`,
+  `pgfmathparse`, `XC@definec@lor`, `XC@mcolor`, `extractcolorspec`, `pgf@getrgbtuplewithmixin`,
+  `\beamer@usebeamercolor`.
+
+On beamer-30's first block frame (letter@start) the gain is smaller (161 M → 146 M): there the calls
+make control sequences for the first time (`NewCs`, §4.1), as every keystroke on that frame does
+again after its restore, and the transition shading of the block's colours is made there
+(`\pgfuseshading`, an `\immediate\pdfxform`).
+
+### 12.2 `\pdfstringdefPreHook` on the page before the intrinsics' recordings
+
+hyperref's hook, which siunitx fills (about 25 M instructions a call), is the guarded intrinsics'
+first target (DESIGN.md §5.6 item 4): recorded at its first call and replayed at every later one.
+Those recordings live in the word space (`intrinsics.rs`), so a keystroke on the page that makes
+the first calls (page 0's output routine: full-10 letter@start) restores to before them and runs
+the hook twice for real, recording it again each time (146 M instructions to the edited page; 132 M
+with the intrinsics off). Now:
+- `pdfstringdefPreHook` is in BOX-MEMO's `DEFAULT_NAMES`;
+- in the host, inside an edit's window (`boxmemo::in_record_window`), the intrinsics do not record
+  a macro BOX-MEMO offers (`flashtex_intr_call`); they still replay it from a recording the state
+  holds. BOX-MEMO's entries survive the restore, so the next keystroke replays both calls: 95 M
+  (−35 %). Outside the window the intrinsics record as before, so the pages after it replay them
+  as they did.
+- Not recording is only a missed cache: the convergence test still compares the intrinsics'
+  recordings in full (`iso.rs`), and full-10/full-100 letter@start/@middle converge where they
+  did, after the same number of pages.
+- Verify mode in the host: 10 of 10 calls verified with no difference (full-10 letter@start, five
+  keystrokes). On the command line the intrinsics record anywhere, and BOX-MEMO never offers a
+  call while they record (§1), so nothing changes there.
