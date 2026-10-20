@@ -72,7 +72,7 @@ const MAX_LIST: usize = 1 << 16;
 /// Variants kept per macro, least recently used dropped first.
 /// (A page of *Infinite Descent* measures a dozen frames, each with its
 /// own key, and a typed letter alternates two states of each: 8 thrashed.)
-const MAX_VARIANTS: usize = 64;
+const MAX_VARIANTS: usize = 1024;
 /// Bytes of recordings kept in all, roughly.
 const MAX_BYTES: usize = 64 << 20;
 /// Recordings abandoned in a row before a macro is no longer recorded.
@@ -172,6 +172,64 @@ enum Op {
     },
 }
 
+/// The operations a replay makes: `ops` without the groups that leave
+/// nothing behind. A group (`Begin` .. its `End`) whose operations are all
+/// local (`eq_define`, `eq_word_define`, `sa_def`, `sa_w_def`, in it or in
+/// groups inside it) is undone by its own `unsave`: every location it
+/// assigned is restored to the very word it held before (tex.web §283:
+/// `eq_save` keeps that word, `unsave` puts it back and `eq_destroy`s the
+/// value the group gave it; e-TeX's `restore_sa` likewise), and a
+/// reassignment of the value a location already holds (e-TeX's
+/// "reassigning", which saves nothing) changes nothing either. So the
+/// group's net effect on `eqtb`, the sparse registers and the save stack is
+/// nothing. What it changes besides is memory the program does not read
+/// back: the free lists and the usage statistics (`var_used`, `dyn_used`,
+/// `max_save_stack`), which DESIGN.md §1.1 counts as accounting and the
+/// convergence test treats as dead (free memory, high-water marks). The
+/// recording refuses everything else a group could leave (an
+/// `\aftergroup` token, output, tracing). MACRO-REPLAY.md revision 5,
+/// §11.5.
+fn elide_local_groups(ops: &[Op]) -> Vec<Op> {
+    // (for each `Begin`, the index of its `End`, and whether everything
+    // between them is local)
+    let n = ops.len();
+    let mut end = vec![usize::MAX; n];
+    let mut local = vec![false; n];
+    let mut stack: Vec<(usize, bool)> = vec![];
+    for (i, o) in ops.iter().enumerate() {
+        match o {
+            Op::Begin(_) => stack.push((i, true)),
+            Op::End => {
+                if let Some((b, l)) = stack.pop() {
+                    end[b] = i;
+                    local[b] = l;
+                    if let Some(top) = stack.last_mut() {
+                        top.1 &= l;
+                    }
+                }
+            }
+            Op::Def { kind, .. } | Op::Sa { kind, .. } => {
+                if *kind > 1 {
+                    for x in stack.iter_mut() {
+                        x.1 = false;
+                    }
+                }
+            }
+        }
+    }
+    let mut out = Vec::with_capacity(n);
+    let mut i = 0;
+    while i < n {
+        if matches!(ops[i], Op::Begin(_)) && end[i] != usize::MAX && local[i] {
+            i = end[i] + 1;
+            continue;
+        }
+        out.push(ops[i].clone());
+        i += 1;
+    }
+    out
+}
+
 /// A register the recording read: an `eqtb` location (`\count` & co. 0-255,
 /// and the `\countdef` and kin that name them), or an e-TeX sparse register
 /// by (type, number).
@@ -200,6 +258,45 @@ struct Context {
     par_token: i32,
     font_version: i32,
     hyph_version: i32,
+}
+
+/// How K2 keeps the value at one `eqtb` location.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum K2Kind {
+    Glue,
+    Shape,
+    List,
+    Equiv,
+    Int,
+}
+
+/// K2's locations, `glue_base..=eqtb_size` in order, as runs `[a, b)` of
+/// one kind ([`Globals::bm_k2_kind`]), the locations it leaves out
+/// skipped.
+fn k2_plan() -> &'static [(i32, i32, K2Kind)] {
+    static PLAN: std::sync::OnceLock<Vec<(i32, i32, K2Kind)>> = std::sync::OnceLock::new();
+    PLAN.get_or_init(|| {
+        let mut v: Vec<(i32, i32, K2Kind)> = vec![];
+        for p in GLUE_BASE..=EQTB_SIZE {
+            let Some(k) = Globals::bm_k2_kind(p) else {
+                continue;
+            };
+            match v.last_mut() {
+                Some((_, b, kk)) if *b == p && *kk == k => *b = p + 1,
+                _ => v.push((p, p + 1, k)),
+            }
+        }
+        v
+    })
+}
+
+/// [`Globals::bm_k2_hash`] of a K2 kept as values.
+fn k2_hash_of(k2: &[i32]) -> u64 {
+    let mut h: u64 = 0x243f_6a88_85a3_08d3;
+    for &x in k2 {
+        h = (h ^ x as u32 as u64).wrapping_mul(0x0100_0000_01b3).rotate_left(23);
+    }
+    h
 }
 
 /// A hash of K1, the context, K2 and K4: a variant is compared in full only
@@ -231,24 +328,18 @@ fn key_hash(k1: &[i32], ctx: &Context, k2: &[i32], k4: &[i32]) -> u64 {
     h
 }
 
-/// A variant whose K1, context, K2 and K4 hold: its index, and the K3
-/// meanings, absent names and void boxes left to check.
-type Candidate = (
-    usize,
-    Vec<(i32, Meaning)>,
-    Vec<Vec<i32>>,
-    Vec<i32>,
-    Vec<(RegId, Vec<i32>)>,
-    Vec<(i32, Vec<i32>)>,
-);
-
 struct Entry {
     hash: u64,
+    /// `bm_k2_hash` of K2.
+    k2hash: u64,
     /// K1: the macro's body and its arguments.
     k1: Vec<i32>,
     ctx: Context,
-    /// K2 and K4, as one stream of values.
-    k2: Vec<i32>,
+    /// K2 and K4, as one stream of values. K2 is shared by the variants
+    /// of a macro recorded in the same state (a typed letter's two states,
+    /// recorded at each call), so it is kept once and compared once per
+    /// offer.
+    k2: std::rc::Rc<[i32]>,
     k4: Vec<i32>,
     /// K3: the meanings looked at, by location.
     k3: Vec<(i32, Meaning)>,
@@ -272,6 +363,12 @@ struct Entry {
     /// A last `\\ignorespaces` (its token), run after the replay.
     trailer: Option<i32>,
     ops: Vec<Op>,
+    /// What a replay makes: `ops` without the groups that leave nothing
+    /// behind ([`elide_local_groups`]).
+    fast: Vec<Op>,
+    /// The control sequences a replay reports to the L5 read-set: the
+    /// macro, K3's, and every one `ops` assigns or `\let`s from.
+    rs_locs: Vec<i32>,
     last_badness: i32,
     last_used: u64,
     hits: u64,
@@ -340,6 +437,11 @@ struct Rec {
 #[derive(Default)]
 struct State {
     store: HashMap<i32, Vec<Entry>>,
+    /// Per macro, its variants' indices by the hash of K1 and the context
+    /// (`Entry::hash`), made again from `store` after a variant is added
+    /// or dropped (`stale`).
+    index: HashMap<i32, HashMap<u64, Vec<usize>>>,
+    stale: HashSet<i32>,
     aborts: HashMap<i32, u32>,
     rec: Option<Rec>,
     clock: u64,
@@ -358,12 +460,9 @@ struct Fast {
     seen: Vec<u32>,
 }
 
-/// A key by location (`bm_key_by_loc`): each location and its values.
-type KeyByLoc = Vec<(i32, Vec<i32>)>;
-
 thread_local! {
     /// Debugging misses: the key by location of the last recording, per macro.
-    static LAST_KEY: RefCell<HashMap<i32, KeyByLoc>> = RefCell::new(HashMap::new());
+    static LAST_KEY: RefCell<HashMap<i32, Vec<(i32, Vec<i32>)>>> = RefCell::new(HashMap::new());
     static FAST: RefCell<Fast> = RefCell::new(Fast::default());
     static CONFIG: RefCell<Option<Config>> = const { RefCell::new(None) };
     static ST: RefCell<State> = RefCell::new(State::default());
@@ -537,12 +636,8 @@ impl Scratch {
             dig: (0..g.dig.len()).map(|i| g.dig[i]).collect(),
             trick_buf: (0..g.trick_buf.len()).map(|i| g.trick_buf[i]).collect(),
             pstack: (0..g.pstack.len()).map(|i| g.pstack[i]).collect(),
-            total_stretch: (0..g.total_stretch.len())
-                .map(|i| g.total_stretch[i])
-                .collect(),
-            total_shrink: (0..g.total_shrink.len())
-                .map(|i| g.total_shrink[i])
-                .collect(),
+            total_stretch: (0..g.total_stretch.len()).map(|i| g.total_stretch[i]).collect(),
+            total_shrink: (0..g.total_shrink.len()).map(|i| g.total_shrink[i]).collect(),
             cur_cmd: g.cur_cmd,
             cur_chr: g.cur_chr,
             cur_cs: g.cur_cs,
@@ -709,38 +804,177 @@ impl Globals {
     /// registers, pointers by what they point to.
     fn bm_k2(&self) -> Vec<i32> {
         let mut v = Vec::with_capacity(8192);
-        for p in GLUE_BASE..=EQTB_SIZE {
-            if (BOX_BASE..BOX_BASE + 256).contains(&p) || Self::bm_is_register(p) {
-                continue;
-            }
-            let w = self.bm_eq(p);
-            if p < LOCAL_BASE {
-                // glue parameters
-                let e = w.hh().rh();
-                if e <= LO_MEM_STAT_MAX {
-                    v.push(-1);
-                    v.push(e);
-                } else {
-                    v.extend_from_slice(&self.bm_glue_fields(e));
-                }
-            } else if p == PAR_SHAPE_LOC || (ETEX_PEN_BASE..ETEX_PENS).contains(&p) {
-                let e = w.hh().rh();
-                match self.bm_shape_words(e) {
-                    Some(s) => {
-                        v.push(s.len() as i32);
-                        v.extend(s);
+        self.bm_k2_each(|x| {
+            v.push(x);
+            true
+        });
+        v
+    }
+
+    /// Whether K2 now is `want`, compared as it is made (no copy of the
+    /// state is built), stopping at the first difference.
+    fn bm_k2_is(&self, want: &[i32]) -> bool {
+        // (`bm_k2_each`'s walk, a run of fixed-width values compared as one
+        // slice)
+        let mut at = 0usize;
+        let mut take = |n: usize| -> Option<&[i32]> {
+            let s = want.get(at..at + n)?;
+            at += n;
+            Some(s)
+        };
+        for &(a, b, kind) in k2_plan() {
+            let words = &self.eqtb[(a - 1) as usize..(b - 1) as usize];
+            match kind {
+                K2Kind::Equiv => match take(words.len()) {
+                    Some(w) if words.iter().map(|x| x.hh().rh()).eq(w.iter().copied()) => {}
+                    _ => return false,
+                },
+                K2Kind::Int => match take(words.len()) {
+                    Some(w) if words.iter().map(|x| x.int()).eq(w.iter().copied()) => {}
+                    _ => return false,
+                },
+                K2Kind::Glue => {
+                    for x in words {
+                        let e = x.hh().rh();
+                        let ok = if e <= LO_MEM_STAT_MAX {
+                            take(2) == Some(&[-1, e][..])
+                        } else {
+                            take(5) == Some(&self.bm_glue_fields(e)[..])
+                        };
+                        if !ok {
+                            return false;
+                        }
                     }
-                    None => v.push(-2),
                 }
-            } else if (OUTPUT_ROUTINE_LOC..TOKS_BASE + 256).contains(&p) {
-                self.bm_push_list(w.hh().rh(), &mut v);
-            } else if p < INT_BASE {
-                v.push(w.hh().rh());
-            } else {
-                v.push(w.int());
+                K2Kind::Shape => {
+                    for x in words {
+                        let ok = match self.bm_shape_words(x.hh().rh()) {
+                            Some(v) => {
+                                take(1) == Some(&[v.len() as i32][..])
+                                    && take(v.len()) == Some(&v[..])
+                            }
+                            None => take(1) == Some(&[-2][..]),
+                        };
+                        if !ok {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::List => {
+                    for x in words {
+                        let e = x.hh().rh();
+                        if e == 0 {
+                            if take(1) != Some(&[-1][..]) {
+                                return false;
+                            }
+                            continue;
+                        }
+                        let mut q = self.bm_link(e);
+                        while q != 0 {
+                            if take(1) != Some(&[self.bm_info(q)][..]) {
+                                return false;
+                            }
+                            q = self.bm_link(q);
+                        }
+                        if take(1) != Some(&[-3][..]) {
+                            return false;
+                        }
+                    }
+                }
             }
         }
-        v
+        at == want.len()
+    }
+
+    /// K2's values in order, each handed to `f` until it returns false;
+    /// false then. A token list is its tokens and the end marker -3 (a
+    /// token is never negative), the null list -1; a glue specification
+    /// -1 and the pointer when it is static, else its five fields. The
+    /// locations are walked by runs of one kind ([`k2_plan`]).
+    fn bm_k2_each(&self, mut f: impl FnMut(i32) -> bool) -> bool {
+        for &(a, b, kind) in k2_plan() {
+            let words = &self.eqtb[(a - 1) as usize..(b - 1) as usize];
+            match kind {
+                K2Kind::Glue => {
+                    for w in words {
+                        let e = w.hh().rh();
+                        if e <= LO_MEM_STAT_MAX {
+                            if !(f(-1) && f(e)) {
+                                return false;
+                            }
+                        } else if !self.bm_glue_fields(e).into_iter().all(&mut f) {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::Shape => {
+                    for w in words {
+                        let ok = match self.bm_shape_words(w.hh().rh()) {
+                            Some(v) => f(v.len() as i32) && v.into_iter().all(&mut f),
+                            None => f(-2),
+                        };
+                        if !ok {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::List => {
+                    for w in words {
+                        let e = w.hh().rh();
+                        if e == 0 {
+                            if !f(-1) {
+                                return false;
+                            }
+                            continue;
+                        }
+                        let mut q = self.bm_link(e);
+                        while q != 0 {
+                            if !f(self.bm_info(q)) {
+                                return false;
+                            }
+                            q = self.bm_link(q);
+                        }
+                        if !f(-3) {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::Equiv => {
+                    for w in words {
+                        if !f(w.hh().rh()) {
+                            return false;
+                        }
+                    }
+                }
+                K2Kind::Int => {
+                    for w in words {
+                        if !f(w.int()) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// The kind of K2 value at `eqtb` location `p`, `None` for a location
+    /// K2 leaves out (the box registers, and the registers KR keys
+    /// precisely, BOX-MEMO.md §10.1).
+    fn bm_k2_kind(p: i32) -> Option<K2Kind> {
+        if (BOX_BASE..BOX_BASE + 256).contains(&p) || Self::bm_is_register(p) {
+            None
+        } else if p < LOCAL_BASE {
+            Some(K2Kind::Glue)
+        } else if p == PAR_SHAPE_LOC || (ETEX_PEN_BASE..ETEX_PENS).contains(&p) {
+            Some(K2Kind::Shape)
+        } else if (OUTPUT_ROUTINE_LOC..TOKS_BASE + 256).contains(&p) {
+            Some(K2Kind::List)
+        } else if p < INT_BASE {
+            Some(K2Kind::Equiv)
+        } else {
+            Some(K2Kind::Int)
+        }
     }
 
     /// Debugging misses: K2 and K4 by location (`eqtb` location, or
@@ -861,16 +1095,13 @@ impl Globals {
     /// `\muskip`, `\toks` 0-255)? Registers are read only explicitly,
     /// never by a primitive behind the scenes, so the key holds those the
     /// recording read (KR) rather than all of them.
+    #[inline]
     fn bm_is_register(p: i32) -> bool {
-        [
-            k::count_base,
-            k::scaled_base,
-            k::skip_base,
-            k::mu_skip_base,
-            TOKS_BASE,
-        ]
-        .iter()
-        .any(|&b| (b..b + 256).contains(&p))
+        (k::count_base..k::count_base + 256).contains(&p)
+            || (k::scaled_base..k::scaled_base + 256).contains(&p)
+            || (k::skip_base..k::skip_base + 256).contains(&p)
+            || (k::mu_skip_base..k::mu_skip_base + 256).contains(&p)
+            || (TOKS_BASE..TOKS_BASE + 256).contains(&p)
     }
 
     /// A register's value as KR keeps it.
@@ -896,17 +1127,9 @@ impl Globals {
             RegId::Sa(t, n) => {
                 let e = self.bm_sa_find(t, n);
                 match t {
-                    INT_VAL | DIMEN_VAL => v.push(if e == 0 {
-                        0
-                    } else {
-                        self.mem[(e + 2) as usize].int()
-                    }),
+                    INT_VAL | DIMEN_VAL => v.push(if e == 0 { 0 } else { self.mem[(e + 2) as usize].int() }),
                     GLUE_VAL | MU_VAL => {
-                        let q = if e == 0 {
-                            k::zero_glue
-                        } else {
-                            self.bm_link(e + 1)
-                        };
+                        let q = if e == 0 { k::zero_glue } else { self.bm_link(e + 1) };
                         if q <= LO_MEM_STAT_MAX {
                             v.push(-1);
                             v.push(q);
@@ -1039,6 +1262,30 @@ impl Globals {
             return Some(Meaning::Sparse(t, st, n));
         }
         Some(Meaning::Plain(t, e))
+    }
+
+    /// Whether the meaning of `p` is `m` ([`bm_meaning`](Self::bm_meaning)
+    /// compared in place, without copying a macro's tokens).
+    fn bm_meaning_is(&self, p: i32, m: &Meaning) -> bool {
+        let w = self.bm_eq(p).hh();
+        let (t, e) = (w.b0(), w.rh());
+        if (CALL..=LONG_OUTER_CALL).contains(&t) && e != 0 {
+            let Meaning::Macro(mt, toks) = m else {
+                return false;
+            };
+            if *mt != t {
+                return false;
+            }
+            let mut q = self.bm_link(e);
+            for &x in toks {
+                if q == 0 || self.bm_info(q) != x {
+                    return false;
+                }
+                q = self.bm_link(q);
+            }
+            return q == 0;
+        }
+        self.bm_meaning(p).as_ref() == Some(m)
     }
 
     /// The control sequence named `name` (internal codes, two or more), as
@@ -1285,99 +1532,128 @@ impl Globals {
         }
         let k1 = self.bm_k1(cs, n);
         let ctx = self.bm_ctx(scanner);
-        let k2 = self.bm_k2();
-        let k4 = self.bm_k4();
-        let hash = key_hash(&k1, &ctx, &k2, &k4);
-        // the variants whose K1, context, K2 and K4 hold (most recent first)
-        let candidates: Vec<Candidate> = ST.with(|s| {
+        // K1 and the context select the variants (by their hash, then in
+        // full); K2 and the rest are compared in place, without a copy of
+        // the state: an offer that hits builds no key.
+        let hash = key_hash(&k1, &ctx, &[], &[]);
+        let k4_now = self.bm_k4();
+        // (the most recent variant whose whole key holds; whether one held
+        // up to K3 or K7 but not them)
+        ST.with(|s| {
+            let mut s = s.borrow_mut();
+            if s.stale.remove(&cs) {
+                let mut ix: HashMap<u64, Vec<usize>> = HashMap::new();
+                for (i, e) in s.store.get(&cs).into_iter().flatten().enumerate() {
+                    ix.entry(e.hash).or_default().push(i);
+                }
+                s.index.insert(cs, ix);
+            }
+        });
+        let (found, partial) = ST.with(|s| {
             let s = s.borrow();
-            let Some(v) = s.store.get(&cs) else {
-                return vec![];
+            let (Some(v), Some(ix)) = (
+                s.store.get(&cs),
+                s.index.get(&cs).and_then(|ix| ix.get(&hash)),
+            ) else {
+                return (None, None);
             };
-            let mut c: Vec<_> = v
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| {
-                    e.hash == hash
-                        && e.k1 == k1
-                        && e.ctx == ctx
-                        && e.k2 == k2
-                        && e.k4 == k4
-                        && e.line.is_none_or(|l| l == self.line)
-                })
-                .map(|(i, e)| {
-                    (
-                        e.last_used,
-                        i,
-                        e.k3.clone(),
-                        e.absent.clone(),
-                        e.voids.clone(),
-                        e.kr.clone(),
-                        e.kb.iter().chain(&e.holes).cloned().collect::<Vec<_>>(),
-                    )
-                })
-                .collect();
-            c.sort_by_key(|x| std::cmp::Reverse(x.0));
-            c.into_iter()
-                .map(|(_, i, a, b, d, r, x)| (i, a, b, d, r, x))
-                .collect()
+            let mut best: Option<(u64, usize)> = None;
+            let mut partial = None;
+            let mut k2_seen: Vec<(*const i32, bool)> = vec![];
+            for (i, e) in ix.iter().map(|&i| (i, &v[i])) {
+                if best.is_some_and(|(u, _)| u >= e.last_used) {
+                    continue;
+                }
+                if e.hash != hash
+                    || e.k1 != k1
+                    || e.ctx != ctx
+                    || e.k4 != k4_now
+                    || !e.line.is_none_or(|l| l == self.line)
+                {
+                    continue;
+                }
+                // (K2 in place, once per kept K2)
+                let k2p = std::rc::Rc::as_ptr(&e.k2) as *const i32;
+                let k2_ok = match k2_seen.iter().find(|(q, _)| *q == k2p) {
+                    Some(&(_, ok)) => ok,
+                    None => {
+                        let ok = self.bm_k2_is(&e.k2);
+                        k2_seen.push((k2p, ok));
+                        ok
+                    }
+                };
+                if !k2_ok {
+                    continue;
+                }
+                let rest_ok = e.absent.iter().all(|n| match self.bm_find_cs(n) {
+                    None => true,
+                    Some(p) => self.bm_eq(p).hh().b0() == k::undefined_cs,
+                }) && e.voids.iter().all(|&n| self.bm_box_value(n) == 0)
+                    && e.kr.iter().all(|(r, v)| self.bm_reg_value(*r) == *v)
+                    && e.kb
+                        .iter()
+                        .chain(&e.holes)
+                        .all(|(n, v)| self.bm_box_key(self.bm_box_value(*n)) == *v)
+                    && e.k3.iter().all(|(p, m)| self.bm_meaning_is(*p, m));
+                if rest_ok {
+                    best = Some((e.last_used, i));
+                } else if partial.is_none_or(|(u, _)| u < e.last_used) {
+                    partial = Some((e.last_used, i));
+                }
+            }
+            (best.map(|b| b.1), partial.map(|p| p.1))
         });
         let mut why = "NotRecorded";
-        // ... and of those, the first whose K3 and K7 hold
-        for (i, k3, absent, voids, kr, kb) in candidates {
-            let absent_ok = absent.iter().all(|n| match self.bm_find_cs(n) {
-                None => true,
-                Some(p) => self.bm_eq(p).hh().b0() == k::undefined_cs,
-            }) && voids.iter().all(|&n| self.bm_box_value(n) == 0)
-                && kr.iter().all(|(r, v)| self.bm_reg_value(*r) == *v)
-                && kb
-                    .iter()
-                    .all(|(n, v)| self.bm_box_key(self.bm_box_value(*n)) == *v);
-            if absent_ok
-                && k3
-                    .iter()
-                    .all(|(p, m)| self.bm_meaning(*p).as_ref() == Some(m))
-            {
-                if m == Mode::Verify {
-                    // the full verifier. In the host its restore replaces
-                    // the edit's pending branch, so a compile with a
-                    // verified call does not converge: verify is a gate
-                    // mode, and the output must still equal a full run's
-                    {
-                        if let Ok(ck) = self.checkpoint() {
-                            FULL.with(|f| *f.borrow_mut() = Some(FullVerify { ck, warn }));
-                        }
+        if let Some(i) = found {
+            if m == Mode::Verify {
+                // the full verifier. In the host its restore replaces
+                // the edit's pending branch, so a compile with a
+                // verified call does not converge: verify is a gate
+                // mode, and the output must still equal a full run's
+                {
+                    if let Ok(ck) = self.checkpoint() {
+                        FULL.with(|f| *f.borrow_mut() = Some(FullVerify { ck, warn }));
                     }
-                    return self.bm_start(cs, n, scanner, k1, ctx, k2, k4, Some(i));
                 }
-                if let Some(t) = self.bm_replay(cs, i) {
-                    self.cur_tok = t;
-                    self.back_input();
-                }
-                return;
+                let (k2, k4) = (self.bm_k2(), k4_now);
+                return self.bm_start(cs, n, scanner, k1, ctx, k2, k4, Some(i));
             }
+            if let Some(t) = self.bm_replay(cs, i) {
+                self.cur_tok = t;
+                self.back_input();
+            }
+            return;
+        }
+        if let Some(i) = partial {
             why = "Meanings";
             if debug() {
-                let bad: Vec<String> = k3
-                    .iter()
-                    .filter(|(p, m)| self.bm_meaning(*p).as_ref() != Some(m))
-                    .take(4)
-                    .map(|(p, m)| {
-                        format!(
-                            "\\{} was {m:?} now {:?}",
-                            self.cs_name_string(*p),
-                            self.bm_meaning(*p)
-                        )
-                    })
-                    .collect();
-                let regs: Vec<String> = kr
-                    .iter()
-                    .filter(|(r, v)| self.bm_reg_value(*r) != *v)
-                    .take(6)
-                    .map(|(r, v)| format!("{r:?} was {v:?} now {:?}", self.bm_reg_value(*r)))
-                    .collect();
+                let (bad, regs) = ST.with(|s| {
+                    let s = s.borrow();
+                    let e = &s.store[&cs][i];
+                    let bad: Vec<String> = e
+                        .k3
+                        .iter()
+                        .filter(|(p, m)| !self.bm_meaning_is(*p, m))
+                        .take(4)
+                        .map(|(p, m)| {
+                            format!(
+                                "\\{} was {m:?} now {:?}",
+                                self.cs_name_string(*p),
+                                self.bm_meaning(*p)
+                            )
+                        })
+                        .collect();
+                    let regs: Vec<String> = e
+                        .kr
+                        .iter()
+                        .filter(|(r, v)| self.bm_reg_value(*r) != *v)
+                        .take(6)
+                        .map(|(r, v)| format!("{r:?} was {v:?} now {:?}", self.bm_reg_value(*r)))
+                        .collect();
+                    (bad, regs)
+                });
                 eprintln!(
-                    "boxmemo: \\{} key differs: absent ok {absent_ok}; {bad:?}; registers {regs:?}",
+                    "boxmemo: \\{} key differs: {bad:?}; registers {regs:?}",
                     self.cs_name_string(cs)
                 );
             }
@@ -1390,18 +1666,13 @@ impl Globals {
                     let om: HashMap<i32, &Vec<i32>> = old.iter().map(|(p, v)| (*p, v)).collect();
                     now.iter()
                         .filter(|(p, v)| om.get(p).is_none_or(|o| *o != v))
-                        .map(|(p, v)| {
-                            format!("{}={:?}", self.bm_loc_name(*p), &v[..v.len().min(3)])
-                        })
+                        .map(|(p, v)| format!("{}={:?}", self.bm_loc_name(*p), &v[..v.len().min(3)]))
                         .take(12)
                         .collect()
                 })
             });
             if !diff.is_empty() {
-                eprintln!(
-                    "boxmemo: \\{} miss, key differs at {diff:?}",
-                    self.cs_name_string(cs)
-                );
+                eprintln!("boxmemo: \\{} miss, key differs at {diff:?}", self.cs_name_string(cs));
             }
             LAST_KEY.with(|l| l.borrow_mut().insert(cs, now));
         }
@@ -1412,6 +1683,7 @@ impl Globals {
         if refused {
             return;
         }
+        let (k2, k4) = (self.bm_k2(), k4_now);
         self.bm_start(cs, n, scanner, k1, ctx, k2, k4, None);
     }
 
@@ -1518,6 +1790,7 @@ impl Globals {
                     ));
                 }
                 // drop the entry: the guard let through a call it should not have
+                s.stale.insert(rec.cs);
                 if let Some(v) = s.store.get_mut(&rec.cs) {
                     if let Some(i) = rec.verify {
                         if i < v.len() {
@@ -1853,9 +2126,7 @@ impl Globals {
     #[cold]
     #[inline(never)]
     pub fn flashtex_bm_box(&mut self, n: i32) {
-        let pending = self
-            .bm_with_rec(|r| r.pending_box.is_some())
-            .unwrap_or(false);
+        let pending = self.bm_with_rec(|r| r.pending_box.is_some()).unwrap_or(false);
         if pending {
             // the previous fetch was not a dimension, a test or a move: the
             // box's contents were read (`\copy`, `\unhbox`, `\vsplit`, ...)
@@ -2179,10 +2450,7 @@ impl Globals {
             // only in restricted horizontal mode may a call append: no
             // paragraph, no page builder
             Some("OuterList")
-        } else if self
-            .bm_with_rec(|r| r.pending_box.is_some())
-            .unwrap_or(false)
-        {
+        } else if self.bm_with_rec(|r| r.pending_box.is_some()).unwrap_or(false) {
             Some("BoxContent")
         } else if end.page != start.page {
             Some("Page")
@@ -2267,7 +2535,7 @@ impl Globals {
         trailer: Option<i32>,
     ) {
         let line = self.line;
-        let bytes = 4 * (rec.k1.len() + rec.k2.len() + rec.k4.len())
+        let mut bytes = 4 * (rec.k1.len() + rec.k2.len() + rec.k4.len())
             + rec
                 .k3
                 .iter()
@@ -2305,11 +2573,38 @@ impl Globals {
             s.clock += 1;
             let now = s.clock;
             s.aborts.remove(&rec.cs);
+            let k2hash = k2_hash_of(&rec.k2);
+            let k2: std::rc::Rc<[i32]> = s
+                .store
+                .get(&rec.cs)
+                .and_then(|v| {
+                    v.iter()
+                        .find(|e| e.k2hash == k2hash && *e.k2 == rec.k2[..])
+                        .map(|e| e.k2.clone())
+                })
+                .inspect(|k2| bytes -= 4 * k2.len())
+                .unwrap_or_else(|| rec.k2.into());
+            let rs_locs = {
+                    let mut v: Vec<i32> = rec.k3.iter().map(|(p, _)| *p).collect();
+                    v.push(rec.cs);
+                    for o in &rec.ops {
+                        if let Op::Def { p, v: val, .. } = o {
+                            v.push(*p);
+                            if let Val::LetCs(s) = val {
+                                v.push(*s);
+                            }
+                        }
+                    }
+                    v.sort_unstable();
+                    v.dedup();
+                    v
+                };
             let entry = Entry {
-                hash: key_hash(&rec.k1, &rec.ctx, &rec.k2, &rec.k4),
+                hash: key_hash(&rec.k1, &rec.ctx, &[], &[]),
+                k2hash,
                 k1: rec.k1,
                 ctx: rec.ctx,
-                k2: rec.k2,
+                k2,
                 k4: rec.k4,
                 k3: rec.k3,
                 absent: rec.absent,
@@ -2321,6 +2616,8 @@ impl Globals {
                 trailer,
                 voids: rec.voids,
                 line: rec.line_read.then_some(line),
+                fast: elide_local_groups(&rec.ops),
+                rs_locs,
                 ops: rec.ops,
                 last_badness,
                 last_used: now,
@@ -2336,6 +2633,7 @@ impl Globals {
                 );
             }
             s.bytes += bytes;
+            s.stale.insert(rec.cs);
             let v = s.store.entry(rec.cs).or_default();
             if v.len() >= MAX_VARIANTS {
                 let (i, _) = v
@@ -2358,6 +2656,7 @@ impl Globals {
                     })
                     .min();
                 let Some((_, cs, i)) = victim else { break };
+                s.stale.insert(cs);
                 let e = s.store.get_mut(&cs).unwrap().remove(i);
                 s.bytes = s.bytes.saturating_sub(e.bytes);
             }
@@ -2633,27 +2932,19 @@ impl Globals {
             e.last_used = now;
             e.hits += 1;
             Some((
-                std::mem::take(&mut e.ops),
+                std::mem::take(&mut e.fast),
                 e.last_badness,
-                e.k3.iter().map(|(p, _)| *p).collect::<Vec<i32>>(),
+                std::mem::take(&mut e.rs_locs),
             ))
         });
-        let (ops, last_badness, k3) = taken?;
+        let Some((ops, last_badness, rs_locs)) = taken else {
+            return None;
+        };
         // the body, used up: as `get_next` pops it
         self.end_token_list();
         // the L5 read-set (DESIGN.md §5.5), as D9's `intr_report_reads`
         if self.rs_on {
-            let mut locs = k3;
-            locs.push(cs);
-            for o in &ops {
-                if let Op::Def { p, v, .. } = o {
-                    locs.push(*p);
-                    if let Val::LetCs(s) = v {
-                        locs.push(*s);
-                    }
-                }
-            }
-            for p in locs {
+            for &p in &rs_locs {
                 if Self::bm_is_cs(p) && !self.rs_seen[p as usize] {
                     self.flashtex_cs_read(p);
                 }
@@ -2715,7 +3006,8 @@ impl Globals {
         ST.with(|s| {
             let mut s = s.borrow_mut();
             if let Some(e) = s.store.get_mut(&cs).and_then(|v| v.get_mut(i)) {
-                e.ops = ops;
+                e.fast = ops;
+                e.rs_locs = rs_locs;
             }
             s.stats.hits += 1;
             s.stats.replayed_ops += n;
