@@ -57,10 +57,11 @@ Convergence is unchanged: every in-body row converges on every key in both runs 
 
 ## Correctness
 
-- **Verify mode in the host** (`FLASHTEX_BOXMEMO=verify`; every admitted call is run both ways and the whole engine state compared). Final code, letter@start and letter@middle:
+- **Verify mode in the host** (`FLASHTEX_BOXMEMO=verify`; every admitted call is run both ways), letter@start and letter@middle:
   - beamer-5: 968 replays;
   - beamer-30: 27,870 replays, and on a later build 17,727 on letter@start;
-  - **0 differences** in the operation log and the fragments, and 0 in the full state.
+  - **0 differences** in the operation log and the fragments, and 0 in the whole engine state.
+  - These runs predate `caa840b3f`, which turned the full-state check off in the host (BOX-MEMO.md §7: its checkpoint stayed among the restart points). The host still checks the operation log and the fragments.
 - **Verify-mode soundness**, `soundness.py` with sweep C's kinds, 20 trials, final code: framed-tikz-theorems 26 compiles, beamer-madrid 12, beamer-blocks-columns 16; 0 bad.
   - The verify sweep on #1692 had found two holes in the key, which are fixed here and there (BOX-MEMO.md §11.6). Before the fix, framed-tikz-theorems stopped the host.
 - **Command line** (`FLASHTEX_BOXMEMO=on|verify`, which records anywhere there), the default names, 25-frame probe decks: 7,421 replays (Madrid block frames) and 1,114 (default theme), **0 differences** in verify mode. The PDFs with BOX-MEMO off, on and verify are byte-identical.
@@ -71,4 +72,4 @@ Convergence is unchanged: every in-body row converges on every key in both runs 
   - `on` with `--pt pt2` (untraced, where replays happen): P-T2 88/88.
 - **`tests/boxmemo.rs`** (9 tests): off, on and verify give the same log and the same PDF bytes for links, form references, `\lastskip` glue, local groups and font parameters.
 - **`scripts/gate.sh quick`** (final code): rustfmt, clippy, the web2rust drift test, trip and etrip pass. Tests: one failure, `fontmap_cache::a_cached_parse_writes_what_a_parse_writes`, which is environmental. pdfTeX's warning names the executable's path, and on this PC's longer target directory it wraps inside the phrase the test looks for. It failed the same way on #1692's base.
-- **Soundness sweeps** (`sweeps.yml`, default and `boxmemo=verify`): in the PR.
+- **Soundness sweeps** (`sweeps.yml`): every gate passed with 0 bad, 0 wrong and 0 aborts, in BOX-MEMO's verify mode on #1692 (run 39389835057) and in the product default on `8ecc2d6c0` (run 39391094661). Final-head runs are in the PR.

@@ -297,9 +297,15 @@ before it reads. Each item is cited:
 Each of these was found by the verifier as a false positive on *Infinite Descent*. Once covered, 0
 differences remained.
 
-- **In the host,** the verifier's restore replaces the edit's pending branch, so a compile with a
-  verified call does not converge. That is acceptable in a gate mode, where the output must still
-  equal a full run's.
+- **In the host** (revision 2) the full-state check is off. Each admitted call's operation log,
+  output and `last_badness` are still compared with the normal path's (`bm_verified`, steps 2–3).
+  - The admission checkpoint C stays the base of the state the run continues from, so it cannot be
+    dropped after the comparison. In the host every verification left one among the restart
+    points, with no page count, and a compile interrupted by the next edit restarted there.
+  - Its restore also replaced the edit's pending branch, so a verified compile never converged.
+- Inside an alignment, the comparison takes the preamble (`link(align_head)`: tabskip glue and
+  alignrecords, which the walk does not know) by its words. Neither path made it
+  (`iso::align_by_words`).
 - `FLASHTEX_BOXMEMO_VERIFY_FAIL=1` exits with status 3 at the first difference. The sweeps run with
   both settings (`tools/incr-bench/sweeps.py`).
 
