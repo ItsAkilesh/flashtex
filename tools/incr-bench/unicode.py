@@ -36,6 +36,19 @@ the same length, and its path is read as the measured one's in what it
 wrote (the logs name it). The source map (`SOURCES` frames) is also
 compared on its own (`source-map`). A mismatch's files go to BASE/mm/.
 
+`--callgrind DIR` (Linux, where `proc_pid_rusage` is not; GitHub's runners
+cannot count with `perf`): the measured host runs under valgrind's
+callgrind, its counts zeroed before each compile and dumped at its `DONE`
+(`callgrind_control`), so `instructions_m` is the host process's, all its
+threads, over the compile. The wall times are then callgrind's, not the
+host's.
+
+`--reopen`: after the edits, the measured host ends and a new one compiles
+the document once more, from the output directory the session left (its
+`.aux`), as a host started for a reopened document does (DESIGN.md §1.2:
+no host kept warm in advance). With `--callgrind` its instructions count
+from the new host's start.
+
 Prints one JSON line per compile (and to --out), then a summary line.
 """
 import argparse
@@ -62,7 +75,7 @@ ap.add_argument('srcdir')
 ap.add_argument('--doc', default='main')
 ap.add_argument('--trials', type=int, default=0)
 ap.add_argument('--keys', type=int, default=0)
-ap.add_argument('--at', default='end')
+ap.add_argument('--at', default='end', help='end, mid, a fraction of the body, or a marker word in the text')
 ap.add_argument('--seed', type=int, default=1)
 ap.add_argument('--kinds', default='replace,insert,delete')
 ap.add_argument('--verify', action='store_true')
@@ -74,6 +87,10 @@ ap.add_argument('--interleave', action='store_true',
                 help='with --trials: each edit\'s compile is cancelled 0-15 ms after it is sent, a second '
                      'edit saved in between (as an editor saves while the host reads); the second edit is '
                      'then compiled and verified (the classic sweep D: incr_bench.py --interleave)')
+ap.add_argument('--callgrind', metavar='DIR', help='count the measured host\'s instructions under callgrind')
+ap.add_argument('--callgrind-keep', action='store_true',
+                help='keep each compile\'s callgrind dumps (their paths in `cg_dumps`) for callgrind_annotate')
+ap.add_argument('--reopen', action='store_true', help='then a new host compiles the document once more')
 a = ap.parse_args()
 
 PAGE, FONT, IMAGE, FORM, DIAG, DONE, STARTED, TOOL, SOURCES = 0x45, 0x43, 0x44, 0x46, 0x48, 0x49, 0x42, 0x4C, 0x47
@@ -118,16 +135,96 @@ def read_frame(f):
     return k, f.read(n - 1)
 
 
+class Callgrind:
+    """A host under callgrind: its instructions between `begin` and `end`,
+    and up to each page. callgrind dumps its counts (and zeroes them) after
+    every call of the engine's `flashtex_page_sent` (`--dump-after`: the
+    page's frame is written, on the engine's own thread), so the count up
+    to the k-th page a compile sends is the sum of its first k dumps;
+    `end` dumps the rest (`callgrind_control -d`)."""
+
+    def __init__(self, out_dir, tag):
+        os.makedirs(out_dir, exist_ok=True)
+        self.base = os.path.join(os.path.abspath(out_dir), 'cg-%d-%s' % (os.getpid(), tag))
+        self.pid = None
+        self.keep = a.callgrind_keep
+        self.kept = []
+        self.seen = set()
+
+    def argv(self):
+        return ['valgrind', '--tool=callgrind', '--callgrind-out-file=' + self.base,
+                '--dump-instr=no', '--compress-strings=no', '--dump-after=flashtex_page_sent']
+
+    def ctl(self, *args):
+        subprocess.run(['callgrind_control'] + list(args) + [str(self.pid)], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
+
+    def begin(self):
+        """From now (the counts zeroed; earlier dumps dropped)."""
+        self._take()
+        self.ctl('-z')
+        self.kept = []
+
+    def from_start(self):
+        """From the process's start (nothing zeroed)."""
+        self.kept = []
+
+    def end(self):
+        """[the count in each dump since `begin`], the last one taken now."""
+        self.ctl('-d')
+        return self._take()
+
+    def _take(self):
+        new = sorted((d for d in self._dumps() if d not in self.seen), key=self._num)
+        counts = []
+        for d in new:
+            self.seen.add(d)
+            # (a dump file gives its count twice, as `summary:` in its
+            # header and `totals:` at its end: one of them)
+            got = 0
+            with open(d, errors='replace') as f:
+                for line in f:
+                    m = re.match(r'(?:summary|totals):\s+(\d+)', line)
+                    if m:
+                        got = int(m.group(1))
+            counts.append(got)
+            if self.keep:
+                self.kept.append(d)
+            else:
+                os.unlink(d)
+        return counts
+
+    @staticmethod
+    def _num(path):
+        m = re.search(r'\.(\d+)$', path)
+        return int(m.group(1)) if m else 0
+
+    def _dumps(self):
+        d = os.path.dirname(self.base)
+        stem = os.path.basename(self.base)
+        return [os.path.join(d, n) for n in os.listdir(d) if n.startswith(stem + '.')]
+
+
 class Host:
-    def __init__(self, exe, env, tag):
+    def __init__(self, exe, env, tag, cg=None, from_start=False):
+        self.cg = cg
+        self.from_start = from_start
         self.sock = os.path.join(tempfile.gettempdir(), 'fxu-%d-%s.sock' % (os.getpid(), tag))
         try:
             os.unlink(self.sock)
         except OSError:
             pass
-        self.err = open(os.path.join(tempfile.gettempdir(), 'fxu-%d-%s.err' % (os.getpid(), tag)), 'w')
-        self.p = subprocess.Popen([exe, '--socket', self.sock, '--once', '--accept-timeout', '600'],
+        self.err_path = os.path.join(tempfile.gettempdir(), 'fxu-%d-%s.err' % (os.getpid(), tag))
+        self.err = open(self.err_path, 'w')
+        # a host with a persisted-S0 cache (--s0-cache, #1805) saves S0 after
+        # the DONE of a compile that took one: the next compile waits for it,
+        # so that its count is its own
+        self.s0_cache = bool(env.get('FLASHTEX_S0_CACHE'))
+        self.p = subprocess.Popen((cg.argv() if cg else []) + [exe, '--socket', self.sock, '--once',
+                                                               '--accept-timeout', '600'],
                                   stdout=subprocess.DEVNULL, stderr=self.err, env=env)
+        if cg:
+            cg.pid = self.p.pid
         while not os.path.exists(self.sock):
             if self.p.poll() is not None:
                 sys.exit('%s: the host ended' % tag)
@@ -140,12 +237,22 @@ class Host:
         read_frame(self.f)
         self.n = 0
 
-    def compile(self, root, main):
-        """One compile: (frames, done, timings)."""
+    def compile(self, root, main, prev=None):
+        """One compile: (frames, done, timings). With callgrind and `prev`
+        (the last compile's page hashes by number), the count is also taken
+        when the engine has written the first page that differs from it
+        (`edited_ins`; callgrind's per-page dumps, `Callgrind`)."""
         self.n += 1
         req = {'id': self.n, 'root': os.path.join(root, 'src'), 'main': main, 'format': 'xelatex',
                'shell_escape': 'default', 'output_dir': os.path.join(root, 'out')}
         i0 = instructions(self.p.pid)
+        if self.cg:
+            if self.from_start and self.n == 1:
+                self.cg.from_start()
+            else:
+                self.cg.begin()
+        edited_idx = None
+        n_page = 0
         t0 = time.time()
         write_frame(self.s, 0x02, json.dumps(req))
         frames = []
@@ -160,6 +267,10 @@ class Host:
                 page_times.append(time.time() - t0)
                 if first is None:
                     first = page_times[-1]
+                if prev is not None and edited_idx is None \
+                        and prev.get(n_page) != hashlib.sha256(b).hexdigest():
+                    edited_idx = n_page
+                n_page += 1
             if k == DONE:
                 d = json.loads(b)
                 if d.get('id') == self.n:
@@ -168,8 +279,21 @@ class Host:
         done = time.time() - t0
         i1 = instructions(self.p.pid)
         ins = (i1 - i0) if i0 is not None and i1 is not None else None
+        edited_ins = first_ins = None
+        if self.cg:
+            counts = self.cg.end()
+            ins = sum(counts)
+            # (the k-th page's dump is the k-th; the last page, when none
+            # differs)
+            k = edited_idx if edited_idx is not None else n_page - 1
+            edited_ins = sum(counts[:k + 1]) if 0 <= k < len(counts) else ins
+            first_ins = counts[0] if n_page and counts else ins
+        if self.s0_cache and (d.get('starts') or [None])[0] in ('fresh', 'format'):
+            self.wait_s0_saved()
         return frames, d, dict(first=first, done=done, page_times=page_times, instructions=ins,
-                               footprint=footprint(self.p.pid))
+                               edited_instructions=edited_ins, first_instructions=first_ins,
+                               footprint=footprint(self.p.pid),
+                               cg_dumps=list(self.cg.kept) if self.cg else [])
 
     def compile_cancelled(self, root, main, ms, between):
         """A compile cancelled `ms` milliseconds after it is sent, with
@@ -191,11 +315,37 @@ class Host:
                 if d.get('id') == self.n:
                     return d
 
+    def saves(self):
+        try:
+            t = open(self.err_path, errors='replace').read()
+        except OSError:
+            return 0
+        return t.count('"saved_s0"') + t.count('saving S0:')
+
+    def wait_s0_saved(self, timeout=300):
+        """The S0 save this compile started has ended (its writer says so
+        on stderr); none is started for a compile whose S0 it already
+        holds, which the timeout bounds."""
+        self.err.flush()
+        want = getattr(self, 'saves_seen', 0) + 1
+        t = time.time()
+        while time.time() - t < timeout and self.saves() < want:
+            if self.p.poll() is not None:
+                break
+            time.sleep(0.05)
+        self.saves_seen = self.saves()
+
     def close(self):
         try:
             write_frame(self.s, 0x04, '{}')
         except OSError:
             pass
+        if self.s0_cache:
+            # (a host waits for its S0 writer before it exits)
+            try:
+                self.p.wait(timeout=600)
+            except subprocess.TimeoutExpired:
+                pass
         self.p.kill()
         self.p.wait()
         try:
@@ -378,7 +528,8 @@ def main():
     for kv in a.host_env:
         k, v = kv.split('=', 1)
         henv[k] = v
-    host = Host(a.host, henv, 'm')
+    cg = (lambda tag: Callgrind(a.callgrind, tag)) if a.callgrind else (lambda tag: None)
+    host = Host(a.host, henv, 'm', cg('m'))
     refhost = None
     if a.verify:
         renv = dict(env, FLASHTEX_UNICODE_INPROCESS='0', FLASHTEX_UNICODE_SPARES='0')
@@ -392,7 +543,7 @@ def main():
         nonlocal prev_pages
         open(os.path.join(work, 'src', main_tex), 'wb').write(content)
         pre = snapshot(work)
-        frames, d, t = host.compile(work, main_tex)
+        frames, d, t = host.compile(work, main_tex, prev_pages)
         pages = [b for k, b in frames if k == PAGE]
         n = d.get('pages') or 0
         last = pages[-n:] if n else []
@@ -412,6 +563,11 @@ def main():
                  first_ms=round(1e3 * (t['first'] or 0), 1), edited_ms=round(1e3 * edited, 1),
                  done_ms=round(1e3 * t['done'], 1),
                  instructions_m=round(t['instructions'] / 1e6, 1) if t['instructions'] is not None else None,
+                 edited_instructions_m=(round(t['edited_instructions'] / 1e6, 1)
+                                        if t.get('edited_instructions') is not None else None),
+                 first_instructions_m=(round(t['first_instructions'] / 1e6, 1)
+                                       if t.get('first_instructions') is not None else None),
+                 cg_dumps=t.get('cg_dumps') or None,
                  mode=d.get('mode'), starts=d.get('starts'),
                  footprint_mb=(t['footprint'] or (None, None))[0], peak_mb=(t['footprint'] or (None, None))[1],
                  sources=sum(1 for k, _ in frames if k == SOURCES))
@@ -458,10 +614,15 @@ def main():
 
     src = open(os.path.join(work, 'src', main_tex), 'rb').read()
     one(src, 'cold')
-    if a.keys:
+    # (a main file whose body is in other files gets no keystrokes)
+    if a.keys and b'\\begin{document}' in src and b'\\end{document}' in src:
         end = src.index(b'\\end{document}')
         if a.at == 'end':
             anchor = end
+        elif re.fullmatch(r'[A-Za-z]+', a.at) and a.at != 'mid':
+            # a marker in the text (the M3 bench's `EDITPOINT`): typed
+            # right after it, as tools/unicode-m3/latency.py edits
+            anchor = src.index(a.at.encode()) + len(a.at)
         else:
             frac = 0.5 if a.at == 'mid' else float(a.at)
             begin = src.index(b'\\begin{document}') + len(b'\\begin{document}')
@@ -501,6 +662,10 @@ def main():
             else:
                 one(new, '%d:%s@%d' % (i, kind, p))
             one(src, '%d:revert' % i)
+    if a.reopen:
+        host.close()
+        host = Host(a.host, henv, 'm2', cg('m2'), from_start=True)
+        one(src, 'reopen')
     host.close()
     if refhost is not None:
         refhost.close()

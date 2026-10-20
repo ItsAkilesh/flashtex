@@ -79,10 +79,7 @@ impl MapIndex {
         let mut start = 0;
         let n = data.len();
         while start <= n {
-            let end = data[start..]
-                .iter()
-                .position(|&c| c == b'\n' || c == b'\r')
-                .map_or(n, |p| start + p);
+            let end = line_end(&data, start);
             if let Some(t) = tfm_of(&data[start..end]) {
                 if !index.contains_key(t) {
                     index.insert(t.into(), (start as u32, end as u32));
@@ -154,6 +151,31 @@ impl std::hash::Hasher for FxHasher {
     fn finish(&self) -> u64 {
         self.0
     }
+}
+
+/// The position of the first `\n` or `\r` of `data` at or after `start`,
+/// else `data.len()`: eight bytes at a time (a 5.5 MB `pdftex.map` is read
+/// at every run that uses a TFM font, and a byte-at-a-time search was most
+/// of the cost of indexing it).
+fn line_end(data: &[u8], start: usize) -> usize {
+    const ONES: u64 = 0x0101_0101_0101_0101;
+    const HIGHS: u64 = 0x8080_8080_8080_8080;
+    // a byte of `x` is zero: the classic "has a zero byte" test, exact for
+    // the lowest such byte (the borrow only reaches bytes above it)
+    let zero = |x: u64| x.wrapping_sub(ONES) & !x & HIGHS;
+    let mut i = start;
+    while i + 8 <= data.len() {
+        let w = u64::from_le_bytes(data[i..i + 8].try_into().expect("8 bytes"));
+        let m = zero(w ^ (ONES * u64::from(b'\n'))) | zero(w ^ (ONES * u64::from(b'\r')));
+        if m != 0 {
+            return i + (m.trailing_zeros() / 8) as usize;
+        }
+        i += 8;
+    }
+    data[i.min(data.len())..]
+        .iter()
+        .position(|&c| c == b'\n' || c == b'\r')
+        .map_or(data.len(), |p| i + p)
 }
 
 /// The TFM name [`parse_line`] gives `line` (its first word that is not
@@ -446,6 +468,37 @@ mod tests {
         assert_eq!(m.base.index.len(), want.len());
         for (k, v) in &want {
             assert_eq!(m.get(k).as_ref(), Some(v));
+        }
+    }
+
+    /// `line_end` is the byte-at-a-time search, from every start, over
+    /// bytes that sit next to `\n` and `\r` in every lane of a word.
+    #[test]
+    fn line_ends_are_the_first_newline() {
+        let mut data = Vec::new();
+        let mut x: u32 = 1;
+        for _ in 0..4000 {
+            x = x.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            data.push(match (x >> 16) % 23 {
+                0 => b'\n',
+                1 => b'\r',
+                2 => 0x0b,
+                3 => 0x0c,
+                4 => 0x8a,
+                5 => 0x00,
+                6 => 0xff,
+                k => b'a' + k as u8,
+            });
+        }
+        for n in [0, 1, 7, 8, 9, 63, 4000] {
+            let d = &data[..n];
+            for start in 0..=n {
+                let want = d[start..]
+                    .iter()
+                    .position(|&c| c == b'\n' || c == b'\r')
+                    .map_or(n, |p| start + p);
+                assert_eq!(line_end(d, start), want, "n {n} start {start}");
+            }
         }
     }
 

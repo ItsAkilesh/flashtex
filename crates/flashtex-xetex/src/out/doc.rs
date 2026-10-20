@@ -121,6 +121,23 @@ pub struct Tracking {
     pub rect: Option<[f64; 4]>,
 }
 
+/// `dvipdfmx:catch_phantom` (dvipdfmx's dvi.c, `catch_phantom`): whether a
+/// move to the right inside a link widens the link, and how high and deep
+/// the box it crosses is. hyperref's `hdvipdfmx` and beamer's navigation
+/// symbols set it so that a link over empty space has a rectangle. Like
+/// dvipdfmx's, it lasts past the link and the page.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Phantom {
+    /// `catch_phantom false`, and dvipdfmx's start.
+    #[default]
+    Off,
+    /// `catch_phantom true` alone: the current font's size high, 0 deep.
+    FontSize,
+    /// `catch_phantom true height … depth …` (DVI units, truncated as
+    /// dvipdfmx's `spt_t` assignment truncates).
+    Box { height: i32, depth: i32 },
+}
+
 /// The document. A resident engine's page checkpoint keeps a copy
 /// (`crate::ckpt`): the pages and forms are shared, so a copy costs a
 /// pointer a page.
@@ -148,6 +165,11 @@ pub struct Doc {
     /// dvipdfmx's colour stack: (fill, stroke). It lasts across pages.
     pub colors: Vec<(Col, Col)>,
     pub tracking: Option<Tracking>,
+    /// `dvipdfmx:catch_phantom`'s mode.
+    pub phantom: Phantom,
+    /// `pdf:nolink` (until `pdf:link`): what is drawn does not widen the
+    /// link being tracked (dvipdfmx's `link_annot` off).
+    pub nolink: bool,
     /// Specials not understood, by their first word, with their count.
     pub unknown: BTreeMap<String, u32>,
     /// Specials understood but not carried out, by name, with their count.
