@@ -101,7 +101,7 @@ final class CommandTableTests: XCTestCase {
             var i = 0
             while i < lines.count {
                 let line = lines[i]
-                if line.contains("CommandGroup(after: .appInfo)") { menu = "FlashTeX" }
+                if line.contains("CommandGroup(after: .appInfo)") || line.contains("CommandGroup(replacing: .appInfo)") { menu = "FlashTeX" }
                 else if line.contains("CommandGroup(replacing: .newItem)") || line.contains("CommandGroup(replacing: .printItem)") { menu = "File" }
                 else if line.contains("CommandGroup(after: .pasteboard)") || line.contains("CommandGroup(after: .textEditing)") { menu = "Edit" }
                 else if line.contains("CommandMenu(\"Navigate\")") { menu = "Navigate" }

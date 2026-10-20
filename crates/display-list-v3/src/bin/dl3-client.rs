@@ -6,7 +6,7 @@
 //!         [--repeat N] [--reuse-fonts] [--save out.dl3] [--output-dir DIR] [--quiet]
 //!         [--diag FILE] [--format NAME] [--shell-escape off|restricted|on] [--export]
 //!         [--includeonly NAME,...]
-//!         [--external-tools auto|off]
+//!         [--external-tools auto|off] [--font-formats type3,truetype,opentype]
 //!
 //! Per compile it prints one JSON line: time to STARTED, to the first PAGE
 //! and to DONE (ms, measured here from sending COMPILE), pages, forms,
@@ -80,6 +80,11 @@ fn main() {
         req.export = a.iter().any(|x| x == "--export");
         // `--includeonly a,b`: a chapter focus (`\includeonly{a,b}`, host capability `includeonly`).
         req.includeonly = arg("--includeonly").map(|v| v.split(',').map(str::to_string).collect());
+        // `--font-formats a,b`: the FONT formats this client draws (the app
+        // sends type3,truetype,opentype; Unicode mode's fonts are opentype).
+        req.font_formats = arg("--font-formats")
+            .map(|v| v.split(',').map(str::to_string).collect())
+            .unwrap_or_default();
         let tools = arg("--external-tools");
         req.external_tools = tools.clone();
         if reuse {

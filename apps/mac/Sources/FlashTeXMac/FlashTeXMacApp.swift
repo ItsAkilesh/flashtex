@@ -361,6 +361,10 @@ struct FlashTeXMacApp: App {
                     .disabled(!PrintController.sourceEnabled(model))
                     .help(PrintController.sourceHelp(model))
             }
+            CommandGroup(replacing: .appInfo) {
+                // The standard About panel with the GPL source offer in its credits (AboutPanel.swift, #1806).
+                Button("About FlashTeX") { AboutPanel.show() }
+            }
             CommandGroup(after: .appInfo) {
                 // FlashTeX menu, after About (UpdateChecker.swift, #694 slice 1):
                 // asks GitHub Releases, shows version + notes, Download opens the

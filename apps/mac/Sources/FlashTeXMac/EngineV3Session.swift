@@ -467,6 +467,10 @@ final class EngineV3Session {
     /// The running host's mode (tests and evidence).
     var hostMode: EngineV3Mode? { host?.mode }
 
+    /// What the user's messages call the engine: "XeLaTeX" in Unicode
+    /// mode, "pdfLaTeX" otherwise (the mode being started, else the host's).
+    var engineName: String { (pendingMode?.mode ?? hostMode ?? .classic).formatName }
+
     private func launchHost() {
         let mode = pendingMode ?? Self.mode(model, main: mainFile)
         pendingMode = nil
@@ -709,7 +713,7 @@ final class EngineV3Session {
             environmentNote = "TeX Live: \(texlive) — format \(formats)"
             let failed = (j["formats"]?.array ?? []).contains(where: { $0["status"]?.string == "failed" })
             if failed {
-                phase = .failed("The pdfLaTeX format could not be prepared: \(formats)")
+                phase = .failed("The \(engineName) format could not be prepared: \(formats)")
             }
             // No TeX Live and no format: the document falls back to the
             // previous engine, and the window says why (EngineChoice.swift).
@@ -1257,11 +1261,16 @@ final class EngineV3Session {
     /// milliseconds of main thread (APP-EDITOR-INSTANT).
     static let sendQueue = DispatchQueue(label: "flashtex.engine-v3.send", qos: .userInteractive)
 
+    /// The threads the COMPILE writes and first-sight file writes ran on
+    /// (EngineV3SendOffMainTests: none on main).
+    nonisolated static let sendThreads = EngineV3SendThreads()
+
     /// Writes `req` to `c` on the send queue; a failed write restarts the
     /// host if `c` is still the connection.
     private func write(_ req: DL3CompileRequest, to c: DL3Connection, failed: @escaping @MainActor (EngineV3Session, Error) -> Void) {
         let ref = EngineV3WeakRef(self)
         Self.sendQueue.async {
+            EngineV3Session.sendThreads.note(.compile)
             do { try c.compile(req) } catch {
                 EngineV3Session.onMain {
                     guard let s = ref.value, s.connection === c else { return }
@@ -1418,6 +1427,7 @@ final class EngineV3Session {
                 // milliseconds of main thread).
                 let dst = project.root.appendingPathComponent(doc.path), text = doc.text
                 Self.sendQueue.async {
+                    EngineV3Session.sendThreads.note(.file)
                     try? FileManager.default.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
                     if (try? FileManager.default.destinationOfSymbolicLink(atPath: dst.path)) != nil { try? FileManager.default.removeItem(at: dst) }
                     try? Data(text.utf8).write(to: dst)
@@ -1825,7 +1835,7 @@ final class EngineV3Session {
                     // them stay on screen, stale, until a compile sends them.
                     let kept = pageCount - n
                     markStale(Set(n ..< pageCount))
-                    statusNote = "stopped: pdfLaTeX gives up here · \(n) new page\(n == 1 ? "" : "s"), \(kept) kept from the last compile · \(String(format: "%.0f", j["elapsed_ms"]?.double ?? 0)) ms"
+                    statusNote = "stopped: \(engineName) gives up here · \(n) new page\(n == 1 ? "" : "s"), \(kept) kept from the last compile · \(String(format: "%.0f", j["elapsed_ms"]?.double ?? 0)) ms"
                 } else {
                     // A DONE without `pages` says nothing about them: the
                     // marks stay as they are (never "all current").
@@ -1866,8 +1876,9 @@ final class EngineV3Session {
                     caretWindow = caretWindows[compileID] // the caret's edits since this compile was sent
                     compiledStamp &+= 1
                     prepareCaretLines(path: model.activePath, text: model.compiledDocuments[model.activePath])
-                    texProblems = diags.isEmpty ? Self.problems(diagnostics, model: model, projectRoot: project?.root, texts: texts, mode: errorMode)
-                                                : Self.problems(diags: diags, model: model, projectRoot: project?.root, texts: texts, mode: errorMode)
+                    let engine = engineName
+                    texProblems = diags.isEmpty ? Self.problems(diagnostics, model: model, projectRoot: project?.root, texts: texts, mode: errorMode, engine: engine)
+                                                : Self.problems(diags: diags, model: model, projectRoot: project?.root, texts: texts, mode: errorMode, engine: engine)
                     publishProblems(model: model)
                     // VoiceOver: "2 errors, 1 warning" when the counts changed (the v2 path's announcement).
                     if model.engineV3Enabled { model.noteCompileCompletedForVoiceOver() }
@@ -2047,7 +2058,7 @@ final class EngineV3Session {
     /// document and the reported line's byte range; anything else (a
     /// package file) keeps its place in the message.
     static func problems(_ diags: [DL3JSON], model: ShellModel, projectRoot: URL?, texts: [String: String]? = nil,
-                         mode: EngineV3ErrorPolicy.Mode = .bestEffort) -> [RuntimeV1.Diagnostic] {
+                         mode: EngineV3ErrorPolicy.Mode = .bestEffort, engine: String = "pdfLaTeX") -> [RuntimeV1.Diagnostic] {
         let roots = Self.copyRoots(projectRoot)
         let kept = EngineV3ErrorPolicy.keptErrors(diags.map(Self.policyItem), mode: mode)
         var lines = EngineV3LineIndexes()
@@ -2055,7 +2066,7 @@ final class EngineV3Session {
             let error = d["severity"]?.string == "error"
             let severity: RuntimeV1.Severity = error && kept.contains(i) ? .error : .warning
             var message = d["message"]?.string ?? "(no message)"
-            if error, !kept.contains(i) { message = EngineV3ErrorPolicy.marked(message) }
+            if error, !kept.contains(i) { message = EngineV3ErrorPolicy.marked(message, engine: engine) }
             var source: RuntimeV1.SourceRange?
             if let reported = d["file"]?.string {
                 let file = Self.relativeToCopy(reported, roots: roots)
@@ -2116,7 +2127,7 @@ final class EngineV3Session {
     /// (`col`), so a click lands on the exact column; the macro chain and
     /// TeX's help text become the row's notes and help.
     static func problems(diags: [DL3Diag], model: ShellModel, projectRoot: URL?, texts: [String: String]? = nil,
-                         mode: EngineV3ErrorPolicy.Mode = .bestEffort) -> [RuntimeV1.Diagnostic] {
+                         mode: EngineV3ErrorPolicy.Mode = .bestEffort, engine: String = "pdfLaTeX") -> [RuntimeV1.Diagnostic] {
         let roots = Self.copyRoots(projectRoot)
         // TeX's errors it recovered from (EngineV3ErrorPolicy): warnings under best effort.
         let kept = EngineV3ErrorPolicy.keptErrors(diags.map(Self.policyItem), mode: mode)
@@ -2132,7 +2143,7 @@ final class EngineV3Session {
             guard d.severity != "info" else { return nil } // \show, tight/loose boxes: not problems
             guard folds[i] == nil else { return nil }
             let headline = EngineV3DiagPresent.headline(code: d.code, message: d.message)
-            var message = recovered.contains(i) ? EngineV3ErrorPolicy.marked(headline) : headline
+            var message = recovered.contains(i) ? EngineV3ErrorPolicy.marked(headline, engine: engine) : headline
             var source: RuntimeV1.SourceRange?
             if let file = d.file.map(rel) {
                 if let line = d.line, let text = text(file), let lineRange = lines.range(file, text, line: line) {
@@ -2367,6 +2378,27 @@ struct EngineV3LineIndexes {
         byFile[file] = ix
         return ix.range(line: line)
     }
+}
+
+/// Counts, by thread, the send queue's COMPILE writes and project-copy file
+/// writes: the test that they stay off main reads it (a counter bump per send).
+final class EngineV3SendThreads: @unchecked Sendable {
+    enum Kind { case compile, file }
+    struct Counts: Equatable { var compileOnMain = 0, compileOffMain = 0, fileOnMain = 0, fileOffMain = 0 }
+    private let lock = NSLock()
+    private var counts = Counts()
+    func note(_ kind: Kind) {
+        let main = Thread.isMainThread
+        lock.lock(); defer { lock.unlock() }
+        switch (kind, main) {
+        case (.compile, true): counts.compileOnMain += 1
+        case (.compile, false): counts.compileOffMain += 1
+        case (.file, true): counts.fileOnMain += 1
+        case (.file, false): counts.fileOffMain += 1
+        }
+    }
+    var current: Counts { lock.lock(); defer { lock.unlock() }; return counts }
+    func reset() { lock.lock(); counts = Counts(); lock.unlock() }
 }
 
 /// A weak reference that may cross threads (it is only dereferenced on main).
