@@ -114,6 +114,15 @@ pub const DEFAULT_NAMES: &[&str] = &[
     "@oddfoot",
     "beamer@typesetheadorfoot",
     "beamer@@tmpl@frametitle",
+    // (lane T7-LAST12) pgf's shading functions, parsed again at each
+    // declaration: Madrid's block shadow declares four shadings at every
+    // block (its `\pdfxform`s run for real, after the parse); beamer's
+    // colour templates; a path's use (its PDF literals are a draw call's
+    // fragment)
+    "pgf@parsefunc",
+    "beamer@thc@docolor",
+    "beamer@thc@usecolor",
+    "pgfusepath",
 ];
 
 /// Whether BOX-MEMO is on when `FLASHTEX_BOXMEMO` does not say: in the
