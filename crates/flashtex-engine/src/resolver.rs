@@ -712,13 +712,106 @@ mod kpse {
         formats: HashMap<Format, c_int>,
         what: String,
         memo: Memo,
-        /// The formats looked up so far, and the signature of every
-        /// directory kpathsea has expanded their search paths to on disk
-        /// (`refresh_disk_dirs`), as of the last check.
-        disk: (
-            std::collections::BTreeSet<c_int>,
-            Vec<(String, Option<crate::system::StatSig>)>,
-        ),
+        /// The formats looked up so far, and every directory kpathsea has
+        /// expanded their search paths to on disk (`refresh_disk_dirs`), as
+        /// of the last check.
+        disk: (std::collections::BTreeSet<c_int>, Vec<DiskDir>),
+        /// Per format looked up, the set of directories kpathsea has
+        /// expanded its search path to on disk (`flashtex_kpse_disk_dirs`),
+        /// as it is until kpathsea forgets its expansions
+        /// (`refresh_disk_dirs`).
+        searched: HashMap<c_int, std::sync::Arc<Vec<String>>>,
+    }
+
+    /// A directory kpathsea expanded a search path to on disk, as of the
+    /// last check (`refresh_disk_dirs`).
+    struct DiskDir {
+        dir: String,
+        /// Its signature then (`None`: not there).
+        sig: Option<crate::system::StatSig>,
+        /// What kpathsea's expansion reads of it (`subdirs`), listed after
+        /// `sig` was taken and before kpathsea walked the directory for the
+        /// expansion it has now; kept where `sig` was racy, so that the next
+        /// check can compare the listing instead. A directory first seen
+        /// after kpathsea walked it has none: a listing taken then could
+        /// already show a change the walk missed.
+        subdirs: Option<Subdirs>,
+    }
+
+    /// `subdirs`: each subdirectory's name and its entry's file number, in
+    /// the order the directory gives them.
+    type Subdirs = Vec<(std::ffi::OsString, u64)>;
+
+    /// What kpathsea's `//` expansion reads of the directory `d`
+    /// (elt-dirs.c, `do_subdir`): its entries that do not begin with `.`
+    /// and are directories, a link followed (`kpathsea_dir_links` stats
+    /// them), in `readdir`'s order, which is the expansion's order. Each
+    /// with its entry's file number, so that a subdirectory removed and
+    /// made again between two listings is a change. Whether a subdirectory
+    /// is searched for further subdirectories (the link-count leaf rule)
+    /// depends on its own entries, which its own listing covers. `None` if
+    /// it cannot be listed.
+    fn subdirs(d: &str) -> Option<Subdirs> {
+        let mut v = vec![];
+        for e in std::fs::read_dir(d).ok()? {
+            let e = e.ok()?;
+            let n = e.file_name();
+            if n.as_encoded_bytes().first() == Some(&b'.') {
+                continue;
+            }
+            let t = e.file_type().ok()?;
+            let dir = if t.is_symlink() {
+                std::fs::metadata(e.path()).is_ok_and(|m| m.is_dir())
+            } else {
+                t.is_dir()
+            };
+            if dir {
+                #[cfg(unix)]
+                let ino = std::os::unix::fs::DirEntryExt::ino(&e);
+                #[cfg(not(unix))]
+                let ino = 0;
+                v.push((n, ino));
+            }
+        }
+        Some(v)
+    }
+
+    /// Whether, in the directory `d`, kpathsea finds nothing under a name
+    /// it tries (`name`, or `name.` and a suffix, matched as a
+    /// case-insensitive file system may match them: `lookupproof::fold`)
+    /// except the answer, `found_base`, when `d` is the answer's directory,
+    /// `found_dir` (`Memo`). With `ascii_only`, any entry whose name is not
+    /// ASCII fails too: `fold` does not cover normalization (NFC against
+    /// NFD), and the check made again on a racy directory takes no such
+    /// risk.
+    fn tried_names_clear(
+        d: &str,
+        name: &str,
+        found_dir: Option<&Path>,
+        found_base: Option<&std::ffi::OsStr>,
+        ascii_only: bool,
+    ) -> Result<(), &'static str> {
+        let lname = crate::lookupproof::fold(name);
+        let dotted = format!("{lname}.");
+        let here = found_dir.is_some_and(|fd| Path::new(d).components().eq(fd.components()));
+        for entry in std::fs::read_dir(d)
+            .map_err(|_| "a directory cannot be listed")?
+            .flatten()
+        {
+            let en = entry.file_name();
+            if ascii_only && !en.as_encoded_bytes().is_ascii() {
+                return Err("an entry whose name is not ASCII");
+            }
+            let l = crate::lookupproof::fold(&en.to_string_lossy());
+            if l != lname && !l.starts_with(&dotted) {
+                continue;
+            }
+            // a name kpathsea tries here, other than the answer
+            if !(here && Some(en.as_os_str()) == found_base) {
+                return Err("another entry under a name kpathsea tries");
+            }
+        }
+        Ok(())
     }
 
     /// The session's lookup memo: a lookup's answer, kept while everything
@@ -739,9 +832,15 @@ mod kpse {
     ///   that held the answer (all of them for "not found"), and that one:
     ///   each directory's signature (`StatSig`: a file added, removed or
     ///   renamed changes it; git's racy rule, a signature taken within the
-    ///   file system's time granularity of the change equals nothing),
-    ///   or, where that differs or is racy, the listing itself, taken again
-    ///   (`still_holds`);
+    ///   file system's time granularity of the change equals nothing).
+    ///   A directory whose signature is not the one recorded is listed
+    ///   again and checked as `remember` checks it (TITLE-WARMUP): a racy
+    ///   signature says nothing either way, and the listing, taken after a
+    ///   fresh signature, is what the signature stands for. This holds only
+    ///   while kpathsea expands the format's search path to the set of
+    ///   directories it did when the entry was made (`searched`), so that a
+    ///   directory made since, which the entry never listed, is not
+    ///   searched;
     /// - the answer itself, still a readable regular file
     ///   (`kpathsea_readable_file`; what it holds does not change the
     ///   answer, a name);
@@ -772,12 +871,18 @@ mod kpse {
         cwd: PathBuf,
         path: Vec<u8>,
         found: Option<PathBuf>,
+        /// Each directory searched and its signature, taken before it was
+        /// last listed (by `remember`, or again by `still_holds`).
         dirs: Vec<(String, crate::system::StatSig)>,
+        /// `KpathseaResolver::searched` for its format when it was made.
+        searched: std::sync::Arc<Vec<String>>,
     }
 
     /// Lookups the memo answered, and those it did not (measurement).
     static MEMO_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     static MEMO_MISSES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    /// Times kpathsea's `//` expansions were forgotten (measurement).
+    static DISK_FORGETS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
     /// A name kpathsea looks up through its search path as given: no
     /// directory, no variable or `~` to expand.
@@ -795,52 +900,6 @@ mod kpse {
         let s = unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned();
         unsafe { flashtex_kpse_free(p as *mut c_void) };
         Some(s)
-    }
-
-    /// The names kpathsea tries for a lookup in each directory it searches
-    /// on disk (`Memo`): NAME, and NAME with a suffix, compared lower-cased
-    /// (`casefold_readable_file`); and the answer, if any.
-    struct Tries {
-        lname: String,
-        dotted: String,
-        found_dir: Option<PathBuf>,
-        found_base: Option<std::ffi::OsString>,
-    }
-
-    impl Tries {
-        fn new(name: &str, found: Option<&Path>) -> Tries {
-            let lname = name.to_lowercase();
-            Tries {
-                dotted: format!("{lname}."),
-                lname,
-                found_dir: found.and_then(|p| p.parent()).map(|d| d.to_path_buf()),
-                found_base: found.and_then(|p| p.file_name()).map(|b| b.to_os_string()),
-            }
-        }
-
-        /// Directory `d`, listed now, has no entry under a name kpathsea
-        /// tries other than the answer, in the answer's own directory.
-        fn check(&self, d: &str) -> Result<(), &'static str> {
-            let here = self
-                .found_dir
-                .as_deref()
-                .is_some_and(|fd| Path::new(d).components().eq(fd.components()));
-            for entry in std::fs::read_dir(d)
-                .map_err(|_| "a directory cannot be listed")?
-                .flatten()
-            {
-                let en = entry.file_name();
-                let l = en.to_string_lossy().to_lowercase();
-                if l != self.lname && !l.starts_with(&self.dotted) {
-                    continue;
-                }
-                // a name kpathsea tries here, other than the answer
-                if !(here && Some(&en) == self.found_base.as_ref()) {
-                    return Err("another entry under a name kpathsea tries");
-                }
-            }
-            Ok(())
-        }
     }
 
     impl KpathseaResolver {
@@ -1095,6 +1154,7 @@ mod kpse {
                 what,
                 memo: Memo::default(),
                 disk: Default::default(),
+                searched: HashMap::new(),
             }
         }
 
@@ -1118,6 +1178,27 @@ mod kpse {
             v
         }
 
+        /// The directories kpathsea expands format `f`'s search path to on
+        /// disk now (`searched`), in its order.
+        fn searched(&mut self, f: c_int) -> std::sync::Arc<Vec<String>> {
+            if let Some(s) = self.searched.get(&f) {
+                return s.clone();
+            }
+            // SAFETY: the live instance; the list is freed by `list`.
+            let mut v = self
+                .list(unsafe { flashtex_kpse_disk_dirs(self.k, f) })
+                .unwrap_or_default();
+            // (a set: kpathsea moves a directory it found a file in to the
+            // front of its element's list, which reorders it lookup by
+            // lookup; the memo's entries depend on which directories are
+            // searched, as its signature check does)
+            v.sort();
+            v.dedup();
+            let s = std::sync::Arc::new(v);
+            self.searched.insert(f, s.clone());
+            s
+        }
+
         /// Turn the lookup memo on or off for this resolver (`Memo`; the
         /// tests compare its answers with kpathsea's own).
         pub fn set_memo(&mut self, on: bool) {
@@ -1129,6 +1210,12 @@ mod kpse {
         pub fn memo_counts() -> (u64, u64) {
             use std::sync::atomic::Ordering::Relaxed;
             (MEMO_HITS.load(Relaxed), MEMO_MISSES.load(Relaxed))
+        }
+
+        /// How many times `refresh_disk_dirs` made kpathsea forget its
+        /// `//` expansions, in this process.
+        pub fn disk_forgets() -> u64 {
+            DISK_FORGETS.load(std::sync::atomic::Ordering::Relaxed)
         }
 
         fn format_path(&self, f: c_int) -> Vec<u8> {
@@ -1165,23 +1252,19 @@ mod kpse {
             }
             use std::sync::atomic::Ordering::Relaxed;
             let key = (name.to_string(), f, kind);
-            if let Some(e) = self.memo.entries.get(&key) {
-                if let Some(again) = self.still_holds(name, e, f) {
+            let searched = if self.memo.entries.contains_key(&key) {
+                Some(self.searched(f))
+            } else {
+                None
+            };
+            if let (Some(e), Some(searched)) = (self.memo.entries.get(&key), searched) {
+                if let Some(fresh) = self.still_holds(e, name, f, &searched) {
                     MEMO_HITS.fetch_add(1, Relaxed);
-                    let found = e.found.clone();
-                    if !again.is_empty() {
-                        if std::env::var_os("FLASHTEX_LOOKUP_MEMO_DEBUG").is_some() {
-                            let dirs: Vec<&str> =
-                                again.iter().map(|&(i, _)| e.dirs[i].0.as_str()).collect();
-                            eprintln!("[memo] {name} ({f}/{kind}): listed again: {dirs:?}");
-                        }
-                        if let Some(e) = self.memo.entries.get_mut(&key) {
-                            for (i, now) in again {
-                                e.dirs[i].1 = now;
-                            }
-                        }
+                    let e = self.memo.entries.get_mut(&key).expect("just found");
+                    for (i, sig) in fresh {
+                        e.dirs[i].1 = sig;
                     }
-                    return (found, false);
+                    return (e.found.clone(), false);
                 }
             }
             MEMO_MISSES.fetch_add(1, Relaxed);
@@ -1215,23 +1298,15 @@ mod kpse {
             (found, made)
         }
 
-        /// Whether `e`, the memo's answer to looking `name` up, is still
-        /// kpathsea's answer. A directory whose signature is not the one
-        /// remembered (either is racy, or the directory changed) is checked
-        /// again as `remember` checked it, listed now: kpathsea searches the
-        /// same directories in the same order (`search_dirs`), and this one
-        /// still has no entry under a name kpathsea tries but the answer.
-        /// Its new signature, taken before the listing, is kept (returned:
-        /// `None` when the answer may have changed). (A
-        /// directory made just now, such as a project's, is racy for
-        /// `system::racy_ns`: before, every lookup that searched it was made
-        /// again in kpathsea, with every directory listed again, until the
-        /// window had passed.)
+        /// Whether `e`, the memo's answer to looking `name` up, still
+        /// holds; if so, with the signatures taken for the directories it
+        /// listed again (by index in `e.dirs`), for the entry to keep.
         fn still_holds(
             &self,
-            name: &str,
             e: &MemoEntry,
+            name: &str,
             f: c_int,
+            searched: &std::sync::Arc<Vec<String>>,
         ) -> Option<Vec<(usize, crate::system::StatSig)>> {
             use crate::system::StatSig;
             if std::env::current_dir().ok().as_deref() != Some(e.cwd.as_path())
@@ -1239,39 +1314,58 @@ mod kpse {
             {
                 return None;
             }
-            let mut again = vec![];
+            let mut fresh = vec![];
             for (i, (d, sig)) in e.dirs.iter().enumerate() {
-                match StatSig::of(d) {
-                    Some(now) if now == *sig => {}
-                    Some(now) => again.push((i, now)),
-                    None => return None,
+                // (taken before the listing: a change after it is a change)
+                let now = StatSig::of(d)?;
+                if now == *sig {
+                    continue;
                 }
-            }
-            if !again.is_empty() {
-                let same_dirs = self
-                    .search_dirs(f, e.found.as_deref())
-                    .is_ok_and(|dirs| dirs.iter().eq(e.dirs.iter().map(|(d, _)| d)));
-                if !same_dirs {
-                    return None;
-                }
-                let tries = Tries::new(name, e.found.as_deref());
-                if again
-                    .iter()
-                    .any(|&(i, _)| tries.check(&e.dirs[i].0).is_err())
+                // Changed, or racy then or now: kpathsea finds there what
+                // the listing says, read as `remember` read it, while it
+                // searches the directories the entry was made with. Only
+                // for ASCII names and entries: what a case- and
+                // normalization-insensitive file system matches beyond
+                // ASCII is left to the signature, as before.
+                if !name.is_ascii()
+                    || (!std::sync::Arc::ptr_eq(&e.searched, searched) && e.searched != *searched)
                 {
                     return None;
                 }
+                let found_dir = e.found.as_deref().and_then(Path::parent);
+                let found_base = e.found.as_deref().and_then(Path::file_name);
+                tried_names_clear(d, name, found_dir, found_base, true).ok()?;
+                fresh.push((i, now));
             }
             // (the answer is a name: what the file holds does not matter)
             e.found
                 .as_deref()
                 .is_none_or(|p| self.readable(p))
-                .then_some(again)
+                .then_some(fresh)
         }
 
-        /// The directories kpathsea searches on disk for a lookup in format
-        /// `f` that found `found`, in order (`flashtex_kpse_search_dirs`).
-        fn search_dirs(&self, f: c_int, found: Option<&Path>) -> Result<Vec<String>, &'static str> {
+        /// What `found`, the answer to looking `name` up, depends on
+        /// (`Memo`); `None` if it cannot be remembered.
+        fn remember(
+            &mut self,
+            name: &str,
+            f: c_int,
+            kind: u8,
+            found: Option<&Path>,
+        ) -> Result<MemoEntry, &'static str> {
+            use crate::system::StatSig;
+            if found.is_none() && kind == 2 {
+                return Err("not found where an mktex script may run");
+            }
+            let n = CString::new(name).map_err(|_| "a NUL in the name")?;
+            if unsafe { flashtex_kpse_has_alias(self.k, n.as_ptr()) } != 0 {
+                return Err("a fontmap alias");
+            }
+            if unsafe { flashtex_kpse_db_hazard(self.k, f, n.as_ptr()) } != 0 {
+                return Err("an ls-R entry under the name is not on disk, or has an alias");
+            }
+            let cwd = std::env::current_dir().map_err(|_| "no working directory")?;
+            let path = self.format_path(f);
             let fc = match found {
                 Some(p) => Some(
                     CString::new(p.to_string_lossy().as_bytes())
@@ -1298,38 +1392,14 @@ mod kpse {
                 }
                 flashtex_kpse_free_list(list);
             }
-            Ok(dirs)
-        }
-
-        /// What `found`, the answer to looking `name` up, depends on
-        /// (`Memo`); `None` if it cannot be remembered.
-        fn remember(
-            &mut self,
-            name: &str,
-            f: c_int,
-            kind: u8,
-            found: Option<&Path>,
-        ) -> Result<MemoEntry, &'static str> {
-            use crate::system::StatSig;
-            if found.is_none() && kind == 2 {
-                return Err("not found where an mktex script may run");
-            }
-            let n = CString::new(name).map_err(|_| "a NUL in the name")?;
-            if unsafe { flashtex_kpse_has_alias(self.k, n.as_ptr()) } != 0 {
-                return Err("a fontmap alias");
-            }
-            if unsafe { flashtex_kpse_db_hazard(self.k, f, n.as_ptr()) } != 0 {
-                return Err("an ls-R entry under the name is not on disk, or has an alias");
-            }
-            let cwd = std::env::current_dir().map_err(|_| "no working directory")?;
-            let path = self.format_path(f);
-            let dirs = self.search_dirs(f, found)?;
-            let tries = Tries::new(name, found);
+            // The names kpathsea tries: NAME, and NAME with a suffix.
+            let found_dir = found.and_then(Path::parent);
+            let found_base = found.and_then(Path::file_name);
             let mut sigs = Vec::with_capacity(dirs.len());
             for d in dirs {
                 // (taken before the listing: a change after it is a change)
                 let sig = StatSig::of(&d).ok_or("a directory is gone")?;
-                tries.check(&d)?;
+                tried_names_clear(&d, name, found_dir, found_base, false)?;
                 sigs.push((d, sig));
             }
             Ok(MemoEntry {
@@ -1337,6 +1407,7 @@ mod kpse {
                 path,
                 found: found.map(|p| p.to_path_buf()),
                 dirs: sigs,
+                searched: self.searched(f),
             })
         }
 
@@ -1375,21 +1446,100 @@ mod kpse {
             })
         }
         fn refresh_disk_dirs(&mut self) {
+            use crate::system::StatSig;
+            // (signatures taken before anything below lists or walks)
             let now = self.disk_dirs_now();
-            // (a signature taken within its directory's time-stamp tick
-            // equals nothing: such a directory is forgotten again until
-            // the tick has passed)
-            if now != self.disk.1 {
-                if !self.disk.1.is_empty() {
-                    // SAFETY: the live instance.
-                    unsafe { flashtex_kpse_forget_disk_dirs(self.k) };
-                    // (the memo's entries depend on these directories'
-                    // signatures, so those a change touches are made again)
-                    self.disk.1 = self.disk_dirs_now();
-                } else {
-                    self.disk.1 = now;
+            let old = std::mem::take(&mut self.disk.1);
+            // A racy signature (taken within its directory's time-stamp
+            // tick) equals nothing, so a racy directory is listed instead:
+            // kpathsea's expansion still holds while what the expansion
+            // reads of it (`subdirs`), listed after a fresh signature, is
+            // what it was when listed before kpathsea walked it, or at a
+            // check since (TITLE-WARMUP). Each listing is kept with the
+            // signature taken just before it.
+            let mut changed = !old.is_empty() && now.len() != old.len();
+            if changed && std::env::var_os("FLASHTEX_LOOKUP_MEMO_DEBUG").is_some() {
+                eprintln!("[memo] directories {} -> {}", old.len(), now.len());
+            }
+            let mut next = Vec::with_capacity(now.len());
+            if !changed {
+                for (i, (dir, sig)) in now.iter().cloned().enumerate() {
+                    let Some(o) = old.get(i) else {
+                        // The first check: kpathsea walked these before
+                        // their signatures were taken, so no listing is
+                        // trusted for them (one taken now could already
+                        // show a change the walk missed); a later change of
+                        // signature forgets, as before.
+                        next.push(DiskDir {
+                            dir,
+                            sig,
+                            subdirs: None,
+                        });
+                        continue;
+                    };
+                    let subdirs = if o.dir != dir {
+                        None
+                    } else if sig == o.sig {
+                        // (unchanged since `o.sig`, which `o.subdirs`
+                        // was listed after; or still not there)
+                        Some(o.subdirs.clone())
+                    } else if sig.is_some() && o.subdirs.is_some() {
+                        let l = subdirs(&dir);
+                        (l.is_some() && l == o.subdirs).then_some(l)
+                    } else {
+                        None
+                    };
+                    let Some(subdirs) = subdirs else {
+                        if std::env::var_os("FLASHTEX_LOOKUP_MEMO_DEBUG").is_some() {
+                            eprintln!(
+                                "[memo] {dir} changed ({:?} -> {sig:?}, listed: {})",
+                                o.sig,
+                                o.subdirs.is_some()
+                            );
+                        }
+                        changed = true;
+                        break;
+                    };
+                    next.push(DiskDir { dir, sig, subdirs });
                 }
             }
+            if changed {
+                // The racy directories known now are listed before kpathsea
+                // walks them again (their signatures, `now`, before that):
+                // a change the walk then sees or misses differs from this
+                // listing, so the next check forgets again.
+                let before: HashMap<String, (Option<StatSig>, Option<Subdirs>)> = now
+                    .into_iter()
+                    .map(|(dir, sig)| {
+                        let l = sig.filter(|s| s.racy).and_then(|_| subdirs(&dir));
+                        (dir, (sig, l))
+                    })
+                    .collect();
+                // SAFETY: the live instance.
+                unsafe { flashtex_kpse_forget_disk_dirs(self.k) };
+                // (a memo entry whose directories are not the ones kpathsea
+                // expands the path to again is checked by signature alone)
+                self.searched.clear();
+                DISK_FORGETS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                next = self
+                    .disk_dirs_now()
+                    .into_iter()
+                    .map(|(dir, sig)| match before.get(&dir) {
+                        Some((sig, subdirs)) => DiskDir {
+                            sig: *sig,
+                            subdirs: subdirs.clone(),
+                            dir,
+                        },
+                        // (first seen in this walk: as at the first check)
+                        None => DiskDir {
+                            dir,
+                            sig,
+                            subdirs: None,
+                        },
+                    })
+                    .collect();
+            }
+            self.disk.1 = next;
         }
         fn lookup_dirs(
             &mut self,
