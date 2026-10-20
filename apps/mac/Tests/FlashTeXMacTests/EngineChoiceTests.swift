@@ -113,12 +113,11 @@ final class EngineChoiceTests: XCTestCase {
         XCTAssertEqual(shipped, .new)
         let recorded = EngineChoiceStore.Entry(engine: .previous, source: .record)
         let mine = EngineChoiceStore.Entry(engine: .previous, source: .user)
-        for entry in [recorded, mine] {
+        for (entry, source) in [(recorded, EngineChoice.Source.record), (mine, .user)] {
             let c = EngineChoice.resolve(environment: nil, window: nil, entry: entry, appSetting: nil,
                                          builtInDefault: shipped, blocker: { nil })
-            XCTAssertEqual(c.effective, .previous, "\(entry.source): an existing document must not switch")
-            XCTAssertEqual(c.source, entry.source)
-            XCTAssertNotEqual(c.source, .builtInDefault)
+            XCTAssertEqual(c.effective, .previous, "\(source): an existing document must not switch")
+            XCTAssertEqual(c.source, source)
         }
         XCTAssertEqual(EngineChoice.resolve(environment: nil, window: nil, entry: nil, appSetting: nil,
                                             builtInDefault: shipped, blocker: { nil }),
