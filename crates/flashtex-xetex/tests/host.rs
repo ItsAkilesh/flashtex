@@ -1133,7 +1133,8 @@ fn an_s0_saved_after_a_keystroke_is_the_one_saved_at_once() {
             .expect("the S0 cache")
             .map(|e| e.unwrap().path())
             .collect();
-        files.sort();
+        // (the S₀ first, then its base)
+        files.sort_by_key(|p| p.extension().is_some_and(|e| e == "xs0base"));
         assert!(
             files.len() == 2
                 && files[0].extension().is_some_and(|e| e == "xs0")
@@ -1173,27 +1174,54 @@ fn an_s0_saved_after_a_keystroke_is_the_one_saved_at_once() {
                 a[r.clone()] != b[r]
             })
             .collect();
+        // (the bytes around the first difference, as text)
+        let around = |x: &[u8]| -> String {
+            first.map_or(String::new(), |f| {
+                String::from_utf8_lossy(&x[f.saturating_sub(48)..(f + 48).min(x.len())])
+                    .escape_debug()
+                    .to_string()
+            })
+        };
         format!(
-            "{} and {} bytes, header {head} bytes, first difference at {first:?}, {} blocks differ: {:?}",
+            "{} and {} bytes, header {head} bytes, first difference at {first:?}, {} blocks differ: {:?}; around it: {:?} vs {:?}",
             a.len(),
             b.len(),
             blocks.len(),
-            &blocks[..blocks.len().min(20)]
+            &blocks[..blocks.len().min(20)],
+            around(a),
+            around(b)
         )
     };
     let at_once = saved(&dir.join("cache-a"), &[doc], "at-once");
-    // (two hosts that save at once write the same file: the comparison
-    // below is the deferral's)
+    // Two hosts that save at once write the same file but for the stat
+    // signatures S₀'s key holds of the files it read (`StatSig`: the
+    // `.aux` the first pass wrote has times of its own in each host).
+    // Those bytes, each with the 7 on either side (a signature's field is
+    // 8 bytes), are the only ones a deferred save may differ in.
     let again = saved(&dir.join("cache-c"), &[doc], "at-once-again");
+    assert_eq!(at_once.len(), again.len(), "two hosts' S0 files' sizes");
+    let head = u64::from_le_bytes(at_once[..8].try_into().unwrap()) as usize + 8;
+    let mut volatile = vec![false; at_once.len()];
+    let mut differ = 0;
+    for p in (0..at_once.len()).filter(|&p| at_once[p] != again[p]) {
+        differ += 1;
+        volatile[p.saturating_sub(7)..(p + 8).min(at_once.len())].fill(true);
+        assert!(
+            p < head,
+            "two hosts' S0 files differ past the header: {}",
+            diff(&at_once, &again)
+        );
+    }
     assert!(
-        at_once == again,
-        "two hosts' S0 files differ: {}",
+        differ <= 64,
+        "two hosts' S0 files differ in {differ} bytes: {}",
         diff(&at_once, &again)
     );
     let edited = doc.replace("Some words", "Some more words");
     let later = saved(&dir.join("cache-b"), &[doc, &edited], "later");
     assert!(
-        at_once == later,
+        at_once.len() == later.len()
+            && (0..at_once.len()).all(|p| volatile[p] || at_once[p] == later[p]),
         "the S0 saved after a keystroke differs from the one saved at once: {}",
         diff(&at_once, &later)
     );
