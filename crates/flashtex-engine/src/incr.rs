@@ -2701,6 +2701,10 @@ impl Observer for Obs {
         self.preempt_now(g) || self.before_the_edit(g)
     }
 
+    fn stops_now(&mut self, g: &mut Globals) -> bool {
+        self.preempt_now(g)
+    }
+
     fn on_checkpoint(&mut self, g: &mut Globals, id: CheckpointId, why: Point) -> Action {
         if let Some(p) = &self.progress {
             p(self.pass, self.pages_so_far(), g);
