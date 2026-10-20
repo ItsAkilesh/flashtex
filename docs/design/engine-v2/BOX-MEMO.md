@@ -473,7 +473,14 @@ K2 (2,250 values), hashed it, and copied K3's macros to compare them. Now:
   holding one `scaled` leaves its other half as `get_node` found it; an action's unused fields), and
   reports the first difference.
 
-### 11.4 Offered by default
+### 11.4 On by default where edits are served, and what is offered
+
+BOX-MEMO is on in the hosts that serve edits (`flashtex-host --socket`, `serve`, `iserve`;
+`set_default_on`) unless `FLASHTEX_BOXMEMO=off`. The command-line engine and the host's other tools
+(`selftest`, which compares resumed runs word for word, `bench`, `open`, `layout`) keep it off. In
+the host it records only in an edit's window (§6) and replays anywhere; the store is at most 32 MB,
+the macro bodies of the keys interned once (a 58-page Madrid deck: +57 MB peak RSS over a mixed
+T7 session, 245 MB against 188 MB).
 
 `DEFAULT_NAMES`: framed.sty's and ntheorem's (revision 1), `XC@col@rlet`, `pgfmathsetlength`,
 `pgf@process`, `pgfpoint`, `@oddhead`, `@oddfoot`, `beamer@typesetheadorfoot` and
@@ -496,11 +503,24 @@ first frame's font loads.
   `\beamer@typesetheadorfoot`, which makes a shading object on a deck's first block frame, no
   longer hides its `\colorlet` calls.
 
-### 11.6 Measured
+### 11.6 Two holes the verify sweep found (fixed in revision 1's code too, #1692)
+
+- **A `\csname`'s location.** K3 kept the meaning at the location a `\csname` led to, not that
+  the name leads there. A name's place in the hash depends on the order names were made in
+  (tex.web §260: a colliding name takes the next free slot), so after an edit that makes names
+  in another order (sweep C's labels and sections) the same `\csname` leads elsewhere. Now the
+  name and its location are part of the key (`Meaning::Name`). Found: framed-tikz-theorems,
+  `\fb@sizeofframe`'s operation 1380 defined location 65499 where the normal path defined 65500.
+- **`last_badness` of a call that packs nothing.** It was always set by a replay, to the value
+  the recording ended with, though a call that packs no box leaves it as the state had it. Now it
+  is kept only when the call packed (a hook in `hpack` and `vpackage`). Found: `\XC@col@rlet`
+  replayed 19 where the normal path left 0.
+
+### 11.7 Measured
 
 `docs/evidence/t7-beamer-2026-10-20/`: T7's beamer rows, instructions per key to the edited page
 (the gated quantity's engine share, load-independent), main against BOX-MEMO on, NixOS PC:
-beamer-5 200 M → 37 M (−81 %) on every in-body and typing row, beamer-30 470 M → 133 M (−72 %),
-its first block frame 486 M → 167 M (−66 %). Convergence is unchanged. 0 differences in verify
+beamer-5 200 M → 37.5 M (−81 %) on every in-body and typing row, beamer-30 470 M → 132 M (−72 %),
+its first block frame 486 M → 168 M (−65 %). Convergence is unchanged. 0 differences in verify
 mode (host and command line).
 
