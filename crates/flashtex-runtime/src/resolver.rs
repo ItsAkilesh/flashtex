@@ -571,8 +571,9 @@ pub fn set_kpathsea_make_tex_discard_errors(discard: bool) {
 }
 
 /// Unit tests that set the process's mktex discard flag hold this.
-#[cfg(test)]
-pub(crate) static MKTEX_DISCARD_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+// (public for flashtex-engine's tests, which flip the flag too)
+#[doc(hidden)]
+pub static MKTEX_DISCARD_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// What [`set_kpathsea_make_tex_discard_errors`] last set (false without
 /// kpathsea).
@@ -728,7 +729,7 @@ mod kpse {
     struct DiskDir {
         dir: String,
         /// Its signature then (`None`: not there).
-        sig: Option<crate::system::StatSig>,
+        sig: Option<crate::statsig::StatSig>,
         /// What kpathsea's expansion reads of it (`subdirs`), listed after
         /// `sig` was taken and before kpathsea walked the directory for the
         /// expansion it has now; kept where `sig` was racy, so that the next
@@ -873,7 +874,7 @@ mod kpse {
         found: Option<PathBuf>,
         /// Each directory searched and its signature, taken before it was
         /// last listed (by `remember`, or again by `still_holds`).
-        dirs: Vec<(String, crate::system::StatSig)>,
+        dirs: Vec<(String, crate::statsig::StatSig)>,
         /// `KpathseaResolver::searched` for its format when it was made.
         searched: std::sync::Arc<Vec<String>>,
     }
@@ -1160,8 +1161,8 @@ mod kpse {
 
         /// Every directory kpathsea has expanded the search paths of the
         /// formats looked up so far to on disk, with its signature now.
-        fn disk_dirs_now(&self) -> Vec<(String, Option<crate::system::StatSig>)> {
-            let mut v: Vec<(String, Option<crate::system::StatSig>)> = vec![];
+        fn disk_dirs_now(&self) -> Vec<(String, Option<crate::statsig::StatSig>)> {
+            let mut v: Vec<(String, Option<crate::statsig::StatSig>)> = vec![];
             let mut seen = std::collections::HashSet::new();
             for &f in &self.disk.0 {
                 // SAFETY: the live instance; the list is freed by `list`.
@@ -1170,7 +1171,7 @@ mod kpse {
                     .unwrap_or_default();
                 for d in dirs {
                     if seen.insert(d.clone()) {
-                        let s = crate::system::StatSig::of(&d);
+                        let s = crate::statsig::StatSig::of(&d);
                         v.push((d, s));
                     }
                 }
@@ -1307,8 +1308,8 @@ mod kpse {
             name: &str,
             f: c_int,
             searched: &std::sync::Arc<Vec<String>>,
-        ) -> Option<Vec<(usize, crate::system::StatSig)>> {
-            use crate::system::StatSig;
+        ) -> Option<Vec<(usize, crate::statsig::StatSig)>> {
+            use crate::statsig::StatSig;
             if std::env::current_dir().ok().as_deref() != Some(e.cwd.as_path())
                 || self.format_path(f) != e.path
             {
@@ -1353,7 +1354,7 @@ mod kpse {
             kind: u8,
             found: Option<&Path>,
         ) -> Result<MemoEntry, &'static str> {
-            use crate::system::StatSig;
+            use crate::statsig::StatSig;
             if found.is_none() && kind == 2 {
                 return Err("not found where an mktex script may run");
             }
@@ -1446,7 +1447,7 @@ mod kpse {
             })
         }
         fn refresh_disk_dirs(&mut self) {
-            use crate::system::StatSig;
+            use crate::statsig::StatSig;
             // (signatures taken before anything below lists or walks)
             let now = self.disk_dirs_now();
             let old = std::mem::take(&mut self.disk.1);
