@@ -1736,8 +1736,9 @@ impl Globals {
 
     /// A control sequence was just entered into the hash.
     pub fn flashtex_bm_new_cs(&mut self, p: i32) {
-        let names = with_config(|c| c.names.clone());
-        if self.bm_name_is(p, &names) {
+        // (the names compared where they are kept: siunitx's first
+        // `\pdfstringdef` makes some 250 control sequences)
+        if with_config(|c| self.bm_name_is(p, &c.names)) {
             self.bm_cand[p as usize] = true;
         }
     }
