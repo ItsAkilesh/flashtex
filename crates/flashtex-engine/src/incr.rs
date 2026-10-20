@@ -6444,8 +6444,12 @@ impl Session {
             let mut stop = move || pp.as_ref().is_some_and(|p| p(pass, pages));
             let _busy = crate::busy::enter(crate::busy::Part::Jump);
             match g.jump_adopt(old, &mut stop)? {
-                Some(a) => adopt = Some(a),
-                None => {
+                // (and newer work that came while it compared stops the run
+                // there too: the jump itself cannot be stopped, and takes
+                // milliseconds on a long document, which the next keystroke
+                // waited; lane T7-LAST12)
+                Some(a) if !stop() => adopt = Some(a),
+                _ => {
                     obs.converged = None;
                     obs.preempted = true;
                 }

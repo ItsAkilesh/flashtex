@@ -1805,6 +1805,24 @@ impl Globals {
     /// compared in place, without copying a macro's tokens).
     fn bm_meaning_is(&self, p: i32, m: &Meaning) -> bool {
         if let Meaning::Name(n) = m {
+            // A location of the hash's chains holds the name `id_lookup`
+            // finds there: it enters a name only where it found none, in
+            // that name's chain (tex.web §259-260), and a location's text
+            // stays (the frozen locations, whose texts repeat names, are
+            // looked up as before).
+            let chains = (k::hash_base..k::frozen_control_sequence).contains(&p)
+                || (k::eqtb_size < p && p <= k::hash_top);
+            if chains && n.len() >= 2 {
+                let t = self.hash[(p - k::hash_base) as usize].rh();
+                if t <= 0 || t >= self.str_ptr {
+                    return false;
+                }
+                let (a, b) = (
+                    self.str_start[t as usize] as usize,
+                    self.str_start[t as usize + 1] as usize,
+                );
+                return self.str_pool[a..b] == n[..];
+            }
             return self.bm_find_cs(n) == Some(p);
         }
         let w = self.bm_eq(p).hh();
