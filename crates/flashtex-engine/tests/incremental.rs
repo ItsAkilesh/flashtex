@@ -5781,3 +5781,93 @@ fn a_long_session_keeps_its_bookkeeping_bounded() {
     }
     assert!(converged >= 40, "only {converged} of 60 edits converged");
 }
+
+/// READ-TRACK (`crate::dormant`, docs/design/engine-v2/READ-TRACK.md): a
+/// command with an optional argument, alone on its line, peeks at the next
+/// line before it typesets its pages. Keystrokes at the start of that line
+/// after the first leave the peeked token as it was and change only the
+/// line's unread rest: the old run's pages are kept up to its last page
+/// before it reads the line, prints one or opens an input level, and the run
+/// goes on live from there. Every compile equals a scratch run.
+#[test]
+fn a_dormant_line_is_kept_until_it_is_read() {
+    let Some(e) = env() else {
+        common::no_texlive();
+        return;
+    };
+    // `\tail`'s pages, with `mid` in the middle of them
+    let tail = |mid: &str| -> String {
+        let a: String = (0..80).map(|i| para(i, "tail")).collect();
+        let b: String = (80..160).map(|i| para(i, "tail")).collect();
+        format!("{a}{mid}{b}")
+    };
+    let doc = |pre: &str, mid: &str, end: &str, line: &str| -> String {
+        let body: String = (0..40).map(|i| para(i, "body")).collect();
+        let more: String = (0..60).map(|i| para(i, "more")).collect();
+        format!(
+            "\\documentclass{{article}}\n{pre}\
+             \\newcommand\\tail[1][]{{#1{}{end}}}\n\\newcommand\\more{{{more}}}\n\
+             \\begin{{document}}\n{body}\\tail\n{line}\\end{{document}}\n",
+            tail(mid)
+        )
+    };
+    let chunk: String = (0..6).map(|i| para(i, "chunk")).collect();
+    let words: String = (0..400).map(|i| format!("\\w{{w{i}}}")).collect();
+    let cases: Vec<(&str, String)> = vec![
+        // the line is `\end{document}`'s: kept to the last page
+        ("end", doc("", "", "", "")),
+        // read, then more pages from the same line: kept up to the read
+        ("read", doc("", "", "", "Zword \\more\n")),
+        // read at a page's start (`\clearpage`), opening a file at once: an
+        // edit of that file restarts at the kept page, whose state must hold
+        // the line as the last keystroke left it
+        ("late", doc("", "", "\\clearpage", "Z\\input{chunk}\n")),
+        // `\show` prints the line in the middle of the pages
+        ("show", doc("", "\\showthe\\count0\n\n", "", "")),
+        // `\input` reads `first` in the middle of the pages
+        ("input", doc("", "\\input{chunk}\n", "", "")),
+        // `\csname` writes above `first`, which every keystroke moves
+        (
+            "csname",
+            doc(
+                "\\def\\w#1{\\csname @firstofone\\endcsname{#1} }\n",
+                &words,
+                "",
+                "",
+            ),
+        ),
+    ];
+    for (name, text) in &cases {
+        let dir = e.dir.join(format!("dormant-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("chunk.tex"), &chunk).unwrap();
+        let mut h = Host::start(&e, &dir);
+        settle(&e, &mut h, &dir, text);
+        let at = text.find("\\tail\n").unwrap() + "\\tail\n".len();
+        let mut cur = text.clone();
+        let mut dormant = 0;
+        for k in 0..3 {
+            cur.insert(at + k, 'x');
+            let what = format!("dormant {name}: keystroke {}", k + 1);
+            let r = compile_and_check(&e, &mut h, &dir, &[("doc.tex", &cur)], &what);
+            assert!(r.contains("\"mode\":\"incremental\""), "{what}: {r}");
+            if k == 0 {
+                // the peeked token changed: not a dormant line
+                assert_eq!(field(&r, "dormant"), "false", "{what}: {r}");
+            }
+            if field(&r, "dormant") == "true" {
+                dormant += 1;
+                assert_ne!(field(&r, "rerun_from"), "null", "{what}: {r}");
+            }
+        }
+        if matches!(*name, "end" | "csname" | "read" | "late") {
+            assert!(dormant >= 1, "dormant {name}: no jump");
+        }
+        if *name == "late" {
+            let piece = chunk.replace("chunk", "piece");
+            let r = compile_and_check(&e, &mut h, &dir, &[("chunk.tex", &piece)], "dormant piece");
+            assert!(r.contains("\"mode\":\"incremental\""), "piece: {r}");
+        }
+    }
+}

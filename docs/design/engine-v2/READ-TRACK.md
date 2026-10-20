@@ -202,8 +202,15 @@ Before *k*, the new run itself re-executed every read of the edited line against
 Its state at *k* is the evidence, so how far `get_next` looked ahead (midline.rs' `loc+3`) does not
 matter here.
 
-**Each condition is needed.** Section 10 lists the soundness cases. Each one fails without its
-rule.
+**Which conditions a case needs (measured, §11).** With each rule disabled in turn, the
+soundness test (§10) fails as follows:
+- without the return count, the words written in, or the print count: it fails;
+- without the open count, or the stream record: no case fails. Each is kept as a guard, at
+  no cost:
+  - A level opened and closed between two checkpoints moves only positions. Its lines lie at
+    `first`, and `end_file_reading` puts `first` back. A level still open at a checkpoint
+    changes the watched level anyway.
+  - The host reader's lookahead for the line is not read again once TeX holds the line.
 
 ### 5.3 Why keystroke 1 is not covered
 
@@ -227,24 +234,34 @@ part changes behaviour the app relies on. This lane does not build them (§9).
 
 ## 6. Where the barriers go
 
-No new code runs on the hot path:
+The only new test on the hot path replaces an existing one:
 
-- **The pop watch** reuses the test that `checkpoint.ch` already puts in `pop_input` for arming
-  S₀: `if input_ptr<ckpt_arm_level`. That test becomes `if input_ptr<pop_watch`, where
-  `pop_watch` is the larger of the S₀ arm level and the dormant watch (*j*+1). The body of the
-  test moves to a cold host routine, which updates both and recomputes `pop_watch`. The inline
-  test keeps the same instructions. In the body `ckpt_arm_level` is 0, so today the test never
-  fires. With the watch it fires at most once per checkpoint interval: the routine disarms the
-  watch, and the next checkpoint arms it again. Unicode's `checkpoint.ch` has the same test.
+- **The pop watch.** `checkpoint.ch` already puts a test in `pop_input` for arming S₀:
+  `if input_ptr<ckpt_arm_level`. That test becomes `if input_ptr<pop_watch`. `pop_watch` is the
+  larger of the S₀ arm level and the dormant watch level (*j*+1).
+  - The body of the test stays inline Pascal. It does what it did for S₀, and it counts the
+    watched level's return in `dorm_fired`. A host call there made the callers of
+    `end_token_list` slower (§11).
+  - In the body `ckpt_arm_level` is 0, so today the test never fires. With the watch it fires
+    at most once per checkpoint interval: it disarms the watch, and the next checkpoint arms it
+    again. Unicode's `checkpoint.ch` has the same test.
+  - `dorm_level`, `pop_watch` and `dorm_fired` are dead for the comparisons, because only the
+    host reads them.
 - **The print counter** goes in the existing cold hooks: `ls_print_level` in Classic, the
   diagnostics frame builder, and the Unicode engine's `show_context` through a new hunk.
-- **The open counter** is a new hunk in `begin_file_reading` in both engines' change files. The
-  routine runs once per opened file or `\read` line, so the cost is in the noise.
-- **The counts** are kept with each checkpoint's host record. Each record holds a run epoch with
-  monotone counts: firings, prints, opens, and the level armed. A test compares records only
-  within one epoch. A jump rewrites the epoch and counts of the records it keeps, as the Unicode
-  jump already shifts their read counts, so a chain made by earlier jumps stays comparable.
-  Thinned checkpoints need nothing: the counts are cumulative.
+- **The open counter** is a new hunk in `begin_file_reading` and `term_input` in both engines'
+  change files. Each runs once per opened file, `\read` line or terminal line, so the cost is in
+  the noise.
+- **The counts are recorded with each checkpoint.** A checkpoint's host record (Classic
+  `ExtRecord`, Unicode `PageCk`) holds:
+  - the run's epoch, which is new at every restore;
+  - the counts: returns, prints and opens;
+  - the level armed, and `max_buf_stack`.
+
+  Records are compared only within one epoch, that is, two points of one uninterrupted run.
+  At a jump, the new run's checkpoint at the convergence point takes the old run's record
+  there, because it stands for the same state. A later test against it can then use the old
+  run's later records. Thinned checkpoints need nothing, because the counts are cumulative.
 
 The test that the line differs runs only after the ordinary test has failed. It is a filter over
 the word diff and the structural comparison that are computed anyway.
@@ -254,11 +271,8 @@ web2rust needs no new feature, so the barrier lives in the WEB, where every othe
 hook lives (`checkpoint.ch`, `readset.ch`, `lineshift.ch`). A web2rust read barrier is §4's
 rejected design.
 
-**The cost, checked in Phase 2:**
-- callgrind instruction counts of plain-100, full-100 and c1-lipsum against main, which must be
-  within 1 %;
-- T7 and the P-T fixtures, before and after;
-- belief, from the shape of the change: well under 0.1 %.
+**The cost** was measured in Phase 2 (§11): +0.11 % to +0.56 % instructions on cold compiles,
+within the 1 % target.
 
 ## 7. How it composes
 
@@ -277,11 +291,16 @@ rejected design.
 - **The next keystroke.** It restarts at the same point, before the peek. It tests against this
   run's *k*, which is its own, and jumps to the corrected *k′*. So every keystroke after the
   first takes the short path.
-- **BOX-MEMO and MACRO-REPLAY.** No interaction:
+- **BOX-MEMO and MACRO-REPLAY.** No soundness interaction:
   - Their replays verify with the ordinary comparison (`same_state`), which this rule does not
     touch.
   - A replay that runs `\csname` writes the same scratch as a normal run.
   - After the jump the run is an ordinary run, so the memos record and replay as usual.
+
+  There is one cost interaction (measured, §11). After a run that recorded memos, the next run's
+  replays put nodes in other places. Its dormant test then needs the structural walk:
+  82 words on c1-lipsum, 6.7 ms. With `FLASHTEX_BOXMEMO=off` it compares word for word. The
+  keystroke after it compares word for word too.
 - **Line shifting.** The rule is off when the edit moves lines. A newline typed before
   `\end{document}` therefore still takes the long path. Composing the two is later work.
 - **REVALIDATE and MIDLINE.**
@@ -310,7 +329,7 @@ rejected design.
 - **Accept the row** (XETEX-INCR's option (a)). The EDITPOINT keystroke already reaches its page
   in 83 M.
 
-## 9. Expected effect (belief, to be measured in Phase 2)
+## 9. Expected effect (the Phase 1 belief; §11 has what was measured)
 
 - **b4, keystrokes 2 and 3.** The restart is at page 11. The new run reaches *k* within about a
   page, keeps pages 12–18 and typesets pages 18–19 live. That is about 2 pages of work instead of
@@ -319,26 +338,25 @@ rejected design.
 - **The M3 row.** It takes the median of three keystrokes, so it follows keystroke 2.
 - **Classic c1/c2.** 8 and 13 pages re-run become about 2–3.
 
-## 10. Soundness cases (Phase 2)
+## 10. Soundness cases
 
-In `tests/incremental.rs`, and in Unicode's `tests/host.rs`. Each compile equals a compile from
-scratch, and each case fails without its rule:
-1. **The jump happens.** c1-like and c2-like documents, three keystrokes before
-   `\end{document}`; the jump is reported.
-2. **The dormant level is read before the end.** The peeking command's pages are followed by
-   text, so level *j* becomes current, and then by more pages. The jump stops at the page before.
-3. **A line printed in between.** `\show` or an error with context on a dormant page:
-   `show_context` prints the line. Barrier.
-4. **An `\input` on a dormant page.** Barrier, because `first` is read.
-5. **A length-changing edit with `\csname`-heavy pages.** `first` moves. The output is equal.
-6. **A restore of a kept, corrected checkpoint.** An edit after the dormant line, in a file read
-   later, restarts there. It is equal.
-7. **Keystroke 1.** The peeked token differs, so there is no jump.
+Classic: `tests/incremental.rs::a_dormant_line_is_kept_until_it_is_read`. Each document ends in a
+`\newcommand\tail[1][]` called alone before the line it peeks at, and typesets about seven pages.
+Three keystrokes go at that line's start, and every compile equals scratch runs (PDF, log,
+`.aux`):
+1. **`end`.** The line is `\end{document}`'s. Keystrokes 2 and 3 jump, kept to the last page.
+2. **`read`.** The line is read before more pages are typeset from it. The jump stops at the
+   page before the read.
+3. **`late`.** The line opens a file at once after a `\clearpage`. An edit of that file then
+   restarts at the kept, corrected checkpoint (measured: `restart_pages` equals `rerun_from`).
+4. **`show`.** A `\showthe` in the middle of the pages prints the line. The jump stops before
+   it.
+5. **`input`.** An `\input` in the middle of the pages. The jump stops before it.
+6. **`csname`.** 400 `\csname`s across the pages, while every keystroke moves `first`.
+7. **Keystroke 1.** In every case the peeked token differs, so there is no jump.
 
-Then the sweeps:
-- `sweeps.yml` and `sweeps-unicode.yml` with `ref=` the branch;
-- the T1 lockstep;
-- the P-T fixtures, Classic and Unicode;
-- the b4 end row before and after, with callgrind on the PC.
+Unicode: `tests/host.rs::a_dormant_line_is_kept_until_it_is_read` covers `end` and `read` with
+fontspec. Each compile's PDF, `.aux` and log equal a fresh process's; the log reports the jump,
+and no `UNSOUND` check fires.
 
 `FLASHTEX_DORMANT=off` turns the rule off.

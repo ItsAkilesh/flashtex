@@ -45,6 +45,7 @@ pub use flashtex_xetex_teckit as teckit;
 pub mod ckpt;
 pub mod conv;
 pub mod dlsource;
+pub mod dormant;
 pub mod driver;
 pub mod fontmgr;
 pub mod generated;

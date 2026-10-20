@@ -1326,6 +1326,7 @@ impl Engine {
                                     id: c.id,
                                     rec: c.rec.clone(),
                                     reads: c.reads,
+                                    dorm: c.dorm,
                                 })
                                 .collect();
                             let tables = g.host.dl.tables();
@@ -1383,6 +1384,7 @@ impl Engine {
                                         eqtb_pointers: ptrs,
                                         claim: None,
                                         tests: vec![],
+                                        dormant: None,
                                     });
                                     g.term_out = AlphaFile::captured_terminal();
                                     g.restore_record(rec, base)

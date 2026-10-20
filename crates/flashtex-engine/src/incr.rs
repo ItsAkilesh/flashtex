@@ -281,6 +281,9 @@ pub struct Report {
     /// (DESIGN.md §5.3), the pages kept before the run went on live, from
     /// the last page checkpoint before the barrier (`Obs::rerun_point`).
     pub rerun_from: Option<usize>,
+    /// READ-TRACK (`crate::dormant`): those pages were kept past a line the
+    /// old run had read but did not use before `rerun_from`.
+    pub dormant: bool,
     /// Pages this compile typeset.
     pub rerun_pages: usize,
     pub pages: usize,
@@ -355,7 +358,7 @@ pub struct Report {
 impl Report {
     pub fn json(&self) -> String {
         format!(
-            "{{\"mode\":\"{}\",\"cold_reason\":{},\"status\":{},\"paused\":{},\"restart_pages\":{},\"cursor\":{},\"restart_mid_page\":{},\"restart_preamble\":{},\"restart_midline\":{},\"revalidated\":{},\"arm_revalidated\":{},\"preamble_patched\":{},\"restart_gap\":{},\"converged_at\":{},\"rerun_from\":{},\"rerun_pages\":{},\"pages\":{},\"find_s\":{:.6},\"key_s\":{:.6},\"changes_s\":{:.6},\"restore_s\":{:.6},\"page_s\":{:.6},\"total_s\":{:.6},\"tests\":{},\"test_s\":{:.6},\"log_bytes\":{},\"checkpoints\":{},\"diffs\":{:?},\"page_times\":[{}],\"edited\":{},\"passes\":{},\"pass_modes\":{:?},\"pass_s\":[{}],\"oscillation\":{},\"ck_stats\":{},\"l5\":{:?},\"rs_events\":{},\"preempted\":{},\"deferred\":{}}}",
+            "{{\"mode\":\"{}\",\"cold_reason\":{},\"status\":{},\"paused\":{},\"restart_pages\":{},\"cursor\":{},\"restart_mid_page\":{},\"restart_preamble\":{},\"restart_midline\":{},\"revalidated\":{},\"arm_revalidated\":{},\"preamble_patched\":{},\"restart_gap\":{},\"converged_at\":{},\"rerun_from\":{},\"dormant\":{},\"rerun_pages\":{},\"pages\":{},\"find_s\":{:.6},\"key_s\":{:.6},\"changes_s\":{:.6},\"restore_s\":{:.6},\"page_s\":{:.6},\"total_s\":{:.6},\"tests\":{},\"test_s\":{:.6},\"log_bytes\":{},\"checkpoints\":{},\"diffs\":{:?},\"page_times\":[{}],\"edited\":{},\"passes\":{},\"pass_modes\":{:?},\"pass_s\":[{}],\"oscillation\":{},\"ck_stats\":{},\"l5\":{:?},\"rs_events\":{},\"preempted\":{},\"deferred\":{}}}",
             self.mode,
             self.cold_reason
                 .as_ref()
@@ -384,6 +387,7 @@ impl Report {
             self.rerun_from
                 .map(|p| p.to_string())
                 .unwrap_or_else(|| "null".into()),
+            self.dormant,
             self.rerun_pages,
             self.pages,
             self.find_s,
@@ -506,6 +510,12 @@ struct Obs {
     /// last page checkpoint before the old run's first later barrier or
     /// read of a file the runs write (`test`, `rerun_point`).
     rerun_from: Option<CheckpointId>,
+    /// READ-TRACK (`crate::dormant`): the convergence keeps the old run's
+    /// pages past a dormant line, up to `rerun_from`; what the jump puts in.
+    dormant: Option<crate::dormant::Jump>,
+    /// A test past a dormant line found another difference: no more in this
+    /// run.
+    dormant_off: bool,
     /// READ-REVALIDATE (`crate::revalidate`): the comparison this run makes
     /// at a page, and its outcome (`Ok`: the restart point it allows).
     probe: Option<Box<crate::revalidate::Probe>>,
@@ -815,11 +825,32 @@ impl Obs {
         if o.files.len() != new.files.len() {
             return Err("file globals differ".into());
         }
-        for (a, b) in o.files.iter().zip(&new.files) {
+        // READ-TRACK (`crate::dormant`): a dormant line may differ in its
+        // unread rest, the edited file's stream with it
+        let level = if crate::dormant::enabled() && self.shifts.is_empty() && !self.dormant_off {
+            crate::dormant::Level::of(g)
+        } else {
+            None
+        };
+        let mut dorm_stream = None;
+        for (i, (a, b)) in o.files.iter().zip(&new.files).enumerate() {
             if (a.buf, &a.line, a.pos, a.have_line, a.at_eof, a.err)
                 != (b.buf, &b.line, b.pos, b.have_line, b.at_eof, b.err)
             {
-                return Err("an input file's lookahead differs".into());
+                let edited = match (&a.stream, &b.stream) {
+                    (Stream::In { path, .. }, Stream::In { path: p, .. }) => {
+                        path == p && self.edits.iter().any(|e| e.path == *path)
+                    }
+                    _ => false,
+                };
+                if level.is_none()
+                    || dorm_stream.is_some()
+                    || !edited
+                    || (a.buf, a.at_eof, a.err) != (b.buf, b.at_eof, b.err)
+                {
+                    return Err("an input file's lookahead differs".into());
+                }
+                dorm_stream = Some(i);
             }
             match (&a.stream, &b.stream) {
                 (Stream::In { path, offset: x }, Stream::In { path: p, offset: y }) => {
@@ -969,7 +1000,7 @@ impl Obs {
                 })
                 .map(|(i, p)| (from + i, p.clone()));
         }
-        let rerun_from =
+        let mut rerun_from =
             if barrier_later || written_read.is_some() || line_barrier.is_some() || end_dirty {
                 match self.rerun_point(
                     g,
@@ -1028,6 +1059,10 @@ impl Obs {
         let mut stages = self.old_lines.get(&old).cloned().unwrap_or_default();
         stages.extend(self.shifts.iter().cloned());
         let active = crate::lineshift::Active::new(&stages);
+        let mut aside = level.map(|level| crate::dormant::Aside {
+            level,
+            words: vec![],
+        });
         let r = crate::lineshift::with_active(active, || {
             same_words(
                 g,
@@ -1038,8 +1073,55 @@ impl Obs {
                 self.debug,
                 stop,
                 &mut char_or,
+                aside.as_mut(),
             )
         });
+        // READ-TRACK: equal but for a dormant line: the old run's pages are
+        // the new run's up to its last page checkpoint before it reads the
+        // line, prints a line or opens a level (`dormant::jump_point`),
+        // where the run goes on live with the dormant words put in
+        let r = match (r, aside) {
+            (Ok(n), Some(a)) if !a.words.is_empty() || dorm_stream.is_some() => {
+                let pages: std::collections::HashSet<CheckpointId> =
+                    self.old_pages.iter().filter_map(|p| p.ckpt).collect();
+                match crate::dormant::jump_point(g, old, &o, &pages, a.level.j, a.grow()) {
+                    None => Err(format!(
+                        "a dormant line ({} words): the old run uses it before its next page",
+                        a.words.len()
+                    )),
+                    Some(to) => {
+                        let ids = g.pending_ids();
+                        let at = |c: CheckpointId| ids.iter().position(|&i| i == c);
+                        rerun_from = Some(match rerun_from {
+                            Some(m) if at(m) <= at(to) => m,
+                            _ => to,
+                        });
+                        if self.debug {
+                            eprintln!(
+                                "[incr] page {}: a dormant line ({} words), kept to checkpoint {to}",
+                                self.pages_so_far(),
+                                a.words.len()
+                            );
+                        }
+                        self.dormant = Some(crate::dormant::Jump {
+                            words: a.words.iter().map(|w| (w.off, w.new)).collect(),
+                            stream: dorm_stream.map(|i| (i, new.files[i].clone())),
+                            to,
+                        });
+                        Ok(n)
+                    }
+                }
+            }
+            (Ok(_), _) if dorm_stream.is_some() => Err("an input file's lookahead differs".into()),
+            // (a test past a dormant line that found another difference: the
+            // next ones would too, the peeked token being another, so this run
+            // tests no more of them, each a diff and a walk of the state)
+            (Err(e), Some(a)) if !a.words.is_empty() && e != PREEMPTED => {
+                self.dormant_off = true;
+                Err(e)
+            }
+            (r, _) => r,
+        };
         if r.is_ok() {
             self.char_or = char_or;
             self.rerun_from = rerun_from;
@@ -1260,6 +1342,7 @@ impl Obs {
                 self.debug,
                 Box::new(|| false),
                 &mut char_or,
+                None,
             )
         });
         self.test_s += t.elapsed().as_secs_f64();
@@ -1376,6 +1459,7 @@ fn same_words(
     debug: bool,
     mut stop: Box<dyn FnMut() -> bool + '_>,
     char_or: &mut Vec<(usize, u64)>,
+    mut dorm: Option<&mut crate::dormant::Aside>,
 ) -> Result<usize, String> {
     let t = Instant::now();
     let Some(d) = g.diff_pending_until(old, &mut *stop)? else {
@@ -1437,6 +1521,30 @@ fn same_words(
     // (the side table's words in chunks it shares with another array: the
     // walk compares the live nodes' entries, below)
     let left: Vec<_> = left.into_iter().filter(|w| w.region != "dl_side").collect();
+    // READ-TRACK (`crate::dormant`): the unread rest of a dormant line, set
+    // aside for the caller
+    let left: Vec<_> = match dorm.as_deref_mut() {
+        Some(a) => {
+            let (aside, rest): (Vec<_>, Vec<_>) =
+                left.into_iter().partition(|w| a.level.set_aside(g, &layout, w));
+            a.words = aside;
+            rest
+        }
+        None => left,
+    };
+    let dormant = dorm.as_ref().map_or(-1, |a| a.level.j);
+    // (past a dormant line no state is equal, so an `eqtb` entry whose type
+    // or level differs -- the structural comparison compares both exactly --
+    // ends the test before the walk: a keystroke that changes the peeked
+    // token, `\l_peek_token` then holding another meaning)
+    if dorm.as_ref().is_some_and(|a| !a.words.is_empty()) {
+        if let Some(w) = left
+            .iter()
+            .find(|w| w.region == "eqtb" && (w.old ^ w.new) >> 32 != 0)
+        {
+            return Err(format!("a dormant line, and a meaning differs: {w}"));
+        }
+    }
     if side_any && !relabel {
         return Err("the display list's side table changed (no structural comparison)".into());
     }
@@ -1482,21 +1590,28 @@ fn same_words(
             let mut never = || false;
             g.pending_old_chunks(old, cs, &mut never)
         };
-        let r = crate::iso::Iso::check(
-            g,
-            &d,
-            &layout,
-            free_o.as_deref(),
-            free_n.as_deref(),
-            &bad_mem,
-            side_any.then_some(crate::iso::SideOld {
-                written: &side_written,
-                fetch: &mut fetch,
-            }),
-            g.hyph_list.len(),
-            dest_dims_dead,
-            &mut *stop,
-        );
+        let mut check = || {
+            crate::iso::Iso::check(
+                g,
+                &d,
+                &layout,
+                free_o.as_deref(),
+                free_n.as_deref(),
+                &bad_mem,
+                side_any.then_some(crate::iso::SideOld {
+                    written: &side_written,
+                    fetch: &mut fetch,
+                }),
+                g.hyph_list.len(),
+                dest_dims_dead,
+                &mut *stop,
+            )
+        };
+        let r = if dormant >= 0 {
+            crate::iso::with_dormant(dormant, check)
+        } else {
+            check()
+        };
         if debug {
             eprintln!(
                 "[incr] iso: {} words to explain, {:.2} ms",
@@ -1548,6 +1663,7 @@ pub(crate) fn same_state(g: &mut Globals, n: CheckpointId) -> Result<usize, Stri
             debug,
             Box::new(|| false),
             &mut char_or,
+            None,
         )
     });
     if r.is_ok() && !char_or.is_empty() {
@@ -1624,6 +1740,12 @@ fn dead_word(g: &Globals, w: &crate::statediff::WordDiff) -> bool {
     // L5's marks of the control sequences read so far: bookkeeping of the
     // read-set, rebuilt from it at a convergence (`readset::rebuild_seen`)
     if w.region == "rs_seen" {
+        return true;
+    }
+    // READ-TRACK's watch (`crate::dormant`, `changes/checkpoint.ch`): set by
+    // the host at each checkpoint and counted by `pop_input`, read only by
+    // the host
+    if matches!(w.scalar, Some("dorm_level" | "pop_watch" | "dorm_fired")) {
         return true;
     }
     // (The display list's side table, `dl_side`, is not dead: the jump
@@ -4780,6 +4902,7 @@ impl Session {
                 false,
                 Box::new(|| false),
                 &mut char_or,
+                None,
             )
             .and_then(|n| {
                 // (no jump here to carry extra characters into the old
@@ -5510,6 +5633,8 @@ impl Session {
             old_lines: HashMap::new(),
             changed_lookup_last: None,
             rerun_from: None,
+            dormant: None,
+            dormant_off: false,
             probe: None,
             probe_result: None,
             pre_patch: None,
@@ -6541,6 +6666,17 @@ impl Session {
             };
             let notes_new = g.record_of(new_id)?.notes;
             g.redo_to_remapped_with(old, &in_remap, adopt.take())?;
+            // READ-TRACK (`crate::dormant`): the dormant line's new words in
+            // every kept state from the convergence point on, before the
+            // restore of `rerun_from` below
+            if let Some(dj) = &obs.dormant {
+                crate::dormant::apply(g, old, dj)?;
+                rep.dormant = true;
+            }
+            // (the new run's checkpoint at the convergence point is that
+            // point too: its counts are the old run's there, so that a later
+            // test against it reads the old run's later records)
+            g.patch_record(new_id, &mut |r| r.dorm = rec_old.dorm);
             // The old run's diagnostics from the convergence point on, in the
             // new numbering (DESIGN.md §5.3 rule (c), `crate::lineshift`).
             crate::diag::move_lines(notes_new, &obs.shifts);
@@ -6638,8 +6774,16 @@ impl Session {
                 rec_last.reads,
                 &self.dirs_checked,
             )));
+            // (READ-TRACK: after a dormant line the edited page is one the
+            // run goes on to, compared with the old run's, from the compile's start)
+            let frames: Vec<[u64; 2]> = self.pages.iter().map(|p| p.frame).collect();
             self.pages.truncate(last_pages);
             let mut o2 = self.observer(t0, last_pages, None);
+            if obs.dormant.is_some() {
+                o2.old_frames = frames;
+                o2.cpu0 = obs.cpu0;
+                o2.instr0 = obs.instr0;
+            }
             o2.pdf = rec_last.files.iter().find_map(|f| match &f.stream {
                 Stream::Out { path, len, .. } if path.ends_with(".pdf") => {
                     Some((path.clone(), *len))
@@ -6686,6 +6830,11 @@ impl Session {
             self.pages.extend(o2.new_pages.iter().cloned());
             for (id, n) in &o2.taken {
                 self.ck_pages.insert(*id, *n);
+            }
+            if obs.dormant.is_some() && rep.edited.is_none() {
+                rep.edited = o2.edited;
+                rep.edited_instr = o2.edited_instr;
+                rep.page_times.extend(o2.page_times.iter().copied());
             }
             rep.status = st;
         } else {

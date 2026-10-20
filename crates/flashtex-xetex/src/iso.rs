@@ -476,6 +476,10 @@ pub struct Iso<'a, O: Space, N: Space> {
     /// The scratch heads' links are dead (the convergence test): see
     /// `roots`.
     scratch_heads_dead: bool,
+    /// READ-TRACK (`crate::dormant`): the dormant input level (-1: none),
+    /// whose `limit`, and the stale `limit`s of the token lists above it other
+    /// than macros', the comparison leaves out.
+    dormant: i32,
     /// Asked every [`STOP_EVERY`] tasks: newer work stops the walk
     /// ([`STOPPED`]).
     stop: Option<&'a mut dyn FnMut() -> bool>,
@@ -565,6 +569,7 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
             side_eq: None,
             eqtb_scan: None,
             scratch_heads_dead: false,
+            dormant: -1,
             stop: None,
             side_written: None,
             side_later: Vec::new(),
@@ -2062,7 +2067,10 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
         self.nest_record(po, &x, &y);
     }
 
-    fn input_record(&mut self, x: &in_state_record, y: &in_state_record) {
+    /// Input level `k` (`input_ptr` for `cur_input`) of both states.
+    fn input_record(&mut self, k: i32, x: &in_state_record, y: &in_state_record) {
+        // (a dormant level's `limit`, or a stale copy above it)
+        let skip_limit = self.dormant >= 0 && k >= self.dormant;
         self.eq("input state", x.state_field, y.state_field);
         self.eq("input index", x.index_field, y.index_field);
         self.eq("input name", x.name_field, y.name_field);
@@ -2084,14 +2092,16 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
             self.later("loc", x.loc_field, y.loc_field);
             if t == MACRO {
                 self.eq("param_start", x.limit_field, y.limit_field);
-            } else {
+            } else if !skip_limit {
                 self.eq("limit", x.limit_field, y.limit_field);
             }
             let _ = PARAMETER;
         } else {
             self.eq("start", x.start_field, y.start_field);
             self.eq("loc", x.loc_field, y.loc_field);
-            self.eq("limit", x.limit_field, y.limit_field);
+            if !(skip_limit && k == self.dormant) {
+                self.eq("limit", x.limit_field, y.limit_field);
+            }
         }
     }
 
@@ -2103,11 +2113,11 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
         }
         for k in 0..po {
             let (x, y) = (self.o.input(k), self.n.input(k));
-            self.input_record(&x, &y);
+            self.input_record(k, &x, &y);
         }
         let x: in_state_record = rec_from(&self.o.sc_bytes("cur_input"));
         let y: in_state_record = rec_from(&self.n.sc_bytes("cur_input"));
-        self.input_record(&x, &y);
+        self.input_record(po, &x, &y);
         let (qo, qn) = (self.o.sc("param_ptr"), self.n.sc("param_ptr"));
         self.eq("param_ptr", qo, qn);
         for k in 0..qo.max(0) as usize {
@@ -2286,6 +2296,8 @@ pub struct HostSide<'a> {
     pub glyphs: Option<&'a dyn Fn(i32, i32) -> bool>,
     pub side_eq: Option<&'a dyn Fn(i32, i32) -> bool>,
     pub eqtb_scan: Option<EqtbScan<'a>>,
+    /// READ-TRACK (`crate::dormant`): the dormant input level, or -1.
+    pub dormant: i32,
 }
 
 /// The display list's side table for [`Iso::check`]: the chunks of it either
@@ -2352,6 +2364,7 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
         w.side_eq = host.side_eq;
         w.eqtb_scan = host.eqtb_scan;
         w.scratch_heads_dead = true;
+        w.dormant = host.dormant;
         w.stop = Some(stop);
         let mut fetch = None;
         if let Some(sd) = side {

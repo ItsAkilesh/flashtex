@@ -55,6 +55,18 @@ const EMPTY_FLAG: i32 = 268_435_455;
 thread_local! {
     /// `align_by_words`: the alignment preamble is compared by its words.
     static ALIGN_BY_WORDS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// `with_dormant`: the dormant input level (-1: none).
+    static DORMANT: std::cell::Cell<i32> = const { std::cell::Cell::new(-1) };
+}
+
+/// Run `f` with input level `j`'s `limit`, and the stale `limit`s of the
+/// token lists above it other than macros', left out of the comparison
+/// (READ-TRACK, `crate::dormant`: the test of a dormant line).
+pub(crate) fn with_dormant<R>(j: i32, f: impl FnOnce() -> R) -> R {
+    DORMANT.with(|c| c.set(j));
+    let r = f();
+    DORMANT.with(|c| c.set(-1));
+    r
 }
 
 /// Run `f` with the alignment preamble compared by its words rather than
@@ -2292,7 +2304,11 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
         self.nest_record(po, &x, &y);
     }
 
-    fn input_record(&mut self, x: &in_state_record, y: &in_state_record) {
+    /// Input level `k` (`input_ptr` for `cur_input`) of both states.
+    fn input_record(&mut self, k: i32, x: &in_state_record, y: &in_state_record) {
+        let dormant = DORMANT.with(|c| c.get());
+        // (`with_dormant`: a dormant level's `limit`, or a stale copy above it)
+        let skip_limit = dormant >= 0 && k >= dormant;
         self.eq("input state", x.state_field, y.state_field);
         self.eq("input index", x.index_field, y.index_field);
         self.eq("input name", x.name_field, y.name_field);
@@ -2314,14 +2330,16 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
             self.later("loc", x.loc_field, y.loc_field);
             if t == MACRO {
                 self.eq("param_start", x.limit_field, y.limit_field);
-            } else {
+            } else if !skip_limit {
                 self.eq("limit", x.limit_field, y.limit_field);
             }
             let _ = PARAMETER;
         } else {
             self.eq("start", x.start_field, y.start_field);
             self.eq("loc", x.loc_field, y.loc_field);
-            self.eq("limit", x.limit_field, y.limit_field);
+            if !(skip_limit && k == dormant) {
+                self.eq("limit", x.limit_field, y.limit_field);
+            }
         }
     }
 
@@ -2333,11 +2351,11 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
         }
         for k in 0..po {
             let (x, y) = (self.o.input(k), self.n.input(k));
-            self.input_record(&x, &y);
+            self.input_record(k, &x, &y);
         }
         let x: in_state_record = rec_from(&self.o.sc_bytes("cur_input"));
         let y: in_state_record = rec_from(&self.n.sc_bytes("cur_input"));
-        self.input_record(&x, &y);
+        self.input_record(po, &x, &y);
         let (qo, qn) = (self.o.sc("param_ptr"), self.n.sc("param_ptr"));
         self.eq("param_ptr", qo, qn);
         for k in 0..qo.max(0) as usize {

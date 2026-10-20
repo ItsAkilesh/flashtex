@@ -1226,8 +1226,9 @@ pub fn read_s0(
 
 // (v4: the key's reads at the document's start, `Key::arm`; v5: the pages,
 // page-aligned, `S0_PAGE`; v6: the key's stat signatures hold the change
-// time, `StatSig::ctime_ns`)
-const MAGIC: &[u8] = b"flashtex S0 v6";
+// time, `StatSig::ctime_ns`; v7: the records hold READ-TRACK's counts,
+// `crate::dormant::Dorm`)
+const MAGIC: &[u8] = b"flashtex S0 v7";
 
 /// The granule of S₀'s pages in the file (v5): Apple silicon's page, which
 /// every supported system's page size divides (4 KB elsewhere).

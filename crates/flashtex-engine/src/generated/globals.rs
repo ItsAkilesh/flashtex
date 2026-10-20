@@ -1209,6 +1209,12 @@ pub struct Globals {
     // §1908
     pub ckpt_arm_level: i32,
     // §1908
+    pub dorm_level: i32,
+    // §1908
+    pub pop_watch: i32,
+    // §1908
+    pub dorm_fired: i32,
+    // §1908
     pub ckpt_resuming: bool,
     // §1908
     pub ckpt_on_shipout: i32,
@@ -1768,6 +1774,9 @@ pub const SCALAR_BYTES: usize = 0
     + crate::arena::slot::<bool>()
     + crate::arena::slot::<i32>()
     + crate::arena::slot::<halfword>()
+    + crate::arena::slot::<i32>()
+    + crate::arena::slot::<i32>()
+    + crate::arena::slot::<i32>()
     + crate::arena::slot::<i32>()
     + crate::arena::slot::<bool>()
     + crate::arena::slot::<i32>()
@@ -2570,6 +2579,9 @@ impl Globals {
             ckpt_request: 0,
             ckpt_arm_cs: 0,
             ckpt_arm_level: 0,
+            dorm_level: 0,
+            pop_watch: 0,
+            dorm_fired: 0,
             ckpt_resuming: false,
             ckpt_on_shipout: 0,
             ckpt_on_segment: 0,
@@ -3099,6 +3111,9 @@ impl Globals {
         v.pod(&mut self.ckpt_request);
         v.pod(&mut self.ckpt_arm_cs);
         v.pod(&mut self.ckpt_arm_level);
+        v.pod(&mut self.dorm_level);
+        v.pod(&mut self.pop_watch);
+        v.pod(&mut self.dorm_fired);
         v.pod(&mut self.ckpt_resuming);
         v.pod(&mut self.ckpt_on_shipout);
         v.pod(&mut self.ckpt_on_segment);

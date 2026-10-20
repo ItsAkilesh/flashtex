@@ -65,6 +65,8 @@ pub struct PageCk {
     pub reads: (usize, usize, usize),
     /// How many output opens the run had made (`Resident::opens`).
     pub opens: usize,
+    /// READ-TRACK's counts and watched level (`crate::dormant`).
+    pub dorm: flashtex_engine::dormant::Dorm,
 }
 
 /// The run's state outside the word space that a checkpoint keeps besides
@@ -391,6 +393,9 @@ impl Globals {
         };
         let reads = flashtex_engine::system::reads_len();
         let pages = self.total_pages.max(0) as usize;
+        // (READ-TRACK: the watch, armed in the state taken)
+        self.dorm_arm();
+        let dorm = self.dorm_record();
         let id = self.checkpoint();
         if let Some(r) = self.host.resident.as_mut() {
             let opens = r.opens.len();
@@ -401,6 +406,7 @@ impl Globals {
                 out,
                 reads,
                 opens,
+                dorm,
             });
         }
         self.conv_test(pages);

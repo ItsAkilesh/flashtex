@@ -872,7 +872,9 @@ impl Globals {
                     }
                     .into();
                 }
-                // The line, split where TeX is (`@<Pseudoprint the line@>`).
+                // The line, split where TeX is (`@<Pseudoprint the line@>`): a
+                // read of it (READ-TRACK, `crate::dormant`).
+                self.dorm_note_shown();
                 let end_line = eqtb_int(self, END_LINE_CHAR_LOC);
                 let limit = r.limit_field;
                 let j = if limit >= 0 && self.buffer[limit as usize] == end_line {
