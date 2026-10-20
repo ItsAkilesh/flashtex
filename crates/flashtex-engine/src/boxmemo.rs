@@ -155,6 +155,11 @@ pub struct Stats {
     pub full_differences: u64,
     /// Control sequences a replay entered again (`Op::NewCs`, §12.3).
     pub entered: u64,
+    /// K3's macro bodies compared token by token, the comparisons §12.4's
+    /// entries answered, and the times the entries were emptied.
+    pub meanings_walked: u64,
+    pub meanings_seen: u64,
+    pub seen_cleared: u64,
     pub abandoned: BTreeMap<String, u64>,
     pub misses: BTreeMap<String, u64>,
     pub verify_details: Vec<String>,
@@ -742,7 +747,7 @@ pub fn stats() -> String {
     ST.with(|s| {
         let s = s.borrow();
         let mut st = format!("{:#?}", s.stats);
-        st.push_str(&format!("\nmeanings_seen: {}\n", seen_hits()));
+        st.push('\n');
         st
     })
 }
@@ -775,11 +780,18 @@ fn write_stats(force: bool) {
     let text = ST.with(|s| {
         let mut s = s.borrow_mut();
         s.stats_dirty += 1;
-        if !force && s.stats_dirty % 32 != 0 {
+        // (nor from a thread that never offered a call: the host's other
+        // threads, which would write over the engine thread's counts)
+        if (!force && s.stats_dirty % 32 != 0) || s.stats.offers == 0 {
             return None;
         }
         s.stats.entries = s.store.values().map(|v| v.len()).sum();
         s.stats.bytes = s.bytes;
+        [
+            s.stats.meanings_walked,
+            s.stats.meanings_seen,
+            s.stats.seen_cleared,
+        ] = seen_counts();
         Some(format!("{:#?}\n", s.stats))
     });
     if let Some(t) = text {
@@ -1030,10 +1042,13 @@ struct Seen {
     /// hook's test.
     bits: Vec<u64>,
     hits: u64,
+    walks: u64,
+    clears: u64,
 }
 
 impl Seen {
     fn clear(&mut self) {
+        self.clears += 1;
         for &e in self.by_list.keys() {
             if let Some(w) = self.bits.get_mut(e as usize / 64) {
                 *w = 0;
@@ -1125,9 +1140,13 @@ fn seen_clear() {
     }
 }
 
-/// How many K3 comparisons the entries answered (`Stats::seen`).
-fn seen_hits() -> u64 {
-    SEEN.with(|s| s.borrow().hits)
+/// K3's walks, the comparisons the entries answered, and the times they
+/// were emptied (`Stats`).
+fn seen_counts() -> [u64; 3] {
+    SEEN.with(|s| {
+        let s = s.borrow();
+        [s.walks, s.hits, s.clears]
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1693,6 +1712,7 @@ impl Globals {
             if seen_is(self, p, t, e, toks) {
                 return true;
             }
+            SEEN.with(|s| s.borrow_mut().walks += 1);
             let mut q = self.bm_link(e);
             for &x in toks.iter() {
                 if q == 0 || self.bm_info(q) != x {
