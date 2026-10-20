@@ -1310,16 +1310,18 @@ mod kpse {
             f: c_int,
             searched: &std::sync::Arc<Vec<String>>,
         ) -> Option<Vec<(usize, crate::statsig::StatSig)>> {
-            use crate::statsig::StatSig;
             if std::env::current_dir().ok().as_deref() != Some(e.cwd.as_path())
                 || self.format_path(f) != e.path
             {
                 return None;
             }
+            // (the directories outside the document, and the answer, as the
+            // watches vouch for them, as of now: `fswatch`)
+            let _check = crate::fswatch::check();
             let mut fresh = vec![];
             for (i, (d, sig)) in e.dirs.iter().enumerate() {
                 // (taken before the listing: a change after it is a change)
-                let now = StatSig::of(d)?;
+                let now = crate::fswatch::sig(d)?;
                 if now == *sig {
                     continue;
                 }
@@ -1342,7 +1344,13 @@ mod kpse {
             // (the answer is a name: what the file holds does not matter)
             e.found
                 .as_deref()
-                .is_none_or(|p| self.readable(p))
+                .is_none_or(|p| {
+                    crate::fswatch::readable_as(
+                        &p.to_string_lossy(),
+                        crate::fswatch::Readable::Kpathsea,
+                        |_| self.readable(p),
+                    )
+                })
                 .then_some(fresh)
         }
 

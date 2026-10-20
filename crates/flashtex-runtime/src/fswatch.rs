@@ -65,7 +65,8 @@ thread_local! {
     /// document's files): one `stat` each per check, the check taken as of
     /// one moment (a change between two `stat`s of one check is a change
     /// after it, as for one `stat`). Emptied by every [`check`].
-    static MEMO: std::cell::RefCell<HashMap<String, (Option<Option<StatSig>>, Option<bool>)>> =
+    #[allow(clippy::type_complexity)]
+    static MEMO: std::cell::RefCell<HashMap<String, (Option<Option<StatSig>>, [Option<bool>; 2])>> =
         std::cell::RefCell::new(HashMap::new());
 }
 
@@ -183,13 +184,28 @@ pub fn sig(path: &str) -> Option<StatSig> {
     s
 }
 
-/// kpathsea's readable test of `path` (`access(R_OK)` by opening it, and
-/// not a directory), as `lookupproof::dep_sig` makes it: vouched for like
-/// [`sig`].
+/// The readable test of `path` that `lookupproof::dep_sig` makes
+/// (kpathsea's: not a directory, and readable, here by opening it):
+/// vouched for like [`sig`].
 pub fn readable(path: &str) -> bool {
-    let test = |p: &str| {
+    readable_as(path, Readable::Open, |p| {
         std::fs::metadata(p).is_ok_and(|m| !m.is_dir()) && std::fs::File::open(p).is_ok()
-    };
+    })
+}
+
+/// Which readable test an answer is ([`readable_as`]): each is kept apart,
+/// so that a test is only ever answered by its own earlier result.
+#[derive(Clone, Copy)]
+pub enum Readable {
+    /// [`readable`]'s.
+    Open = 0,
+    /// kpathsea's own `kpathsea_readable_file` (the resolver's lookup memo).
+    Kpathsea = 1,
+}
+
+/// `test(path)` (a readable test, `kind`), vouched for like [`sig`].
+pub fn readable_as(path: &str, kind: Readable, test: impl FnOnce(&str) -> bool) -> bool {
+    let k = kind as usize;
     if !IN_CHECK.with(|c| c.get()) {
         return test(path);
     }
@@ -198,19 +214,19 @@ pub fn readable(path: &str) -> bool {
         drop(g);
         return test(path);
     };
-    if let Some(r) = w.kept(path).and_then(|e| e.readable) {
+    if let Some(r) = w.kept(path).and_then(|e| e.readable[k]) {
         count(0);
         return r;
     }
-    if let Some(r) = MEMO.with(|m| m.borrow().get(path).and_then(|e| e.1)) {
+    if let Some(r) = MEMO.with(|m| m.borrow().get(path).and_then(|e| e.1[k])) {
         return r;
     }
     count(1);
     let deps = w.arm(path);
     let r = test(path);
     match deps {
-        Some(deps) => w.entry(path, deps).readable = Some(r),
-        None => MEMO.with(|m| m.borrow_mut().entry(path.to_string()).or_default().1 = Some(r)),
+        Some(deps) => w.entry(path, deps).readable[k] = Some(r),
+        None => MEMO.with(|m| m.borrow_mut().entry(path.to_string()).or_default().1[k] = Some(r)),
     }
     r
 }
@@ -220,7 +236,8 @@ struct Entry {
     /// The signature (`Some(None)`: no such file), if one that is not racy
     /// was taken under `deps`.
     sig: Option<Option<StatSig>>,
-    readable: Option<bool>,
+    /// Each readable test's answer (`Readable`), if taken under `deps`.
+    readable: [Option<bool>; 2],
     /// The watches it depends on, with their generations when it was kept.
     deps: Vec<(u32, u64)>,
 }
