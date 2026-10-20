@@ -4105,12 +4105,12 @@ mod tests {
         ];
         assert_eq!(
             compress_groups(&ops),
-            vec![Op::Begin(1), def(8, 1, 1), let_global, Op::End]
+            vec![Op::Begin(1), def(8, 1, 1), let_global.clone(), Op::End]
         );
         // a `\let` of what the group has not assigned yet reads the state
         // where the group was: made there
         let early = vec![Op::Begin(1), let_global.clone(), def(8, 1, 1), Op::End];
-        assert_eq!(compress_groups(&early), vec![let_global.clone()]);
+        assert_eq!(compress_groups(&early), vec![let_global]);
         // a group the call does not close, and an `End` of the caller's
         // group, are replayed as recorded
         let open = vec![Op::Begin(1), def(1, 1, 3), Op::End, Op::End, Op::Begin(2)];
