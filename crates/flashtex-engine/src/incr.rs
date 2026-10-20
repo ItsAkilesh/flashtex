@@ -2935,6 +2935,13 @@ impl Obs {
                 l.set(if stop { None } else { Some((now, max, at)) });
                 (gap, max, at)
             });
+            if std::env::var_os("FLASHTEX_PREEMPT_DEBUG").is_some_and(|v| v == "2") {
+                eprintln!(
+                    "[preempt] check after page {}, output {}, {gap:.2} ms after the last",
+                    self.pages_so_far(),
+                    g.output_active
+                );
+            }
             if stop {
                 eprintln!(
                     "[preempt] stopped {:?} after page {}, output {}, {gap:.2} ms after the last check (longest {max:.2} at page {at})",
