@@ -1319,6 +1319,17 @@ impl Engine {
                 m((displaylist::emit_ns() - t.emit0) as f64 * 1e-6),
             ));
             st.push(("send".to_string(), m(t.send_ns as f64 * 1e-6)));
+            // BOX-MEMO's counts over the session: offers, hits, recordings
+            // committed, control sequences a replay entered (`boxmemo`)
+            st.push((
+                "boxmemo".to_string(),
+                Json::Arr(
+                    crate::boxmemo::counts()
+                        .iter()
+                        .map(|&c| Json::Int(c as i64))
+                        .collect(),
+                ),
+            ));
             // the file watcher's counts over the session: signatures served,
             // stats made in checks, drains with events, overflows (`fswatch`)
             st.push((

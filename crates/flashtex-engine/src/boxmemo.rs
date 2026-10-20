@@ -155,6 +155,8 @@ pub struct Stats {
     /// many differed.
     pub full_verified: u64,
     pub full_differences: u64,
+    /// Control sequences a replay entered again (`Op::NewCs`, §12.3).
+    pub entered: u64,
     pub abandoned: BTreeMap<String, u64>,
     pub misses: BTreeMap<String, u64>,
     pub verify_details: Vec<String>,
@@ -700,6 +702,15 @@ pub fn mode() -> Mode {
 
 fn debug() -> bool {
     with_config(|c| c.debug)
+}
+
+/// Counts over the session, for the host's `DONE` (`stages.boxmemo`):
+/// offers, hits, recordings committed, control sequences a replay entered.
+pub fn counts() -> [u64; 4] {
+    ST.with(|s| {
+        let s = s.borrow();
+        [s.stats.offers, s.stats.hits, s.stats.committed, s.stats.entered]
+    })
 }
 
 /// The statistics so far.
@@ -1924,6 +1935,7 @@ impl Globals {
             q, p,
             "boxmemo: a replayed control sequence landed elsewhere"
         );
+        ST.with(|s| s.borrow_mut().stats.entered += 1);
     }
 
     /// The dimensions of object `n` (a form or an image) as pdfTeX keeps
