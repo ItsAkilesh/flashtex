@@ -1860,16 +1860,9 @@ impl Globals {
             let mut best: Option<(u64, usize)> = None;
             let mut partial = None;
             let mut k2_seen: Vec<(*const i32, bool)> = vec![];
-            // (the most recently used first: the first variant whose whole
-            // key holds is the one wanted, and the older ones' keys are not
-            // compared; `partial` matters only when none holds, and then
-            // every variant is still compared)
-            let mut order: Vec<usize> = ix.clone();
-            // (stable: of equally recent ones the first, as before)
-            order.sort_by_key(|&i| std::cmp::Reverse(v[i].last_used));
-            for (i, e) in order.iter().map(|&i| (i, &v[i])) {
-                if best.is_some() {
-                    break;
+            for (i, e) in ix.iter().map(|&i| (i, &v[i])) {
+                if best.is_some_and(|(u, _)| u >= e.last_used) {
+                    continue;
                 }
                 if e.hash != hash
                     || e.k1 != k1
