@@ -2006,7 +2006,8 @@ fn a_replayed_call_enters_its_new_control_sequences_again() {
         \\csname mk@alpha\\endcsname{} and \\csname mk@gamma\\endcsname.\n\
         \\end{document}\n";
     std::fs::write(proj.join(main), text).unwrap();
-    let env = [("FLASHTEX_BOXMEMO_NAMES", "mk")];
+    // (on whatever the suite's `FLASHTEX_BOXMEMO` says: the test is of replays)
+    let env = [("FLASHTEX_BOXMEMO", "on"), ("FLASHTEX_BOXMEMO_NAMES", "mk")];
     let host = start_host_env("nc", &env);
     let scratch = start_host_env("ncs", &env);
     let mut c = Client::connect(&host.1).unwrap();
