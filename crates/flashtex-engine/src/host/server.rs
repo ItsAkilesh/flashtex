@@ -916,6 +916,9 @@ fn connection(stream: Stream, cfg: &Config, tx: mpsc::Sender<Req>) {
                     // A compile already queued or running for this
                     // connection is superseded: `queued` tells it so.
                     conn.queued.fetch_add(1, Ordering::SeqCst);
+                    if std::env::var_os("FLASHTEX_PREEMPT_DEBUG").is_some() {
+                        eprintln!("[preempt] queued {:?}", std::time::SystemTime::now());
+                    }
                     if tx
                         .send(Req::Compile {
                             conn: conn.clone(),

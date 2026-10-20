@@ -2921,6 +2921,14 @@ impl Obs {
             .is_some_and(|p| p(self.pass, self.new_pages.len()));
         if stop {
             self.preempted = true;
+            if std::env::var_os("FLASHTEX_PREEMPT_DEBUG").is_some() {
+                eprintln!(
+                    "[preempt] stopped {:?} after page {}, output {}",
+                    std::time::SystemTime::now(),
+                    self.pages_so_far(),
+                    g.output_active
+                );
+            }
         }
         stop
     }
