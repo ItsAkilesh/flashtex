@@ -1130,9 +1130,14 @@ by CI or by a named reference run. Lane runs are REPORTED evidence.
     09-26), T1 with 0 new differences and T7; S6 waits for RQ19 and the Unicode mode's M3
     gate; S7 for RQ5 and T7 gating ≥ 10 runs. `retirement-stages.json` still says S2 next
     and S3r not started.
-  - **Unicode M3 (modes PROPOSAL L438): not met.** #1732 (cold host), #1734, #1735, #1741 and
-    #1762 build U3a–U3c, but no Unicode corpus P-T1, xelatex latency, Unicode soundness
-    sweep or no-TeX-Live corpus run is recorded.
+  - **Unicode M3 (modes PROPOSAL L438): not met.** Re-measured on main `f5ef18a85`
+    (2026-10-20, `docs/evidence/unicode-m3-2026-10-11/README.md`, #1856):
+    - met: P-T1 49/49, export 48/48, the Unicode soundness sweeps (76 documents, 684 compiles,
+      0 bad), `[fonts]`, and Classic unchanged;
+    - met for the locked bundle, but `texbundle-tl2026-5` is unpublished: no TeX Live;
+    - missed: the §1.2 edit row for a keystroke at b4's last line, 545 M instructions to its
+      page. The design for that row is [READ-TRACK.md](READ-TRACK.md);
+    - pending the reference Mac: the wall-time rows.
   - Main CI was red on the last merge (38028759045, #1762: mac host tests and the
     self-hosted parity fixtures).
 - **P6: in progress ahead of its phase, by measured wins. Under the owner's 2026-10-05 rule, P6
