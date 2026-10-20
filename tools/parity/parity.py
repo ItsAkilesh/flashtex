@@ -1784,10 +1784,30 @@ def baseline_of(results):
     return {r["id"]: (r["level"] if not r.get("excluded") else None) for r in results}
 
 
+def baseline_host():
+    """The host a fixtures baseline is recorded on (retirement plan RQ8, S1b).
+    `system` is what decides comparability: the fixtures paint some glyphs from
+    system fonts, so levels from another OS are not comparable (DESIGN §8)."""
+    return {"system": platform.system(), "machine": platform.machine(), "node": platform.node(),
+            "platform": f"{platform.system()} {platform.release()} {platform.machine()}"}
+
+
+class BaselineHostMismatch(Exception):
+    pass
+
+
 def check_baseline(results, path):
-    """Every document must reach at least the level recorded in `path`."""
+    """Every document must reach at least the level recorded in `path`.
+    Raises BaselineHostMismatch when the baseline names a host system other
+    than this one. A baseline without `host` (schema /1, before RQ8) is
+    checked as before."""
     with open(path, encoding="utf-8") as f:
-        base = json.load(f)["levels"]
+        doc = json.load(f)
+    host = doc.get("host") or {}
+    if host.get("system") and host["system"] != platform.system():
+        raise BaselineHostMismatch(f"{path} was recorded on {host['system']}, not on this host's "
+                                   f"{platform.system()}; its levels are not comparable here (DESIGN §8)")
+    base = doc["levels"]
     now = baseline_of(results)
     regressions = []
     for did, lvl in sorted(base.items()):
@@ -2099,8 +2119,9 @@ def main(argv=None):
         return DIED_EXIT
     if args.write_baseline:
         with open(args.write_baseline, "w", encoding="utf-8") as f:
-            json.dump({"schema": "flashtex-parity-baseline/1", "generated": meta["started_utc"], "raster": args.raster,
-                       "flashtex_version": exe_ver, "levels": baseline_of(all_results)}, f, indent=1, sort_keys=True)
+            json.dump({"schema": "flashtex-parity-baseline/2", "generated": meta["started_utc"], "raster": args.raster,
+                       "flashtex_version": exe_ver, "host": baseline_host(),
+                       "levels": baseline_of(all_results)}, f, indent=1, sort_keys=True)
             f.write("\n")
     if args.require_pt:
         misses = require_pt(all_results)
@@ -2111,7 +2132,11 @@ def main(argv=None):
             return 1
         log(f"P-T gate: all {sum(1 for r in all_results if not r.get('excluded'))} measured documents pass P-T1 and P-T2")
     if args.check_baseline:
-        regs = check_baseline(all_results, args.check_baseline)
+        try:
+            regs = check_baseline(all_results, args.check_baseline)
+        except BaselineHostMismatch as e:
+            log(f"refusing: {e}")
+            return 2
         if regs:
             for did, was, now in regs:
                 log(f"REGRESSION {did}: baseline {was}, now {now}")

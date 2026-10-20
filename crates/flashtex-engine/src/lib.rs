@@ -34,8 +34,12 @@
 pub mod arena;
 #[cfg(all(feature = "bibtex", not(feature = "tex82")))]
 pub mod bibtex;
+#[cfg(not(feature = "tex82"))]
+pub mod boxfrag;
+#[cfg(not(feature = "tex82"))]
+pub mod boxmemo;
 #[cfg(all(feature = "distribution", not(feature = "tex82")))]
-pub mod bundle;
+pub use flashtex_runtime::bundle;
 #[cfg(not(feature = "tex82"))]
 pub mod checkpoint;
 pub mod cli;
@@ -46,7 +50,7 @@ pub mod displaylist;
 #[cfg(not(feature = "tex82"))]
 pub mod fmtimage;
 #[cfg(feature = "distribution")]
-pub mod formats;
+pub use flashtex_runtime::formats;
 pub mod generated;
 pub mod hashcache;
 #[cfg(not(feature = "tex82"))]
@@ -76,7 +80,7 @@ pub mod pdftex;
 pub mod profile;
 #[cfg(not(feature = "tex82"))]
 pub mod readset;
-pub mod resolver;
+pub use flashtex_runtime::resolver;
 #[cfg(not(feature = "tex82"))]
 pub mod revalidate;
 #[cfg(not(feature = "tex82"))]

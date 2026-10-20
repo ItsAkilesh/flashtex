@@ -1,6 +1,13 @@
 {
  "flashtex_version": "flashtex 0.1.0 (351f1db1ae08)",
  "generated": "2026-09-22T02:21:00Z",
+ "host": {
+  "machine": null,
+  "node": null,
+  "note": "recorded 2026-09-22 before RQ8 added this field: only the system (macOS) is on record (tools/parity/README.md, docs/ci-cd.md); S5 re-records it with the full host",
+  "platform": null,
+  "system": "Darwin"
+ },
  "levels": {
   "divergence-probes/min-abstract": 3,
   "divergence-probes/min-bigdelim-12pt": 3,
@@ -86,5 +93,5 @@
   "real-world/unicode-accents": 1
  },
  "raster": "none",
- "schema": "flashtex-parity-baseline/1"
+ "schema": "flashtex-parity-baseline/2"
 }

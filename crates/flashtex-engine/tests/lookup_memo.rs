@@ -18,6 +18,11 @@ fn the_memo_answers_as_kpathsea_does() {
         common::no_texlive();
         return;
     };
+    // A racy window of a quarter second, which `set_back` waits out:
+    // setting a directory's time back moves its change time to now, which
+    // is racy until the window has passed.
+    std::env::set_var("FLASHTEX_RACY_MS", "250");
+    let past_the_window = || std::thread::sleep(Duration::from_millis(300));
     let base = common::fresh_dir("flashtex-lookup-memo");
     let _ = std::fs::remove_dir_all(&base);
     let (home, cwd, ext) = (base.join("home"), base.join("cwd"), base.join("ext"));
@@ -45,14 +50,17 @@ fn the_memo_answers_as_kpathsea_does() {
     ] {
         std::fs::File::open(&d).unwrap().set_modified(old).unwrap();
     }
+    past_the_window();
     let mut r = KpathseaResolver::for_texlive(&bin, "pdflatex", "pdftex");
-    // Directory times well in the past (no racy signature), a new one each
-    // time: the memo, not the racy rule, is what is tested.
+    // Directory times well in the past (no racy signature, once the change
+    // time is past the window too), a new one each time: the memo, not the
+    // racy rule, is what is tested.
     let mut tick = 0u64;
     let mut set_back = |d: &Path| {
         tick += 1;
         let t = SystemTime::now() - Duration::from_secs(600 - tick);
         std::fs::File::open(d).unwrap().set_modified(t).unwrap();
+        past_the_window();
     };
     // The memo's answer and kpathsea's (memo off, same instance), equal;
     // and whether the memo answered.
@@ -155,15 +163,23 @@ fn the_memo_answers_as_kpathsea_does() {
     look(&mut r, "flashother.sty", "twice");
     look(&mut r, "flashother.sty", "twice again");
 
-    // a racy directory (changed within the file system's time granularity)
-    // proves nothing: no answer from the memo until it is old enough
+    // a racy directory (changed within the file system's time granularity):
+    // its signature proves nothing, so the memo lists it again, and answers
+    // while the listing holds nothing new under the names tried
+    // (tests/lookup_racy.rs: a change the signature cannot show)
     std::fs::write(sub.join("flashfresh.sty"), "% fresh\n").unwrap();
     let (p, _) = look(&mut r, "flashfresh.sty", "fresh");
     assert!(found_in(&p, &sub), "{p:?}");
     assert!(
-        !look(&mut r, "flashfresh.sty", "fresh again").1,
-        "a racy directory answered"
+        look(&mut r, "flashfresh.sty", "fresh again").1,
+        "a racy directory, listed again, did not answer"
     );
+    std::fs::write(sub.join("flashfresh.sty.bak"), "% a name tried\n").unwrap();
+    assert!(
+        !look(&mut r, "flashfresh.sty", "a name tried appeared").1,
+        "a racy directory answered past a new entry under a name tried"
+    );
+    std::fs::remove_file(sub.join("flashfresh.sty.bak")).unwrap();
     set_back(&sub);
     look(&mut r, "flashfresh.sty", "no longer racy");
     assert!(

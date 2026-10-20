@@ -317,13 +317,15 @@ final class EngineV3PageView: NSView {
     /// `kCAOnOrderIn`, `layout()` or move-to-window), and until then the
     /// layer has no superlayer and reads unflipped (a label placed then sat
     /// at the top of the page: testEachPageIsLabelled, 6 of 25 hosted
-    /// rounds on 2026-10-12). The layer goes into the superview's backing
-    /// layer, whose geometry AppKit makes the superview's own, so it is
-    /// flipped as the superview is (unless it flips its own geometry).
+    /// rounds on 2026-10-12). Once attached, the layer is shown flipped
+    /// exactly as the superview is: AppKit sets the hosted layer's own
+    /// `geometryFlipped` to make it so. That flag is AppKit's, and it is
+    /// transient while detached: true for a fresh view, false for one
+    /// removed and added again. It is reset when the layer attaches, so it
+    /// is not read here (EngineV3PageFlipTests; hosted measurements,
+    /// 2026-10-12).
     var layerShownFlipped: Bool {
-        guard let l = layer else { return isFlipped }
-        let above = superview?.isFlipped ?? l.superlayer?.contentsAreFlipped() ?? false
-        return above != l.isGeometryFlipped
+        superview?.isFlipped ?? layer?.contentsAreFlipped() ?? isFlipped
     }
 
     private func placeLabel() {

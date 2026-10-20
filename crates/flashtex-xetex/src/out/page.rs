@@ -38,6 +38,14 @@ use std::collections::HashMap;
 /// DVI units.
 pub trait Metrics {
     fn tfm_char(&self, k: i32, c: u32) -> Option<(i32, i32, i32)>;
+
+    /// The whole path of native font `k`'s file. XDV's `define_native_font`
+    /// gives the path's length in one byte, as XeTeX's `makeFontDef` writes
+    /// it, so a path of 256 bytes or more arrives cut (and xdvipdfmx then
+    /// cannot open the font). The writer takes the engine's own path then.
+    fn native_path(&self, _k: i32) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 /// The graphics state of the stream being built.
@@ -119,6 +127,10 @@ pub struct Stream {
     pub height: Fx,
     /// The glyph matrix the reader has (`u32::MAX`: none yet, spec §4.3).
     told_matrix: u32,
+    /// The last glyph matrix given to `sync_glyph_matrix` (its bits) and
+    /// the matrix number it gave: the same input gives the same number,
+    /// as [`Stream::matrix`] never forgets one.
+    glyph_matrix_memo: Option<([u64; 4], u32)>,
     /// The span the reader has (spec §4.3 `SPAN`; 0: none yet).
     told_span: u32,
     pub fonts: Vec<u16>,
@@ -143,6 +155,7 @@ impl Stream {
             coords: Vec::new(),
             height,
             told_matrix: u32::MAX,
+            glyph_matrix_memo: None,
             told_span: 0,
             fonts: Vec::new(),
             images: Vec::new(),
@@ -246,8 +259,16 @@ impl Stream {
         // size or `Tm`, src/out/pdf.rs), so that the preview draws each glyph
         // at the PDF's very size: 14.346195662749 against the PDF's
         // 14.346196 changed single pixels of section headings.
-        let m = m.map(|v| super::pdfobj::fmt_num(v, 6).parse::<f64>().unwrap_or(v));
-        let n = self.matrix([m[0], m[1], m[2], m[3], 0.0, 0.0]);
+        let bits = m.map(f64::to_bits);
+        let n = match self.glyph_matrix_memo {
+            Some((b, n)) if b == bits => n,
+            _ => {
+                let m = m.map(|v| super::num::round_num(v, 6));
+                let n = self.matrix([m[0], m[1], m[2], m[3], 0.0, 0.0]);
+                self.glyph_matrix_memo = Some((bits, n));
+                n
+            }
+        };
         if n != self.told_matrix {
             self.push(Item::Matrix(n));
             self.told_matrix = n;
@@ -580,6 +601,11 @@ impl<'a, M: Metrics> Builder<'a, M> {
                         .ok_or("XDV define_native_font truncated")?
                         .to_vec();
                     i += l;
+                    // a path the one-byte length cut (Metrics::native_path)
+                    let path = match self.metrics.native_path(k) {
+                        Some(full) if full.len() > 255 => full,
+                        _ => path,
+                    };
                     let index = rd(&mut i, 4)?;
                     let rgba = if fl & XDV_FLAG_COLORED != 0 {
                         Some(rd(&mut i, 4)?)

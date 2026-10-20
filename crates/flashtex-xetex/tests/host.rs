@@ -626,6 +626,118 @@ fn low_memory_keeps_no_spare() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A font file whose path is 256 bytes or longer: XDV keeps the path's
+/// length in one byte (as XeTeX's), so the writer takes the engine's own
+/// path (`page::Metrics::native_path`); before, its glyphs were dropped
+/// without a word (a bundle cache under a long home directory).
+#[test]
+fn a_font_at_a_long_path_is_drawn() {
+    let src = Path::new("/System/Library/Fonts/Supplemental/Georgia.ttf");
+    if !texlive() || !src.is_file() {
+        eprintln!("skipped: no TeX Live or no Georgia.ttf");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-longpath-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut fonts = dir.join("proj");
+    while fonts.as_os_str().len() < 270 {
+        fonts = fonts.join("a-rather-long-directory-name");
+    }
+    std::fs::create_dir_all(&fonts).unwrap();
+    std::fs::copy(src, fonts.join("Georgia.ttf")).unwrap();
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\
+         \\setmainfont{{Georgia.ttf}}[Path={}/]\n\\begin{{document}}\nHello.\n\\end{{document}}\n",
+        fonts.display()
+    );
+    let (proj, out) = project(&dir, &doc);
+    let h = start(&dir);
+    let mut c = Client::connect(&h.sock).unwrap();
+    c.compile(&request(1, &proj, &out)).unwrap();
+    let (ev, done) = events(&mut c, 1);
+    assert_eq!(done.str_field("status"), Some("ok"), "{done:?}");
+    let fonts: Vec<_> = ev
+        .iter()
+        .filter_map(|e| match e {
+            Event::Font(f) => Some(f.info.str_field("ps_name").unwrap_or("").to_string()),
+            _ => None,
+        })
+        .collect();
+    assert!(fonts.iter().any(|p| p == "Georgia"), "{fonts:?}");
+    c.bye().unwrap();
+    drop(h);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// bibtex and makeindex are the engine's own ports (`host/proc.rs`,
+/// `--run-tool flashtex:...`), so a bibliography and an index need no TeX
+/// Live: their outputs equal TeX Live 2026's bibtex and makeindex on the
+/// same document (fixtures/notex-tools, which `scripts/notex-host-check.sh`
+/// checks for the pdfTeX host), and a follow-up compile reads them.
+#[test]
+fn bibtex_and_makeindex_are_built_in() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let fx = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/notex-tools");
+    let dir = std::env::temp_dir().join(format!("flashtex-host-tools-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let proj = dir.join("proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    for f in ["main.tex", "refs.bib"] {
+        std::fs::copy(fx.join(f), proj.join(f)).unwrap();
+    }
+    let out = dir.join("out").to_string_lossy().into_owned();
+    let h = start(&dir);
+    let mut c = Client::connect(&h.sock).unwrap();
+    let mut r = request(1, &proj, &out);
+    r.external_tools = Some("auto".into());
+    c.compile(&r).unwrap();
+    // a DONE per compile (the first, then the follow-up the tools' outputs
+    // ask for), and the rounds' end
+    let mut ev = vec![];
+    loop {
+        let e = c.next_event().unwrap().expect("the host closed");
+        let end = matches!(&e, Event::Tool(j) if j.str_field("event") == Some("settled"));
+        if let Event::Done(j) = &e {
+            assert_eq!(j.str_field("status"), Some("ok"), "{j:?}");
+        }
+        ev.push(e);
+        if end {
+            break;
+        }
+    }
+    assert!(
+        ev.iter().filter(|e| matches!(e, Event::Done(_))).count() >= 2,
+        "no follow-up compile"
+    );
+    let ran: Vec<(String, String)> = ev
+        .iter()
+        .filter_map(|e| match e {
+            Event::Tool(j) if j.str_field("event") == Some("done") => Some((
+                j.str_field("tool").unwrap_or("").to_string(),
+                j.str_field("status").unwrap_or("").to_string(),
+            )),
+            _ => None,
+        })
+        .collect();
+    for tool in ["bibtex", "makeindex"] {
+        assert!(
+            ran.iter().any(|(t, s)| t == tool && s == "ok"),
+            "{tool} did not run cleanly: {ran:?}"
+        );
+    }
+    for name in ["main.bbl", "main.blg", "main.ind", "main.ilg"] {
+        let got = std::fs::read(Path::new(&out).join(name)).unwrap();
+        let want = std::fs::read(fx.join("expected").join(name)).unwrap();
+        assert!(got == want, "{name} differs from TeX Live's");
+    }
+    c.bye().unwrap();
+    drop(h);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Compiles in the host's own process (`crate::resident`; from the second
 /// run on, from the state kept where the format is loaded, and an edit after
 /// the preamble from S₀) write what runs in processes of their own write,
@@ -731,6 +843,67 @@ fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// S₀ is taken at the real `\begin{document}`, not where a package expanded
+/// `\document` into a new definition to patch it (bidi does, for
+/// polyglossia's right-to-left languages): an edit in the preamble after
+/// the patch runs from the format, a body edit goes on from S₀, and every
+/// compile writes what a run of its own writes.
+#[test]
+fn s0_is_not_taken_where_document_is_patched() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-patch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let doc = "\\documentclass{article}\n\\makeatletter\n\\expandafter\\def\\expandafter\\document\\expandafter{\\document\\relax}\n\\makeatother\n\\newcommand\\later{late}\n\\begin{document}\nA body, \\later.\n\\end{document}\n";
+    let texts = [
+        doc.to_string(),
+        doc.replace("A body", "The body"),
+        doc.replace("{late}", "{later}"),
+    ];
+    let run = |envs: &[(&str, &str)]| -> Vec<(Vec<u8>, String, String)> {
+        let sub = dir.join("run");
+        let _ = std::fs::remove_dir_all(&sub);
+        let (proj, out) = project(&sub, doc);
+        let mut e = vec![("FLASHTEX_PIN_CLOCK", "1760000000.5")];
+        e.extend_from_slice(envs);
+        let h = start_with(&sub, &e, &sub.join("host.err"));
+        let mut c = Client::connect(&h.sock).unwrap();
+        let mut outs = vec![];
+        for (i, text) in texts.iter().enumerate() {
+            let id = i as i64 + 1;
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.clone())];
+            c.compile(&r).unwrap();
+            let (_, done) = events(&mut c, id);
+            let o = Path::new(&out);
+            outs.push((
+                std::fs::read(o.join("main.pdf")).unwrap_or_default(),
+                std::fs::read_to_string(o.join("main.log")).unwrap_or_default(),
+                done.get("starts")
+                    .and_then(Json::as_array)
+                    .and_then(|a| a.first())
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            ));
+        }
+        c.bye().unwrap();
+        drop(h);
+        outs
+    };
+    let own = run(&[("FLASHTEX_UNICODE_INPROCESS", "0")]);
+    let got = run(&[]);
+    for (i, (a, b)) in got.iter().zip(&own).enumerate() {
+        assert!(a.0 == b.0, "compile {}: the PDFs differ", i + 1);
+        assert_eq!(a.1, b.1, "compile {}: the logs differ", i + 1);
+    }
+    let starts: Vec<&str> = got.iter().map(|o| o.2.as_str()).collect();
+    assert_eq!(starts, ["fresh", "s0", "format"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A persisted S₀ (`--s0-cache`, `crate::s0file`): a host saves the
 /// document's S₀ after its compile; a new host whose document was edited
 /// in its body while closed goes on from it (no format, no preamble), and
@@ -825,13 +998,25 @@ fn a_reopened_document_goes_on_from_its_persisted_s0() {
     };
     let (status, _, _) = compile(&with_cache, "first");
     assert_eq!(status, "ok");
-    let saved: Vec<_> = std::fs::read_dir(&cache)
+    let mut saved: Vec<_> = std::fs::read_dir(&cache)
         .expect("the S0 cache")
-        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .map(|e| e.unwrap().path())
         .collect();
+    saved.sort_by_key(|p| p.extension().map(|e| e.to_os_string()));
+    let size = |p: &Path| std::fs::metadata(p).unwrap().len();
+    // S₀, and the base it is a delta against (the state after the format
+    // load, made from the format point)
     assert!(
-        saved.len() == 1 && saved[0].ends_with(".xs0"),
-        "one S0 saved: {saved:?}"
+        saved.len() == 2
+            && saved[0].extension().is_some_and(|e| e == "xs0")
+            && saved[1].extension().is_some_and(|e| e == "xs0base"),
+        "one S0 and its base saved: {saved:?}"
+    );
+    assert!(
+        size(&saved[0]) * 4 < size(&saved[1]),
+        "S0 holds what differs from its base: {} and {} bytes",
+        size(&saved[0]),
+        size(&saved[1])
     );
     // edited in its body while closed: from S₀
     std::fs::write(
@@ -846,6 +1031,51 @@ fn a_reopened_document_goes_on_from_its_persisted_s0() {
         against_scratch("font"),
         "fresh",
         "a changed font file refuses S0"
+    );
+    // its base gone while closed: S₀ refused; that run makes the base and
+    // S₀ again, and the next goes on from them
+    std::fs::remove_file(&saved[1]).unwrap();
+    assert_eq!(against_scratch("no base"), "fresh", "no base refuses S0");
+    assert!(saved[1].is_file(), "the base is made again");
+    assert_eq!(against_scratch("base again"), "s0", "the new base serves");
+    // a base cut short while closed: S₀ refused; the run's save makes the
+    // base again in its place (rather than saving S₀ whole), and collects
+    // a base of no S₀ older than a day (not a recent one)
+    let stale = cache.join("0000000000000000000000000000dead.xs0base");
+    let recent = cache.join("0000000000000000000000000000beef.xs0base");
+    for b in [&stale, &recent] {
+        std::fs::write(b, b"an old base").unwrap();
+    }
+    std::fs::File::options()
+        .write(true)
+        .open(&stale)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(2 * 24 * 3600))
+        .unwrap();
+    let whole = size(&saved[1]);
+    std::fs::File::options()
+        .write(true)
+        .open(&saved[1])
+        .unwrap()
+        .set_len(whole / 2)
+        .unwrap();
+    assert_eq!(
+        against_scratch("cut base"),
+        "fresh",
+        "a cut base refuses S0"
+    );
+    assert_eq!(size(&saved[1]), whole, "the base is made again");
+    assert!(
+        size(&saved[0]) * 4 < whole,
+        "S0 is saved against the new base, not whole: {} bytes",
+        size(&saved[0])
+    );
+    assert!(!stale.exists(), "the stale base is collected");
+    assert!(recent.exists(), "a recent base is kept");
+    assert_eq!(
+        against_scratch("base made again"),
+        "s0",
+        "the base made again serves"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -899,15 +1129,38 @@ fn an_s0_saved_after_a_keystroke_is_the_one_saved_at_once() {
             );
             std::thread::sleep(Duration::from_millis(20));
         }
-        let files: Vec<PathBuf> = std::fs::read_dir(cache)
+        let mut files: Vec<PathBuf> = std::fs::read_dir(cache)
             .expect("the S0 cache")
             .map(|e| e.unwrap().path())
             .collect();
+        files.sort();
         assert!(
-            files.len() == 1 && files[0].extension().is_some_and(|e| e == "xs0"),
-            "{tag}: one S0 saved: {files:?}"
+            files.len() == 2
+                && files[0].extension().is_some_and(|e| e == "xs0")
+                && files[1].extension().is_some_and(|e| e == "xs0base"),
+            "{tag}: one S0 and its base saved: {files:?}"
         );
-        std::fs::read(&files[0]).unwrap()
+        // (each cache has a base of its own, and a base's identity is a
+        // nonce of the file written: S₀ refers to it, so it is masked
+        // here; the nonce follows the base's magic)
+        let base = std::fs::read(&files[1]).unwrap();
+        let magic = b"flashtex xetex S0 base v1";
+        let at = base
+            .windows(magic.len())
+            .position(|w| w == magic)
+            .expect("the base's magic")
+            + magic.len();
+        let nonce = &base[at..at + 16];
+        let mut s0 = std::fs::read(&files[0]).unwrap();
+        let refs: Vec<usize> = s0
+            .windows(16)
+            .enumerate()
+            .filter(|(_, w)| *w == nonce)
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(refs.len(), 1, "{tag}: S0 refers to its base once");
+        s0[refs[0]..refs[0] + 16].fill(0);
+        s0
     };
     // where two files differ: the header's length, the first differing
     // byte, and the differing 16 KiB blocks after the header

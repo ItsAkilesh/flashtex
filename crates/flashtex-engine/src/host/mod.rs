@@ -876,7 +876,7 @@ impl Drop for Scratch {
 /// taken) and a copy of the chunks, on the engine's thread; the sites, the
 /// scan for zero chunks, the file and its rename are the write's.
 pub fn prepare_s0(g: &mut Globals, id: CheckpointId, key: &Key) -> Result<S0Image, String> {
-    let rec = g.record_of(id)?;
+    let mut rec = g.record_of(id)?;
     // The output files' contents up to their length at S₀, and the
     // terminal's.
     let mut outputs: Vec<(String, Vec<u8>)> = vec![];
@@ -905,6 +905,21 @@ pub fn prepare_s0(g: &mut Globals, id: CheckpointId, key: &Key) -> Result<S0Imag
         .iter()
         .find(|r| r.name == "dl_side")
         .map_or(0..0, |r| r.off..r.off + r.bytes);
+    // Nor is the read-set (PREAMBLE-PATCH: a run restarted in the preamble
+    // reads from its restart on, `incr::PrePatch`): a process that opens S₀
+    // has no read-set, and its run begins to read at the `.aux` close, as
+    // every run from S₀ did before, with nothing marked read.
+    let seen = g
+        .arena
+        .regions
+        .iter()
+        .find(|r| r.name == "rs_seen")
+        .map_or(0..0, |r| r.off..r.off + r.bytes);
+    let rs_on = crate::readset::layout()
+        .iter()
+        .find(|s| s.name == "rs_on")
+        .map_or(0..0, |s| s.off..s.off + s.size);
+    rec.rs = 0;
     let chunks: Vec<u32> = (0..g.arena.chunks())
         .filter(|&c| g.arena.touched(c))
         .map(|c| c as u32)
@@ -919,8 +934,10 @@ pub fn prepare_s0(g: &mut Globals, id: CheckpointId, key: &Key) -> Result<S0Imag
         let c = c as usize;
         to.copy_from_slice(view.chunk(c));
         let (lo, hi) = (c * CHUNK_BYTES, (c + 1) * CHUNK_BYTES);
-        if hi > side.start && lo < side.end {
-            to[side.start.max(lo) - lo..side.end.min(hi) - lo].fill(0);
+        for z in [&side, &seen, &rs_on] {
+            if hi > z.start && lo < z.end {
+                to[z.start.max(lo) - lo..z.end.min(hi) - lo].fill(0);
+            }
         }
     }
     let mut head = vec![];
@@ -1208,8 +1225,9 @@ pub fn read_s0(
 }
 
 // (v4: the key's reads at the document's start, `Key::arm`; v5: the pages,
-// page-aligned, `S0_PAGE`)
-const MAGIC: &[u8] = b"flashtex S0 v5";
+// page-aligned, `S0_PAGE`; v6: the key's stat signatures hold the change
+// time, `StatSig::ctime_ns`)
+const MAGIC: &[u8] = b"flashtex S0 v6";
 
 /// The granule of S₀'s pages in the file (v5): Apple silicon's page, which
 /// every supported system's page size divides (4 KB elsewhere).
@@ -1316,6 +1334,10 @@ mod key_tests {
             .set_modified(old)
             .unwrap();
         open_dir_for_times(&d).set_modified(old).unwrap();
+        // (putting the times back moved the change times: their tick too)
+        std::thread::sleep(std::time::Duration::from_millis(
+            (crate::system::RACY_NS / 1_000_000) as u64 + 100,
+        ));
         key.check_refresh((0, 0), b"main").unwrap();
         assert!(!key.files[0].2.racy, "the file's signature is still racy");
         assert!(

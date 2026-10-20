@@ -189,8 +189,10 @@ codes are in `t7.py`'s docstring. Choices that a reader of the table needs:
 - **Held rates**: `t7-baseline.json` is the convergence rate and median re-typeset pages per row
   (`--write-baseline`); a row fails when its rate falls by more than 0.15 or its median pages
   grow by more than 25 % + 2, and a row it lacks is a warning. Regenerate it only from a run of
-  `t7.py`, and say so. The current one is run 2 of `docs/evidence/t7-latency-2026-10-02/`
-  (warm-ups left out); convergence did not depend on load there.
+  `t7.py`, and say so. The current one is the full run of `docs/evidence/t7-conv-2026-10-20/`
+  (`--write-baseline`, NixOS PC, all ten documents; warm-ups left out). It replaced run 2 of
+  `docs/evidence/t7-latency-2026-10-02/`, which predated the side table's convergence test and
+  the convergence work since; convergence did not depend on load in either.
 - **Reference conditions**: the summary's `power` records, at start and end, the power source,
   battery, macOS Low Power Mode, `pmset -g therm` and the load. The run is **non-reference** (in
   the table, the verdict and `--check`) on battery, in Low Power Mode, under a thermal or CPU

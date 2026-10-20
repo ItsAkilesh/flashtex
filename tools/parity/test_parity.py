@@ -207,6 +207,29 @@ class Levels(unittest.TestCase):
             rs = [self._r("a", 2), self._r("b", 4)]
             self.assertEqual(parity.check_baseline(rs, p), [("a", 3, 2), ("gone", 0, None)])
 
+    def test_baseline_host(self):
+        # RQ8: a baseline names its host; one recorded on another OS is refused,
+        # one on this OS (or a /1 baseline with no host) is checked as before
+        here = parity.baseline_host()
+        self.assertEqual(here["system"], parity.platform.system())
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "b.json")
+            other = "Plan9" if here["system"] != "Plan9" else "Darwin"
+            with open(p, "w") as f:
+                json.dump({"host": {"system": other}, "levels": {"a": 1}}, f)
+            with self.assertRaises(parity.BaselineHostMismatch):
+                parity.check_baseline([self._r("a", 3)], p)
+            for host in (here, None):
+                with open(p, "w") as f:
+                    json.dump({"host": host, "levels": {"a": 1}}, f)
+                self.assertEqual(parity.check_baseline([self._r("a", 3)], p), [])
+
+    def test_committed_fixtures_baseline_names_its_host(self):
+        with open(os.path.join(parity.REPO, "tools", "parity", "baseline-fixtures.json")) as f:
+            b = json.load(f)
+        self.assertEqual(b["schema"], "flashtex-parity-baseline/2")
+        self.assertIn("system", b["host"])
+
     def test_pt_gate(self):
         ok = {"id": "ok", "pt": {"P-T1": True, "P-T2": True, "why": {}}}
         t2 = {"id": "t2", "pt": {"P-T1": True, "P-T2": False, "why": {"P-T2": "page 1 stream"}}}
@@ -524,6 +547,54 @@ class Corpus(unittest.TestCase):
             self.assertEqual(ok["dir"], os.path.join(d, "cache", "src", "packages", "p-single"))
             self.assertEqual(sorted(os.listdir(ok["dir"])), [".parity-copied", "fig.png", "p.tex"])
             self.assertIn("sha256 mismatch", bad["problem"])
+
+    def test_arxiv_fetch_retries_verifies_and_never_caches_short_bytes(self):
+        import http.client
+        from unittest import mock
+        good = b"pinned e-print bytes"
+        answers = [http.client.IncompleteRead(b"pinned"), b"pinned", good]  # a cut read, a short body, the bytes
+        calls = []
+
+        def get(url, timeout=120):
+            calls.append(url)
+            a = answers.pop(0)
+            if isinstance(a, Exception):
+                raise a
+            return a
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(corpus, "http_get", get), \
+                mock.patch.object(corpus.time, "sleep", lambda s: None):
+            man = os.path.join(d, "m.json")
+            with open(man, "w") as f:
+                json.dump({"tier": "nightly-5k", "entries": [
+                    {"id": "1603.06059v3", "url": "https://x/e-print/1603.06059v3", "sha256": corpus.sha256_bytes(good)},
+                    {"id": "1612.03571v1", "url": "https://x/e-print/1612.03571v1", "sha256": "0" * 64}]}, f)
+            cache = os.path.join(d, "cache")
+            with mock.patch.object(corpus, "unpack", lambda data, dest: os.makedirs(dest, exist_ok=True)):
+                rec = corpus.fetch_manifest(man, cache, log=lambda *_: None, delay=0, only={"1603.06059v3"})[0]
+                self.assertIsNone(rec["problem"])
+                self.assertEqual(len(calls), 3)
+                with open(os.path.join(cache, "eprints", "1603.06059v3"), "rb") as f:
+                    self.assertEqual(f.read(), good)
+                # changed bytes: fetched once more, then a sha256 mismatch, and nothing cached
+                answers[:] = [b"other", b"other"]
+                (bad,) = corpus.fetch_manifest(man, cache, log=lambda *_: None, delay=0, only={"1612.03571v1"})
+                self.assertIn("sha256 mismatch", bad["problem"])
+                self.assertFalse(os.path.exists(os.path.join(cache, "eprints", "1612.03571v1")))
+                # a network error on every try fails after FETCH_TRIES, and `fetch` exits non-zero
+                answers[:] = [OSError("reset")] * corpus.FETCH_TRIES
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                    rc = corpus.main(["--cache", cache, "--delay", "0", "fetch", "--manifest", man, "--shard", "1/2"])
+                self.assertEqual(rc, 1)
+                self.assertIn(f"fetch failed after {corpus.FETCH_TRIES} tries", err.getvalue())
+                self.assertEqual(answers, [])
+                # a cached file that is not the pinned bytes is fetched again
+                with open(os.path.join(cache, "eprints", "1603.06059v3"), "wb") as f:
+                    f.write(b"pin")
+                answers[:] = [good]
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(corpus.main(["--cache", cache, "--delay", "0", "fetch", "--manifest", man,
+                                                  "--shard", "0/2"]), 0)
+                self.assertEqual(answers, [])
 
     def test_packages_manifest_is_well_formed(self):
         with open(os.path.join(corpus.MANIFEST_DIR, "packages-texlive-2026.json"), encoding="utf-8") as f:
