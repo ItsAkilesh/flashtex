@@ -279,6 +279,14 @@ mod tests {
                 .unwrap()
                 .set_modified(t)
                 .unwrap();
+            // Writing the file moved its change time to now, which no call
+            // puts back (`StatSig::ctime_ns`, #1842): wait out its racy
+            // window too, so that only `secs_ago == 0` gives a racy file.
+            if secs_ago > 0 {
+                std::thread::sleep(std::time::Duration::from_nanos(
+                    flashtex_engine::system::RACY_NS as u64 + 100_000_000,
+                ));
+            }
         };
         put("lmmono10-regular.otf", 3600);
         let p = path.to_string_lossy().into_owned();
