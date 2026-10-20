@@ -74,7 +74,7 @@ const MAX_LIST: usize = 1 << 16;
 /// own key, and a typed letter alternates two states of each: 8 thrashed.)
 const MAX_VARIANTS: usize = 1024;
 /// Bytes of recordings kept in all, roughly.
-const MAX_BYTES: usize = 64 << 20;
+const MAX_BYTES: usize = 32 << 20;
 /// Recordings abandoned in a row before a macro is no longer recorded.
 const ABORT_BUDGET: u32 = 64;
 
@@ -201,6 +201,40 @@ enum Op {
     },
 }
 
+thread_local! {
+    /// The macro bodies the kept keys read (K3), each once: a beamer slide's
+    /// `\colorlet` calls read the same few hundred xcolor and beamer macros,
+    /// so the variants share them. A body no entry holds any more is
+    /// dropped when the pool is pruned (`insert_entry`).
+    static TOKENS: RefCell<HashSet<std::rc::Rc<[i32]>>> = RefCell::new(HashSet::new());
+    /// The pool's size in bytes, roughly (part of `MAX_BYTES`).
+    static TOKEN_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// `v`, shared with the pool's equal body if there is one.
+fn intern_tokens(v: Vec<i32>) -> std::rc::Rc<[i32]> {
+    TOKENS.with(|t| {
+        let mut t = t.borrow_mut();
+        if let Some(r) = t.get(&v[..]) {
+            return r.clone();
+        }
+        let r: std::rc::Rc<[i32]> = v.into();
+        TOKEN_BYTES.with(|b| b.set(b.get() + 32 + 4 * r.len()));
+        t.insert(r.clone());
+        r
+    })
+}
+
+/// Drop the pooled bodies no entry holds.
+fn prune_tokens() {
+    TOKENS.with(|t| {
+        let mut t = t.borrow_mut();
+        t.retain(|r| std::rc::Rc::strong_count(r) > 1);
+        let n: usize = t.iter().map(|r| 32 + 4 * r.len()).sum();
+        TOKEN_BYTES.with(|b| b.set(n));
+    });
+}
+
 /// Keep `entry` among `cs`'s variants: the least recently used is dropped
 /// past `MAX_VARIANTS`, and the least recently used of all past
 /// `MAX_BYTES`.
@@ -218,8 +252,12 @@ fn insert_entry(s: &mut State, cs: i32, entry: Entry) {
         s.bytes = s.bytes.saturating_sub(old.bytes);
     }
     s.store.entry(cs).or_default().push(entry);
-    // over the budget: drop the least recently used entries
-    while s.bytes > MAX_BYTES {
+    // over the budget: drop the least recently used entries (the pooled
+    // bodies first pruned of the ones only dropped entries held)
+    if s.bytes + TOKEN_BYTES.with(|b| b.get()) > MAX_BYTES {
+        prune_tokens();
+    }
+    while s.bytes + TOKEN_BYTES.with(|b| b.get()) > MAX_BYTES {
         let victim = s
             .store
             .iter()
@@ -229,6 +267,8 @@ fn insert_entry(s: &mut State, cs: i32, entry: Entry) {
         s.stale.insert(cs);
         let e = s.store.get_mut(&cs).unwrap().remove(i);
         s.bytes = s.bytes.saturating_sub(e.bytes);
+        drop(e);
+        prune_tokens();
     }
 }
 
@@ -303,7 +343,9 @@ enum RegId {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Meaning {
     Plain(i32, i32),
-    Macro(i32, Vec<i32>),
+    /// A macro's type and its tokens, shared by every variant that read
+    /// the same body (`intern_tokens`).
+    Macro(i32, std::rc::Rc<[i32]>),
     /// A `\countdef` (and kin) of an e-TeX sparse register: the command,
     /// the register's type and number.
     Sparse(i32, i32, i32),
@@ -1386,7 +1428,7 @@ impl Globals {
             if !self.bm_tokens(self.bm_link(e), &mut v) {
                 return None;
             }
-            return Some(Meaning::Macro(t, v));
+            return Some(Meaning::Macro(t, intern_tokens(v)));
         }
         if (t == REGISTER || t == TOKS_REGISTER) && e > LO_MEM_STAT_MAX {
             let st = self.mem[e as usize].hh().b0() / 16;
@@ -1413,7 +1455,7 @@ impl Globals {
                 return false;
             }
             let mut q = self.bm_link(e);
-            for &x in toks {
+            for &x in toks.iter() {
                 if q == 0 || self.bm_info(q) != x {
                     return false;
                 }
@@ -2032,7 +2074,15 @@ impl Globals {
                     k2hash,
                     k1: rec.k1,
                     ctx: rec.ctx,
-                    k2: rec.k2.into(),
+                    k2: s
+                        .store
+                        .get(&rec.cs)
+                        .and_then(|v| {
+                            v.iter()
+                                .find(|e| e.k2hash == k2hash && *e.k2 == rec.k2[..])
+                                .map(|e| e.k2.clone())
+                        })
+                        .unwrap_or_else(|| rec.k2.into()),
                     k4: rec.k4,
                     k3: rec.k3,
                     absent: rec.absent,
@@ -2855,14 +2905,8 @@ impl Globals {
     ) {
         let line = self.line;
         let mut bytes = 4 * (rec.k1.len() + rec.k2.len() + rec.k4.len())
-            + rec
-                .k3
-                .iter()
-                .map(|(_, m)| match m {
-                    Meaning::Macro(_, v) => 16 + 4 * v.len(),
-                    _ => 16,
-                })
-                .sum::<usize>()
+            // (a macro's tokens are shared: `intern_tokens` counts them once)
+            + 16 * rec.k3.len()
             + rec
                 .ops
                 .iter()
