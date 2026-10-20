@@ -105,7 +105,109 @@ impl Obj {
 
 /// `v` with at most `digits` fraction digits, trailing zeros and a
 /// trailing point dropped; `-0` is `0`.
+///
+/// The same text as [`fmt_num_reference`] (`format!("{v:.digits$}")`,
+/// trimmed), which the PDF writer called for every number of every content
+/// stream: 275 M of the 441 M instructions a 19-page preview PDF took
+/// (callgrind, run 38277731634). Most values are rounded here exactly in
+/// integers ([`fmt_num_fast`]); a value whose rounding is an exact tie, or
+/// that is too large or not finite, goes to the reference, so the tie rule
+/// and the rare cases are `format!`'s own.
 pub fn fmt_num(v: f64, digits: usize) -> String {
+    match fmt_num_fast(v, digits) {
+        Some(s) => s,
+        None => fmt_num_reference(v, digits),
+    }
+}
+
+/// `v · 10^digits` rounded to the nearest integer, exactly, from `v`'s
+/// binary value (`m · 2^e`), then written as `fmt_num` writes it; `None`
+/// for an exact tie, a value with an integer part over 2^93, `digits` over
+/// 9, or a value that is not finite.
+fn fmt_num_fast(v: f64, digits: usize) -> Option<String> {
+    if digits > 9 || !v.is_finite() {
+        return None;
+    }
+    let bits = v.to_bits();
+    let neg = bits >> 63 == 1;
+    let biased = ((bits >> 52) & 0x7ff) as i32;
+    let frac = bits & ((1u64 << 52) - 1);
+    if biased == 0 {
+        // zero, or a subnormal: |v · 10^9| < 2^-1022 · 2^30, rounded to 0
+        return Some("0".to_string());
+    }
+    let m = (frac | (1u64 << 52)) as u128;
+    let e = biased - 1075; // v = ±m · 2^e
+    let p10 = 10u128.pow(digits as u32);
+    let num = m * p10; // < 2^53 · 2^30
+    let q = if e >= 0 {
+        if e > 40 {
+            return None;
+        }
+        num << e
+    } else {
+        let sh = -e;
+        if sh > 120 {
+            // |v · 10^digits| < 2^83 / 2^121 < 1/2: rounds to 0 (no tie)
+            return Some("0".to_string());
+        }
+        let q = num >> sh;
+        let r = num & ((1u128 << sh) - 1);
+        let half = 1u128 << (sh - 1);
+        if r == half {
+            return None;
+        }
+        q + u128::from(r > half)
+    };
+    if q == 0 {
+        // `0.000`, `-0.000` and `-0` are all written `0`
+        return Some("0".to_string());
+    }
+    let int = q / p10;
+    let mut fr = q % p10;
+    let mut out = String::with_capacity(24);
+    if neg {
+        out.push('-');
+    }
+    push_u128(&mut out, int);
+    if fr != 0 {
+        // the fraction's digits, trailing zeros dropped
+        let mut width = digits;
+        while fr.is_multiple_of(10) {
+            fr /= 10;
+            width -= 1;
+        }
+        out.push('.');
+        let mut buf = [b'0'; 9];
+        let mut i = width;
+        while fr > 0 {
+            i -= 1;
+            buf[i] = b'0' + (fr % 10) as u8;
+            fr /= 10;
+        }
+        out.push_str(std::str::from_utf8(&buf[..width]).expect("digits"));
+    }
+    Some(out)
+}
+
+/// The decimal digits of `n`.
+fn push_u128(out: &mut String, mut n: u128) {
+    let mut buf = [0u8; 40];
+    let mut i = buf.len();
+    loop {
+        i -= 1;
+        buf[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+    out.push_str(std::str::from_utf8(&buf[i..]).expect("digits"));
+}
+
+/// `fmt_num` as `format!` writes it: the definition [`fmt_num_fast`] is
+/// tested against, and the path for what it leaves.
+pub(crate) fn fmt_num_reference(v: f64, digits: usize) -> String {
     let mut s = format!("{v:.digits$}");
     if s.contains('.') {
         while s.ends_with('0') {
@@ -627,5 +729,91 @@ mod tests {
         assert_eq!(fmt_num(1.0, 3), "1");
         assert_eq!(fmt_num(-0.0001, 3), "0");
         assert_eq!(fmt_num(88.75949, 3), "88.759");
+    }
+
+    /// A deterministic generator (xorshift64*), so that a failure repeats.
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 >> 12;
+            self.0 ^= self.0 << 25;
+            self.0 ^= self.0 >> 27;
+            self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        }
+    }
+
+    fn same(v: f64, d: usize) {
+        let want = fmt_num_reference(v, d);
+        let got = fmt_num(v, d);
+        assert_eq!(got, want, "fmt_num({v:e} = {:#018x}, {d})", v.to_bits());
+    }
+
+    /// The fast path writes what `format!` writes: random bit patterns
+    /// over 2^-80..2^100 of both signs, for every digit count the writer
+    /// uses and the others to 9.
+    #[test]
+    fn fmt_num_is_the_reference_on_random_values() {
+        let mut r = Rng(0x9E37_79B9_7F4A_7C15);
+        for _ in 0..1_500_000 {
+            let x = r.next();
+            let exp = 1023 - 80 + (x % 181);
+            let bits = (x & (1 << 63)) | (exp << 52) | (r.next() & ((1 << 52) - 1));
+            let v = f64::from_bits(bits);
+            same(v, (r.next() % 10) as usize);
+        }
+    }
+
+    /// Next to every rounding boundary: `k / 10^d` (a value the writer
+    /// is given exactly) and `(k + 1/2) / 10^d` (where the rounding
+    /// turns), each with its neighbours a few ulps away, and integers.
+    #[test]
+    fn fmt_num_is_the_reference_at_rounding_boundaries() {
+        let mut r = Rng(0xD1B5_4A32_D192_ED03);
+        for _ in 0..60_000 {
+            let d = [0usize, 1, 2, 3, 4, 5, 6, 9][(r.next() % 8) as usize];
+            let p = 10f64.powi(d as i32);
+            let k = (r.next() % 2_000_000_000) as f64 - 1e9;
+            for base in [k / p, (k + 0.5) / p, k, k + 0.5] {
+                let b = base.to_bits() as i64;
+                for delta in -3i64..=3 {
+                    let v = f64::from_bits((b + delta) as u64);
+                    same(v, d);
+                    same(-v, d);
+                }
+            }
+        }
+        for d in 0..=9 {
+            for v in [
+                0.0, -0.0, 0.5, -0.5, 1.5, 2.5, 1e-300, -1e-300, 5e-324, 1e20, 1e30, -1e30,
+            ] {
+                same(v, d);
+            }
+        }
+    }
+
+    /// Values as the PDF writer meets them: TeX dimensions (scaled points,
+    /// /65536, times the bp factor 72/72.27), glyph matrix entries, and
+    /// RGB components (n/255), at the digit counts they are written with.
+    #[test]
+    fn fmt_num_is_the_reference_on_writer_values() {
+        let k = 65536.0 * 72.27 / 72.0;
+        for sp in (-20_000_000i64..20_000_000).step_by(97) {
+            let v = sp as f64 / k;
+            same(v, 3);
+            same(v, 5);
+            same(792.0 - v, 5);
+        }
+        for i in 0..=255 {
+            same(i as f64 / 255.0, 3);
+            same(i as f64 / 255.0, 6);
+        }
+        let mut r = Rng(0x2545_F491_4F6C_DD1D);
+        for _ in 0..300_000 {
+            let size = (r.next() % 4_000_000) as f64 / 65536.0;
+            let angle = (r.next() % 6283) as f64 / 1000.0;
+            same(size * angle.cos(), 6);
+            same(size * angle.sin(), 6);
+            same(angle.cos(), 6);
+        }
     }
 }

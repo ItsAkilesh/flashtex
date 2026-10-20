@@ -731,6 +731,67 @@ fn compiles_in_the_host_process_write_what_runs_of_their_own_write() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// S₀ is taken at the real `\begin{document}`, not where a package expanded
+/// `\document` into a new definition to patch it (bidi does, for
+/// polyglossia's right-to-left languages): an edit in the preamble after
+/// the patch runs from the format, a body edit goes on from S₀, and every
+/// compile writes what a run of its own writes.
+#[test]
+fn s0_is_not_taken_where_document_is_patched() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-patch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let doc = "\\documentclass{article}\n\\makeatletter\n\\expandafter\\def\\expandafter\\document\\expandafter{\\document\\relax}\n\\makeatother\n\\newcommand\\later{late}\n\\begin{document}\nA body, \\later.\n\\end{document}\n";
+    let texts = [
+        doc.to_string(),
+        doc.replace("A body", "The body"),
+        doc.replace("{late}", "{later}"),
+    ];
+    let run = |envs: &[(&str, &str)]| -> Vec<(Vec<u8>, String, String)> {
+        let sub = dir.join("run");
+        let _ = std::fs::remove_dir_all(&sub);
+        let (proj, out) = project(&sub, doc);
+        let mut e = vec![("FLASHTEX_PIN_CLOCK", "1760000000.5")];
+        e.extend_from_slice(envs);
+        let h = start_with(&sub, &e, &sub.join("host.err"));
+        let mut c = Client::connect(&h.sock).unwrap();
+        let mut outs = vec![];
+        for (i, text) in texts.iter().enumerate() {
+            let id = i as i64 + 1;
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.clone())];
+            c.compile(&r).unwrap();
+            let (_, done) = events(&mut c, id);
+            let o = Path::new(&out);
+            outs.push((
+                std::fs::read(o.join("main.pdf")).unwrap_or_default(),
+                std::fs::read_to_string(o.join("main.log")).unwrap_or_default(),
+                done.get("starts")
+                    .and_then(Json::as_array)
+                    .and_then(|a| a.first())
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            ));
+        }
+        c.bye().unwrap();
+        drop(h);
+        outs
+    };
+    let own = run(&[("FLASHTEX_UNICODE_INPROCESS", "0")]);
+    let got = run(&[]);
+    for (i, (a, b)) in got.iter().zip(&own).enumerate() {
+        assert!(a.0 == b.0, "compile {}: the PDFs differ", i + 1);
+        assert_eq!(a.1, b.1, "compile {}: the logs differ", i + 1);
+    }
+    let starts: Vec<&str> = got.iter().map(|o| o.2.as_str()).collect();
+    assert_eq!(starts, ["fresh", "s0", "format"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A persisted S₀ (`--s0-cache`, `crate::s0file`): a host saves the
 /// document's S₀ after its compile; a new host whose document was edited
 /// in its body while closed goes on from it (no format, no preamble), and
@@ -1275,4 +1336,74 @@ fn a_converged_run_writes_what_a_run_of_its_own_writes() {
         assert_eq!(got.2, want.2);
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The bundle's fonts by name (#1783) in both kinds of run: in the host's
+/// own process (`crate::resident`'s kept catalog, the app's default) and in
+/// a process of its own. Opt-in: `FLASHTEX_TEST_FONT_BUNDLE=<digest>@<url>`
+/// names a bundle with the font-name index (texbundle-tl2026-4 or later, or
+/// one `texbundle.py pack --font-index-tool` made); the resolver is forced
+/// to it, so TeX Live's fonts are not what is found.
+#[test]
+fn bundle_fonts_are_found_by_name_resident_or_not() {
+    let Some((digest, url)) = std::env::var("FLASHTEX_TEST_FONT_BUNDLE")
+        .ok()
+        .and_then(|v| {
+            v.split_once('@')
+                .map(|(d, u)| (d.to_string(), u.to_string()))
+        })
+    else {
+        eprintln!("skipped: FLASHTEX_TEST_FONT_BUNDLE is not set");
+        return;
+    };
+    let doc = "\\documentclass{article}\n\\usepackage{fontspec}\n\
+               \\setmainfont{TeX Gyre Pagella}\n\\begin{document}\nHello, \\textbf{bold}.\n\\end{document}\n";
+    // short: the bundle's paths stay well under XDV's 255 bytes
+    let cache = PathBuf::from(format!("/tmp/ftxbfi-{}", std::process::id()));
+    for inproc in ["1", "0"] {
+        let dir =
+            std::env::temp_dir().join(format!("flashtex-bfi-{}-{inproc}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (proj, out) = project(&dir, doc);
+        let allow = format!("{digest}@{url}");
+        let envs = [
+            ("FLASHTEX_UNICODE_INPROCESS", inproc),
+            ("FLASHTEX_RESOLVER", "bundle"),
+            ("FLASHTEX_BUNDLE_URL", url.as_str()),
+            ("FLASHTEX_BUNDLE_DIGEST", digest.as_str()),
+            ("FLASHTEX_BUNDLE_ALLOW_FETCH", allow.as_str()),
+            ("FLASHTEX_BUNDLE_CACHE_DIR", cache.to_str().unwrap()),
+        ];
+        let h = start_with(&dir, &envs, &dir.join("err.txt"));
+        let mut c = Client::connect(&h.sock).unwrap();
+        // twice: the second run of a resident engine reuses its kept catalog
+        for id in [1, 2] {
+            c.compile(&request(id, &proj, &out)).unwrap();
+            let (ev, done) = events(&mut c, id);
+            assert_eq!(
+                done.str_field("status"),
+                Some("ok"),
+                "inproc={inproc} run {id}: {done:?}"
+            );
+            let fonts: Vec<_> = ev
+                .iter()
+                .filter_map(|e| match e {
+                    Event::Font(f) => Some(f.info.str_field("ps_name").unwrap_or("").to_string()),
+                    _ => None,
+                })
+                .collect();
+            if id == 1 {
+                for want in ["TeXGyrePagella-Regular", "TeXGyrePagella-Bold"] {
+                    assert!(
+                        fonts.iter().any(|p| p == want),
+                        "inproc={inproc}: {fonts:?}"
+                    );
+                }
+            }
+        }
+        c.bye().unwrap();
+        drop(h);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    let _ = std::fs::remove_dir_all(&cache);
 }

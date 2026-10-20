@@ -22,11 +22,13 @@
 //! * [`fonts`], [`fontmap`], [`images`]: the `FONT` and `IMAGE` resources;
 //! * [`doc`]: what lasts across pages (named objects, outline, forms);
 //! * [`pdfobj`]: PDF object syntax of the specials;
-//! * [`pdf`]: the PDF writer, and [`tounicode`] its glyphs' text.
+//! * [`pdf`]: the PDF writer, and [`tounicode`] its glyphs' text (with [`agl`],
+//!   the Adobe Glyph List), as xdvipdfmx derives it.
 //!
 //! The display list goes to `FLASHTEX_DISPLAY_LIST` (spec §6.6) as pages
 //! complete; at the end [`pdf`] writes the PDF from the display list.
 
+pub mod agl;
 pub mod cffcid;
 pub mod content;
 pub mod doc;
@@ -523,6 +525,18 @@ fn send_page(
     if !ok || dl.w.flush().is_err() {
         out.dl = None;
     }
+    flashtex_page_sent();
+}
+
+/// A page's frame has been written to the display-list sink. It does
+/// nothing: it is a marker at which a profiler can take its counts
+/// (`tools/incr-bench/unicode.py --callgrind` runs the host under callgrind
+/// with `--dump-after=flashtex_page_sent`, so the instructions up to each
+/// page are known exactly, on the engine's own thread).
+#[no_mangle]
+#[inline(never)]
+pub extern "C" fn flashtex_page_sent() {
+    std::hint::black_box(());
 }
 
 fn send_resources(

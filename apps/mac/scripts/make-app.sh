@@ -24,7 +24,8 @@
 # --wait` using a keychain profile created by `xcrun notarytool
 # store-credentials <profile>`, then staples the app (and the DMG with --dmg).
 # --version <x.y.z> (or the APP_VERSION environment variable) sets
-# CFBundleShortVersionString; the default below is the last released version.
+# CFBundleShortVersionString; the default below is the release being prepared
+# (docs/release/), for local builds only.
 # CI passes the tag (.github/workflows/release.yml), so cutting a release never
 # edits this script.
 # --source-sha <key>=<sha> declares the source revision of a helper built
@@ -66,7 +67,7 @@ MAC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$MAC_DIR/../.." && pwd)"
 RESOURCES_SRC="$MAC_DIR/Resources"
 
-DEFAULT_APP_VERSION="0.1.1"
+DEFAULT_APP_VERSION="0.2.0"
 APP_VERSION="${APP_VERSION:-$DEFAULT_APP_VERSION}"
 BUNDLE_ID="tech.jay3332.flashtex.mac"
 
@@ -320,7 +321,8 @@ if [[ -n "$ENGINE_HOST_UNICODE" ]]; then
   [[ -f "$ENGINE_HOST_UNICODE" ]] || die "--engine-host-unicode: no file at $ENGINE_HOST_UNICODE"
   for f in "$XETEX_CRATE/LICENSE" "$REPO_ROOT/third_party/harfbuzz/harfbuzz-src/COPYING" \
            "$REPO_ROOT/third_party/freetype/freetype-src/LICENSE.TXT" "$REPO_ROOT/third_party/freetype/freetype-src/docs/FTL.TXT" \
-           "$REPO_ROOT/third_party/teckit/TECkit-src/license/License_LGPLv21.txt"; do
+           "$REPO_ROOT/third_party/teckit/TECkit-src/license/License_LGPLv21.txt" \
+           "$REPO_ROOT/third_party/icu/LICENSE"; do
     [[ -f "$f" ]] || die "flashtex-host-unicode: its licence or a notice is missing: $f"
   done
   echo "==> Unicode engine host: $ENGINE_HOST_UNICODE"
@@ -573,6 +575,9 @@ if [[ -n "$ENGINE_HOST_UNICODE" && -f "$ENGINE_HOST_UNICODE" ]]; then
     echo
     echo "== TECkit (used under the GNU LGPL 2.1 or later; third_party/teckit/TECkit-src/license) =="
     cat "$REPO_ROOT/third_party/teckit/TECkit-src/license/License_LGPLv21.txt"
+    echo
+    echo "== ICU's line-break tables and bidi algorithm (third_party/icu; the bidi port's notices are also in LICENSE-unicode) and ICU4X's segmenter and its data (Unicode License v3) =="
+    cat "$REPO_ROOT/third_party/icu/LICENSE"
   } > "$RESOURCES_DIR/engine/THIRD-PARTY-NOTICES-unicode.txt"
   ENGINE_HOST_UNICODE_BUNDLED="$HELPERS_DIR/flashtex-host-unicode"
   echo "    bundled flashtex-host-unicode from $ENGINE_HOST_UNICODE (+ Resources/engine/LICENSE-unicode, THIRD-PARTY-NOTICES-unicode.txt)"
