@@ -681,7 +681,8 @@ fn fresh_version() -> i32 {
 fn next_version(parent: i32, change: [i32; 4]) -> i32 {
     use std::collections::HashMap;
     use std::sync::Mutex;
-    static TABLE: Mutex<Option<HashMap<(i32, [i32; 4]), i32>>> = Mutex::new(None);
+    type Versions = HashMap<(i32, [i32; 4]), i32>;
+    static TABLE: Mutex<Option<Versions>> = Mutex::new(None);
     let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
     *t.get_or_insert_with(HashMap::new)
         .entry((parent, change))
@@ -1810,9 +1811,8 @@ impl Globals {
             (best.map(|b| b.1), partial.map(|p| p.1))
         });
         let mut why = "NotRecorded";
-        let doomed = found.is_some_and(|i| {
-            ST.with(|s| s.borrow().store.get(&cs).is_some_and(|v| v[i].doomed))
-        });
+        let doomed = found
+            .is_some_and(|i| ST.with(|s| s.borrow().store.get(&cs).is_some_and(|v| v[i].doomed)));
         if doomed {
             return self.bm_miss("Doomed");
         }

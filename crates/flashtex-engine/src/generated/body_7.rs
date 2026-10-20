@@ -3554,26 +3554,28 @@ impl Globals {
                     assign_font_dimen => {
                         // §1431
                         {
-                            if self.bm_on {
-                                self.flashtex_bm_font_changed();
-                            }
                             self.find_font_dimen(true);
                             k = self.cur_val;
                             self.scan_optional_equals();
                             self.scan_dimen(false, false, false);
                             { let __v1862 = self.cur_val; self.font_info[crate::ix::U((k) as usize)].set_int(__v1862); }
+                            if self.bm_on {
+                                self.flashtex_bm_font_set((1i32).wrapping_neg(), k, 0i32, self.cur_val);
+                            }
                         }
                     }
                     assign_font_int => {
                         {
-                            if self.bm_on {
-                                self.flashtex_bm_font_changed();
-                            }
                             n = self.cur_chr;
                             self.scan_font_ident();
                             f = self.cur_val;
                             if (n == no_lig_code) {
-                                self.set_no_ligatures(f);
+                                {
+                                    self.set_no_ligatures(f);
+                                    if self.bm_on {
+                                        self.flashtex_bm_font_set(n, f, 0i32, 0i32);
+                                    }
+                                }
                             } else {
                                 if (n < lp_code_base) {
                                     {
@@ -3583,6 +3585,9 @@ impl Globals {
                                             { let __v1863 = self.cur_val; self.hyphen_char[crate::ix::U((f) as usize)] = __v1863; }
                                         } else {
                                             { let __v1864 = self.cur_val; self.skew_char[crate::ix::U((f) as usize)] = __v1864; }
+                                        }
+                                        if self.bm_on {
+                                            self.flashtex_bm_font_set(n, f, 0i32, self.cur_val);
                                         }
                                     }
                                 } else {
@@ -3620,6 +3625,9 @@ impl Globals {
                                                 self.set_kn_ac_code(f, p, self.cur_val);
                                             }
                                             _ => {}
+                                        }
+                                        if self.bm_on {
+                                            self.flashtex_bm_font_set(n, f, p, self.cur_val);
                                         }
                                     }
                                 }
