@@ -277,3 +277,20 @@ fn lastskip_glue_and_local_groups() {
     );
     assert!(stat(&s, "hits") >= 2, "{s}");
 }
+
+#[test]
+fn font_parameters_are_part_of_the_key() {
+    // a call that reads a font parameter: a \fontdimen assignment makes the
+    // fonts' next version, so the call after it is another key; versions
+    // are named by their changes (`next_version`), and the logs agree
+    let s = check(
+        "fontdimen",
+        "\\catcode`\\{=1 \\catcode`\\}=2 \\catcode`\\#=6 \\scrollmode\n\
+         \\def\\measure#1{\\begingroup\\dimen0=\\fontdimen2\\nullfont\\advance\\dimen0 by #1\\global\\dimen1=\\dimen0 \\endgroup}\n\
+         \\def\\show{\\message{[\\the\\dimen1]}}\n\
+         \\measure{1pt}\\show\\measure{1pt}\\show\\fontdimen2\\nullfont=3pt \\measure{1pt}\\show\
+         \\measure{1pt}\\show\\fontdimen2\\nullfont=4pt \\measure{1pt}\\show\\measure{1pt}\\show\\end\n",
+    );
+    assert!(stat(&s, "hits") >= 3, "{s}");
+    assert!(stat(&s, "recordings") >= 3, "{s}");
+}
