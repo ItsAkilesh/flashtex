@@ -90,7 +90,8 @@ otherwise passes exit 3.
 
 Exit: 0 all gated targets met; 1 a target missed (or a page never arrived, or pages were not kept
 current, or a held rate fell); 2 the harness failed (an unknown --docs or --phases value, a host
-or dl3-keys failure: the summary of what ran is still written); 3 see --require-reference.
+or dl3-keys failure, which ends that document only: its phases that ran are summarised and the
+other documents still run); 3 see --require-reference.
 Output: OUT/raw/*.jsonl (dl3-keys' lines), OUT/summary.json, OUT/table.md, OUT/environment.txt.
 """
 import argparse
@@ -422,6 +423,17 @@ def phase_order(order, i, seed):
 
 
 def run_doc(a, eng, doc, out, i):
+    """One document's phases and reopens. A harness failure (the host, dl3-keys) ends the
+    document there: its result keeps the phases that ran, with the failure as `error`."""
+    res = dict(doc=doc, phases={}, reopen=[], order=[])
+    try:
+        return run_phases(a, eng, doc, out, i, res)
+    except RuntimeError as e:
+        res['error'] = str(e)
+        return res
+
+
+def run_phases(a, eng, doc, out, i, res):
     src = f'{IB}/docs/{doc}/{docspec.edit_file(IB, doc)}'
     work = f'{IB}/t7-work/{doc}'
     s0 = f'{IB}/t7-work/s0-{doc}'
@@ -434,7 +446,6 @@ def run_doc(a, eng, doc, out, i):
     log = f'{out}/raw/{doc}.host-stderr'
     hostargs = a.host_args.split()
     lines = edit_lines(f'{IB}/docs/{doc}')
-    res = dict(doc=doc, phases={}, reopen=[], order=[])
     h = Host(eng, sock, s0, log, hostargs)
     res['host_startup'], res['host_ready_ms'] = h.startup, round(h.ready_ms, 1)
     rss = []
@@ -467,6 +478,7 @@ def run_doc(a, eng, doc, out, i):
     finally:
         rss.append(h.stop())
         res['killed_at_limit'] = h.killed_at_limit
+        res['rss_peak'] = max((r for r in rss if r), default=None)
     # reopen: edit on disk, a new host from the persisted S0, page 1
     if a.reopen and 'reopen' in a.phases:
         at = body_line(open(src).read(), 0.5, int(located(['--at', '0.5'], lines)[1]) if lines else None)
@@ -766,13 +778,17 @@ def main():
         if power['before'].get('low_power_mode'):
             print('t7: WARNING: macOS Low Power Mode is on: a non-reference run', file=sys.stderr)
         os.makedirs(f'{IB}/t7-work', exist_ok=True)
-        try:
-            for i, doc in enumerate(docs):
-                print(f'{doc}:', flush=True)
-                raw.append(run_doc(a, eng, doc, out, i))
-        except RuntimeError as e:
-            error = str(e)
-            print(f't7: {e} (the documents before it are summarised)', file=sys.stderr)
+        # A harness failure in one document ends that document only: the phases it ran are
+        # summarised, the other documents (each its own host) still run, and the run exits 2.
+        errors = []
+        for i, doc in enumerate(docs):
+            print(f'{doc}:', flush=True)
+            res = run_doc(a, eng, doc, out, i)
+            raw.append(res)
+            if res.get('error'):
+                errors.append(f"{doc}: {res['error']}")
+                print(f"t7: {doc}: {res['error']} (the phases it ran are summarised)", file=sys.stderr)
+        error = '; '.join(errors) or None
         power['after'] = power_state()
     env_lines.append(f'end {time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} {uptime()}')
     open(f'{out}/environment.txt', 'w').write('\n'.join(env_lines) + '\n')

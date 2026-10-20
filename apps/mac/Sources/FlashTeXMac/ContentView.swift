@@ -56,6 +56,9 @@ struct ContentView: View {
             CaptureInboxPanel(inbox: model.captureInbox).inspectorColumnWidth(min: DS.Layout.inspectorMinWidth, ideal: DS.Layout.inspectorIdealWidth, max: DS.Layout.inspectorMaxWidth)
         }
         .sheet(isPresented: $model.commandPaletteShown) { CommandPalette().environment(model) }
+        .alert("The mode was not changed", isPresented: Binding(get: { model.modeSwitchFailure != nil }, set: { if !$0 { model.modeSwitchFailure = nil } })) {
+            Button("OK", role: .cancel) { model.modeSwitchFailure = nil }
+        } message: { Text(model.modeSwitchFailure ?? "") } // ProjectMode.swift: a refused mode switch
         .sheet(isPresented: Binding(get: { model.projectFonts.shown }, set: { model.projectFonts.shown = $0 })) { ProjectFontsSheet().environment(model) } // File > Project Fonts… (ProjectFonts.swift)
         .sheet(isPresented: Binding(get: { model.projectPackages.shown }, set: { model.projectPackages.shown = $0 })) { ProjectPackagesSheet().environment(model) } // the package consent sheet (ProjectPackages.swift)
         .alert(EngineV3Biber.consentText + ".", isPresented: Binding(get: { model.engineV3.biberConsentShown }, set: { model.engineV3.biberConsentShown = $0 })) { // biber with no TeX Live (EngineV3Bundle.swift)

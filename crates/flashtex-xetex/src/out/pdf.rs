@@ -31,12 +31,15 @@
 
 use super::agl::Agl;
 use super::doc::{Doc, Named, Supplement};
-use super::fonts::{FontRes, ResKind};
+use super::fonts::{FaceData, FontRes, ResKind};
 use super::images::Kind;
-use super::pdfobj::{fmt_num, write_name, Dict, Obj, Writer as ObjWriter};
-use flashtex_display_list::page::{paint, Item, Page, RuleKind, Seg};
-use std::collections::{BTreeMap, BTreeSet};
+use super::num::{fmt_num, push_num, push_uint};
+use super::pdfobj::{write_name, Dict, Obj, Writer as ObjWriter};
+use flashtex_display_list::page::{paint, Item, Page, RuleKind, Seg, Stroke};
+use flashtex_display_list::sha256::{sha256, Sha256};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 /// sp per bp.
 const K: f64 = 65781.76;
@@ -90,7 +93,10 @@ fn n(v: f64, d: usize) -> String {
 struct Writer<'a> {
     doc: &'a Doc,
     opts: &'a Options,
+    /// The file so far, from its header on.
     out: Vec<u8>,
+    /// The hash of `out` for the trailer's `/ID`, as it is written.
+    id: IdHash,
     /// Byte offset of object n at index n - 1 (`None`: not written yet).
     offsets: Vec<Option<usize>>,
     pages: Vec<u32>,
@@ -109,8 +115,11 @@ struct Writer<'a> {
     /// (the font's charset), which the content stream writes as the code.
     cids: BTreeMap<u16, BTreeMap<u16, u16>>,
     /// The Adobe Glyph List, as xdvipdfmx loads it (`agl_init_map`), read
-    /// when a font first needs a glyph name's text.
-    agl: Option<Agl>,
+    /// when a font first needs a glyph name's text (a resident engine's
+    /// runs share it: `FontCache::agl`).
+    agl: Option<Arc<Agl>>,
+    /// Without a resident engine's cache, the faces this PDF parsed.
+    faces: HashMap<[u8; 32], Arc<FaceData>>,
     /// What the PDF does not carry as the document asks (reported).
     pub warnings: Vec<String>,
 }
@@ -130,7 +139,8 @@ impl<'a> Writer<'a> {
         Writer {
             doc,
             opts,
-            out: Vec::new(),
+            out: header(doc.version),
+            id: IdHash::new(),
             offsets: Vec::new(),
             pages: Vec::new(),
             pages_root: 0,
@@ -145,12 +155,37 @@ impl<'a> Writer<'a> {
             page_group: Vec::new(),
             cids: BTreeMap::new(),
             agl: None,
+            faces: HashMap::new(),
             warnings: Vec::new(),
         }
     }
 
-    fn agl(&mut self) -> &Agl {
-        self.agl.get_or_insert_with(Agl::load)
+    fn agl(&mut self) -> Arc<Agl> {
+        let cache = &self.doc.fonts.cache;
+        self.agl
+            .get_or_insert_with(|| match cache {
+                Some(c) => c.agl(),
+                None => Arc::new(Agl::load()),
+            })
+            .clone()
+    }
+
+    /// Face `index` of the program whose SHA-256 is `sha`, parsed once (by
+    /// the resident engine's cache, else once per PDF).
+    fn face(&mut self, sha: &[u8; 32], program: &Arc<Vec<u8>>, index: u32) -> Arc<FaceData> {
+        let fonts = &self.doc.fonts;
+        match &fonts.cache {
+            Some(c) => c.face(sha, program, index),
+            None => self
+                .faces
+                .entry(super::fonts::face_key(sha, index))
+                .or_insert_with(|| {
+                    fonts
+                        .parsed_face(sha, index)
+                        .unwrap_or_else(|| Arc::new(FaceData::new(program, index)))
+                })
+                .clone(),
+        }
     }
 
     fn alloc(&mut self) -> u32 {
@@ -159,6 +194,7 @@ impl<'a> Writer<'a> {
     }
 
     fn begin(&mut self, num: u32) {
+        self.id.feed(&self.out, IdHash::CHUNK);
         self.offsets[num as usize - 1] = Some(self.out.len());
         let _ = writeln!(Bytes(&mut self.out), "{num} 0 obj");
     }
@@ -208,20 +244,36 @@ impl<'a> Writer<'a> {
                 }
             }
         }
-        for (&id, used) in &self.used {
+        let all_used = std::mem::take(&mut self.used);
+        for (&id, used) in &all_used {
             let Some(r) = doc.fonts.resource(id) else {
                 continue;
             };
             let ResKind::Native {
-                index, cff: true, ..
+                index,
+                cff: true,
+                sha,
+                ..
             } = &r.kind
             else {
                 continue;
             };
-            if let Some(m) = cid_map(&r.program, *index, used) {
+            let data = self.face(sha, &r.program, *index);
+            let mut memo = data.memo.lock().unwrap_or_else(|e| e.into_inner());
+            let m = match &memo.cids {
+                Some((u, m)) if u == used => m.clone(),
+                _ => {
+                    let m = data.font.as_ref().ok().and_then(|f| cid_map(f, used));
+                    memo.cids = Some((used.clone(), m.clone()));
+                    m
+                }
+            };
+            drop(memo);
+            if let Some(m) = m {
                 self.cids.insert(id, m);
             }
         }
+        self.used = all_used;
         for i in 0..doc.pages.len() {
             self.page(i)?;
         }
@@ -597,7 +649,9 @@ impl<'a> Writer<'a> {
         let mut in_text = false;
         let mut matrix = [1.0, 0.0, 0.0, 1.0];
         // in a text object: the font and size set
-        let mut cur_font: Option<(u16, String)> = None;
+        let mut cur_font: Option<(u16, Vec<u8>)> = None;
+        // the size this glyph's `Tf` gives (reused)
+        let mut size = Vec::with_capacity(16);
         let end_text = |c: &mut Vec<u8>, in_text: &mut bool| {
             if *in_text {
                 c.extend_from_slice(b"ET\n");
@@ -641,24 +695,35 @@ impl<'a> Writer<'a> {
                         d = nd;
                     }
                     let upright = b == 0.0 && cc == 0.0 && a == d && a > 0.0;
-                    let size = if upright { n(a, 6) } else { "1".to_string() };
-                    if cur_font.as_ref() != Some(&(*font, size.clone())) {
-                        let _ = writeln!(Bytes(&mut c), "/F{font} {size} Tf");
-                        cur_font = Some((*font, size));
-                    }
-                    let (gx, gy) = (n(x_of(*x), 5), n(y_of(*y), 5));
+                    size.clear();
                     if upright {
-                        let _ = write!(Bytes(&mut c), "1 0 0 1 {gx} {gy} Tm");
+                        push_num(&mut size, a, 6);
                     } else {
-                        let _ = write!(
-                            Bytes(&mut c),
-                            "{} {} {} {} {gx} {gy} Tm",
-                            n(a, 6),
-                            n(b, 6),
-                            n(cc, 6),
-                            n(d, 6)
-                        );
+                        size.push(b'1');
                     }
+                    if !matches!(&cur_font, Some((f, s)) if f == font && *s == size) {
+                        // `/F{font} {size} Tf`
+                        c.extend_from_slice(b"/F");
+                        push_uint(&mut c, *font as u64);
+                        c.push(b' ');
+                        c.extend_from_slice(&size);
+                        c.extend_from_slice(b" Tf\n");
+                        cur_font = Some((*font, size.clone()));
+                    }
+                    // `a b c d x y Tm`
+                    if upright {
+                        c.extend_from_slice(b"1 0 0 1 ");
+                    } else {
+                        for v in [a, b, cc, d] {
+                            push_num(&mut c, v, 6);
+                            c.push(b' ');
+                        }
+                    }
+                    push_num(&mut c, x_of(*x), 5);
+                    c.push(b' ');
+                    push_num(&mut c, y_of(*y), 5);
+                    c.extend_from_slice(b" Tm");
+                    // `<code>Tj`, four hex digits (Identity-H) or two
                     if two_byte {
                         let code = self
                             .cids
@@ -666,9 +731,9 @@ impl<'a> Writer<'a> {
                             .and_then(|m| m.get(code))
                             .copied()
                             .unwrap_or(*code);
-                        let _ = writeln!(Bytes(&mut c), "<{code:04X}>Tj");
+                        push_hex_tj(&mut c, code as u32, 4);
                     } else {
-                        let _ = writeln!(Bytes(&mut c), "<{:02X}>Tj", code & 0xFF);
+                        push_hex_tj(&mut c, (code & 0xFF) as u32, 2);
                     }
                 }
                 Item::Matrix(k) => {
@@ -693,21 +758,8 @@ impl<'a> Writer<'a> {
                     let _ = writeln!(Bytes(&mut c), "/{name} gs");
                 }
                 Item::LineState(st) => {
-                    let _ = write!(
-                        Bytes(&mut c),
-                        "{} w {} J {} j {} M [",
-                        n(st.width, 6),
-                        st.cap,
-                        st.join,
-                        n(st.miter, 6)
-                    );
-                    for (i, v) in st.dash.iter().enumerate() {
-                        if i > 0 {
-                            c.push(b' ');
-                        }
-                        c.extend_from_slice(n(*v, 6).as_bytes());
-                    }
-                    let _ = writeln!(Bytes(&mut c), "] {} d", n(st.phase, 6));
+                    write_stroke(&mut c, st);
+                    c.push(b'\n');
                 }
                 Item::Span(_) => {}
                 Item::Save => {
@@ -731,38 +783,30 @@ impl<'a> Writer<'a> {
                     let b = t - hb;
                     match kind {
                         RuleKind::Fill => {
-                            let _ = writeln!(
-                                Bytes(&mut c),
-                                "{} {} {} {} re f",
-                                n(l, 5),
-                                n(b, 5),
-                                n(wb, 5),
-                                n(hb, 5)
-                            );
+                            // `l b w h re f`
+                            push_nums(&mut c, &[l, b, wb, hb], 5);
+                            c.extend_from_slice(b" re f\n");
                         }
                         RuleKind::StrokeH => {
                             let ym = b + hb / 2.0;
-                            let _ = writeln!(
-                                Bytes(&mut c),
-                                "q 0 J [] 0 d {} w {} {} m {} {} l S Q",
-                                n(hb, 5),
-                                n(l, 5),
-                                n(ym, 5),
-                                n(l + wb, 5),
-                                n(ym, 5)
-                            );
+                            // `q 0 J [] 0 d h w l y m r y l S Q`
+                            c.extend_from_slice(b"q 0 J [] 0 d ");
+                            push_num(&mut c, hb, 5);
+                            c.extend_from_slice(b" w ");
+                            push_nums(&mut c, &[l, ym], 5);
+                            c.extend_from_slice(b" m ");
+                            push_nums(&mut c, &[l + wb, ym], 5);
+                            c.extend_from_slice(b" l S Q\n");
                         }
                         RuleKind::StrokeV => {
                             let xm = l + wb / 2.0;
-                            let _ = writeln!(
-                                Bytes(&mut c),
-                                "q 0 J [] 0 d {} w {} {} m {} {} l S Q",
-                                n(wb, 5),
-                                n(xm, 5),
-                                n(b, 5),
-                                n(xm, 5),
-                                n(t, 5)
-                            );
+                            c.extend_from_slice(b"q 0 J [] 0 d ");
+                            push_num(&mut c, wb, 5);
+                            c.extend_from_slice(b" w ");
+                            push_nums(&mut c, &[xm, b], 5);
+                            c.extend_from_slice(b" m ");
+                            push_nums(&mut c, &[xm, t], 5);
+                            c.extend_from_slice(b" l S Q\n");
                         }
                     }
                 }
@@ -778,21 +822,8 @@ impl<'a> Writer<'a> {
                         c.extend_from_slice(b" cm ");
                     }
                     if let Some(s) = &path.stroke {
-                        let _ = write!(
-                            Bytes(&mut c),
-                            "{} w {} J {} j {} M [",
-                            n(s.width, 6),
-                            s.cap,
-                            s.join,
-                            n(s.miter, 6)
-                        );
-                        for (i, v) in s.dash.iter().enumerate() {
-                            if i > 0 {
-                                c.push(b' ');
-                            }
-                            c.extend_from_slice(n(*v, 6).as_bytes());
-                        }
-                        let _ = write!(Bytes(&mut c), "] {} d ", n(s.phase, 6));
+                        write_stroke(&mut c, s);
+                        c.push(b' ');
                     }
                     write_segs(&mut c, &path.segs, None);
                     let fill = path.paint & paint::FILL != 0;
@@ -806,7 +837,8 @@ impl<'a> Writer<'a> {
                         (false, false, true) => "S",
                         _ => "n",
                     };
-                    let _ = writeln!(Bytes(&mut c), "{op} Q");
+                    c.extend_from_slice(op.as_bytes());
+                    c.extend_from_slice(b" Q\n");
                 }
                 Item::Clip(k) => {
                     end_text(&mut c, &mut in_text);
@@ -821,7 +853,8 @@ impl<'a> Writer<'a> {
                     } else {
                         "W n"
                     };
-                    let _ = writeln!(Bytes(&mut c), "{op}");
+                    c.extend_from_slice(op.as_bytes());
+                    c.push(b'\n');
                 }
                 Item::Image { id, matrix: mk } => {
                     end_text(&mut c, &mut in_text);
@@ -832,14 +865,18 @@ impl<'a> Writer<'a> {
                     }
                     c.extend_from_slice(b"q ");
                     write_matrix(&mut c, &p.matrix(*mk));
-                    let _ = writeln!(Bytes(&mut c), " cm /Im{id} Do Q");
+                    c.extend_from_slice(b" cm /Im");
+                    push_uint(&mut c, *id as u64);
+                    c.extend_from_slice(b" Do Q\n");
                 }
                 Item::Form { id, matrix: mk } => {
                     end_text(&mut c, &mut in_text);
                     res.forms.insert(*id);
                     c.extend_from_slice(b"q ");
                     write_matrix(&mut c, &p.matrix(*mk));
-                    let _ = writeln!(Bytes(&mut c), " cm /Fm{id} Do Q");
+                    c.extend_from_slice(b" cm /Fm");
+                    push_uint(&mut c, *id as u64);
+                    c.extend_from_slice(b" Do Q\n");
                 }
                 Item::Unsupported(k) => {
                     let Some(Some(raw)) = sup.raw.get(*k as usize) else {
@@ -1005,8 +1042,12 @@ impl<'a> Writer<'a> {
                 index,
                 cff,
                 ps_name,
+                sha,
                 ..
-            } => self.native_font(num, &r, *index, *cff, ps_name, &used),
+            } => {
+                let data = self.face(sha, &r.program, *index);
+                self.native_font(num, &r, &data, *index, *cff, ps_name, &used)
+            }
             ResKind::Type1 {
                 ps_name, encoding, ..
             } => self.type1_font(num, &r, ps_name, encoding, &used),
@@ -1018,16 +1059,18 @@ impl<'a> Writer<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn native_font(
         &mut self,
         num: u32,
         r: &FontRes,
+        data: &FaceData,
         index: u32,
         cff: bool,
         ps_name: &str,
         used: &BTreeSet<u16>,
     ) -> Result<(), String> {
-        let font = flashtex_pdf::truetype::TrueTypeFont::parse_face(r.program.to_vec(), index)?;
+        let font = data.font.as_ref().map_err(String::clone)?;
         let upm = font.units_per_em as f64;
         let k = 1000.0 / upm;
         let info = FaceInfo::read(&r.program, index);
@@ -1043,10 +1086,22 @@ impl<'a> Writer<'a> {
             ));
             None
         } else {
-            let (file_key, sub, program, subset) = font_program(&font, &r.program, cff, used)?;
+            // (the last run's, when it drew the same glyphs)
+            let made = {
+                let mut memo = data.memo.lock().unwrap_or_else(|e| e.into_inner());
+                match &memo.program {
+                    Some((c, u, p)) if *c == cff && u == used => p.clone(),
+                    _ => {
+                        let p = Arc::new(font_program(font, &r.program, cff, used));
+                        memo.program = Some((cff, used.clone(), p.clone()));
+                        p
+                    }
+                }
+            };
+            let (file_key, sub, program, subset) = made.as_ref().as_ref().map_err(String::clone)?;
             let ff = self.alloc();
-            self.stream(ff, sub.as_bytes(), &program, true);
-            Some((format!(" /{file_key} {ff} 0 R"), subset))
+            self.stream(ff, sub.as_bytes(), program, true);
+            Some((format!(" /{file_key} {ff} 0 R"), *subset))
         };
         // a subset's name has its tag (PDF 32000-1 §9.6.4); a whole font's not
         let name = if ps_name.is_empty() { "Font" } else { ps_name };
@@ -1133,7 +1188,18 @@ impl<'a> Writer<'a> {
             None
         } else {
             let codes: BTreeSet<u16> = used.iter().map(|&g| code_of(g)).collect();
-            super::tounicode::otf_to_unicode(&r.program, index, &codes, self.agl())
+            let agl = self.agl();
+            // (the last run's, for the same codes and glyph list)
+            let mut memo = data.memo.lock().unwrap_or_else(|e| e.into_inner());
+            match &memo.to_unicode {
+                Some((c, a, m)) if *c == codes && Arc::ptr_eq(a, &agl) => m.clone(),
+                _ => {
+                    let m = super::tounicode::otf_to_unicode(&r.program, index, &codes, &agl)
+                        .map(Arc::new);
+                    memo.to_unicode = Some((codes, agl.clone(), m.clone()));
+                    m
+                }
+            }
         };
         let tu = match map {
             Some(map) => {
@@ -1237,7 +1303,7 @@ impl<'a> Writer<'a> {
                     .map(|n| (c, n.clone()))
             })
             .collect();
-        let tu = match super::tounicode::encoding_to_unicode(&names, self.agl()) {
+        let tu = match super::tounicode::encoding_to_unicode(&names, &self.agl()) {
             Some(map) => {
                 let tu = self.alloc();
                 let cmap = to_unicode_cmap(&base, &map, false);
@@ -1464,10 +1530,8 @@ impl<'a> Writer<'a> {
                 self.object(i as u32 + 1, b"null");
             }
         }
-        let (maj, min) = self.doc.version;
-        let mut out = format!("%PDF-{maj}.{min}\n%\u{00d0}\u{00d4}\u{00c5}\u{00d8}\n").into_bytes();
-        let shift = out.len();
-        out.extend_from_slice(&self.out);
+        let shift = header(self.doc.version).len();
+        let mut out = std::mem::take(&mut self.out);
         let xref = out.len();
         let _ = write!(
             Bytes(&mut out),
@@ -1475,9 +1539,9 @@ impl<'a> Writer<'a> {
             self.offsets.len() + 1
         );
         for o in &self.offsets {
-            let _ = writeln!(Bytes(&mut out), "{:010} 00000 n ", o.unwrap_or(0) + shift);
+            let _ = writeln!(Bytes(&mut out), "{:010} 00000 n ", o.unwrap_or(shift));
         }
-        let id = flashtex_display_list::sha256::sha256(&out);
+        let id = self.id.finish(&out);
         let idh: String = id[..16].iter().map(|b| format!("{b:02x}")).collect();
         let _ = write!(
             Bytes(&mut out),
@@ -1486,6 +1550,91 @@ impl<'a> Writer<'a> {
             self.catalog
         );
         out
+    }
+}
+
+/// The file's first two lines: the version, and a comment of non-ASCII
+/// characters (in UTF-8).
+fn header((maj, min): (u32, u32)) -> Vec<u8> {
+    format!("%PDF-{maj}.{min}\n%\u{00d0}\u{00d4}\u{00c5}\u{00d8}\n").into_bytes()
+}
+
+/// The SHA-256 of the file up to its trailer, which the trailer's `/ID`
+/// is made of. It is taken on a thread of its own while the objects are
+/// written, so that the end of the run has only the xref table left to
+/// hash, not the whole file (12 MB, 9 ms, for a 109-page preview, whose
+/// streams are stored); where no thread can be started, in line as the
+/// objects are written. Either way it hashes the same bytes in the same
+/// order, so the `/ID` is the same.
+struct IdHash {
+    /// How much of the file has been hashed or sent to be.
+    done: usize,
+    how: IdHow,
+}
+
+enum IdHow {
+    Thread(
+        std::sync::mpsc::Sender<Vec<u8>>,
+        std::thread::JoinHandle<[u8; 32]>,
+    ),
+    Inline(Sha256),
+    /// The thread is gone (it cannot be, short of a panic): hash the whole
+    /// file at the end.
+    Lost,
+}
+
+impl IdHash {
+    /// The new bytes sent at a time.
+    const CHUNK: usize = 1 << 18;
+
+    fn new() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+        let thread = std::thread::Builder::new()
+            .name("pdf-id".into())
+            .spawn(move || {
+                let mut h = Sha256::new();
+                for chunk in rx {
+                    h.update(&chunk);
+                }
+                h.finish()
+            });
+        let how = match thread {
+            Ok(j) => IdHow::Thread(tx, j),
+            Err(_) => IdHow::Inline(Sha256::new()),
+        };
+        IdHash { done: 0, how }
+    }
+
+    /// Hash `out[done..]`, `out` being the file so far, once that is at
+    /// least `min` bytes.
+    fn feed(&mut self, out: &[u8], min: usize) {
+        let new = &out[self.done..];
+        if new.is_empty() || new.len() < min {
+            return;
+        }
+        match &mut self.how {
+            IdHow::Thread(tx, _) => {
+                if tx.send(new.to_vec()).is_err() {
+                    self.how = IdHow::Lost;
+                }
+            }
+            IdHow::Inline(h) => h.update(new),
+            IdHow::Lost => {}
+        }
+        self.done = out.len();
+    }
+
+    /// The hash of `out`, the whole file up to its trailer.
+    fn finish(&mut self, out: &[u8]) -> [u8; 32] {
+        self.feed(out, 0);
+        match std::mem::replace(&mut self.how, IdHow::Lost) {
+            IdHow::Thread(tx, j) => {
+                drop(tx);
+                j.join().unwrap_or_else(|_| sha256(out))
+            }
+            IdHow::Inline(h) => h.finish(),
+            IdHow::Lost => sha256(out),
+        }
     }
 }
 
@@ -1505,7 +1654,7 @@ fn font_program(
     whole: &[u8],
     cff: bool,
     used: &BTreeSet<u16>,
-) -> Result<(&'static str, &'static str, Vec<u8>, bool), String> {
+) -> Result<Program, String> {
     if !cff {
         return Ok(("FontFile2", "", font.subset_keep_gids(used)?, true));
     }
@@ -1532,11 +1681,43 @@ fn font_program(
     })
 }
 
+/// What the PDF writer last made for one face (`super::fonts::FaceData`),
+/// with the input it made it from: each a function of the face and that
+/// input, used again when a later run asks with the same input (a
+/// keystroke seldom changes which glyphs a font draws).
+#[derive(Default)]
+pub struct FaceMemo {
+    /// [`cid_map`]'s, for these glyphs.
+    cids: Option<(BTreeSet<u16>, Option<CidMap>)>,
+    /// [`font_program`]'s, for this outline kind and these glyphs.
+    program: Option<ProgramMemo>,
+    /// `otf_to_unicode`'s, for these codes and this glyph list.
+    to_unicode: Option<TextMemo>,
+}
+
+/// A glyph id's CID.
+type CidMap = BTreeMap<u16, u16>;
+
+/// [`FaceMemo::program`]: the outline kind and glyphs, and the program.
+type ProgramMemo = (bool, BTreeSet<u16>, Arc<Result<Program, String>>);
+
+/// [`FaceMemo::to_unicode`]: the codes and glyph list, and the text.
+type TextMemo = (BTreeSet<u16>, Arc<Agl>, Option<Arc<TextMap>>);
+
+/// A code's text.
+type TextMap = BTreeMap<u16, Vec<char>>;
+
+/// What [`font_program`] makes: the descriptor's key and stream entries,
+/// the program, and whether it is a subset.
+type Program = (&'static str, &'static str, Vec<u8>, bool);
+
 /// For a CID-keyed CFF face: each used glyph id's CID (the font's charset,
 /// through which a CIDFontType0 font selects glyphs). `None` for any other
 /// face.
-fn cid_map(program: &[u8], index: u32, used: &BTreeSet<u16>) -> Option<BTreeMap<u16, u16>> {
-    let font = flashtex_pdf::truetype::TrueTypeFont::parse_face(program.to_vec(), index).ok()?;
+fn cid_map(
+    font: &flashtex_pdf::truetype::TrueTypeFont,
+    used: &BTreeSet<u16>,
+) -> Option<BTreeMap<u16, u16>> {
     let cff = flashtex_pdf::cff::CffFont::parse(font.cff_table()?).ok()?;
     if !cff.is_cid_keyed() {
         return None;
@@ -1638,7 +1819,7 @@ fn color_op(c: &mut Vec<u8>, v: &[f64], stroke: bool) {
         _ => return,
     };
     for x in v {
-        c.extend_from_slice(n(*x, 5).as_bytes());
+        push_num(c, *x, 5);
         c.push(b' ');
     }
     c.extend_from_slice(op.as_bytes());
@@ -1650,45 +1831,85 @@ fn write_matrix(c: &mut Vec<u8>, m: &[f64; 6]) {
         if i > 0 {
             c.push(b' ');
         }
-        c.extend_from_slice(n(*v, if i < 4 { 8 } else { 6 }).as_bytes());
+        push_num(c, *v, if i < 4 { 8 } else { 6 });
     }
 }
 
 /// Path segments, mapped by `m` when given.
 fn write_segs(c: &mut Vec<u8>, segs: &[Seg], m: Option<&[f64; 6]>) {
-    let tr = |x: f64, y: f64| -> (String, String) {
-        match m {
-            Some(m) => (
-                n(x * m[0] + y * m[2] + m[4], 6),
-                n(x * m[1] + y * m[3] + m[5], 6),
-            ),
-            None => (n(x, 6), n(y, 6)),
-        }
+    // `x y ` (six decimals), mapped
+    let pt = |c: &mut Vec<u8>, x: f64, y: f64| {
+        let (x, y) = match m {
+            Some(m) => (x * m[0] + y * m[2] + m[4], x * m[1] + y * m[3] + m[5]),
+            None => (x, y),
+        };
+        push_num(c, x, 6);
+        c.push(b' ');
+        push_num(c, y, 6);
+        c.push(b' ');
     };
     for s in segs {
         match *s {
             Seg::Move(x, y) => {
-                let (a, b) = tr(x, y);
-                let _ = write!(Bytes(c), "{a} {b} m ");
+                pt(c, x, y);
+                c.extend_from_slice(b"m ");
             }
             Seg::Line(x, y) => {
-                let (a, b) = tr(x, y);
-                let _ = write!(Bytes(c), "{a} {b} l ");
+                pt(c, x, y);
+                c.extend_from_slice(b"l ");
             }
             Seg::Curve(x1, y1, x2, y2, x3, y3) => {
-                let (a, b) = tr(x1, y1);
-                let (cc, d) = tr(x2, y2);
-                let (e, f) = tr(x3, y3);
-                let _ = write!(Bytes(c), "{a} {b} {cc} {d} {e} {f} c ");
+                pt(c, x1, y1);
+                pt(c, x2, y2);
+                pt(c, x3, y3);
+                c.extend_from_slice(b"c ");
             }
             Seg::Close => c.extend_from_slice(b"h "),
         }
     }
 }
 
+/// `v1 v2 ...`, each with at most `d` decimals.
+fn push_nums(c: &mut Vec<u8>, v: &[f64], d: usize) {
+    for (i, x) in v.iter().enumerate() {
+        if i > 0 {
+            c.push(b' ');
+        }
+        push_num(c, *x, d);
+    }
+}
+
+/// `w w c J j j m M [dash] phase d` (six decimals), no separator after.
+fn write_stroke(c: &mut Vec<u8>, s: &Stroke) {
+    push_num(c, s.width, 6);
+    c.extend_from_slice(b" w ");
+    push_uint(c, s.cap as u64);
+    c.extend_from_slice(b" J ");
+    push_uint(c, s.join as u64);
+    c.extend_from_slice(b" j ");
+    push_num(c, s.miter, 6);
+    c.extend_from_slice(b" M [");
+    push_nums(c, &s.dash, 6);
+    c.extend_from_slice(b"] ");
+    push_num(c, s.phase, 6);
+    c.extend_from_slice(b" d");
+}
+
+/// `<XXXX>Tj` and a newline: `code` in `width` upper-case hex digits
+/// (`format!("<{code:0width$X}>Tj")` for a code that fits).
+fn push_hex_tj(c: &mut Vec<u8>, code: u32, width: usize) {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    c.push(b'<');
+    let digits = width.max((32 - code.leading_zeros() as usize).div_ceil(4));
+    for i in (0..digits).rev() {
+        c.push(HEX[((code >> (4 * i)) & 0xF) as usize]);
+    }
+    c.extend_from_slice(b">Tj\n");
+}
+
 /// Six capital letters naming a subset, from the font and its glyphs.
 fn subset_tag(name: &str, used: &BTreeSet<u16>) -> String {
-    let mut h = flashtex_display_list::sha256::Sha256::new();
+    let mut h = Sha256::new();
     h.update(name.as_bytes());
     for g in used {
         h.update(&g.to_le_bytes());
@@ -1891,7 +2112,7 @@ fn cal_space(col: &PngColor, n: u8) -> Option<String> {
 /// rule's end column differed by one coverage level at 4 px/pt).
 pub fn rule_geometry(p: &Page) -> Vec<[f64; 7]> {
     let h = p.pdf_box[3];
-    let r = |v: f64| n(v, 5).parse::<f64>().unwrap_or(v);
+    let r = |v: f64| super::num::round_num(v, 5);
     p.items
         .iter()
         .filter_map(|it| {
@@ -2076,7 +2297,18 @@ mod tests {
 
     /// A page drawing glyph `gid` of `path` (face 0) at 10 pt, written.
     fn one_glyph_pdf(path: &str, gid: u16) -> Vec<u8> {
+        glyphs_pdf(path, &[gid], None)
+    }
+
+    /// A page drawing glyphs `gids` of `path` (face 0) at 10 pt, written
+    /// with the resident engine's font cache `cache` (or none).
+    fn glyphs_pdf(
+        path: &str,
+        gids: &[u16],
+        cache: Option<std::sync::Arc<super::super::fonts::FontCache>>,
+    ) -> Vec<u8> {
         let mut doc = Doc::new();
+        doc.fonts.cache = cache;
         doc.fonts.define(
             0,
             FontDef::Native(NativeDef {
@@ -2094,16 +2326,16 @@ mod tests {
         let mut p = Page::new(StreamKind::Page, 0);
         p.pdf_box = [0.0, 0.0, 100.0, 100.0];
         p.matrices.push([10.0, 0.0, 0.0, 10.0, 0.0, 0.0]);
-        p.items = vec![
-            Item::Matrix(1),
-            Item::Glyph {
+        p.items = vec![Item::Matrix(1)];
+        for (k, &gid) in gids.iter().enumerate() {
+            p.items.push(Item::Glyph {
                 font: res,
                 code: gid,
-                x: 657_818,
+                x: 657_818 + 400_000 * k as i32,
                 y: 3_289_088,
                 col: flashtex_display_list::page::NO_COLUMN,
-            },
-        ];
+            });
+        }
         doc.pages.push(std::sync::Arc::new(Built {
             dl: p,
             sup: Supplement::default(),
@@ -2120,6 +2352,36 @@ mod tests {
             compress: false,
         };
         write(&doc, &opts).unwrap().0
+    }
+
+    /// The `/ID` hash, on its thread or in line, is the SHA-256 of the
+    /// whole file however it was fed.
+    #[test]
+    fn id_hash_is_the_whole_file_hash() {
+        let data: Vec<u8> = (0..3_000_000u32)
+            .map(|i| (i.wrapping_mul(2654435761) >> 11) as u8)
+            .collect();
+        for inline in [false, true] {
+            for steps in [
+                &[0usize][..],
+                &[10, 70_000, 300_000, 300_001, 2_999_999],
+                &[1 << 18, 1 << 19],
+            ] {
+                let mut id = IdHash::new();
+                if inline {
+                    id.how = IdHow::Inline(Sha256::new());
+                }
+                for &n in steps {
+                    id.feed(&data[..n], IdHash::CHUNK);
+                    id.feed(&data[..n], 0);
+                }
+                assert_eq!(
+                    id.finish(&data),
+                    sha256(&data),
+                    "inline {inline}, steps {steps:?}"
+                );
+            }
+        }
     }
 
     /// A CID-keyed CFF font (CJK): the content stream draws its glyphs by
@@ -2176,6 +2438,45 @@ mod tests {
         // its character collection, as xdvipdfmx writes it
         let csi = d.get("CIDSystemInfo").and_then(Obj::as_dict).unwrap();
         assert_eq!(csi.get("Ordering"), Some(&Obj::String(b"Japan1".to_vec())));
+    }
+
+    /// A resident engine's runs write the fonts' PDF objects from what the
+    /// cache kept (the parsed face, the glyph list, the last subset,
+    /// ToUnicode and CID map): byte for byte what a write without the
+    /// cache makes, for the same glyphs again, for other glyphs, and for
+    /// the first ones once more. A CFF and a TrueType face, and a
+    /// CID-keyed CFF one when TeX Live has HaranoAji Mincho.
+    #[test]
+    fn the_font_cache_writes_what_a_write_without_it_does() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+        let mut fonts = vec![
+            format!("{dir}/apps/mac/Fonts/lmmono10-regular.otf"),
+            format!("{dir}/apps/mac/Sources/FlashTeXMac/Resources/Fonts/JetBrainsMono-Regular.ttf"),
+        ];
+        if let Some(p) = std::process::Command::new("kpsewhich")
+            .arg("HaranoAjiMincho-Regular.otf")
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|p| !p.is_empty())
+        {
+            fonts.push(p);
+        }
+        let runs: [&[u16]; 5] = [
+            &[36, 37, 38],
+            &[36, 37, 38],
+            &[36, 37, 38, 70],
+            &[36, 37, 38],
+            &[5],
+        ];
+        for path in &fonts {
+            let cache = std::sync::Arc::new(super::super::fonts::FontCache::default());
+            for gids in runs {
+                let with = glyphs_pdf(path, gids, Some(cache.clone()));
+                let without = glyphs_pdf(path, gids, None);
+                assert!(with == without, "{path}: glyphs {gids:?}");
+            }
+        }
     }
 
     /// 日 and 文 share their glyphs with the Kangxi radicals U+2F47 and
