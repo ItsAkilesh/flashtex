@@ -3238,3 +3238,80 @@ fn a_persisted_s0_checks_the_reads_at_the_document_start() {
         let _ = std::fs::remove_dir_all(&base);
     }
 }
+
+/// T7-CONV (T7's plain-10 letter@start, #1850): a letter typed on the line
+/// of the document's first inline math, after the math. amsmath's
+/// `\every@math@size` sets `\strutbox@` globally there, so the box lives
+/// in every later state with that line's source position, and an edited
+/// line has a new span in every run: compared as span ids, the old run's
+/// entry never equalled the new run's and no compile converged. Compared
+/// as places (file, line, column) they are equal, the run converges after
+/// the edited page, and every page still equals a from-scratch compile;
+/// a letter typed before the math (which moves the box's column) and its
+/// revert, too.
+#[test]
+fn an_edited_line_converges_with_a_box_set_on_it() {
+    if find_texlive_bin().is_none() {
+        common::no_texlive();
+        return;
+    }
+    let base = common::fresh_dir("flashtex-host-strutbox");
+    let _ = std::fs::remove_dir_all(&base);
+    let (proj, out) = (base.join("proj"), base.join("out"));
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::create_dir_all(&out).unwrap();
+    let text = article(8);
+    std::fs::write(proj.join("main.tex"), &text).unwrap();
+    let host = start_host("sb");
+    let scratch = start_host("sbs");
+    let mut c = Client::connect(&host.1).unwrap();
+    let mut view = View::default();
+    let mut id = 0;
+    for _ in 0..4 {
+        id += 1;
+        let o = compile(&mut c, &mut view, &req(id, &proj, &out, "main.tex"));
+        if o.done.str_field("mode") == Some("unchanged") {
+            break;
+        }
+    }
+    let math = text.find("\\frac{a}{b}$ ").unwrap() + "\\frac{a}{b}$ ".len();
+    let (after, before) = (math, text.find(" with $x_").unwrap());
+    for (k, (at, delete, insert, what, converges)) in [
+        (after, 0, "x", "a letter after the math", true),
+        (after, 1, "", "its revert", true),
+        (before, 0, "x", "a letter before the math", false),
+        (before, 1, "", "its revert", false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        id += 1;
+        let mut r = req(id, &proj, &out, "main.tex");
+        r.edits = vec![Edit {
+            path: "main.tex".into(),
+            offset: at as u64,
+            delete,
+            insert: insert.into(),
+        }];
+        let o = compile(&mut c, &mut view, &r);
+        assert_eq!(
+            o.done.str_field("mode"),
+            Some("incremental"),
+            "{what}: {}",
+            o.done
+        );
+        if converges {
+            let pages = o.done.int_field("pages").unwrap_or(0);
+            let at = o.done.int_field("converged_at");
+            assert!(
+                at.is_some_and(|p| p < pages),
+                "{what}: no convergence before the last page: {}",
+                o.done
+            );
+        }
+        let (p2, o2) = snapshot(&base, &proj, &out, &format!("sb{k}"));
+        compare_with_scratch(&scratch.1, &view, &proj, &out, &p2, &o2, "main.tex", what);
+    }
+    let _ = c.bye();
+    let _ = std::fs::remove_dir_all(&base);
+}

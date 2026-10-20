@@ -40,6 +40,12 @@
 //! * **The fonts' catalog** (the installed fonts' names, which a lookup by
 //!   name reads) is kept across runs by the host ([`Fonts`]) while the font
 //!   directories are unchanged.
+//! * **Fonts loaded again are not opened again.** A run from S₀ loads every
+//!   font its body selects anew; the FreeType faces with their HarfBuzz
+//!   fonts and the TECkit mappings (`crate::native::cache`), and what the
+//!   output parses of each font program (`crate::out::fonts::FontCache`),
+//!   are kept across runs while their files are unchanged. Each layout
+//!   engine is still made anew, so no shaping state is shared.
 //!
 //! The engine's runtime (`flashtex_engine::system`: the run's
 //! configuration, the resolver, the read journal) is still per process (the
@@ -128,6 +134,9 @@ pub struct Resident {
     /// checkpoints.
     pub(crate) thinning: Option<crate::ckpt::Thinning>,
     fonts: Box<dyn Fonts>,
+    /// The native fonts' faces and mappings the engine's runs share
+    /// (`crate::native::cache`); none for a run that is not the engine's.
+    pub(crate) loads: Option<Arc<std::sync::Mutex<crate::native::cache::LoadCache>>>,
 }
 
 impl Resident {
@@ -436,6 +445,9 @@ pub struct Engine {
     pub keep_pages: bool,
     /// The output's font map index and font programs, kept across runs.
     font_cache: Arc<crate::out::fonts::FontCache>,
+    /// The native fonts' faces and mappings, kept across runs
+    /// (`crate::native::cache`).
+    loads: Arc<std::sync::Mutex<crate::native::cache::LoadCache>>,
     /// The convergence measurement (`crate::conv`): the last complete
     /// run's pages, and the `eqtb` pointer entries of each checkpoint
     /// restored.
@@ -449,6 +461,9 @@ pub struct Engine {
     opened: Option<(PointKey, Option<FormatFile>)>,
     /// The S₀ already in its file (saved or opened).
     s0_saved: Option<CheckpointId>,
+    /// The S₀ bases this engine has opened an S₀ against or saved one
+    /// against (`crate::s0file`): never collected by its saves.
+    bases_in_use: Vec<PathBuf>,
     /// The S₀ writers still running.
     writers: Vec<std::thread::JoinHandle<()>>,
     /// The last run was in Low Memory: S₀ is written on the engine thread,
@@ -548,11 +563,13 @@ impl Engine {
             keep_s0: env_on("FLASHTEX_UNICODE_S0"),
             keep_pages: env_on("FLASHTEX_UNICODE_PAGES"),
             font_cache: Arc::default(),
+            loads: Arc::default(),
             last_pages: vec![],
             eqtb_pointers: HashMap::new(),
             cursor: 0,
             opened: None,
             s0_saved: None,
+            bases_in_use: vec![],
             writers: vec![],
             lean_save: false,
         }
@@ -634,6 +651,12 @@ impl Engine {
         );
         self.fonts = fonts;
         let o = r?;
+        let (mapped_pages, base_pages) = (o.mapped_pages, o.base_pages);
+        if let Some(b) = &o.base {
+            if !self.bases_in_use.contains(b) {
+                self.bases_in_use.push(b.clone());
+            }
+        }
         let (k, f) = found.ok_or("not checked")?;
         self.clear();
         let m = o.meta;
@@ -653,10 +676,11 @@ impl Engine {
         self.opened = Some((k, f));
         self.g = Some(o.g);
         Ok(format!(
-            "S0 opened from {} in {:.1} ms ({} pages mapped)",
+            "S0 opened from {} in {:.1} ms ({} pages mapped, {} of them from its base)",
             path.display(),
             t.elapsed().as_secs_f64() * 1e3,
-            o.mapped_pages
+            mapped_pages,
+            base_pages
         ))
     }
 
@@ -674,6 +698,21 @@ impl Engine {
             (Some(p), _) => (p.key.clone(), p.format.clone()),
             (None, Some(o)) => o.clone(),
             _ => return Ok(None),
+        };
+        // the base S₀ is a delta against: the state after this format's
+        // load (`crate::s0file`), made from the point if there is none yet
+        let base = match (&f, path.parent()) {
+            (Some(ff), Some(dir)) => {
+                use flashtex_engine::persist::Codec;
+                let mut format = vec![];
+                ff.enc(&mut format);
+                Some(crate::s0file::BaseSpec {
+                    dir: dir.to_path_buf(),
+                    format,
+                    point: self.point.as_ref().map(|p| p.id),
+                })
+            }
+            _ => None,
         };
         // (the engine's document is still this one: another document's
         // run may have come between its compile and this save; the paths
@@ -705,21 +744,49 @@ impl Engine {
             opens: self.opens[..s0.opens.min(self.opens.len())].to_vec(),
             texts,
         };
+        if let Some(b) = base.as_ref().map(|b| crate::s0file::base_path(b, g)) {
+            if !self.bases_in_use.contains(&b) {
+                self.bases_in_use.push(b);
+            }
+        }
+        // after the save, the bases no S₀ in the cache refers to any more
+        // (old formats and engine builds) go
+        let collect = {
+            let dir = path.parent().map(Path::to_path_buf);
+            let keep = self.bases_in_use.clone();
+            move || {
+                if let Some(d) = dir {
+                    for b in crate::s0file::collect_bases(&d, &keep, crate::s0file::BASE_GRACE) {
+                        eprintln!(
+                            "flashtex-host-unicode: {{\"collected_s0_base\":{:?}}}",
+                            b.display().to_string()
+                        );
+                    }
+                }
+            }
+        };
         if self.lean_save {
             // (Low Memory: no copy of the chunks; written here)
             if let Some(d) = path.parent() {
                 let _ = std::fs::create_dir_all(d);
             }
-            let bytes = crate::s0file::write_in_place(g, s0.id, &meta, &path.to_string_lossy())?;
+            let bytes = crate::s0file::write_in_place(
+                g,
+                s0.id,
+                &meta,
+                &path.to_string_lossy(),
+                base.as_ref(),
+            )?;
             self.s0_saved = Some(s0.id);
             eprintln!(
                 "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{:.1},\"in_place\":true}}",
                 path.display().to_string(),
                 t.elapsed().as_secs_f64() * 1e3
             );
+            collect();
             return Ok(None);
         }
-        let image = crate::s0file::prepare(g, s0.id, &meta)?;
+        let image = crate::s0file::prepare(g, s0.id, &meta, base.as_ref())?;
         self.s0_saved = Some(s0.id);
         let prepare_ms = t.elapsed().as_secs_f64() * 1e3;
         let held = image.bytes();
@@ -733,11 +800,14 @@ impl Engine {
                 }
                 let t = std::time::Instant::now();
                 match image.write(&p.to_string_lossy()) {
-                    Ok(bytes) => eprintln!(
-                        "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{prepare_ms:.1},\"write_ms\":{:.1}}}",
-                        p.display().to_string(),
-                        t.elapsed().as_secs_f64() * 1e3
-                    ),
+                    Ok(bytes) => {
+                        eprintln!(
+                            "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{prepare_ms:.1},\"write_ms\":{:.1}}}",
+                            p.display().to_string(),
+                            t.elapsed().as_secs_f64() * 1e3
+                        );
+                        collect();
+                    }
                     Err(e) => eprintln!("flashtex-host-unicode: saving S0: {e}"),
                 }
             })
@@ -1068,6 +1138,7 @@ impl Engine {
             conv: None,
             thinning: None,
             fonts: Box::new(Unkept),
+            loads: None,
         };
         if start.in_body() {
             let recs = self
@@ -1317,6 +1388,7 @@ impl Engine {
             conv,
             thinning,
             fonts: self.fonts.take().unwrap_or_else(|| Box::new(Unkept)),
+            loads: Some(self.loads.clone()),
         });
         let mut out = (!c.no_pdf).then(|| {
             let mut o = crate::out::Output::to_writer(
@@ -1440,6 +1512,10 @@ impl Engine {
         let mut restored_files = vec![];
         if let Some(r) = g.host.resident.take() {
             self.fonts = Some(r.fonts);
+            self.loads
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .end_run();
             kept = r.point;
             taken = r.s0;
             new_pages = r.pages;
