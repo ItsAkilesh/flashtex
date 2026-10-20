@@ -34,6 +34,10 @@
 pub mod arena;
 #[cfg(all(feature = "bibtex", not(feature = "tex82")))]
 pub mod bibtex;
+#[cfg(not(feature = "tex82"))]
+pub mod boxfrag;
+#[cfg(not(feature = "tex82"))]
+pub mod boxmemo;
 #[cfg(all(feature = "distribution", not(feature = "tex82")))]
 pub use flashtex_runtime::bundle;
 #[cfg(not(feature = "tex82"))]

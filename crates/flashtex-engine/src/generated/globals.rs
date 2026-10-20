@@ -1262,6 +1262,18 @@ pub struct Globals {
     pub ls_def_reads: bool,
     // §1920
     pub ls_tag_file: crate::arena::Arr<str_number>,
+    // §1924
+    pub bm_on: bool,
+    // §1924
+    pub bm_rec_on: bool,
+    // §1924
+    pub bm_at_switch: bool,
+    // §1924
+    pub bm_cand: crate::arena::Arr<bool>,
+    // §1924
+    pub bm_font_version: i32,
+    // §1924
+    pub bm_hyph_version: i32,
     /// The word space every `Arr` above lives in (crates/flashtex-engine/src/arena.rs).
     pub arena: crate::arena::Arena,
 }
@@ -1771,7 +1783,12 @@ pub const SCALAR_BYTES: usize = 0
     + crate::arena::slot::<i32>()
     + crate::arena::slot::<i32>()
     + crate::arena::slot::<bool>()
-    + crate::arena::slot::<bool>();
+    + crate::arena::slot::<bool>()
+    + crate::arena::slot::<bool>()
+    + crate::arena::slot::<bool>()
+    + crate::arena::slot::<bool>()
+    + crate::arena::slot::<i32>()
+    + crate::arena::slot::<i32>();
 
 impl Globals {
     pub fn new() -> Box<Globals> {
@@ -1951,6 +1968,7 @@ impl Globals {
         let __r_ls_grp_tag = __plan.reserve::<i32>("ls_grp_tag", 256);
         let __r_ls_cond_tag = __plan.reserve::<i32>("ls_cond_tag", 1001);
         let __r_ls_tag_file = __plan.reserve::<str_number>("ls_tag_file", 65536);
+        let __r_bm_cand = __plan.reserve::<bool>("bm_cand", 630193);
         let __arena = __plan.build();
         Box::new(Globals {
             bad: 0,
@@ -2579,6 +2597,12 @@ impl Globals {
             ls_the_def: false,
             ls_def_reads: false,
             ls_tag_file: __arena.arr(__r_ls_tag_file, 65536),
+            bm_on: false,
+            bm_rec_on: false,
+            bm_at_switch: false,
+            bm_cand: __arena.arr(__r_bm_cand, 630193),
+            bm_font_version: 0,
+            bm_hyph_version: 0,
             arena: __arena,
         })
     }
@@ -3090,6 +3114,11 @@ impl Globals {
         v.pod(&mut self.ls_taints);
         v.pod(&mut self.ls_the_def);
         v.pod(&mut self.ls_def_reads);
+        v.pod(&mut self.bm_on);
+        v.pod(&mut self.bm_rec_on);
+        v.pod(&mut self.bm_at_switch);
+        v.pod(&mut self.bm_font_version);
+        v.pod(&mut self.bm_hyph_version);
     }
 
     /// Every file global, in declaration order (the checkpoint's host-state record).
