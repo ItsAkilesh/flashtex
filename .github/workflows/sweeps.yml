@@ -6,6 +6,7 @@
 #
 #   gh workflow run sweeps.yml -f ref=<branch|sha|refs/pull/N/head> \
 #     [-f gates=sound-a,span] [-f base_ref=main] [-f profile=low-memory|balanced|high-performance]
+#     [-f boxmemo=on|verify|off]
 #
 # Or add the `run-sweeps` label to a pull request (its head, once the PR's
 # branch has this file).
@@ -56,6 +57,10 @@ on:
         default: "15"
       profile:
         description: "performance mode the engines run in (FLASHTEX_PROFILE: low-memory, balanced, high-performance; empty: balanced)"
+        required: false
+        default: ""
+      boxmemo:
+        description: "BOX-MEMO mode the engines run in (FLASHTEX_BOXMEMO: on, verify, off; empty: the product's default). verify makes a difference fail the unit"
         required: false
         default: ""
   pull_request:
@@ -290,6 +295,8 @@ jobs:
           TARGET: ${{ needs.prepare.outputs.target }}
           # a performance mode (lane PERF-MODES, src/profile.rs); every host and iserve reads it
           FLASHTEX_PROFILE: ${{ inputs.profile }}
+          # BOX-MEMO's mode (docs/design/engine-v2/BOX-MEMO.md; sweeps.py's env())
+          FLASHTEX_SWEEP_BOXMEMO: ${{ inputs.boxmemo }}
         run: |
           set -euo pipefail
           # A canonical path (no `..`, no symlink), as /tmp/incr-bench on the PC: under

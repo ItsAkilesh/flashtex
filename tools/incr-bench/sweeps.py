@@ -200,13 +200,18 @@ def shards(tree, gates, target_s, j, costs=None):
 def env():
     e = dict(os.environ, PYTHONHASHSEED='0', FLASHTEX_VERIFY_JUMP='1', FLASHTEX_VERIFY_OLDCACHE='1',
              FLASHTEX_VERIFY_PREPARED='1', FLASHTEX_VERIFY_RELOC='1')
-    # BOX-MEMO (docs/design/engine-v2/BOX-MEMO.md, off by default in the product): every sweep runs
-    # it in verify mode -- each call the guard admits is run normally and replayed, the whole
-    # engine state compared, and the run goes on from the replay; a difference ends the host
-    # (exit 3), which the sweep reports. The framed/TikZ fixtures (fixtures/real-world/
-    # framed-tikz-theorems, tikzcd-shaded-notes) make edits replay calls.
-    e.setdefault('FLASHTEX_BOXMEMO', 'verify')
-    e.setdefault('FLASHTEX_BOXMEMO_VERIFY_FAIL', '1')
+    # BOX-MEMO (docs/design/engine-v2/BOX-MEMO.md), opt-in (Commander ruling on #1692):
+    # FLASHTEX_SWEEP_BOXMEMO=on|verify|off runs the sweep's engines in that mode (sweeps.yml's
+    # `boxmemo` input); unset, they run in the product's default. In verify mode each call the
+    # guard admits is run normally and replayed, the whole engine state compared, and the run goes
+    # on from the replay; a difference ends the host (exit 3), which the sweep reports. The
+    # framed/TikZ fixtures (fixtures/real-world/framed-tikz-theorems, tikzcd-shaded-notes) and the
+    # beamer ones make edits replay calls.
+    bm = os.environ.get('FLASHTEX_SWEEP_BOXMEMO', '')
+    if bm:
+        e['FLASHTEX_BOXMEMO'] = bm
+        if bm == 'verify':
+            e['FLASHTEX_BOXMEMO_VERIFY_FAIL'] = '1'
     return e
 
 
