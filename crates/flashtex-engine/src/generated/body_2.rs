@@ -5011,6 +5011,9 @@ impl Globals {
                                     }
                                 }
                             }
+                            if self.bm_rec_on {
+                                self.flashtex_bm_box_use(self.cur_val, 1i32);
+                            }
                             if (q == null) {
                                 self.cur_val = 0i32;
                             } else {

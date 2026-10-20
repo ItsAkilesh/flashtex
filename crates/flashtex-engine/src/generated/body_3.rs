@@ -2073,6 +2073,9 @@ impl Globals {
                                     }
                                 }
                             }
+                            if self.bm_rec_on {
+                                self.flashtex_bm_box_use(self.cur_val, 2i32);
+                            }
                             if (this_if == if_void_code) {
                                 b = (p == null);
                             } else {

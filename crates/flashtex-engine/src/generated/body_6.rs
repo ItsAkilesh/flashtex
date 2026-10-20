@@ -8544,6 +8544,9 @@ impl Globals {
                                 }
                             }
                         }
+                        if self.bm_rec_on {
+                            self.flashtex_bm_box_use(self.cur_val, 3i32);
+                        }
                     }
                 }
                 copy_code => {

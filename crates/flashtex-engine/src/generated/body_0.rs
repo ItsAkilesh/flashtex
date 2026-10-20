@@ -635,7 +635,7 @@ impl Globals {
         self.intr_on = self.flashtex_intr_enabled();
         // §1921
         self.ls_cond_depth = 0i32;
-        // §1924
+        // §1925
         self.bm_rec_on = false;
         self.bm_at_switch = false;
         self.bm_font_version = 0i32;
