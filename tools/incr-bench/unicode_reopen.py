@@ -12,7 +12,13 @@ DIR/out, as the app lays a project out):
 2. Each scenario then starts a new host with the same cache and compiles:
    * `same`: nothing changed while closed: the compile must start from S0;
    * `body`: a sentence added in the body while closed: from S0;
-   * `preamble`: a command defined in the preamble while closed: S0 refused;
+   * `preamble`: a command defined in the preamble, on the line after
+     `\\documentclass`, while closed: S0 refused;
+   * `preamble_end`: the same, on the line before `\\begin{document}`: S0
+     refused, or taken where it holds (an S0 whose read prefix of
+     main.tex ends before that line goes on to read the new line itself;
+     run 38256375339 saw this in l011, u03 and u04), as long as the
+     compile equals a from-scratch one;
    * `font` (when DIR/src has a font file the document loads by file name):
      the font file changed while closed: S0 refused.
    Every such compile is compared with a from-scratch compile of the same
@@ -346,7 +352,13 @@ def main():
         if (r['starts'] or [None])[0] != 's0':
             print('   UNEXPECTED: a body edit did not start from S0', flush=True)
             bad[0] += 1
-        pre = body.replace(b'\\begin{document}', b'\\newcommand\\addedwhileclosed{x}\n\\begin{document}', 1)
+        pre_end = body.replace(b'\\begin{document}', b'\\newcommand\\addedwhileclosed{x}\n\\begin{document}', 1)
+        open(main_tex, 'wb').write(pre_end)
+        verify(work, env(cache), 'preamble_end', out, bad)
+        # (the line after `\documentclass`: read before any S0)
+        dc = body.find(b'\\documentclass')
+        nl = body.find(b'\n', dc) + 1 if dc >= 0 else 0
+        pre = body[:nl] + b'\\newcommand\\addedwhileclosed{x}\n' + body[nl:]
         open(main_tex, 'wb').write(pre)
         r = verify(work, env(cache), 'preamble', out, bad)
         if (r['starts'] or [None])[0] == 's0':

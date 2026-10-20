@@ -82,7 +82,7 @@ struct Unkept;
 
 impl Fonts for Unkept {
     fn catalog(&mut self) -> Arc<FontCatalog> {
-        Arc::new(FontCatalog::system_cached(None))
+        Arc::new(FontCatalog::for_lookup())
     }
     fn dirs(&mut self) -> [u64; 2] {
         // nothing watched: never the same
@@ -1379,6 +1379,7 @@ impl Engine {
         if !start.in_body() {
             g.ckpt_arm_cs = 0;
             g.ckpt_arm_level = 0;
+            g.ckpt_arm_again = 0;
         }
         if start == Start::Fresh {
             if let Some(l) = first_line {
@@ -1397,7 +1398,9 @@ impl Engine {
         if !start.in_body() {
             flashtex_engine::system::truncate_external_effects(0);
         }
-        let ran = match resumed {
+        // (the result's type is spelled out: a closure ending in `!` is
+        // otherwise inferred as returning `()` by the toolchain CI pins)
+        let ran: std::thread::Result<std::convert::Infallible> = match resumed {
             Ok(()) => std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 match start {
                     Start::Fresh => g.tex_body(),

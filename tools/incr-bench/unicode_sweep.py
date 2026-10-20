@@ -6,6 +6,12 @@ must equal a from-scratch compile (unicode.py's docstring says how).
 
 usage: unicode_sweep.py HOST [-j 2] [--keys 2] [--trials 3] [--kinds ...]
                         [--only SUBSTRING] [--out JSONL]
+                        [--cases-dir DIR ...] [--shard K/N]
+
+`--cases-dir DIR` adds DIR's case directories (DIR/NAME/NAME.tex with the
+files it reads: tools/unicode-m3/corpus.py's layout, the M3 corpus) to the
+documents. `--shard K/N` runs the K-th (from 1) of N shares of the
+documents, dealt in turn in name order (.github/workflows/sweeps-unicode.yml).
 
 Exit status 1 when any compile differs (or a document's run fails).
 """
@@ -29,13 +35,21 @@ ap.add_argument('--only')
 ap.add_argument('--out')
 ap.add_argument('--host-env', action='append', default=[])
 ap.add_argument('--interleave', action='store_true', help='sweep D: cancel each edit\'s compile with a second edit saved meanwhile (unicode.py --interleave)')
+ap.add_argument('--cases-dir', action='append', default=[])
+ap.add_argument('--shard')
 a = ap.parse_args()
 
 docs = sorted(glob.glob(os.path.join(HERE, 'unicode-corpus', '*.tex')))
 docs += sorted(glob.glob(os.path.join(ROOT, 'tools/xetex-pdfparity/cases', '*.tex')))
 docs += sorted(glob.glob(os.path.join(ROOT, 'tools/xetex-lockstep/latex-cases', '*.tex')))
+for cd in a.cases_dir:
+    docs += sorted(d for d in glob.glob(os.path.join(cd, '*'))
+                   if os.path.isfile(os.path.join(d, os.path.basename(d) + '.tex')))
 if a.only:
     docs = [d for d in docs if a.only in os.path.basename(d)]
+if a.shard:
+    k, n = (int(x) for x in a.shard.split('/'))
+    docs = sorted(docs, key=os.path.basename)[k - 1::n]
 
 
 def one(doc):
@@ -43,6 +57,8 @@ def one(doc):
            '--trials', str(a.trials), '--kinds', a.kinds, '--at', 'mid']
     if a.interleave:
         cmd.append('--interleave')
+    if os.path.isdir(doc):
+        cmd += ['--doc', os.path.basename(doc)]
     for kv in a.host_env:
         cmd += ['--host-env', kv]
     r = subprocess.run(cmd, capture_output=True, text=True)

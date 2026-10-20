@@ -50,6 +50,25 @@ polyglossia
 xecjk
 ctex
 fandol
+# Since texbundle-tl2026-4: what the Unicode corpus (tools/xetex-corpus, 39 typical
+# xelatex documents) read and the bundle lacked, found by building it with no TeX
+# Live and by `texbundle.py derive` over xelatex's -recorder files of the same
+# documents. polyglossia's right-to-left languages (Arabic, Hebrew, Persian) load
+# bidi; ctex's classes load zhnumber; older templates load xltxtra, which loads
+# xunicode and realscripts.
+bidi
+zhnumber
+xltxtra
+xunicode
+realscripts
+# OpenType fonts xelatex documents name by file (fontspec, unicode-math) that the
+# bundle lacked: CM Unicode (Cyrillic and Greek Computer Modern), XITS and XITS
+# Math, Fira Math (Fira Sans is in fira), Amiri (Arabic), Culmus (Hebrew).
+cm-unicode
+xits
+firamath
+amiri
+culmus
 # the UTF-8 hyphenation patterns xelatex.fmt loads that pdflatex.fmt reads converted
 # (the core has those): every language TeX Live's language.dat names
 dehyph-exptl
@@ -118,3 +137,32 @@ hyphen-ukrainian
 hyphen-uppersorbian
 hyphen-vietnamese
 hyphen-welsh
+# What the M3 Unicode corpus (tools/unicode-m3/corpus.json, lane M3-BUNDLE) reads and
+# the bundle lacked: tools/unicode-m3/bundle_gaps.py over TeX Live's xelatex -recorder
+# and each XDV's native fonts, in the pinned tree (unicode-m3-bundle.yml, run
+# 38201654312; since texbundle-tl2026-4). bidi, zhnumber, amiri, culmus, firamath and xits,
+# which it also needs, are listed above. Licences are the tlpdb's (the packer checks them).
+# the thuthesis template: thuthesis (lppl1.3c), and the bibunits (lppl1.3) and
+# notoccite (pd) it loads
+thuthesis
+bibunits
+notoccite
+# l3draw (xeCJK's and thuthesis's examples) and the rest of l3experimental (lppl1.3c)
+l3experimental
+# xeCJK's examples: showexpl (lppl1.2), typogrid (lppl1), Harano Aji (Japanese, ofl)
+# and UnBatang (unfonts-core, Korean, gpl2)
+showexpl
+typogrid
+haranoaji
+unfonts-core
+# unicode-math with New Computer Modern (gfl, gpl3+fe)
+newcomputermodern
+# polyglossia's manual: DejaVu (lppl1.3; on Linux xelatex takes the system's copy) and
+# GFS Complutum (Greek, ofl)
+dejavu
+gfscomplutum
+# Since texbundle-tl2026-5: Adobe's glyph list (glyphlist.txt, texglyphlist.txt), which
+# the PDF writer reads to map glyph names to Unicode for ToUnicode (M3 export lane).
+# The tlpdb records no licence: Apache-2.0 (Adobe), GPL-2.0+ (lcdf-typetools); see
+# texbundle.py NO_LICENCE_RECORDED
+glyphlist
