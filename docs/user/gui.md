@@ -78,8 +78,9 @@ without leaving the app, or open an existing `.tex` file.
 3. **Type the reference first if you prefer.** Write `\input{chapters/two}`
    in any document: the sidebar shows `chapters/two.tex` as **missing —
    create**; click it and the empty file is created and opened. After a
-   compile, the *Problems* row of the engine's "included file not found"
-   diagnostic offers **Create chapters/two.tex** — the same action.
+   compile, the *Problems* row of TeX's ``LaTeX Error: File
+   `chapters/two.tex' not found.`` (or `No file chapters/two.tex.` for an
+   `\include`) offers **Create chapters/two.tex** — the same action.
 4. **Rename… / Delete…** are in a member's context menu (not the entry).
    Rename moves the file and rewrites every `\input`/`\include` that
    points at it in the open documents — one undoable edit per document
@@ -252,8 +253,7 @@ without leaving the app, or open an existing `.tex` file.
   warning, a grey dot for "not implemented" gaps. Inline underlines mark the
   exact span (red dotted = error, orange = warning); hovering shows the
   message. After you edit, underlines that overlap the edit are dropped, never
-  drawn under the wrong text; when a compile fails with no output the previous
-  underlines are kept and flagged "kept from revision N".
+  drawn under the wrong text.
 - **Auto-close**: typing `{` inserts `}` when the brace is code and followed by
   whitespace or a closer (Preferences › Auto-close brackets & math). Return
   auto-indents and closes `\begin{env}` with the matching `\end{env}`.
