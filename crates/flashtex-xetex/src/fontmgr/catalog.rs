@@ -971,16 +971,20 @@ mod family_list_tests {
     }
 
     /// `--list-fonts` (app-parity row A9): one name per family, sorted,
-    /// each a name `xelatex` resolves to a face of that directory. The
-    /// expected names are the oracle's, not this code's: TeX Live's
-    /// `xelatex` (fontconfig pointed at `apps/mac/Fonts` alone) loaded every
-    /// one of them with `\font\x="<name>"`, and `\XeTeXtracingfonts=1`
-    /// named a file of that directory (2026-10-21, on the NixOS PC).
+    /// each a name XeTeX finds by name. The oracle: TeX Live 2025's `xetex`
+    /// (3.141592653-2.6-0.999997) with fontconfig pointed at `apps/mac/Fonts`
+    /// alone loaded every name below with `\font\x="<name>" at 10pt` (none
+    /// "not loadable"; `\fontname` gave the face's full name), and
+    /// `\fontdimen22` (a MATH constant) was non-zero for exactly the two
+    /// math families (2026-10-21, on the NixOS PC).
     #[test]
     fn the_families_are_the_names_xelatex_finds() {
         let families = lm().family_names(false);
         assert_eq!(families, EXPECTED_FAMILIES, "{families:?}");
-        assert_eq!(lm().family_names(true), ["Latin Modern Math"]);
+        assert_eq!(
+            lm().family_names(true),
+            ["Latin Modern Math", "NewComputerModernMath"]
+        );
     }
 
     /// A face with no family name is not listed, a family is listed once,
@@ -1010,5 +1014,22 @@ mod family_list_tests {
         assert!(c.family_names(true).is_empty());
     }
 
-    const EXPECTED_FAMILIES: &[&str] = &[];
+    const EXPECTED_FAMILIES: &[&str] = &[
+        "Latin Modern Math",
+        "Latin Modern Mono",
+        "Latin Modern Mono Caps",
+        "Latin Modern Mono Light",
+        "Latin Modern Mono Slanted",
+        "Latin Modern Roman",
+        "Latin Modern Roman Caps",
+        "Latin Modern Roman Demi",
+        "Latin Modern Roman Slanted",
+        "Latin Modern Roman Unslanted",
+        "Latin Modern Sans",
+        "Latin Modern Sans Demi Cond",
+        "NewComputerModernMath",
+        "TeX Gyre Cursor",
+        "TeX Gyre Heros",
+        "TeX Gyre Termes",
+    ];
 }

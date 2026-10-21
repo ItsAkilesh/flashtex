@@ -2345,11 +2345,10 @@ final class CompletionScheduler {
         /// environment skeletons are built with them.
         var indentUnit: String = ""
         var environmentRules: EnvironmentEditingRules = .conventional
-        /// The built `flashtex-render` (`ShellModel.locateRenderPipeline`),
-        /// asked on the main thread: its `--list-fonts` is what
-        /// `\setmainfont{` offers, run by the job off-main once per launch
-        /// (`InstalledFonts`). Nil offers no families.
-        var renderPipeline: URL? = nil
+        /// The engine whose `--list-fonts` is what `\setmainfont{` offers
+        /// (`InstalledFonts.lister`), asked on the main thread and run by
+        /// the job off-main once per launch. Nil offers no families.
+        var fontLister: URL? = nil
         /// The author is writing a package or class (a `.sty`/`.cls` buffer,
         /// or the caret inside `\makeatletter`): the kernel vocabulary leads
         /// (`Completion.suggestions(packageMode:)`). Decided on the main
@@ -2453,7 +2452,7 @@ final class CompletionScheduler {
                 case .word(_, _, _, .graphics)?:
                     if let root = request.graphicsRoot { graphics = Completion.graphicsFiles(under: root) }
                 case .word(_, _, _, .font)?:
-                    fontFamilies = InstalledFonts.families(renderPipeline: request.renderPipeline)
+                    fontFamilies = InstalledFonts.families(tool: request.fontLister)
                 case .word(_, _, _, .citation)?:
                     if let sources = request.bibliography { bibliographyEntries = BibScanner.entries(for: sources, cancelled: { job.isCancelled }) }
                 case .command?:
@@ -3116,10 +3115,10 @@ final class CompletingTextView: NSTextView {
     /// on the main thread when the list is requested; nil (a bare text view,
     /// an unsaved buffer) offers none.
     var graphicsRoot: () -> URL? = { nil }
-    /// The built `flashtex-render` whose `--list-fonts` fills `\setmainfont{`
-    /// (`InstalledFonts`), asked on the main thread when the list is
+    /// The engine whose `--list-fonts` fills `\setmainfont{`
+    /// (`InstalledFonts.lister`), asked on the main thread when the list is
     /// requested; nil (a bare text view) offers no families.
-    var renderPipeline: () -> URL? = { nil }
+    var fontLister: () -> URL? = { nil }
     /// The project's other open documents, asked on the main thread when the
     /// list is requested (`ShellModel.editorHoverContext`'s texts); their
     /// macros are offered as declared. A bare text view has none.
@@ -3684,7 +3683,7 @@ final class CompletingTextView: NSTextView {
                                                   projectClass: projectDocumentClass(),
                                                   indentUnit: EditorPreferences.shared.indentString,
                                                   environmentRules: EditorPreferences.shared.environmentRules,
-                                                  renderPipeline: renderPipeline(),
+                                                  fontLister: fontLister(),
                                                   packageMode: packageContext.packageMode, atLetter: packageContext.atLetter,
                                                   projectPackageFiles: projectPackageFiles(), packageDocuments: packageDocuments())
         // The engine's definitions when the last result carried them, whatever
@@ -4219,21 +4218,29 @@ final class CompletingTextView: NSTextView {
 }
 
 /// The installed font families `\setmainfont{` completes with, as the
-/// engine's own index sees them (`flashtex-render --list-fonts`, over
-/// `crates/font-discovery`): the same names the document resolves against,
-/// so what the list offers is what the render finds. AppKit's font panel
-/// would list Core Text's view of the machine instead, which differs for
-/// project-local and `FLASHTEX_FONT_DIRS` fonts. Listed once per launch
-/// (~30 ms warm, ~250 ms cold) by the completion job, off-main, the first
-/// time the caret is in a font argument; nil or a missing binary offers
-/// nothing.
+/// new engine's own catalog sees them (`flashtex-host-unicode
+/// --list-fonts`, the catalog Unicode mode's `\setmainfont{…}` and
+/// `[fonts]` resolve against, crates/flashtex-xetex
+/// `FontCatalog::family_names`; app-parity row A9), so what the list offers
+/// is what the compile finds. AppKit's font panel would list Core Text's
+/// view of the machine instead, which differs for `FLASHTEX_FONT_DIRS` and
+/// a bundle's fonts. Listed once per launch by the completion job, off-main,
+/// the first time the caret is in a font argument; nil or a missing binary
+/// offers nothing.
 enum InstalledFonts {
+    /// The program that lists the families: Unicode mode's host, else the
+    /// previous engine's `flashtex-render` (same flags), which goes with the
+    /// old route (retirement plan S6).
+    @MainActor static func lister() -> URL? {
+        EngineV3.locateHost(mode: .unicode) ?? ShellModel.locateRenderPipeline()
+    }
+
     private static let lock = NSLock()
     nonisolated(unsafe) private static var cached: (URL, [String])?
     nonisolated(unsafe) private static var cachedMath: (URL, [String])?
 
-    nonisolated static func families(renderPipeline: URL?) -> [String] {
-        guard let tool = renderPipeline else { return [] }
+    nonisolated static func families(tool: URL?) -> [String] {
+        guard let tool else { return [] }
         lock.lock(); defer { lock.unlock() }
         if let (url, names) = cached, url == tool { return names }
         let names = list(tool: tool, flag: "--list-fonts")
@@ -4244,8 +4251,8 @@ enum InstalledFonts {
     /// The families with a face carrying an OpenType `MATH` table
     /// (`--list-math-fonts`): what the Fonts sheet's Math row offers
     /// (ProjectFonts.swift). Same caching as `families`.
-    nonisolated static func mathFamilies(renderPipeline: URL?) -> [String] {
-        guard let tool = renderPipeline else { return [] }
+    nonisolated static func mathFamilies(tool: URL?) -> [String] {
+        guard let tool else { return [] }
         lock.lock(); defer { lock.unlock() }
         if let (url, names) = cachedMath, url == tool { return names }
         let names = list(tool: tool, flag: "--list-math-fonts")

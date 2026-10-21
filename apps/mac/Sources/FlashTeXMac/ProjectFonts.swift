@@ -9,7 +9,7 @@ import FlashTeXProtocol
 /// docs/proposals/packages-fonts-manifest.md §2.4 — "set font settings
 /// globally") as four rows, Text, Math, Sans and Mono, each a searchable
 /// picker over the families the engine's own index finds
-/// (`flashtex-render --list-fonts`, the same names `\setmainfont{` completes
+/// (`flashtex-host-unicode --list-fonts`, the same names `\setmainfont{` completes
 /// with) with a sample line set in that family, and "Class default" first.
 ///
 /// Apply writes the table into `flashtex.toml` — created from the helper's
@@ -160,9 +160,9 @@ final class ProjectFontsState {
     func listFamilies() {
         guard families.isEmpty, !listing else { return }
         listing = true
-        let tool = ShellModel.locateRenderPipeline()
+        let tool = InstalledFonts.lister()
         let list: @Sendable (URL?) -> (families: [String], math: [String]) = lister ?? { tool in
-            (InstalledFonts.families(renderPipeline: tool), InstalledFonts.mathFamilies(renderPipeline: tool))
+            (InstalledFonts.families(tool: tool), InstalledFonts.mathFamilies(tool: tool))
         }
         Task.detached(priority: .userInitiated) {
             let listed = list(tool)
@@ -287,10 +287,10 @@ struct ProjectFontsSheet: View {
             if state.listing {
                 HStack(spacing: DS.Space.s) {
                     ProgressView().controlSize(.small)
-                    Text("Listing the installed families (flashtex-render --list-fonts)…").font(DS.Fonts.secondary).foregroundStyle(DS.Colors.textSecondary)
+                    Text("Listing the installed families…").font(DS.Fonts.secondary).foregroundStyle(DS.Colors.textSecondary)
                 }
             } else if state.families.isEmpty {
-                Text("No families listed: attach or build flashtex-render (crates/render-pipeline) so the index the render resolves against can be asked. A name can still be typed.")
+                Text("No families listed: this build has no Unicode-mode engine (flashtex-host-unicode) to ask which fonts it finds. A name can still be typed.")
                     .font(DS.Fonts.secondary).foregroundStyle(DS.Colors.severityWarning).fixedSize(horizontal: false, vertical: true)
             }
             if let note = state.note {

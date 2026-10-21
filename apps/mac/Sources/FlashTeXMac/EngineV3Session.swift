@@ -1076,10 +1076,20 @@ final class EngineV3Session {
         if model.projectPackages.prepareForEngineV3() { return }
         let held = heldForManifest
         heldForManifest = false
-        guard held || model.manifest.texInputLinks != texInputLinksApplied
+        // `[fonts]` (the Fonts sheet, an outside edit): Unicode mode's host
+        // reads them from the copy's flashtex.toml at each compile
+        // (crates/flashtex-xetex host/fonts.rs), so a change compiles, as the
+        // previous engine's `configure_fonts` did (app-parity row A9).
+        // Classic does not apply them (modes PROPOSAL §4.5).
+        let fontsChanged = hostMode == .unicode && model.manifest.fontsByRole != fontsApplied
+        guard held || fontsChanged || model.manifest.texInputLinks != texInputLinksApplied
                 || model.projectPackages.engineV3Documents().map(\.path) != packagePathsApplied else { return }
-        compileNow(model: model, reason: "manifest")
+        compileNow(model: model, reason: fontsChanged ? "fonts" : "manifest")
     }
+
+    /// The manifest's `[fonts]` when the last walk ran (what the compile
+    /// after it read from the copy's flashtex.toml).
+    @ObservationIgnored private(set) var fontsApplied: [String: String] = [:]
 
     /// A compile waited for the project's manifest to be read (its pins and
     /// libraries decide what the first compile reads): the read compiles.
@@ -1180,6 +1190,7 @@ final class EngineV3Session {
                 let packageLinks = project.materializePackages(packages.engineV3Documents()).filter { !named.contains($0.name) }
                 project.linkTexInputs(links + packageLinks, except: editorPaths)
                 self.texInputLinksApplied = links
+                self.fontsApplied = model.manifest.fontsByRole
                 self.packagePathsApplied = packages.engineV3Documents().map(\.path)
                 // Those outside the root are inputs too: an outside change
                 // to one invalidates the stored pages (inside ones are walked).

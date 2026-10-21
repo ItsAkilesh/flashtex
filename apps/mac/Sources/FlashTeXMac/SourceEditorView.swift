@@ -212,7 +212,7 @@ struct SourceEditorView: NSViewRepresentable {
         (tv as? CompletingTextView)?.packageDocuments = packageDocuments // their macros complete as "declared in mystyle.sty"
         if tv.isEditable != editable { tv.isEditable = editable }
         // `\setmainfont{` lists the families the engine's own index finds (Completion.swift `InstalledFonts`).
-        (tv as? CompletingTextView)?.renderPipeline = { ShellModel.locateRenderPipeline() }
+        (tv as? CompletingTextView)?.fontLister = { InstalledFonts.lister() }
         // The other open documents' macros complete as declared (Completion.declaredCommands); read when the list is requested.
         // An open .sty/.cls member is a package document instead, so its
         // macros read "declared in mystyle.sty" rather than "in an open document".

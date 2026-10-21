@@ -1852,3 +1852,53 @@ fn bundle_fonts_are_found_by_name_resident_or_not() {
     }
     let _ = std::fs::remove_dir_all(&cache);
 }
+
+/// `--list-fonts` and `--list-math-fonts` (app-parity row A9): the
+/// families the host's lookup catalog finds by name, one a line, sorted;
+/// `FLASHTEX_FONT_DIRS` counts, as it does for a compile. The names are
+/// ones TeX Live's `xetex` found in `apps/mac/Fonts` (the oracle run cited
+/// by `fontmgr::catalog`'s `the_families_are_the_names_xelatex_finds`).
+/// Needs no TeX.
+#[test]
+fn the_font_lists_name_the_families_a_lookup_finds() {
+    let fonts = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/mac/Fonts");
+    let list = |flag: &str| -> Vec<String> {
+        let out = Command::new(env!("CARGO_BIN_EXE_flashtex-host-unicode"))
+            .arg(flag)
+            .env("FLASHTEX_FONT_DIRS", &fonts)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{flag}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout)
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect()
+    };
+    let all = list("--list-fonts");
+    for f in [
+        "Latin Modern Math",
+        "Latin Modern Roman",
+        "Latin Modern Sans",
+        "TeX Gyre Termes",
+    ] {
+        assert!(all.iter().any(|x| x == f), "{f} in {all:?}");
+    }
+    let mut sorted = all.clone();
+    sorted.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()).then(a.cmp(b)));
+    sorted.dedup();
+    assert_eq!(all, sorted, "sorted, once each");
+    let math = list("--list-math-fonts");
+    for f in ["Latin Modern Math", "NewComputerModernMath"] {
+        assert!(math.iter().any(|x| x == f), "{f} in {math:?}");
+    }
+    assert!(!math.iter().any(|x| x == "Latin Modern Roman"), "{math:?}");
+    assert!(
+        math.iter().all(|m| all.contains(m)),
+        "every math family is listed"
+    );
+}
