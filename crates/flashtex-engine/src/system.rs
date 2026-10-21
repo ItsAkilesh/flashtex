@@ -4723,7 +4723,7 @@ pub fn note_size_read(path: &str) {
         let mut b = r.borrow_mut();
         let Some(log) = b.as_mut() else { return };
         if let Some(e) = log
-            .files
+            .files_mut()
             .iter_mut()
             .rev()
             .find(|f| f.path == path && f.closed_at == Some(u64::MAX))
@@ -4743,7 +4743,7 @@ pub fn note_stamp(path: &str, mtime: i64) {
         let mut b = r.borrow_mut();
         let Some(log) = b.as_mut() else { return };
         if let Some(e) = log
-            .files
+            .files_mut()
             .iter_mut()
             .rev()
             .find(|f| f.path == path && f.closed_at == Some(u64::MAX))

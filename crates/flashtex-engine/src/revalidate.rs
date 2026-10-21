@@ -82,7 +82,7 @@ pub fn window_journal(j: &ReadLog, windows: &[(usize, usize)]) -> ReadLog {
     let mut w = j.clone();
     for &(from, to) in windows {
         let to = to.min(w.files.len());
-        for f in w.files[from.min(to)..to].iter_mut() {
+        for f in w.files_mut()[from.min(to)..to].iter_mut() {
             f.path = String::new();
         }
     }

@@ -471,10 +471,10 @@ pub fn snapshot(root: &Path, out: &Path, jobname: &str, journal: Option<&ReadLog
                 bbls.push(base);
             }
         };
-        for l in &j.lookups {
+        for l in j.lookups.iter() {
             note(&l.name);
         }
-        for f in &j.files {
+        for f in j.files.iter() {
             note(&f.path);
         }
         for base in bbls {

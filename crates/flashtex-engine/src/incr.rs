@@ -4335,7 +4335,7 @@ impl Session {
     fn read_state(&self) -> Vec<(String, [u64; 2])> {
         let mut v: Vec<(String, [u64; 2])> = vec![];
         if let Some(j) = &self.journal {
-            for f in &j.files {
+            for f in j.files.iter() {
                 if f.closed_at.is_some() || f.written_before || v.iter().any(|(p, _)| *p == f.path)
                 {
                     continue;
@@ -6837,7 +6837,7 @@ impl Session {
                     jn.files_mut().push(f.clone());
                     jn.mark_seen(&f.path);
                 }
-                jn.lookups
+                jn.lookups_mut()
                     .extend_from_slice(&jo.lookups[rec_old.reads.1.min(jo.lookups.len())..]);
                 jn.outputs
                     .extend_from_slice(&jo.outputs[rec_old.reads.2.min(jo.outputs.len())..]);
