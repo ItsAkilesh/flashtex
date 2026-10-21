@@ -219,6 +219,14 @@ fn hash_ident(path: &str, window: i128, before: Ident) -> std::io::Result<[u64; 
 /// the one they were read under and is not racy: what reading the file
 /// would give, as `hash_file`'s answer is its hash. `None`: read the file.
 pub fn kept_bytes(path: &str, m: Option<&std::fs::Metadata>) -> Option<std::sync::Arc<[u8]>> {
+    kept_bytes_within(path, m, crate::system::racy_ns())
+}
+
+fn kept_bytes_within(
+    path: &str,
+    m: Option<&std::fs::Metadata>,
+    window: i128,
+) -> Option<std::sync::Arc<[u8]>> {
     if !cfg!(unix) || crate::system::logical_len(path).is_some() {
         return None;
     }
@@ -226,9 +234,7 @@ pub fn kept_bytes(path: &str, m: Option<&std::fs::Metadata>) -> Option<std::sync
         Some(m) => Ident::of_metadata(m),
         None => Ident::of(path).ok()?,
     };
-    if !keeps_bytes(path, now.size)
-        || now.racy(crate::system::racy_ns())
-        || !local(path, now.dev)
+    if !keeps_bytes(path, now.size) || now.racy(window) || !local(path, now.dev)
     {
         return None;
     }
@@ -244,6 +250,34 @@ mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
     use std::time::{Duration, SystemTime};
+
+    /// A font metric file's bytes are kept with its hash and given back
+    /// while its identity is the one they were read under: never after a
+    /// change, and never for another kind of file.
+    #[test]
+    #[cfg(unix)]
+    fn a_tfm_files_bytes_are_kept_while_it_is_unchanged() {
+        let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let d = dir("kept");
+        let (f, g) = (d.join("font.tfm"), d.join("font.sty"));
+        std::fs::write(&f, b"tfm one").unwrap();
+        std::fs::write(&g, b"sty one").unwrap();
+        let (p, q) = (f.to_str().unwrap(), g.to_str().unwrap());
+        assert_eq!(kept_bytes_within(p, None, 0), None, "kept before it was read");
+        assert_eq!(hash_file_within(p, 0).unwrap(), hash_of(&f));
+        hash_file_within(q, 0).unwrap();
+        assert_eq!(kept_bytes_within(p, None, 0).as_deref(), Some(&b"tfm one"[..]));
+        let m = std::fs::metadata(&f).unwrap();
+        assert_eq!(kept_bytes_within(p, Some(&m), 0).as_deref(), Some(&b"tfm one"[..]));
+        assert_eq!(kept_bytes_within(q, None, 0), None, "a style file's bytes kept");
+        // within the racy window nothing is given back
+        assert_eq!(kept_bytes_within(p, None, i128::MAX / 4), None, "racy, kept");
+        std::fs::write(&f, b"tfm two!").unwrap();
+        assert_eq!(kept_bytes_within(p, None, 0), None, "kept after a change");
+        assert_eq!(hash_file_within(p, 0).unwrap(), hash_of(&f));
+        assert_eq!(kept_bytes_within(p, None, 0).as_deref(), Some(&b"tfm two!"[..]));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     // The tests share READS: one at a time.
     static SERIAL: Mutex<()> = Mutex::new(());

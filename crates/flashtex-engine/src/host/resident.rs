@@ -876,7 +876,6 @@ impl Engine {
         };
         let t_apply = Instant::now();
         let ev_apply = crate::os::events();
-        let pin_apply = crate::os::pageins();
         APPLY_STEPS.with(|a| a.set([0; 5]));
         // (the host's copies stand for files only within the compile that
         // wrote them: `system::KNOWN`)
@@ -890,7 +889,6 @@ impl Engine {
         let apply_ev = ev_apply
             .zip(crate::os::events())
             .map(|(a, b)| (b.0 - a.0, b.1 - a.1));
-        let apply_pin = pin_apply.zip(crate::os::pageins()).map(|(a, b)| b - a);
         let apply_steps = APPLY_STEPS.with(|a| a.get());
         let started = |mode: &str, keep: bool, extra: Vec<(String, Json)>| {
             let mut kv = vec![
@@ -1310,19 +1308,10 @@ impl Engine {
                     apply_ev.map_or(Json::Null, |e| Json::Int(e.1 as i64)),
                 ),
                 (
-                    "apply_pin".to_string(),
-                    apply_pin.map_or(Json::Null, |e| Json::Int(e as i64)),
-                ),
-                (
                     "apply_us".to_string(),
                     Json::Arr(apply_steps.iter().map(|&u| Json::Int(u as i64)).collect()),
                 ),
-                (
-                    "pin".to_string(),
-                    pin_apply
-                        .zip(crate::os::pageins())
-                        .map_or(Json::Null, |(a, b)| Json::Int((b - a) as i64)),
-                ),
+
                 ("move_spans".to_string(), m(move_ms)),
                 ("first_page".to_string(), o(t.first_page_ms)),
                 ("first_page_cpu".to_string(), o(t.first_cpu_ms)),
@@ -1951,7 +1940,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                         Some(_) => {
                             crate::os::write_all_at(&f, &data[from..], from as u64)?;
                             lap(1, &mut t);
-                            f.set_len(n).inspect(|()| warm_after_cut(path, from as u64))
+                            f.set_len(n)
                         }
                         None => {
                             f.set_len(n)?;
@@ -2035,54 +2024,10 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
 
 thread_local! {
     /// `apply_changes`' file writes, in µs: open, write, set the length,
-    /// close, and the `stat` after (lane T7-FULL10: on the M5 Pro a letter
-    /// typed, whose write makes the file longer, took 0.4-1 ms against
-    /// 0.1-0.2 for one deleted; measurement only).
+    /// close, and the `stat` after (lane T7-FULL10, measurement only: on
+    /// the M5 Pro's APFS the `ftruncate` of a letter deleted took 0.36-0.78
+    /// ms, every other step 0.01-0.07).
     static APPLY_STEPS: std::cell::Cell<[u64; 5]> = const { std::cell::Cell::new([0; 5]) };
-}
-
-/// Read `path` from `from` to its end on a background thread, after
-/// `apply_changes` cut it shorter (lane T7-FULL10, an experiment: on the
-/// M5 Pro's APFS the next write after a cut, the next letter typed, took
-/// 0.4-1 ms; if the cut dropped the file's pages from the cache, this
-/// reads them back while the user is between keys). Reads only;
-/// `FLASHTEX_APPLY_WARM=off` turns it off.
-fn warm_after_cut(path: &Path, from: u64) {
-    static TX: std::sync::OnceLock<Option<Mutex<mpsc::Sender<(PathBuf, u64)>>>> =
-        std::sync::OnceLock::new();
-    let tx = TX.get_or_init(|| {
-        if std::env::var("FLASHTEX_APPLY_WARM").is_ok_and(|v| v == "off") {
-            return None;
-        }
-        let (tx, rx) = mpsc::channel::<(PathBuf, u64)>();
-        std::thread::Builder::new()
-            .name("apply-warm".into())
-            .spawn(move || {
-                use std::io::{Read, Seek};
-                let mut buf = vec![0u8; 64 << 10];
-                while let Ok((p, from)) = rx.recv() {
-                    let Ok(mut f) = std::fs::File::open(&p) else {
-                        continue;
-                    };
-                    let at = from & !((16 << 10) - 1);
-                    if f.seek(std::io::SeekFrom::Start(at)).is_err() {
-                        continue;
-                    }
-                    let mut left = 4u64 << 20;
-                    while left > 0 {
-                        match f.read(&mut buf) {
-                            Ok(0) | Err(_) => break,
-                            Ok(k) => left = left.saturating_sub(k as u64),
-                        }
-                    }
-                }
-            })
-            .ok()
-            .map(|_| Mutex::new(tx))
-    });
-    if let Some(tx) = tx {
-        let _ = tx.lock().unwrap().send((path.to_path_buf(), from));
-    }
 }
 
 /// The user's files the display list names, as they are now, compared

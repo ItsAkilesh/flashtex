@@ -277,27 +277,6 @@ pub fn events() -> Option<(u64, u64)> {
     }
 }
 
-/// Pages the task has read in from files so far (macOS: `TASK_EVENTS_INFO`'s
-/// `pageins`; for measurement only, lane T7-FULL10). `None` elsewhere.
-pub fn pageins() -> Option<u64> {
-    #[cfg(target_os = "macos")]
-    {
-        extern "C" {
-            static mach_task_self_: u32;
-            fn task_info(task: u32, flavor: u32, info: *mut i32, count: *mut u32) -> i32;
-        }
-        let mut v = [0i32; 8];
-        let mut n = 8u32;
-        // SAFETY: as in `events`.
-        let r = unsafe { task_info(mach_task_self_, 2, v.as_mut_ptr(), &mut n) };
-        (r == 0).then(|| v[1] as u32 as u64)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        None
-    }
-}
-
 /// Instructions retired and cycles elapsed by this thread so far, from the
 /// CPU's fixed counters (macOS: the kernel's per-thread counts, which do not
 /// move with other processes' load; for measurement only, DESIGN.md §5.6).
@@ -1855,6 +1834,30 @@ mod imp {
 
 #[cfg(test)]
 mod tests {
+    /// Inside a scope the working directory is the one the scope found;
+    /// scopes nest, and each puts the outer state back.
+    #[test]
+    fn a_cwd_scope_answers_and_nests() {
+        let now = std::env::current_dir().unwrap();
+        assert_eq!(super::cwd().unwrap(), now);
+        {
+            let _a = super::cwd_scope();
+            assert_eq!(super::cwd().unwrap(), now);
+            super::CWD.with(|c| *c.borrow_mut() = Some("/elsewhere".into()));
+            {
+                let _b = super::cwd_scope();
+                assert_eq!(super::cwd().unwrap(), now, "an inner scope looks afresh");
+            }
+            assert_eq!(super::cwd().unwrap(), std::path::PathBuf::from("/elsewhere"));
+        }
+        assert!(super::CWD.with(|c| c.borrow().is_none()), "a scope left behind");
+        // another thread is not in this thread's scope
+        let _a = super::cwd_scope();
+        super::CWD.with(|c| *c.borrow_mut() = Some("/elsewhere".into()));
+        let other = std::thread::spawn(super::cwd).join().unwrap().unwrap();
+        assert_eq!(other, now);
+    }
+
     /// Where the system gives them, the thread's counts grow with its work
     /// and another thread's work does not move them.
     #[test]
