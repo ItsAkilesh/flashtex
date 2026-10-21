@@ -529,6 +529,10 @@ pub struct Iso<'a, O: Space, N: Space> {
     /// The convergence test walks token lists last (`check`): while this
     /// is `Some`, `run` sets their tasks aside here.
     toks_later: Option<Vec<(K, i32, i32)>>,
+    /// The convergence test (`check`): a token whose word is the same at
+    /// the same address in both states is paired without a cover
+    /// (`chain_from`), since only differing words are looked up in it.
+    equal_tokens: bool,
 }
 
 /// The hasher of the relocation map (`Iso::fwd`, keyed by `mem` address,
@@ -611,6 +615,7 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
             side_later: Vec::new(),
             steps: 0,
             toks_later: None,
+            equal_tokens: false,
         }
     }
 
@@ -1226,6 +1231,31 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
             }
             if a == NULL || b == NULL {
                 fail!(self, "a token list is longer in one state");
+            }
+            // (READ-TRACK-2, the convergence test: a token at the same
+            // address in both states whose word is the same in both is
+            // paired with itself as `pair` pairs it, and the walk goes on to
+            // the same successor, without covering the cell -- only a
+            // differing word needs a cover, `bad_mem`, and this one is not)
+            if self.equal_tokens && a == b && self.watch != a && Self::in_mem(a) {
+                let x = self.o.mem(a);
+                if x == self.n.mem(a) {
+                    if bit(&self.head_o, a) {
+                        if self.fwd.contains_key(&a) {
+                            fail!(self, "token {a}/{b} paired inconsistently");
+                        }
+                        return;
+                    }
+                    if bit(&self.head_n, a) {
+                        fail!(self, "token {a}/{b} paired inconsistently");
+                    }
+                    set(&mut self.head_o, a);
+                    set(&mut self.head_n, a);
+                    self.nodes += 1;
+                    a = rh(x);
+                    b = a;
+                    continue;
+                }
             }
             match self.pair(a, b) {
                 None => fail!(self, "token {a}/{b} paired inconsistently"),
@@ -2679,6 +2709,7 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
         w.hyph_len = hyph_len;
         w.dest_dims_dead = dest_dims_dead;
         w.scratch_heads_dead = true;
+        w.equal_tokens = true;
         w.stop = Some(stop);
         let mut fetch = None;
         if let Some(sd) = side {
