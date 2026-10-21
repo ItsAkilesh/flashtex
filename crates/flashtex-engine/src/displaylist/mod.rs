@@ -884,6 +884,9 @@ impl Globals {
 
     #[inline(never)]
     fn dl_note_node(&mut self, p: i32) {
+        // (newer work for the host: `Globals::flashtex_preempt_poll`, here
+        // because nodes are allocated everywhere, the output routine too)
+        self.flashtex_preempt_poll();
         let v = if HYPH_ON.load(Ordering::Relaxed) {
             HYPH_LOC.load(Ordering::Relaxed)
         } else if self.output_active {

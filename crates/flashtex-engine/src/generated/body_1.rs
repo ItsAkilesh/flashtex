@@ -2919,6 +2919,9 @@ impl Globals {
         if (__av_mem[crate::ix::U((p) as usize)].hh().lh() == null) {
             {
                 self.ls_free(p);
+                if self.bm_on {
+                    self.flashtex_bm_freed(p);
+                }
                 self.flush_list(p);
             }
         } else {

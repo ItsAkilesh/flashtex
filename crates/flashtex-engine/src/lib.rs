@@ -53,6 +53,7 @@ pub mod dormant;
 pub mod fmtimage;
 #[cfg(feature = "distribution")]
 pub use flashtex_runtime::formats;
+pub use flashtex_runtime::fswatch;
 pub mod generated;
 pub mod hashcache;
 #[cfg(not(feature = "tex82"))]

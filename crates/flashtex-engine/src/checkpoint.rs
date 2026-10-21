@@ -206,6 +206,11 @@ pub trait Observer {
     fn take_held_segment(&mut self, _g: &mut Globals) -> bool {
         true
     }
+    /// Newer work may wait ([`REQ_PREEMPT`]): whether the observer would
+    /// stop the run at a segment checkpoint taken here (it then takes one).
+    fn stops_now(&mut self, _g: &mut Globals) -> bool {
+        false
+    }
     /// The observer as `Any`, to take it back after a run.
     fn into_any(self: Box<Self>) -> Box<dyn std::any::Any>;
     /// The pages the run has shipped so far (with those before its start).
@@ -240,6 +245,29 @@ const REQ_AUX_ARM: i32 = 10;
 /// space at each checkpoint taken meanwhile, so that a run restored there
 /// goes on asking. Any other request may take its place.
 const REQ_S0_WAIT: i32 = 11;
+/// Newer work may wait ([`PREEMPT_HINT`] moved): at this `big_switch`, a
+/// segment checkpoint if the observer stops the run here (`stops_now`).
+const REQ_PREEMPT: i32 = 12;
+
+/// Bumped by the host's server thread whenever newer work for the engine
+/// arrives (a `COMPILE` queued, a `CANCEL`): lane T7-LAST12. A run looks at
+/// it where it allocates a node (`dl_note_node`, thousands of times a
+/// millisecond, the output routine included) and, when it moved, asks for
+/// [`REQ_PREEMPT`]. Before this a running compile noticed newer work only at
+/// its segment checkpoints and shipouts, none of them inside the output
+/// routine: 2-4 ms on a hyperref page (full-1000 typing, PC), which the next
+/// keystroke waited.
+pub static PREEMPT_HINT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+thread_local! {
+    /// The [`PREEMPT_HINT`] this thread's engine last answered.
+    static PREEMPT_SEEN: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Newer work may be waiting for the engine (the host's server thread).
+pub fn hint_preempt() {
+    PREEMPT_HINT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
 
 /// `hash_base` (tex.web §222): `active_base + 256 + 256 + 1`, the same in
 /// every configuration.
@@ -2072,6 +2100,22 @@ impl Globals {
         None
     }
 
+    /// Look at [`PREEMPT_HINT`] (`dl_note_node`): when it moved since this
+    /// thread last looked, ask for [`REQ_PREEMPT`] at the next `big_switch`
+    /// of a run that takes segment checkpoints (where newer work can stop
+    /// it), unless another request is pending (its hook asks the observer
+    /// too, or the next segment checkpoint does).
+    #[inline]
+    pub fn flashtex_preempt_poll(&mut self) {
+        let h = PREEMPT_HINT.load(std::sync::atomic::Ordering::Relaxed);
+        if h != PREEMPT_SEEN.with(|s| s.get()) {
+            PREEMPT_SEEN.with(|s| s.set(h));
+            if self.ckpt_request == 0 && self.ckpt_on_segment != 0 {
+                self.ckpt_request = REQ_PREEMPT;
+            }
+        }
+    }
+
     /// Called at `big_switch` whenever `ckpt_request` is nonzero
     /// (changes/checkpoint.ch).
     pub fn flashtex_checkpoint_hook(&mut self) {
@@ -2210,6 +2254,20 @@ impl Globals {
                     self.hook_checkpoint(Point::PreambleLine);
                     let l = self.layer();
                     l.arm_ck = l.taken.last().map(|t| t.0).filter(|&id| Some(id) != before);
+                }
+            }
+            REQ_PREEMPT => {
+                let stop = match self.layer().observer.take() {
+                    Some(mut obs) => {
+                        let s = obs.stops_now(self);
+                        self.layer().observer = Some(obs);
+                        s
+                    }
+                    None => false,
+                };
+                if stop {
+                    self.layer().stats.segments += 1;
+                    self.hook_checkpoint(Point::Segment);
                 }
             }
             REQ_SEGMENT => {

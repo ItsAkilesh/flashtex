@@ -916,6 +916,8 @@ fn connection(stream: Stream, cfg: &Config, tx: mpsc::Sender<Req>) {
                     // A compile already queued or running for this
                     // connection is superseded: `queued` tells it so.
                     conn.queued.fetch_add(1, Ordering::SeqCst);
+                    // (a running compile looks at once: `checkpoint::PREEMPT_HINT`)
+                    crate::checkpoint::hint_preempt();
                     if tx
                         .send(Req::Compile {
                             conn: conn.clone(),
@@ -940,6 +942,7 @@ fn connection(stream: Stream, cfg: &Config, tx: mpsc::Sender<Req>) {
                         .lock()
                         .unwrap_or_else(|p| p.into_inner())
                         .insert(c);
+                    crate::checkpoint::hint_preempt();
                 }
             }
             kind::C_PROFILE => {

@@ -114,6 +114,19 @@ pub const DEFAULT_NAMES: &[&str] = &[
     "@oddfoot",
     "beamer@typesetheadorfoot",
     "beamer@@tmpl@frametitle",
+    // (lane T7-LAST12) pgf's shading functions, parsed again at each
+    // declaration: Madrid's block shadow declares four shadings at every
+    // block (its `\pdfxform`s run for real, after the parse); beamer's
+    // colour templates; a path's use (its PDF literals are a draw call's
+    // fragment)
+    "pgf@parsefunc",
+    "beamer@thc@docolor",
+    "beamer@thc@usecolor",
+    "pgfusepath",
+    // hyperref's per-`\pdfstringdef` hook, which siunitx fills (about 25 M
+    // instructions a call): recorded anywhere and taken from the intrinsics
+    // (`RECORD_ANYWHERE`, §12.2)
+    "pdfstringdefPreHook",
 ];
 
 /// Whether BOX-MEMO is on when `FLASHTEX_BOXMEMO` does not say: in the
@@ -140,6 +153,13 @@ pub struct Stats {
     /// many differed.
     pub full_verified: u64,
     pub full_differences: u64,
+    /// Control sequences a replay entered again (`Op::NewCs`, §12.3).
+    pub entered: u64,
+    /// K3's macro bodies compared token by token, the comparisons §12.4's
+    /// entries answered, and the times the entries were emptied.
+    pub meanings_walked: u64,
+    pub meanings_seen: u64,
+    pub seen_cleared: u64,
     pub abandoned: BTreeMap<String, u64>,
     pub misses: BTreeMap<String, u64>,
     pub verify_details: Vec<String>,
@@ -198,6 +218,14 @@ enum Op {
         n: i32,
         v: Val,
         kind: i32,
+    },
+    /// A control sequence entered (`id_lookup` making `name`, which a
+    /// `\csname` looked up for the first time) at `p` (§12.3): a replay
+    /// enters it again through `id_lookup`, where an offer has worked out it
+    /// lands at `p` (`bm_new_cs_placeable`).
+    NewCs {
+        p: i32,
+        name: Vec<i32>,
     },
 }
 
@@ -270,64 +298,6 @@ fn insert_entry(s: &mut State, cs: i32, entry: Entry) {
         drop(e);
         prune_tokens();
     }
-}
-
-/// The operations a replay makes: `ops` without the groups that leave
-/// nothing behind. A group (`Begin` .. its `End`) whose operations are all
-/// local (`eq_define`, `eq_word_define`, `sa_def`, `sa_w_def`, in it or in
-/// groups inside it) is undone by its own `unsave`: every location it
-/// assigned is restored to the very word it held before (tex.web §283:
-/// `eq_save` keeps that word, `unsave` puts it back and `eq_destroy`s the
-/// value the group gave it; e-TeX's `restore_sa` likewise), and a
-/// reassignment of the value a location already holds (e-TeX's
-/// "reassigning", which saves nothing) changes nothing either. So the
-/// group's net effect on `eqtb`, the sparse registers and the save stack is
-/// nothing. What it changes besides is memory the program does not read
-/// back: the free lists and the usage statistics (`var_used`, `dyn_used`,
-/// `max_save_stack`), which DESIGN.md §1.1 counts as accounting and the
-/// convergence test treats as dead (free memory, high-water marks). The
-/// recording refuses everything else a group could leave (an
-/// `\aftergroup` token, output, tracing). MACRO-REPLAY.md revision 5,
-/// §11.5.
-fn elide_local_groups(ops: &[Op]) -> Vec<Op> {
-    // (for each `Begin`, the index of its `End`, and whether everything
-    // between them is local)
-    let n = ops.len();
-    let mut end = vec![usize::MAX; n];
-    let mut local = vec![false; n];
-    let mut stack: Vec<(usize, bool)> = vec![];
-    for (i, o) in ops.iter().enumerate() {
-        match o {
-            Op::Begin(_) => stack.push((i, true)),
-            Op::End => {
-                if let Some((b, l)) = stack.pop() {
-                    end[b] = i;
-                    local[b] = l;
-                    if let Some(top) = stack.last_mut() {
-                        top.1 &= l;
-                    }
-                }
-            }
-            Op::Def { kind, .. } | Op::Sa { kind, .. } => {
-                if *kind > 1 {
-                    for x in stack.iter_mut() {
-                        x.1 = false;
-                    }
-                }
-            }
-        }
-    }
-    let mut out = Vec::with_capacity(n);
-    let mut i = 0;
-    while i < n {
-        if matches!(ops[i], Op::Begin(_)) && end[i] != usize::MAX && local[i] {
-            i = end[i] + 1;
-            continue;
-        }
-        out.push(ops[i].clone());
-        i += 1;
-    }
-    out
 }
 
 /// A register the recording read: an `eqtb` location (`\count` & co. 0-255,
@@ -488,8 +458,12 @@ struct Entry {
     trailer: Option<i32>,
     ops: Vec<Op>,
     /// What a replay makes: `ops` without the groups that leave nothing
-    /// behind ([`elide_local_groups`]).
+    /// behind or are known by their effect ([`compress_groups`]).
     fast: Vec<Op>,
+    /// The control sequences the call entered (`Op::NewCs`: name,
+    /// location), in order: an offer checks they would land where they
+    /// did (`bm_new_cs_placeable`).
+    new_cs: Vec<(Vec<i32>, i32)>,
     /// Existing forms and images the call referred to (`\pdfrefxform`,
     /// `\pdfrefximage`): each must still be one of its type with the same
     /// dimensions (part of the key).
@@ -582,6 +556,8 @@ struct Rec {
     /// (register, box node, key) of each box moved out of a foreign register
     holes: Vec<(i32, i32, Vec<i32>)>,
     ops: Vec<Op>,
+    /// The control sequences the call entered (`Op::NewCs`), in order.
+    created: Vec<i32>,
     /// The call packed a box (`hpack`, `vpackage`), so it set `last_badness`.
     packed: bool,
     /// Verifying the entry of this index (of `store[cs]`).
@@ -663,8 +639,48 @@ pub fn mode() -> Mode {
     with_config(|c| c.mode)
 }
 
+/// Macros BOX-MEMO records anywhere, not only in an edit's window (§6), and
+/// takes from the intrinsics wherever it is on (`owns`): hyperref's
+/// `\pdfstringdefPreHook` (§12.2). Its calls hit on every later page, a
+/// cold pass's included, and its entries survive the restores that take
+/// the intrinsics' recordings away.
+pub const RECORD_ANYWHERE: &[&str] = &["pdfstringdefPreHook"];
+
+fn record_anywhere() -> &'static [Vec<u8>] {
+    static R: std::sync::OnceLock<Vec<Vec<u8>>> = std::sync::OnceLock::new();
+    R.get_or_init(|| {
+        RECORD_ANYWHERE
+            .iter()
+            .map(|s| s.as_bytes().to_vec())
+            .collect()
+    })
+}
+
+/// Whether BOX-MEMO, on and offering `name`, takes it from the intrinsics
+/// (`intrinsics::config`): one of [`RECORD_ANYWHERE`]. One owner per macro
+/// in a session, so that every run of the session leaves the intrinsics'
+/// state alike (the convergence test compares it, §12.2).
+pub fn owns(name: &[u8]) -> bool {
+    RECORD_ANYWHERE.iter().any(|n| n.as_bytes() == name)
+        && with_config(|c| c.mode != Mode::Off && c.names.iter().any(|x| x == name))
+}
+
 fn debug() -> bool {
     with_config(|c| c.debug)
+}
+
+/// Counts over the session, for the host's `DONE` (`stages.boxmemo`):
+/// offers, hits, recordings committed, control sequences a replay entered.
+pub fn counts() -> [u64; 4] {
+    ST.with(|s| {
+        let s = s.borrow();
+        [
+            s.stats.offers,
+            s.stats.hits,
+            s.stats.committed,
+            s.stats.entered,
+        ]
+    })
 }
 
 /// The statistics so far.
@@ -705,11 +721,18 @@ fn write_stats(force: bool) {
     let text = ST.with(|s| {
         let mut s = s.borrow_mut();
         s.stats_dirty += 1;
-        if !force && s.stats_dirty % 32 != 0 {
+        // (nor from a thread that never offered a call: the host's other
+        // threads, which would write over the engine thread's counts)
+        if (!force && s.stats_dirty % 32 != 0) || s.stats.offers == 0 {
             return None;
         }
         s.stats.entries = s.store.values().map(|v| v.len()).sum();
         s.stats.bytes = s.bytes;
+        [
+            s.stats.meanings_walked,
+            s.stats.meanings_seen,
+            s.stats.seen_cleared,
+        ] = seen_counts();
         Some(format!("{:#?}\n", s.stats))
     });
     if let Some(t) = text {
@@ -910,6 +933,173 @@ impl Scratch {
     }
 }
 
+/// A value whose word does not depend on the state where it is made: the
+/// assignment makes the same `equiv` (or word) wherever it is replayed.
+/// `\let` (`LetCs`, the meaning there) and a shared glue (`GlueFrom`, the
+/// specification there) take theirs from the state.
+fn by_value(v: &Val) -> bool {
+    !matches!(v, Val::LetCs(_) | Val::GlueFrom(..))
+}
+
+/// The operations a replay makes: `ops` with every group (`Begin` .. its
+/// `End`) whose net effect can be told from its operations alone replaced
+/// by that effect (BOX-MEMO.md §11.2, §12.5).
+///
+/// At its `unsave` a group puts back every location it assigned locally:
+/// `eq_save` kept the word the location held, `unsave` restores it and
+/// `eq_destroy`s the group's value (tex.web §283; e-TeX's `restore_sa`
+/// likewise), and a reassignment of the value a location already holds
+/// (e-TeX's "reassigning") saves nothing and changes nothing. A location
+/// the group assigned globally (`geq_define`, `geq_word_define`: level one)
+/// is kept ("retaining"), with the value of the group's *last* global
+/// assignment to it: a local assignment after that one saved the global
+/// value, which `unsave` puts back. So the group's net effect on `eqtb`
+/// and the save stack is one global assignment per location it assigned
+/// globally, the last one, made where the group was; a group with none
+/// leaves nothing (revision 2's elision). What it changes besides is memory
+/// the program does not read back: the free lists and the usage statistics
+/// (`var_used`, `dyn_used`, `max_save_stack`), which DESIGN.md §1.1 counts
+/// as accounting and the convergence test treats as dead. The recording
+/// refuses everything else a group could leave (an `\aftergroup` token,
+/// output, tracing).
+///
+/// A global value from the state ([`by_value`]: a `\\let`'s meaning, a
+/// shared glue) is the one where the group was when nothing in the group
+/// assigned what it reads before it; it is then made there, before what
+/// the group assigns after it. A group is replayed as recorded (its own
+/// groups replaced in turn) when such a value reads what the group
+/// assigned (inside the group the state is the group's own), or a font's
+/// glue or a sparse register, when it assigns a sparse register globally,
+/// or when it enters a control sequence (no `unsave` takes it away); less
+/// its local assignments to every location no such value in it reads,
+/// which its `unsave` takes back unread.
+fn compress_groups(ops: &[Op]) -> Vec<Op> {
+    // (each `Begin`'s `End`)
+    let n = ops.len();
+    let mut end = vec![usize::MAX; n];
+    let mut stack = vec![];
+    for (i, o) in ops.iter().enumerate() {
+        match o {
+            Op::Begin(_) => stack.push(i),
+            Op::End => {
+                if let Some(b) = stack.pop() {
+                    end[b] = i;
+                }
+            }
+            _ => {}
+        }
+    }
+    // The net global assignments of the group ops[b] begins, in the order
+    // of their last assignment, and every location it assigned; `None`
+    // when it is replayed as recorded.
+    fn net(ops: &[Op], end: &[usize], b: usize) -> Option<(Vec<Op>, HashSet<i32>)> {
+        let e = end[b];
+        if e == usize::MAX {
+            return None;
+        }
+        let mut last: Vec<(i32, Op)> = vec![];
+        // (a value from the state is the group's entry state's when nothing
+        // in the group assigned what it reads before it: it is then made
+        // where the group was, before what the group assigns after it)
+        let mut touched: HashSet<i32> = HashSet::new();
+        let from_entry = |o: &Op, touched: &HashSet<i32>| match o {
+            Op::Def {
+                v: Val::LetCs(q), ..
+            } => !touched.contains(q),
+            Op::Def {
+                v: Val::GlueFrom(a, _),
+                ..
+            } => *a > 0 && !touched.contains(a),
+            _ => true,
+        };
+        let put = |p: i32, o: &Op, last: &mut Vec<(i32, Op)>| {
+            last.retain(|(q, _)| *q != p);
+            last.push((p, o.clone()));
+        };
+        let mut i = b + 1;
+        while i < e {
+            match &ops[i] {
+                Op::Begin(_) => {
+                    let (v, t) = net(ops, end, i)?;
+                    for o in v {
+                        if !from_entry(&o, &touched) {
+                            return None;
+                        }
+                        let Op::Def { p, .. } = o else { unreachable!() };
+                        put(p, &o, &mut last);
+                    }
+                    touched.extend(t);
+                    i = end[i] + 1;
+                    continue;
+                }
+                Op::Def { p, kind, .. } => {
+                    if *kind > 1 {
+                        if !from_entry(&ops[i], &touched) {
+                            return None;
+                        }
+                        put(*p, &ops[i], &mut last);
+                    }
+                    touched.insert(*p);
+                }
+                Op::Sa { kind, .. } if *kind > 1 => return None,
+                Op::Sa { .. } => {}
+                Op::NewCs { .. } | Op::End => return None,
+            }
+            i += 1;
+        }
+        Some((last.into_iter().map(|(_, o)| o).collect(), touched))
+    }
+    // `kept`: inside a group replayed as recorded, the locations a value
+    // from the state reads anywhere in it (`None` at the call's level).
+    // There a local assignment to any other location is left out: the
+    // group's `unsave` takes it back, and nothing in the group reads it.
+    fn walk(
+        ops: &[Op],
+        end: &[usize],
+        from: usize,
+        to: usize,
+        kept: Option<&HashSet<i32>>,
+        out: &mut Vec<Op>,
+    ) {
+        let mut i = from;
+        while i < to {
+            match &ops[i] {
+                Op::Begin(_) if end[i] != usize::MAX => {
+                    match net(ops, end, i) {
+                        Some((v, _)) => out.extend(v),
+                        None => {
+                            let read: HashSet<i32> = ops[i + 1..end[i]]
+                                .iter()
+                                .filter_map(|o| match o {
+                                    Op::Def {
+                                        v: Val::LetCs(q), ..
+                                    } => Some(*q),
+                                    Op::Def {
+                                        v: Val::GlueFrom(a, _),
+                                        ..
+                                    } if *a > 0 => Some(*a),
+                                    _ => None,
+                                })
+                                .collect();
+                            out.push(ops[i].clone());
+                            walk(ops, end, i + 1, end[i], Some(&read), out);
+                            out.push(Op::End);
+                        }
+                    }
+                    i = end[i] + 1;
+                    continue;
+                }
+                Op::Def { p, kind, .. } if *kind <= 1 && kept.is_some_and(|k| !k.contains(p)) => {}
+                o => out.push(o.clone()),
+            }
+            i += 1;
+        }
+    }
+    let mut out = Vec::with_capacity(n);
+    walk(ops, &end, 0, n, None, &mut out);
+    out
+}
+
 /// Leave the used-up token lists at the top of the input stack, as the
 /// next `get_next` would.
 fn pop_used_up(g: &mut Globals) {
@@ -923,6 +1113,8 @@ fn pop_used_up(g: &mut Globals) {
 }
 
 pub fn after_restore(g: &mut Globals) {
+    // (the word space is another state: §12.4's entries say nothing of it)
+    seen_clear();
     if g.bm_rec_on {
         g.bm_rec_on = false;
     }
@@ -932,6 +1124,137 @@ pub fn after_restore(g: &mut Globals) {
             *s.stats.abandoned.entry("Restore".into()).or_default() += 1;
         }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Meanings found equal (§12.4)
+// ---------------------------------------------------------------------------
+
+type IntHash = std::hash::BuildHasherDefault<crate::iso::FastHasher>;
+
+/// The macro bodies K3 found equal since the last restore (BOX-MEMO.md
+/// §12.4): location `p` held type `t` and the list at reference count `e`,
+/// whose tokens were the kept body. A macro's list does not change while it
+/// is referenced (TeX makes a new one for every definition), and a list
+/// freed (`delete_token_ref` reaching zero, `flashtex_bm_freed`) takes the
+/// entries naming it with it, so while `eqtb[p]` still holds `t` and `e` its
+/// tokens are still that body and the walk is not made again. Emptied at
+/// every restore of the word space (`after_restore`), at a format load, and
+/// when another engine on this thread notes one (`owner`).
+#[derive(Default)]
+struct Seen {
+    owner: usize,
+    at: HashMap<i32, (i32, i32, std::rc::Rc<[i32]>), IntHash>,
+    /// The locations whose entry names list `e`.
+    by_list: HashMap<i32, Vec<i32>, IntHash>,
+    /// The lists some entry names, a bit each by `mem` index: the free
+    /// hook's test.
+    bits: Vec<u64>,
+    hits: u64,
+    walks: u64,
+    clears: u64,
+}
+
+impl Seen {
+    fn clear(&mut self) {
+        self.clears += 1;
+        for &e in self.by_list.keys() {
+            if let Some(w) = self.bits.get_mut(e as usize / 64) {
+                *w = 0;
+            }
+        }
+        self.at.clear();
+        self.by_list.clear();
+    }
+
+    fn has_bit(&self, e: i32) -> bool {
+        self.bits
+            .get(e as usize / 64)
+            .is_some_and(|w| w & (1u64 << (e as usize % 64)) != 0)
+    }
+
+    /// `p`'s entry, which names list `e`, goes.
+    fn forget_at(&mut self, p: i32, e: i32) {
+        self.at.remove(&p);
+        if let Some(l) = self.by_list.get_mut(&e) {
+            l.retain(|&q| q != p);
+            if l.is_empty() {
+                self.by_list.remove(&e);
+                if let Some(w) = self.bits.get_mut(e as usize / 64) {
+                    *w &= !(1u64 << (e as usize % 64));
+                }
+            }
+        }
+    }
+}
+
+thread_local! {
+    static SEEN: RefCell<Seen> = RefCell::new(Seen::default());
+    /// Some entry is kept (the free hook's first test).
+    static SEEN_ANY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn owner_of(g: &Globals) -> usize {
+    g as *const Globals as usize
+}
+
+/// Whether `p` holding `t` and `e` was found equal to `toks` since.
+fn seen_is(g: &Globals, p: i32, t: i32, e: i32, toks: &std::rc::Rc<[i32]>) -> bool {
+    if !SEEN_ANY.with(|a| a.get()) {
+        return false;
+    }
+    SEEN.with(|s| {
+        let mut s = s.borrow_mut();
+        if s.owner != owner_of(g) {
+            return false;
+        }
+        let ok =
+            s.at.get(&p)
+                .is_some_and(|(t0, e0, b)| *t0 == t && *e0 == e && std::rc::Rc::ptr_eq(b, toks));
+        if ok {
+            s.hits += 1;
+        }
+        ok
+    })
+}
+
+/// `p` holding `t` and `e` was just found equal to `toks`.
+fn seen_note(g: &Globals, p: i32, t: i32, e: i32, toks: &std::rc::Rc<[i32]>) {
+    SEEN.with(|s| {
+        let mut s = s.borrow_mut();
+        if s.owner != owner_of(g) {
+            s.clear();
+            s.owner = owner_of(g);
+        }
+        if let Some(&(_, e0, _)) = s.at.get(&p) {
+            s.forget_at(p, e0);
+        }
+        let w = e as usize / 64;
+        if s.bits.len() <= w {
+            let n = (w + 1).max(g.mem.len() / 64 + 1);
+            s.bits.resize(n, 0);
+        }
+        s.bits[w] |= 1u64 << (e as usize % 64);
+        s.by_list.entry(e).or_default().push(p);
+        s.at.insert(p, (t, e, toks.clone()));
+    });
+    SEEN_ANY.with(|a| a.set(true));
+}
+
+/// Every entry goes (a restore, a format load).
+fn seen_clear() {
+    if SEEN_ANY.with(|a| a.replace(false)) {
+        SEEN.with(|s| s.borrow_mut().clear());
+    }
+}
+
+/// K3's walks, the comparisons the entries answered, and the times they
+/// were emptied (`Stats`).
+fn seen_counts() -> [u64; 3] {
+    SEEN.with(|s| {
+        let s = s.borrow();
+        [s.walks, s.hits, s.clears]
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1483,6 +1806,24 @@ impl Globals {
     /// compared in place, without copying a macro's tokens).
     fn bm_meaning_is(&self, p: i32, m: &Meaning) -> bool {
         if let Meaning::Name(n) = m {
+            // A location of the hash's chains holds the name `id_lookup`
+            // finds there: it enters a name only where it found none, in
+            // that name's chain (tex.web §259-260), and a location's text
+            // stays (the frozen locations, whose texts repeat names, are
+            // looked up as before).
+            let chains = (k::hash_base..k::frozen_control_sequence).contains(&p)
+                || (k::eqtb_size < p && p <= k::hash_top);
+            if chains && n.len() >= 2 {
+                let t = self.hash[(p - k::hash_base) as usize].rh();
+                if t <= 0 || t >= self.str_ptr {
+                    return false;
+                }
+                let (a, b) = (
+                    self.str_start[t as usize] as usize,
+                    self.str_start[t as usize + 1] as usize,
+                );
+                return self.str_pool[a..b] == n[..];
+            }
             return self.bm_find_cs(n) == Some(p);
         }
         let w = self.bm_eq(p).hh();
@@ -1494,12 +1835,19 @@ impl Globals {
             if *mt != t {
                 return false;
             }
+            if seen_is(self, p, t, e, toks) {
+                return true;
+            }
+            SEEN.with(|s| s.borrow_mut().walks += 1);
             let mut q = self.bm_link(e);
             for &x in toks.iter() {
                 if q == 0 || self.bm_info(q) != x {
                     return false;
                 }
                 q = self.bm_link(q);
+            }
+            if q == 0 {
+                seen_note(self, p, t, e, toks);
             }
             return q == 0;
         }
@@ -1662,6 +2010,7 @@ impl Globals {
 
     /// After a format is loaded: mark the registered macros it defines.
     pub fn flashtex_bm_loaded(&mut self) {
+        seen_clear();
         // The fonts' and the exceptions' first versions name the format
         // file loaded (`format_version`): the same unchanged file gives the
         // same versions, so two loads leave the same state (COLD-FIXED's
@@ -1711,12 +2060,192 @@ impl Globals {
         })
     }
 
+    /// `delete_token_ref` frees the token list at reference count `p`: the
+    /// meanings found equal to it go (§12.4).
+    #[inline]
+    pub fn flashtex_bm_freed(&mut self, p: i32) {
+        if !SEEN_ANY.with(|a| a.get()) {
+            return;
+        }
+        SEEN.with(|s| {
+            let mut s = s.borrow_mut();
+            if !s.has_bit(p) {
+                return;
+            }
+            for q in s.by_list.get(&p).cloned().unwrap_or_default() {
+                s.forget_at(q, p);
+            }
+        });
+    }
+
     /// A control sequence was just entered into the hash.
     pub fn flashtex_bm_new_cs(&mut self, p: i32) {
-        let names = with_config(|c| c.names.clone());
-        if self.bm_name_is(p, &names) {
+        // (the names compared where they are kept: siunitx's first
+        // `\pdfstringdef` makes some 250 control sequences)
+        if with_config(|c| self.bm_name_is(p, &c.names)) {
             self.bm_cand[p as usize] = true;
         }
+        if self.bm_rec_on {
+            self.bm_note_new_cs(p);
+        }
+    }
+
+    /// A recording entered control sequence `p` (§12.3): an operation, if
+    /// no string was being built (`id_lookup` moves one up past the new
+    /// name, and a replay could not tell where it stood).
+    #[cold]
+    #[inline(never)]
+    fn bm_note_new_cs(&mut self, p: i32) {
+        if self.pool_ptr != self.str_start[self.str_ptr as usize] {
+            return self.bm_abort("NewCs");
+        }
+        let t = self.hash[(p - k::hash_base) as usize].rh();
+        let (a, b) = (
+            self.str_start[t as usize] as usize,
+            self.str_start[t as usize + 1] as usize,
+        );
+        let name: Vec<i32> = self.str_pool[a..b].to_vec();
+        self.bm_with_rec(|r| {
+            r.created.push(p);
+            r.ops.push(Op::NewCs { p, name });
+        });
+    }
+
+    /// At a recording's end, with the string or hash counters moved: whether
+    /// all the call left in the pool is the names of the control sequences
+    /// it entered, one string each, in order, with no string being built at
+    /// its start or end. `hash_used` and `hash_high` may have moved only for
+    /// those; a replay enters them again (`Op::NewCs`).
+    fn bm_strings_are_new_names(&self, start: &Frame, end: &Frame) -> bool {
+        let (s0, p0, _) = start.strings;
+        let (s1, p1, _) = end.strings;
+        let Some(created) = self.bm_with_rec(|r| r.created.clone()) else {
+            return false;
+        };
+        if created.is_empty()
+            || s1 - s0 != created.len() as i32
+            || self.str_start[s0 as usize] != p0
+            || self.str_start[s1 as usize] != p1
+        {
+            return false;
+        }
+        created
+            .iter()
+            .enumerate()
+            .all(|(i, &p)| self.hash[(p - k::hash_base) as usize].rh() == s0 + i as i32)
+    }
+
+    /// Whether the control sequences an entry enters (`Op::NewCs`, in order)
+    /// are entered at their recorded locations if entered now: each name is
+    /// absent, and `id_lookup`'s search for a free location (tex.web §259,
+    /// web2c's `hash_extra`) ends where the recording's did, given the ones
+    /// before it. Nothing is changed.
+    fn bm_new_cs_placeable(&self, made: &[(Vec<i32>, i32)]) -> bool {
+        if made.is_empty() {
+            return true;
+        }
+        let hb = k::hash_base;
+        let mut taken: HashMap<i32, usize> = HashMap::new();
+        let mut links: HashMap<i32, i32> = HashMap::new();
+        let (mut used, mut high) = (self.hash_used, self.hash_high);
+        let text = |q: i32| self.hash[(q - hb) as usize].rh();
+        let occupied = |taken: &HashMap<i32, usize>, q: i32| taken.contains_key(&q) || text(q) > 0;
+        for (i, (name, want)) in made.iter().enumerate() {
+            if name.is_empty() || self.first + name.len() as i32 >= k::buf_size {
+                return false;
+            }
+            // tex.web §261
+            let prime = k::hash_prime as i64;
+            let mut h = name[0] as i64;
+            for &c in &name[1..] {
+                h = h + h + c as i64;
+                while h >= prime {
+                    h -= prime;
+                }
+            }
+            let mut p = h as i32 + hb;
+            loop {
+                // (an earlier one of these, or a name in the table)
+                match taken.get(&p) {
+                    Some(&j) if made[j].0 == *name => return false,
+                    Some(_) => {}
+                    None => {
+                        let t = text(p);
+                        if t > 0 && t < self.str_ptr {
+                            let (a, b) = (
+                                self.str_start[t as usize] as usize,
+                                self.str_start[t as usize + 1] as usize,
+                            );
+                            if b - a == name.len()
+                                && self.str_pool[a..b].iter().zip(name).all(|(&c, &n)| c == n)
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                let next = links
+                    .get(&p)
+                    .copied()
+                    .unwrap_or_else(|| self.hash[(p - hb) as usize].lh());
+                if next != 0 {
+                    p = next;
+                    continue;
+                }
+                // §260: where it goes
+                let at = if occupied(&taken, p) {
+                    let q = if high < k::hash_extra {
+                        high += 1;
+                        high + k::eqtb_size
+                    } else {
+                        loop {
+                            if used == hb {
+                                return false;
+                            }
+                            used -= 1;
+                            if !occupied(&taken, used) {
+                                break used;
+                            }
+                        }
+                    };
+                    links.insert(p, q);
+                    q
+                } else {
+                    p
+                };
+                if at != *want {
+                    return false;
+                }
+                taken.insert(at, i);
+                break;
+            }
+        }
+        true
+    }
+
+    /// A replay enters `name` as the normal path's `\csname` did: through
+    /// `id_lookup` on the buffer above the current line (tex.web §374),
+    /// where `bm_new_cs_placeable` worked out it lands at `p`.
+    fn bm_make_cs(&mut self, p: i32, name: &[i32]) {
+        let first = self.first;
+        for (i, &c) in name.iter().enumerate() {
+            self.buffer[(first + i as i32) as usize] = c;
+        }
+        let j = first + name.len() as i32;
+        if j > self.max_buf_stack {
+            self.max_buf_stack = j;
+        }
+        let save = self.no_new_control_sequence;
+        self.no_new_control_sequence = false;
+        let q = self.id_lookup(first, name.len() as i32);
+        self.no_new_control_sequence = save;
+        // (an offer checked it: anything else is a broken invariant, and
+        // going on would leave the state wrong)
+        assert_eq!(
+            q, p,
+            "boxmemo: a replayed control sequence landed elsewhere"
+        );
+        ST.with(|s| s.borrow_mut().stats.entered += 1);
     }
 
     /// The dimensions of object `n` (a form or an image) as pdfTeX keeps
@@ -1892,7 +2421,8 @@ impl Globals {
                     && e.font_glues.iter().all(|(f, w)| {
                         let q = self.font_glue[*f as usize];
                         q > LO_MEM_STAT_MAX && self.bm_glue_fields(q) == *w
-                    });
+                    })
+                    && self.bm_new_cs_placeable(&e.new_cs);
                 if rest_ok {
                     best = Some((e.last_used, i));
                 } else if partial.is_none_or(|(u, _)| u < e.last_used) {
@@ -1988,7 +2518,7 @@ impl Globals {
             }
             LAST_KEY.with(|l| l.borrow_mut().insert(cs, now));
         }
-        if WINDOW.with(|w| w.get()) == Some(false) {
+        if WINDOW.with(|w| w.get()) == Some(false) && !self.bm_name_is(cs, record_anywhere()) {
             return;
         }
         let refused = ST.with(|s| s.borrow().aborts.get(&cs).copied().unwrap_or(0) >= ABORT_BUDGET);
@@ -2042,6 +2572,7 @@ impl Globals {
             kb: vec![],
             holes: vec![],
             ops: vec![],
+            created: vec![],
             packed: false,
             verify,
         };
@@ -2150,6 +2681,7 @@ impl Globals {
                     voids: rec.voids,
                     line: rec.line_read.then_some(self.line),
                     fast: vec![],
+                    new_cs: vec![],
                     last_link: None,
                     obj_refs: rec.obj_refs,
                     new_objs: 0,
@@ -2241,13 +2773,16 @@ impl Globals {
     #[inline(never)]
     pub fn flashtex_bm_id(&mut self, j: i32, l: i32, p: i32) {
         if p != UNDEFINED_CS {
-            // the name leads to `p` (part of the key), and `p`'s meaning
+            // the name leads to `p` (part of the key), and `p`'s meaning;
+            // not for a name the call entered itself (`Op::NewCs`: an offer
+            // checks that it is absent and lands at `p`)
             let name: Vec<i32> = (j..j + l).map(|i| self.buffer[i as usize]).collect();
             self.bm_with_rec(|r| {
-                if !r
-                    .k3
-                    .iter()
-                    .any(|(q, m)| *q == p && matches!(m, Meaning::Name(n) if *n == name))
+                if !r.created.contains(&p)
+                    && !r
+                        .k3
+                        .iter()
+                        .any(|(q, m)| *q == p && matches!(m, Meaning::Name(n) if *n == name))
                 {
                     r.k3.push((p, Meaning::Name(name)));
                 }
@@ -2858,7 +3393,7 @@ impl Globals {
             Some("Cond")
         } else if end.align_state != start.align_state {
             Some("Unbalanced")
-        } else if end.strings != start.strings {
+        } else if end.strings != start.strings && !self.bm_strings_are_new_names(&start, &end) {
             Some("NewCs")
         } else if end.errors != start.errors {
             Some("Error")
@@ -2989,6 +3524,8 @@ impl Globals {
                         v: Val::FreshShape(l),
                         ..
                     } => 32 + 4 * l.len(),
+                    // (and once more in `Entry::new_cs`)
+                    Op::NewCs { name, .. } => 2 * (32 + 4 * name.len()),
                     _ => 32,
                 })
                 .sum::<usize>();
@@ -3047,6 +3584,9 @@ impl Globals {
                 }
                 v.sort_unstable();
                 v.dedup();
+                // (the ones it entered: the replay's `id_lookup` tells the
+                // read-set, as the normal path's did, once they exist)
+                v.retain(|p| !rec.created.contains(p));
                 v
             };
             let entry = Entry {
@@ -3067,7 +3607,15 @@ impl Globals {
                 trailer,
                 voids: rec.voids,
                 line: rec.line_read.then_some(line),
-                fast: elide_local_groups(&rec.ops),
+                fast: compress_groups(&rec.ops),
+                new_cs: rec
+                    .ops
+                    .iter()
+                    .filter_map(|o| match o {
+                        Op::NewCs { p, name } => Some((name.clone(), *p)),
+                        _ => None,
+                    })
+                    .collect(),
                 last_link: (self.pdf_last_link != rec.last_link)
                     .then(|| rec.new_objs.iter().position(|&o| o == self.pdf_last_link))
                     .flatten(),
@@ -3082,9 +3630,28 @@ impl Globals {
                 bytes,
             };
             if let Some(n) = &name {
+                // (what the replay makes: groups kept, assignments at the
+                // call's level, and those from the state)
+                let mut depth = 0;
+                let (mut groups, mut top, mut state) = (0, 0, 0);
+                for o in &entry.fast {
+                    match o {
+                        Op::Begin(_) => {
+                            groups += usize::from(depth == 0);
+                            depth += 1;
+                        }
+                        Op::End => depth -= 1,
+                        Op::Def { v, .. } => {
+                            top += usize::from(depth <= 0);
+                            state += usize::from(!by_value(v));
+                        }
+                        _ => {}
+                    }
+                }
                 eprintln!(
-                    "boxmemo: recorded \\{n}: {} ops, {} meanings, {} bytes",
+                    "boxmemo: recorded \\{n}: {} ops ({} replayed: {groups} groups kept, {top} at the call's level, {state} from the state), {} meanings, {} bytes",
                     entry.ops.len(),
+                    entry.fast.len(),
                     entry.k3.len(),
                     bytes
                 );
@@ -3147,6 +3714,9 @@ impl Globals {
                     "last_badness: recorded {:?} normal path {last_badness:?}",
                     e.last_badness
                 ));
+            }
+            if diffs.is_empty() && debug() {
+                eprintln!("boxmemo: verified \\{name}");
             }
             if !diffs.is_empty() {
                 s.stats.verify_differences += 1;
@@ -3417,6 +3987,7 @@ impl Globals {
                         _ => self.gsa_w_def(q, e),
                     }
                 }
+                Op::NewCs { p, name } => self.bm_make_cs(*p, name),
             }
         }
         if let Some(b) = last_badness {
@@ -3491,5 +4062,80 @@ impl Globals {
     /// The end of the run: the statistics.
     pub fn flashtex_bm_finish(&mut self) {
         write_stats(true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn def(p: i32, w: i32, kind: i32) -> Op {
+        Op::Def {
+            p,
+            t: 0,
+            v: Val::Word(w),
+            kind,
+        }
+    }
+
+    #[test]
+    fn groups_stand_for_their_last_global_assignments() {
+        // a local group goes; a group with globals leaves the last global
+        // value of each location, where the group was
+        let ops = vec![
+            def(1, 10, 1),
+            Op::Begin(1),
+            def(2, 20, 1),
+            def(3, 30, 3),
+            Op::Begin(1),
+            def(3, 31, 3),
+            def(4, 40, 3),
+            Op::End,
+            def(3, 32, 1),
+            Op::End,
+            Op::Begin(1),
+            def(5, 50, 1),
+            Op::End,
+            def(6, 60, 1),
+        ];
+        assert_eq!(
+            compress_groups(&ops),
+            vec![def(1, 10, 1), def(3, 31, 3), def(4, 40, 3), def(6, 60, 1)]
+        );
+    }
+
+    #[test]
+    fn a_value_from_the_state_keeps_its_group() {
+        let let_global = Op::Def {
+            p: 7,
+            t: 0,
+            v: Val::LetCs(8),
+            kind: 2,
+        };
+        let ops = vec![
+            Op::Begin(1),
+            def(8, 1, 1),
+            def(10, 5, 1),
+            let_global.clone(),
+            Op::Begin(1),
+            def(9, 2, 1),
+            Op::End,
+            Op::End,
+        ];
+        assert_eq!(
+            compress_groups(&ops),
+            vec![Op::Begin(1), def(8, 1, 1), let_global.clone(), Op::End]
+        );
+        // a `\let` of what the group has not assigned yet reads the state
+        // where the group was: made there
+        let early = vec![Op::Begin(1), let_global.clone(), def(8, 1, 1), Op::End];
+        assert_eq!(compress_groups(&early), vec![let_global]);
+        // a group the call does not close, and an `End` of the caller's
+        // group, are replayed as recorded
+        let open = vec![Op::Begin(1), def(1, 1, 3), Op::End, Op::End, Op::Begin(2)];
+        assert_eq!(
+            compress_groups(&open),
+            vec![def(1, 1, 3), Op::End, Op::Begin(2)]
+        );
     }
 }

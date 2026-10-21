@@ -490,7 +490,7 @@ T7 session, 245 MB against 188 MB).
 
 `DEFAULT_NAMES`: framed.sty's and ntheorem's (revision 1), `XC@col@rlet`, `pgfmathsetlength`,
 `pgf@process`, `pgfpoint`, `@oddhead`, `@oddfoot`, `beamer@typesetheadorfoot` and
-`beamer@@tmpl@frametitle`. Naming a macro only offers it; the guard decides. What still refuses
+`beamer@@tmpl@frametitle` (revision 3 adds five, §12). Naming a macro only offers it; the guard decides. What still refuses
 (measured): Madrid's block ends (`\unskip` of the outer list, and the shadow's
 `\immediate\pdfobj`), `\beamer@calculateheadfoot` (a box register set at the call's level), the
 first frame's font loads.
@@ -530,3 +530,157 @@ beamer-5 200 M → 37.5 M (−81 %) on every in-body and typing row, beamer-30 4
 its first block frame 486 M → 168 M (−65 %). Convergence is unchanged. 0 differences in verify
 mode (host and command line).
 
+
+## 12. Revision 3: more names, the intrinsics' first page, and new control sequences (lane T7-LAST12, 2026-10-20)
+
+After revision 2, nine of beamer-30's rows and full-10 letter@start still missed §1.2 on the
+reference Mac (PR #1855). Evidence: `docs/evidence/t7-last12-2026-10-20/`.
+
+### 12.1 Names (measured, NixOS PC, `FLASHTEX_BOXMEMO_NAMES`)
+
+Added to `DEFAULT_NAMES`, each measured alone and together on beamer-30 letter@middle (typesetting
+instructions to the edited page, revision 2: 125 M):
+- `pgf@parsefunc`, pgf's parse of a shading's colour function, which Madrid's block shadow runs
+  four times a block (`\pgfdeclareradialshading` and kin declare their shading at every block,
+  `pgfcoreshade.code.tex`): 107 M. The `\immediate\pdfxform` after the parse still runs for real;
+  only the parse is replayed.
+- `beamer@thc@docolor` and `beamer@thc@usecolor` (beamer's colour templates) and `pgfusepath`
+  (a path's use: its PDF literals are a draw call's fragment, §11.3): together 101 M (−19 %).
+- Tried and left out, no gain or a loss: `pgftransformcm` and `pgf@transformcm`, `pgf@sys@bp`,
+  `pgfmathparse`, `XC@definec@lor`, `XC@mcolor`, `extractcolorspec`, `pgf@getrgbtuplewithmixin`,
+  `\beamer@usebeamercolor`.
+
+On beamer-30's first block frame (letter@start) the gain is smaller (161 M → 146 M): there the calls
+make control sequences for the first time (`NewCs`, §4.1), as every keystroke on that frame does
+again after its restore (§12.3), and the transition shading of the block's colours is made there
+(`\pgfuseshading`, an `\immediate\pdfxform`).
+
+### 12.2 `\pdfstringdefPreHook` taken from the intrinsics (adopted)
+
+hyperref's hook, which siunitx fills (about 25 M instructions a call), is the guarded intrinsics'
+first target (DESIGN.md §5.6 item 4): recorded at its first call and replayed at every later one.
+Those recordings live in the word space (`intrinsics.rs`), so a keystroke on the page that makes
+the first calls (page 0's output routine: full-10 letter@start) restores to before them and runs
+the hook twice for real, recording it again each time: 146 M instructions to the edited page.
+
+**First try, not adopted.** `pdfstringdefPreHook` in BOX-MEMO's `DEFAULT_NAMES`, with the
+intrinsics leaving it unrecorded only in the host's edit window: 95 M (−35 %), but the run's
+intrinsics state then differed from the old run's (one recording fewer). The convergence test
+compares the intrinsics' recordings word for word (`Iso::intrinsics`), so a run with such an edit
+no longer converged (`tests/incremental.rs`, `intrinsics_recorded_after_an_edit_converge`).
+
+**Adopted: one owner per macro for the whole session.** Wherever BOX-MEMO is on and offers the
+hook (`boxmemo::owns`: the hosts, or `FLASHTEX_BOXMEMO=on|verify`), the intrinsics never record it
+(`intrinsics::config` leaves it out of their names), and BOX-MEMO records it anywhere, not only in
+an edit's window (`RECORD_ANYWHERE`). Every run of the session then leaves the intrinsics' state
+alike (no recording of the hook in any of them), so the convergence test is unchanged; BOX-MEMO's
+entries live outside the word space and survive the restore. With BOX-MEMO off (the command line)
+the intrinsics keep the hook as before. Measured (NixOS PC, T7 full-10, 19 keys each):
+letter@start 145.7 M → 95.0 M instructions to the edited page (13.3 → 9.5 ms thread CPU), 19/19
+converged; letter@middle unchanged (92.6 M, 93.5 M). `intrinsics_recorded_after_an_edit_converge`
+and the rest of `tests/incremental.rs` and `tests/host_incremental.rs` pass with BOX-MEMO on (the
+hosts' default) and off.
+
+**A hole the verify sweep found** (sweep A, full-100, run 39509942631): on the command line's
+verify mode (the whole state after each replay compared with the normal path's), a replay of the
+hook on a page with a pending footnote "differed" in a page insertion record's `broken_ptr`. The
+structural comparison (`iso.rs`, used by the convergence test too) followed `broken_ptr` and
+`broken_ins` in every record, but pdfTeX reads them only when the record's type is `split_up`
+(tex.web §986, §1021); an `inserting` record holds there what `get_node` left, which the
+allocation order decides (and a replay's elided groups change it). They are now compared only for
+`split_up` records. The case reproduced on the PC (its edited source, run twice) and passes after.
+
+### 12.3 Calls that enter control sequences (`Op::NewCs`)
+
+§4.1 refused a call that left a new string or control sequence: `\csname` of a name never made
+before enters it (tex.web §259-260), and where it lands depends on the hash table as the run left it.
+Such calls are the first use of something in the document (a colour's `\\color@...` name, a
+shading's names, a block's colours on beamer-30's first block frame), and every keystroke on that
+page restores to before it and makes them again, so they never hit (`NewCs`, 40 abandoned recordings
+over a letter@start session).
+
+- **Recording.** `id_lookup`'s hook for a new control sequence (`flashtex_bm_new_cs`) appends
+  `Op::NewCs { p, name }` to the log, in order with the other operations, if no string was being
+  built (`id_lookup` moves one up past the new name; else the recording is abandoned as before).
+  The name's own lookups are not part of the key (the operation stands for them); its meaning at
+  its first read (undefined) is.
+- **The end.** The string and hash counters may have moved only for those: the call's strings are
+  exactly the new names, one each, in order, with none being built at its start or end
+  (`bm_strings_are_new_names`); anything else is still `NewCs`.
+- **The offer.** Part of the key: each name is absent, and `id_lookup`'s search for a free
+  location, made for each name in order without changing anything, ends where the recording's did
+  (`bm_new_cs_placeable`: the bucket's chain, an occupied bucket's overflow to web2c's
+  `hash_extra` (`hash_high`) or down from `hash_used`, room in the buffer). Then the replay's
+  `id_lookup` makes the same string, the same hash entry and the same link as the normal path.
+- **The replay** enters each name where the log has it, as `\csname` does (the name in the buffer
+  above `first`, `id_lookup` with `no_new_control_sequence` false, tex.web §374), so the L5
+  read-set, the intrinsics and BOX-MEMO hear of it from `id_lookup`'s own hooks; a location other
+  than the one worked out stops the program (`assert`). A group holding a `NewCs` is never elided
+  (§11.2): no `unsave` takes an entered name away.
+- **Measured** (NixOS PC, instructions to the edited page): beamer-30 letter@start 149 M → 126 M
+  (from 164 M before this lane); letter@middle unchanged (105 M). Verify mode in the host: 2,179
+  calls verified on letter@start, 1,708 on letter@middle, 536 on beamer-5, 15 on full-10, no
+  difference. The verifier compares the normal path's log, its `NewCs` operations included, with
+  the entry's. On the command line no entry with a `NewCs` ever hits (the names stay made for the
+  rest of the run); `tests/host_incremental.rs`
+  (`a_replayed_call_enters_its_new_control_sequences_again`) runs the replay in the host and
+  compares every page with a scratch compile.
+
+### 12.4 Cheaper offers: meanings found equal, names at their location
+
+After §12.1–§12.3, BOX-MEMO itself was 39 % of beamer-30's edit window (perf, frame pointers,
+letter@middle): the key checks 21 % (K3's macro bodies compared token by token 15 %, K2 3 %, the
+names' lookups 3 %) and the replays 15 %. Every offer compared every body its variants read, and a
+slide's ~300 offers read the same few hundred xcolor, pgf and beamer macros.
+
+- **Meanings found equal** (`Seen`). A body K3 found equal is kept with the location, its type and
+  the list's reference count `e`: while `eqtb[p]` still holds that type and `e`, the tokens are
+  still that body, and the walk is not made again. A macro's list does not change while it is
+  referenced (TeX makes a new list for every definition); `delete_token_ref` freeing a list (its
+  count reaching zero, the one place a referenced list is freed) takes the entries naming it with
+  it (`flashtex_bm_freed`, a hook in changes/boxmemo.ch behind `bm_on`); every restore of the word
+  space, a format load, and another engine on the thread empty them all. 93 % of K3's comparisons
+  are answered so on beamer-30.
+- **Names at their location.** A `Meaning::Name` (§11.6) is the name `id_lookup` finds at `p`:
+  for a location of the hash's chains that is the text there, compared in place (`id_lookup`
+  enters a name only where it found none, in that name's chain; a location's text stays). The
+  frozen locations, whose texts repeat names, are looked up as before.
+
+### 12.5 Replays make each group's net effect
+
+A replay made every operation of the recorded log but the groups whose operations are all local
+(§11.2). Beamer's templates and pgf's `\pgf@process` (`{#1\global\pgf@x=\pgf@x...}`) do their
+work in groups that end with global assignments, so their local assignments were made and undone
+again: `\@oddhead` replayed 13,667 operations (0.55 ms), `\pgf@process` about 180 a call.
+
+At its `unsave` a group puts back every location it assigned locally and keeps every location it
+assigned globally, with the value of its *last* global assignment (`unsave` keeps a location of
+level one, tex.web §283; a local assignment after the global one saved the global value, which
+`unsave` puts back). So a group stands for one global assignment per location, the last one,
+made where the group was (`compress_groups`); a group with none leaves nothing, as before. A
+global value taken from the state (a `\let`'s meaning, a shared glue) is the one where the group
+was when nothing in the group assigned what it reads before it, and is made there, before what the
+group assigns after it. Otherwise the group is replayed as recorded, less its local assignments to
+every location no such value in it reads (its `unsave` takes them back unread); a group that
+assigns a sparse register globally or enters a control sequence stays whole. What changes besides
+is what §11.2's elision changes: free-list order and the usage statistics.
+
+`\@oddhead` now replays 3,051 operations, `\pgf@process` 3 or 4.
+
+**Measured** (NixOS PC, T7 beamer-30, 19 keys; instructions to the edited page, p50; thread CPU):
+
+| | letter@middle | letter@start |
+|---|---:|---:|
+| main (`9697ee948`) | 141.2 M | 164.2 M |
+| §12.1–§12.3 | 104.8 M, 11.1 ms | 126.2 M |
+| + §12.4's meanings | 104.1 M, 10.7 ms | — |
+| + §12.5 and §12.4's names | 93.4 M, 9.7 ms | 113.7 M, 11.3 ms |
+
+BOX-MEMO's share of the window fell from 39 % to 25 %.
+
+**Correctness.** `cargo test --lib boxmemo` (the group rules, by case); `tests/boxmemo.rs` with
+BOX-MEMO off, on and verify; on the command line (`FLASHTEX_BOXMEMO=verify`, which compares the
+whole engine state after each replay with the normal path's) beamer-30: 6,133 replays, 0
+differences, and the PDFs with BOX-MEMO off, on and verify byte-identical. The host's verify mode
+compares the normal path's operation log with the entry's, not the replay, so §12.5 is checked by
+the command line's full verifier and the sweeps' PDF comparisons.

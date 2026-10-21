@@ -4316,7 +4316,10 @@ pub struct ReadLog {
     /// Files opened for output, in order (a file the preamble writes and
     /// closes is part of what S₀ stands for).
     pub outputs: Vec<String>,
-    seen: std::collections::HashSet<String>,
+    /// (This and the two maps below are shared between a log and its
+    /// clones until one changes them: a journal is cloned several times a
+    /// compile, and a beamer preamble's listings hold thousands of names.)
+    seen: std::sync::Arc<std::collections::HashSet<String>>,
     /// Keep the content of the user's files read (`FileRead::content`).
     pub keep_content: bool,
     /// The directories lookups depended on, each with its stat signature
@@ -4326,12 +4329,12 @@ pub struct ReadLog {
     /// The directories `note_lookup_dirs` listed, each once a run: their
     /// entries' names, lower-cased (`lookupproof::folded_listing`) and
     /// sorted (`None`: not listable).
-    listings: std::collections::HashMap<String, Option<Vec<String>>>,
+    listings: std::sync::Arc<std::collections::HashMap<String, Option<Vec<String>>>>,
     /// Where `note_dep` put each entry of `dirs` (a hint: `dirs` is public
     /// and may have been replaced since, so a position is used only where
     /// it still holds the entry; an entry it does not know is added again,
     /// which only makes the check stricter).
-    dir_at: std::collections::HashMap<String, usize>,
+    dir_at: std::sync::Arc<std::collections::HashMap<String, usize>>,
 }
 
 impl ReadLog {
@@ -4342,7 +4345,7 @@ impl ReadLog {
     fn listing(&mut self, dir: &str) -> Option<&Vec<String>> {
         if !self.listings.contains_key(dir) {
             let l = crate::lookupproof::folded_listing(dir);
-            self.listings.insert(dir.to_string(), l);
+            std::sync::Arc::make_mut(&mut self.listings).insert(dir.to_string(), l);
         }
         self.listings.get(dir)?.as_ref()
     }
@@ -4369,7 +4372,7 @@ impl ReadLog {
     /// Mark `path` as already noted (a journal carried over from an earlier
     /// run segment, `crate::incr`).
     pub fn mark_seen(&mut self, path: &str) {
-        self.seen.insert(path.to_string());
+        std::sync::Arc::make_mut(&mut self.seen).insert(path.to_string());
     }
 }
 
@@ -4441,7 +4444,8 @@ fn note_dep(log: &mut ReadLog, entry: &str) {
         .is_some_and(|&i| log.dirs.get(i).is_some_and(|(x, _)| x == entry));
     if !known && !log.dirs.iter().any(|(x, _)| x == entry) {
         let sig = dep_sig(entry).unwrap_or_default();
-        log.dir_at.insert(entry.to_string(), log.dirs.len());
+        let at = log.dirs.len();
+        std::sync::Arc::make_mut(&mut log.dir_at).insert(entry.to_string(), at);
         log.dirs.push((entry.to_string(), sig));
     }
 }
@@ -4608,7 +4612,7 @@ pub fn note_file(path: &str) {
     READS.with(|r| {
         let mut b = r.borrow_mut();
         let Some(log) = b.as_mut() else { return };
-        if !log.seen.insert(path.to_string()) {
+        if log.seen.contains(path) {
             // Read again (a `.toc` at every \tableofcontents, a file \input
             // twice): an incremental journal lists every read, since a run
             // that converges keeps the old run's later reads (`crate::incr`
@@ -4620,6 +4624,7 @@ pub fn note_file(path: &str) {
             }
             return;
         }
+        std::sync::Arc::make_mut(&mut log.seen).insert(path.to_string());
         let stat = StatSig::of(path).unwrap_or_default();
         // A file whose bytes are kept is read whole; any other (the format,
         // the font map, TeX Live's files) only hashed, through a buffer.

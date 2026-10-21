@@ -1878,6 +1878,195 @@ fn an_outside_rewrite_after_the_hosts_own_write_is_seen() {
     }
 }
 
+/// FS-WATCH (lane T7-LAST12): the host's checks take the signatures of
+/// files outside the document as the kernel's file events vouch for them
+/// (`fswatch`). A package outside the document that changes during the
+/// session must still be seen at the next compile: its content rewritten in
+/// place to the same length with its time put back (in the preamble: S₀'s
+/// key; in the body: the journal), and its directory replaced by another
+/// holding another version (an event on a directory on the way, not on the
+/// file).
+#[test]
+fn a_package_outside_the_document_that_changes_is_seen() {
+    if find_texlive_bin().is_none() {
+        common::no_texlive();
+        return;
+    }
+    let base = common::fresh_dir("flashtex-host-fswatch");
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let (proj, out, ext) = (base.join("proj"), base.join("out"), base.join("ext"));
+    for d in [&proj, &out, &ext.join("tree")] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    let main = "main.tex";
+    let pre = ext.join("tree/pre.tex");
+    let body = ext.join("tree/body.tex");
+    std::fs::write(&pre, "\\def\\pre{AAAA}\n").unwrap();
+    std::fs::write(&body, "Body: BBBB.\n").unwrap();
+    let doc = format!(
+        "\\documentclass{{article}}\n\\input{{{}}}\n\\begin{{document}}\nPreamble: \\pre.\n\n\\input{{{}}}\n\\end{{document}}\n",
+        pre.display(),
+        body.display()
+    );
+    std::fs::write(proj.join(main), doc).unwrap();
+    let host = start_host("w");
+    let scratch = start_host("ws");
+    let mut c = Client::connect(&host.1).unwrap();
+    let mut view = View::default();
+    let mut id = 0;
+    let settle = |c: &mut Client, view: &mut View, id: &mut i64| {
+        for _ in 0..4 {
+            *id += 1;
+            let o = compile(c, view, &req(*id, &proj, &out, main));
+            if o.done.str_field("mode") == Some("unchanged") {
+                return;
+            }
+        }
+    };
+    settle(&mut c, &mut view, &mut id);
+    // (the watcher serves the files outside the document: its counts)
+    if cfg!(any(target_os = "linux", target_os = "macos")) {
+        id += 1;
+        let o = compile(&mut c, &mut view, &req(id, &proj, &out, main));
+        let served = o
+            .done
+            .get("stages")
+            .and_then(|s| s.get("fswatch"))
+            .and_then(|a| a.as_array())
+            .and_then(|a| a.first())
+            .and_then(|n| n.as_i64());
+        assert!(served.is_some_and(|n| n > 0), "nothing served: {}", o.done);
+    }
+    // in place, the same length, the time put back
+    let rewrite = |f: &Path, from: &str, to: &str| {
+        let mtime = std::fs::metadata(f).unwrap().modified().unwrap();
+        let t = std::fs::read_to_string(f).unwrap().replace(from, to);
+        use std::io::Write;
+        let mut h = std::fs::File::options().write(true).open(f).unwrap();
+        h.write_all(t.as_bytes()).unwrap();
+        h.set_modified(mtime).unwrap();
+    };
+    let steps: [(&str, &dyn Fn()); 3] = [
+        ("the body's file rewritten", &|| {
+            rewrite(&body, "BBBB", "CCCC")
+        }),
+        ("the preamble's file rewritten", &|| {
+            rewrite(&pre, "AAAA", "DDDD")
+        }),
+        ("the directory replaced", &|| {
+            std::fs::rename(ext.join("tree"), ext.join("old")).unwrap();
+            std::fs::create_dir_all(ext.join("tree")).unwrap();
+            std::fs::write(&pre, "\\def\\pre{EEEE}\n").unwrap();
+            std::fs::write(&body, "Body: FFFF.\n").unwrap();
+        }),
+    ];
+    for (k, (what, change)) in steps.iter().enumerate() {
+        change();
+        id += 1;
+        let o = compile(&mut c, &mut view, &req(id, &proj, &out, main));
+        assert_ne!(
+            o.done.str_field("mode"),
+            Some("unchanged"),
+            "{what}: not seen: {}",
+            o.done
+        );
+        let (p2, o2) = snapshot(&base, &proj, &out, &format!("w{k}"));
+        compare_with_scratch(&scratch.1, &view, &proj, &out, &p2, &o2, main, what);
+        settle(&mut c, &mut view, &mut id);
+    }
+    let _ = c.bye();
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// BOX-MEMO revision 3 (BOX-MEMO.md §12.3): a call that enters control
+/// sequences (`\csname` of names never made before) is recorded in an edit's
+/// window and replayed at the next keystroke, which restored to before the
+/// names were made: the replay enters them again, where the normal path
+/// put them. Every page equals a scratch compile's, and the replay ran
+/// (`stages.boxmemo`: hits and control sequences entered).
+#[test]
+fn a_replayed_call_enters_its_new_control_sequences_again() {
+    if find_texlive_bin().is_none() {
+        common::no_texlive();
+        return;
+    }
+    let base = common::fresh_dir("flashtex-host-newcs");
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let (proj, out) = (base.join("proj"), base.join("out"));
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::create_dir_all(&out).unwrap();
+    let main = "main.tex";
+    let text = "\\documentclass{article}\n\
+        \\def\\mk#1{\\expandafter\\gdef\\csname mk@#1\\endcsname{#1!}%\n\
+        \\expandafter\\global\\expandafter\\let\\csname mk@x@#1\\endcsname\\relax}\n\
+        \\begin{document}\n\
+        Words before the calls. \\mk{alpha}\\mk{beta}\\mk{gamma}Then\n\
+        \\csname mk@alpha\\endcsname{} and \\csname mk@gamma\\endcsname.\n\
+        \\end{document}\n";
+    std::fs::write(proj.join(main), text).unwrap();
+    // (on whatever the suite's `FLASHTEX_BOXMEMO` says: the test is of replays)
+    let env = [("FLASHTEX_BOXMEMO", "on"), ("FLASHTEX_BOXMEMO_NAMES", "mk")];
+    let host = start_host_env("nc", &env);
+    let scratch = start_host_env("ncs", &env);
+    let mut c = Client::connect(&host.1).unwrap();
+    let mut view = View::default();
+    let mut id = 0;
+    for _ in 0..4 {
+        id += 1;
+        let o = compile(&mut c, &mut view, &req(id, &proj, &out, main));
+        if o.done.str_field("mode") == Some("unchanged") {
+            break;
+        }
+    }
+    let at = text.find("before").unwrap() as u64;
+    let counts = |o: &Outcome| -> Vec<i64> {
+        o.done
+            .get("stages")
+            .and_then(|s| s.get("boxmemo"))
+            .and_then(|a| a.as_array())
+            .map(|a| a.iter().filter_map(|n| n.as_i64()).collect())
+            .unwrap_or_default()
+    };
+    let mut last = vec![];
+    for k in 0..4 {
+        id += 1;
+        let mut r = req(id, &proj, &out, main);
+        r.edits = vec![Edit {
+            path: main.into(),
+            offset: at,
+            delete: if k % 2 == 0 { 0 } else { 1 },
+            insert: if k % 2 == 0 {
+                "x".into()
+            } else {
+                String::new()
+            },
+        }];
+        let o = compile(&mut c, &mut view, &r);
+        assert_eq!(o.done.str_field("status"), Some("ok"), "{}", o.done);
+        let (p2, o2) = snapshot(&base, &proj, &out, &format!("nc{k}"));
+        compare_with_scratch(
+            &scratch.1,
+            &view,
+            &proj,
+            &out,
+            &p2,
+            &o2,
+            main,
+            &format!("edit {k}"),
+        );
+        last = counts(&o);
+    }
+    // offers, hits, recordings, control sequences entered
+    assert!(
+        last.len() == 4 && last[1] > 0 && last[3] > 0,
+        "no replay entered a control sequence: {last:?}"
+    );
+    let _ = c.bye();
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// An absolute name the run looked for (review of #1549, (a)): its own
 /// directory decides the answer, not the working directory, both before
 /// S₀ (S₀'s key) and after it (the journal). A file appearing there is

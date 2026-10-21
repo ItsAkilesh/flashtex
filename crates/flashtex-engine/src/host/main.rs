@@ -57,6 +57,9 @@ fn main() {
         Some("selftest" | "bench" | "open" | "layout")
     ) {
         flashtex_engine::boxmemo::set_default_on();
+        // (the per-compile checks' files outside the document vouched for
+        // by the kernel's events, `fswatch`; `FLASHTEX_FSWATCH=off`)
+        flashtex_engine::fswatch::enable();
     }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     flashtex_engine::logalloc::set_enabled(std::env::var_os("FLASHTEX_NO_LOG_MAPS").is_none());

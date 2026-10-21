@@ -528,8 +528,11 @@ fn config() -> (Mode, Vec<Vec<u8>>) {
                     .filter(|s| !s.is_empty())
                     .map(|s| s.as_bytes().to_vec())
                     .collect(),
+                // (not those BOX-MEMO takes where it is on: the hosts,
+                // `boxmemo::owns`, BOX-MEMO.md §12.2)
                 Err(_) => DEFAULT_NAMES
                     .iter()
+                    .filter(|s| !crate::boxmemo::owns(s.as_bytes()))
                     .map(|s| s.as_bytes().to_vec())
                     .collect(),
             };

@@ -405,7 +405,8 @@ impl Verifier {
 /// or (the cache, under `key`) before it under the same signature, which is
 /// not racy (a racy signature equals nothing).
 fn listed_now(key: &str, dir: &str) -> (Option<StatSig>, Option<Listing>) {
-    let sig = StatSig::of(dir);
+    // (inside a check, as the watches vouch for it: `fswatch`)
+    let sig = crate::fswatch::sig(dir);
     let cached = sig.and_then(|s| {
         let g = LISTINGS.lock().unwrap();
         let (was, l) = g.as_ref()?.get(key)?;
@@ -512,8 +513,9 @@ pub fn readable_dep(path: &str) -> String {
 /// [`DEP_UNKNOWN`], none.
 pub fn dep_sig(entry: &str) -> Option<StatSig> {
     if let Some(p) = entry.strip_prefix(DEP_READABLE) {
-        // (kpathsea's READABLE: `access(R_OK)`, and not a directory)
-        let ok = std::fs::metadata(p).is_ok_and(|m| !m.is_dir()) && std::fs::File::open(p).is_ok();
+        // (kpathsea's READABLE: `access(R_OK)`, and not a directory; inside
+        // a check, as the watches vouch for it, `fswatch`)
+        let ok = crate::fswatch::readable(p);
         return Some(StatSig {
             len: ok as u64,
             ..StatSig::default()
@@ -522,5 +524,5 @@ pub fn dep_sig(entry: &str) -> Option<StatSig> {
     if entry.starts_with('\0') {
         return None;
     }
-    StatSig::of(entry)
+    crate::fswatch::sig(entry)
 }

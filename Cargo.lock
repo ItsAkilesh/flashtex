@@ -517,6 +517,7 @@ dependencies = [
  "cc",
  "flashtex-display-list",
  "flashtex-engine-build-id",
+ "libc",
  "sha2",
  "tikv-jemalloc-sys",
  "tikv-jemallocator",

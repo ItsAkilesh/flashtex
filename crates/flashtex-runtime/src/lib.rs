@@ -29,6 +29,7 @@ pub mod bundle;
 pub mod busy;
 #[cfg(feature = "distribution")]
 pub mod formats;
+pub mod fswatch;
 #[cfg(all(any(target_os = "linux", target_os = "macos"), not(feature = "tex82")))]
 pub mod logalloc;
 pub mod lookupproof;

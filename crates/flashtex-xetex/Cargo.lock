@@ -136,6 +136,7 @@ dependencies = [
  "cc",
  "flashtex-display-list",
  "flashtex-engine-build-id",
+ "libc",
  "sha2",
 ]
 
