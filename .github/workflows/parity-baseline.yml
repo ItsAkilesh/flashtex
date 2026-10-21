@@ -19,6 +19,11 @@ on:
         type: choice
         options: [hosted, self-hosted]
         default: hosted
+  # TEMPORARY (S5-BASELINE): workflow_dispatch needs the file on main, so the
+  # first recording runs from a push to the PR branch. Removed before merge.
+  push:
+    branches: [agent/kabir-claude/s5-flip]
+    paths: [.github/workflows/parity-baseline.yml]
 
 permissions:
   contents: read
