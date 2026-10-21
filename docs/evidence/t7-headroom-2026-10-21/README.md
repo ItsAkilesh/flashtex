@@ -123,7 +123,7 @@ showed them on main too, and `af9071d41` put it back. The branch head's tree is 
   earlier runs failed: one on rustfmt and clippy's `type_complexity` (fixed in `2a1da168b`), one
   because a second gate run deleted the shared target directory under it.
 - `sweeps.yml` with `ref=agent/kabir-claude/t7-headroom` at `af9071d41`: default (run 39627470545)
-  success; `boxmemo=verify` (run 39627476644): see the PR. At `b82e507ad` both passed (39618674314,
+  success; `boxmemo=verify` (run 39627476644) success. At `b82e507ad` both passed (39618674314,
   39618678779).
 
 ## 5. Next steps, by expected gain
