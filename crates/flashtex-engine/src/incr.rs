@@ -2444,7 +2444,8 @@ fn meanings_delta(
             .ok_or("no mem")?
             .off;
         let s = |name: &str| old.scalar_i32(name).ok_or_else(|| format!("no {name}"));
-        let old_word = |p: usize| d.old_word(&g.arena, mem_off + p * 8);
+        let ow = d.old_words(&g.arena);
+        let old_word = |p: usize| ow.word(mem_off + p * 8);
         let new_word = |p: usize| g.mem[p].to_bits();
         let fo = free_cells(
             &old_word,
@@ -2506,7 +2507,8 @@ fn drop_free_mem(
     ) else {
         return (left, (None, None));
     };
-    let old_word = |p: usize| d.old_word(&g.arena, mem_off + p * 8);
+    let ow = d.old_words(&g.arena);
+    let old_word = |p: usize| ow.word(mem_off + p * 8);
     let new_word = |p: usize| g.mem[p].to_bits();
     let Some(fo) = free_cells(&old_word, av, ro, lo, hi, me) else {
         return (left, (None, None));

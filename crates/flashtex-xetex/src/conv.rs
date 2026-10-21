@@ -88,6 +88,9 @@ pub struct Old {
     /// The old run's pages as it built them (its newest page checkpoint's
     /// document), for the jump to build again ([`crate::out::replay_page`]).
     pub doc_pages: Vec<Arc<crate::out::doc::Built>>,
+    /// That document's resource keys (`out::replay_page` sends a page's
+    /// frame again where its resources are named alike).
+    pub doc_keys: Option<crate::out::doc::DocKeys>,
     /// The old run's output files as it left them (those open at one of
     /// its page checkpoints), and its terminal.
     pub old_files: std::collections::HashMap<String, Arc<Vec<u8>>>,
@@ -513,7 +516,7 @@ impl Globals {
         for (n, b) in old_built.to_vec().iter().enumerate() {
             let page_no = k + n + 1;
             let t = Instant::now();
-            if let Err(e) = crate::out::replay_page(self, b, page_no as u32) {
+            if let Err(e) = crate::out::replay_page(self, b, page_no as u32, c.doc_keys.as_ref()) {
                 fail("replay", e);
             }
             t_replay += t.elapsed().as_secs_f64() * 1e3;
@@ -1169,7 +1172,8 @@ fn drop_free_mem(
     ) else {
         return (left, (None, None));
     };
-    let old_word = |p: usize| d.old_word(&g.arena, mem_off + p * 8);
+    let ow = d.old_words(&g.arena);
+    let old_word = |p: usize| ow.word(mem_off + p * 8);
     let new_word = |p: usize| g.mem[p].to_bits();
     let Some(fo) = free_cells(&old_word, av, ro, lo, hi, me) else {
         return (left, (None, None));

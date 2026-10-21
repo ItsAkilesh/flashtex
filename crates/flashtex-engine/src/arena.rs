@@ -3085,6 +3085,17 @@ impl ChunkDiff {
         self.old_at.keys().copied().collect()
     }
 
+    /// The old run's words through the chunk table ([`table`](Self::table)):
+    /// [`old_word`](Self::old_word) without a map lookup per word, for a
+    /// reader of many (the free lists of the convergence test).
+    pub fn old_words<'a>(&'a self, a: &'a Arena) -> OldWords<'a> {
+        OldWords {
+            table: self.table(a),
+            d: self,
+            a,
+        }
+    }
+
     /// The old run's 8-byte word at byte `off` of the space.
     pub fn old_word(&self, a: &Arena, off: usize) -> u64 {
         let c = (off >> CHUNK_SHIFT) as u32;
@@ -3096,6 +3107,27 @@ impl ChunkDiff {
             .unwrap_or_else(|| a.core().chunk_ptr(c as usize) as *const u64);
         // SAFETY: a chunk of CHUNK_WORDS words; w < CHUNK_WORDS.
         unsafe { *p.add(w) }
+    }
+}
+
+/// [`ChunkDiff::old_words`].
+pub struct OldWords<'a> {
+    table: Vec<*const u64>,
+    d: &'a ChunkDiff,
+    a: &'a Arena,
+}
+
+impl OldWords<'_> {
+    /// [`ChunkDiff::old_word`].
+    #[inline]
+    pub fn word(&self, off: usize) -> u64 {
+        match self.table.get(off >> CHUNK_SHIFT) {
+            // SAFETY: the table holds chunk pointers of CHUNK_BYTES each,
+            // valid while the arena and the diff are unchanged (both
+            // borrowed).
+            Some(&p) if !p.is_null() => unsafe { *p.add((off & (CHUNK_BYTES - 1)) >> 3) },
+            _ => self.d.old_word(self.a, off),
+        }
     }
 }
 

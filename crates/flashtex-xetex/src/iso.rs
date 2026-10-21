@@ -225,13 +225,6 @@ fn int(w: u64) -> i32 {
 /// A state's word space, read by byte offset.
 pub trait Space {
     fn word(&self, off: usize) -> u64;
-    /// Whether the word at byte `off` is, by the chunk diff, the same in
-    /// both states: its chunk neither run wrote since the restore target
-    /// (the old run's space only; the live space never claims it).
-    #[inline]
-    fn clean(&self, _off: usize) -> bool {
-        false
-    }
 }
 
 /// The live space.
@@ -249,29 +242,8 @@ impl Space for Live<'_> {
 /// The old run's space at a checkpoint, through a chunk table.
 pub struct Old<'a> {
     table: Vec<*const u64>,
-    /// The chunks either run wrote since the restore target, by chunk
-    /// (`ChunkDiff::written`): every other chunk is the live one.
-    written: Vec<u64>,
     d: &'a ChunkDiff,
     g: &'a Globals,
-}
-
-impl<'a> Old<'a> {
-    fn new(d: &'a ChunkDiff, g: &'a Globals) -> Old<'a> {
-        let table = d.table(&g.arena);
-        let mut written = vec![0u64; table.len().div_ceil(64) + 1];
-        for c in d.written() {
-            if (c as usize) < table.len() {
-                set(&mut written, c as i32);
-            }
-        }
-        Old {
-            table,
-            written,
-            d,
-            g,
-        }
-    }
 }
 
 impl Space for Old<'_> {
@@ -284,12 +256,6 @@ impl Space for Old<'_> {
             Some(&p) if !p.is_null() => unsafe { *p.add((off & (CHUNK_BYTES - 1)) >> 3) },
             _ => self.d.old_word(&self.g.arena, off),
         }
-    }
-
-    #[inline]
-    fn clean(&self, off: usize) -> bool {
-        let c = off >> CHUNK_SHIFT;
-        c < self.table.len() && self.written[c >> 6] >> (c & 63) & 1 == 0
     }
 }
 
@@ -524,6 +490,10 @@ pub struct Iso<'a, O: Space, N: Space> {
     side_later: Vec<(i32, u64)>,
     steps: usize,
     cur_task: Option<(K, i32, i32)>,
+    /// The convergence test (`check`): a token whose word is the same at
+    /// the same address in both states is paired without a cover
+    /// (`chain_from`), since only differing words are looked up in it.
+    equal_tokens: bool,
 }
 
 /// The hasher of the relocation map (`Iso::fwd`, keyed by `mem` address,
@@ -604,6 +574,7 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
             eqtb_scan: None,
             scratch_heads_dead: false,
             dormant: -1,
+            equal_tokens: false,
             stop: None,
             side_written: None,
             side_later: Vec::new(),
@@ -1141,32 +1112,30 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
             if a == NULL || b == NULL {
                 fail!(self, "a token list is longer in one state");
             }
-            // (READ-TRACK-2: a token at the same address in both states, in a
-            // chunk neither run wrote since the restore target, is the same
-            // word in both. It is paired with itself as `pair` would pair it,
-            // and the walk goes on to the same successor in both, without
-            // comparing or covering it: only a differing word needs covering,
-            // and none is in its chunk.)
-            if a == b
-                && self.watch != a
-                && Self::in_mem(a)
-                && self.o.sp.clean(self.o.l.mem + a as usize * 8)
-            {
-                if bit(&self.head_o, a) {
-                    if self.fwd.contains_key(&a) {
+            // (READ-TRACK-2, the convergence test: a token at the same
+            // address in both states whose word is the same in both is
+            // paired with itself as `pair` pairs it, and the walk goes on to
+            // the same successor, without covering the cell -- only a
+            // differing word needs a cover, `bad_mem`, and this one is not)
+            if self.equal_tokens && a == b && self.watch != a && Self::in_mem(a) {
+                let x = self.o.mem(a);
+                if x == self.n.mem(a) {
+                    if bit(&self.head_o, a) {
+                        if self.fwd.contains_key(&a) {
+                            fail!(self, "token {a}/{b} paired inconsistently");
+                        }
+                        return;
+                    }
+                    if bit(&self.head_n, a) {
                         fail!(self, "token {a}/{b} paired inconsistently");
                     }
-                    return;
+                    set(&mut self.head_o, a);
+                    set(&mut self.head_n, a);
+                    self.nodes += 1;
+                    a = rh(x);
+                    b = a;
+                    continue;
                 }
-                if bit(&self.head_n, a) {
-                    fail!(self, "token {a}/{b} paired inconsistently");
-                }
-                set(&mut self.head_o, a);
-                set(&mut self.head_n, a);
-                self.nodes += 1;
-                a = rh(self.n.mem(a));
-                b = a;
-                continue;
             }
             match self.pair(a, b) {
                 None => fail!(self, "token {a}/{b} paired inconsistently"),
@@ -2395,7 +2364,11 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
         let live = Live {
             bytes: g.arena.bytes(),
         };
-        let old = Old::new(d, g);
+        let old = Old {
+            table: d.table(&g.arena),
+            d,
+            g,
+        };
         let o = St {
             sp: &old,
             l: &l,
@@ -2421,6 +2394,7 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
         w.side_eq = host.side_eq;
         w.eqtb_scan = host.eqtb_scan;
         w.scratch_heads_dead = true;
+        w.equal_tokens = true;
         w.dormant = host.dormant;
         w.stop = Some(stop);
         let mut fetch = None;
