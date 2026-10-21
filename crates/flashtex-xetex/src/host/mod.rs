@@ -79,7 +79,7 @@ pub struct Opts {
     pub s0_cache: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: flashtex-host-unicode --socket PATH [--format NAME]... [--once [--accept-timeout SECONDS]] [--external-tools off|auto] [--tool-timeout SECONDS] [--profile low-memory|balanced|high-performance] [--no-warm] [--s0-cache DIR]";
+const USAGE: &str = "usage: flashtex-host-unicode --socket PATH [--format NAME]... [--once [--accept-timeout SECONDS]] [--external-tools off|auto] [--tool-timeout SECONDS] [--profile low-memory|balanced|high-performance] [--no-warm] [--s0-cache DIR]\n       flashtex-host-unicode --list-fonts | --list-math-fonts";
 
 impl Opts {
     pub fn parse(args: &[String]) -> Result<Opts, String> {
@@ -159,6 +159,9 @@ pub fn main(argv: Vec<String>) -> i32 {
     if argv.get(1).map(String::as_str) == Some(proc::RUN_TOOL) {
         return proc::run_tool(&argv[2..]);
     }
+    if let Some(flag @ ("--list-fonts" | "--list-math-fonts")) = argv.get(1).map(String::as_str) {
+        return list_fonts(flag == "--list-math-fonts");
+    }
     let opts = match Opts::parse(&argv[1..]) {
         Ok(o) => o,
         Err(e) => {
@@ -185,6 +188,24 @@ pub fn main(argv: Vec<String>) -> i32 {
     let (texmf, formats) = prepare(&exe, &opts, &children);
     println!("flashtex-host-unicode: {texmf}");
     serve(&exe, &opts, texmf, formats, children)
+}
+
+/// `--list-fonts` / `--list-math-fonts`: the families a `\setmainfont{…}`
+/// (or `\setmathfont{…}`, with a `MATH` table) finds by name, one a line:
+/// the catalog every engine of this host searches
+/// (`FontCatalog::for_lookup`: `FLASHTEX_FONT_DIRS`, the system's fonts,
+/// then a bundle's), so the Mac app's Fonts sheet and `\setmainfont{`
+/// completion offer what Unicode mode then resolves (app-parity row A9).
+fn list_fonts(math_only: bool) -> i32 {
+    use std::io::Write;
+    let catalog = crate::fontmgr::catalog::FontCatalog::for_lookup();
+    let mut out = std::io::stdout().lock();
+    for family in catalog.family_names(math_only) {
+        if writeln!(out, "{family}").is_err() {
+            return 1;
+        }
+    }
+    i32::from(out.flush().is_err())
 }
 
 /// `--bundle-font-index ROOT LIST OUT`: the bundle's font-name index

@@ -484,6 +484,44 @@ impl FontCatalog {
     pub fn is_empty(&self) -> bool {
         self.faces.is_empty()
     }
+
+    /// The families a lookup by name finds, one name each, sorted (ignoring
+    /// case) and without repeats: what the Mac app's Fonts sheet and its
+    /// `\setmainfont{` completion offer (`flashtex-host-unicode
+    /// --list-fonts`, app-parity row A9). Each face's first family name
+    /// ([`read_names`]' order), which `addToMaps` keys the face's family
+    /// under, so `\setmainfont{<it>}` resolves to that face. With
+    /// `math_only`, only the families with a face carrying an OpenType
+    /// `MATH` table (what `\setmathfont` needs); a bundle face not fetched
+    /// yet has no file to look in and is left out of that list.
+    pub fn family_names(&self, math_only: bool) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for f in &self.faces {
+            let Some(family) = f.names.family_names.first() else {
+                continue;
+            };
+            if family.trim().is_empty() || seen.contains(family.as_str()) {
+                continue;
+            }
+            if math_only && !has_math_table(&f.path, f.index) {
+                continue;
+            }
+            seen.insert(family.clone());
+            out.push(family.clone());
+        }
+        out.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()).then(a.cmp(b)));
+        out
+    }
+}
+
+/// Whether face `index` of the file at `path` has an OpenType `MATH`
+/// table (only the table directory is read).
+pub fn has_math_table(path: &Path, index: u32) -> bool {
+    FileBytes::open(path)
+        .ok()
+        .and_then(|src| Face::open(&src, index).map(|f| f.table(b"MATH").is_some()))
+        .unwrap_or(false)
 }
 
 /// A file's size and modification time (nanoseconds since the epoch), the
@@ -920,4 +958,57 @@ mod cache_tests {
         assert!(c3.get(&fonts[0], 0, (st.0 + 1, st.1)).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
+}
+
+#[cfg(test)]
+mod family_list_tests {
+    use super::*;
+
+    /// The Latin Modern faces the app bundles (`apps/mac/Fonts`, in the
+    /// repository, so the test needs no TeX and no system font).
+    fn lm() -> FontCatalog {
+        FontCatalog::scan(&[Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/mac/Fonts")])
+    }
+
+    /// `--list-fonts` (app-parity row A9): one name per family, sorted,
+    /// each a name `xelatex` resolves to a face of that directory. The
+    /// expected names are the oracle's, not this code's: TeX Live's
+    /// `xelatex` (fontconfig pointed at `apps/mac/Fonts` alone) loaded every
+    /// one of them with `\font\x="<name>"`, and `\XeTeXtracingfonts=1`
+    /// named a file of that directory (2026-10-21, on the NixOS PC).
+    #[test]
+    fn the_families_are_the_names_xelatex_finds() {
+        let families = lm().family_names(false);
+        assert_eq!(families, EXPECTED_FAMILIES, "{families:?}");
+        assert_eq!(lm().family_names(true), ["Latin Modern Math"]);
+    }
+
+    /// A face with no family name is not listed, a family is listed once,
+    /// and a math list looks at the file: a synthetic face has none.
+    #[test]
+    fn repeats_and_nameless_faces_are_left_out() {
+        let face = |fam: &[&str]| {
+            CatalogFace::synthetic(
+                PathBuf::from("/nonexistent.otf"),
+                0,
+                PatternNames::default(),
+                NameCollection {
+                    family_names: fam.iter().map(|s| s.to_string()).collect(),
+                    ps_name: "X".into(),
+                    ..Default::default()
+                },
+                None,
+            )
+        };
+        let c = FontCatalog::from_faces(vec![
+            face(&["beta"]),
+            face(&[]),
+            face(&["Alpha", "A"]),
+            face(&["beta"]),
+        ]);
+        assert_eq!(c.family_names(false), ["Alpha", "beta"]);
+        assert!(c.family_names(true).is_empty());
+    }
+
+    const EXPECTED_FAMILIES: &[&str] = &[];
 }
