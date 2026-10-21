@@ -502,10 +502,10 @@ impl Globals {
         }
         let mut jn = flashtex_engine::system::record_reads_into(None).unwrap_or_default();
         for f in &jo.files[op_reads.0..l_reads.0] {
-            jn.files.push(f.clone());
+            jn.files_mut().push(f.clone());
             jn.mark_seen(&f.path);
         }
-        jn.lookups
+        jn.lookups_mut()
             .extend_from_slice(&jo.lookups[op_reads.1..l_reads.1]);
         jn.outputs
             .extend_from_slice(&jo.outputs[op_reads.2..l_reads.2]);

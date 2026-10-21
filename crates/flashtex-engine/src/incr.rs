@@ -470,6 +470,10 @@ struct Obs {
     /// The thinning at `on_checkpoint` waits for a checkpoint without
     /// newer work (`newer_waiting`).
     thin_due: bool,
+    /// `newer_waiting` saw newer work: the next `preempt_now` acts on it
+    /// without asking again (the callback may answer once: the soundness
+    /// driver's `compile-interrupt`).
+    newer_seen: bool,
     tests: usize,
     test_s: f64,
     debug: bool,
@@ -2919,7 +2923,7 @@ impl Observer for Obs {
         // checkpoint without newer work thins instead (lane T7-MARGIN).
         let due = std::mem::take(&mut self.thin_due);
         if due || self.taken.len() % 32 == 31 {
-            if self.newer_waiting() {
+            if self.newer_waiting(g) {
                 self.thin_due = true;
             } else {
                 if due || self.taken.len() % 32 == 31 {
@@ -3120,12 +3124,21 @@ impl Obs {
                 .is_some_and(|c| c(self.pass, self.new_pages.len()))
     }
 
-    /// Newer work waits (the host's `set_preempt` callback, which only
-    /// reads), whether or not it may stop the run here.
-    fn newer_waiting(&self) -> bool {
-        self.preempt
+    /// Newer work waits and may stop the run (as `preempt_now` would ask,
+    /// and only where it would: what the callback answers is acted on, at
+    /// the next `preempt_now`).
+    fn newer_waiting(&mut self, g: &mut Globals) -> bool {
+        if self.newer_seen {
+            return true;
+        }
+        if (self.preempt_after_s0 && g.layer().s0.is_none()) || self.protecting() {
+            return false;
+        }
+        self.newer_seen = self
+            .preempt
             .as_ref()
-            .is_some_and(|p| p(self.pass, self.new_pages.len()))
+            .is_some_and(|p| p(self.pass, self.new_pages.len()));
+        self.newer_seen
     }
 
     /// Newer work waits: stop the run at this checkpoint. A run from the
@@ -3140,10 +3153,11 @@ impl Obs {
         if self.protecting() {
             return false;
         }
-        let stop = self
-            .preempt
-            .as_ref()
-            .is_some_and(|p| p(self.pass, self.new_pages.len()));
+        let stop = std::mem::take(&mut self.newer_seen)
+            || self
+                .preempt
+                .as_ref()
+                .is_some_and(|p| p(self.pass, self.new_pages.len()));
         if stop {
             self.preempted = true;
         }
@@ -5733,6 +5747,7 @@ impl Session {
             page_s: 0.0,
             taken: vec![],
             thin_due: false,
+            newer_seen: false,
             tests: 0,
             test_s: 0.0,
             debug: self.opts.debug,
