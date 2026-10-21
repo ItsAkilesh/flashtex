@@ -107,12 +107,24 @@ against run 4 (means over the keys; `cmp.py`):
 Commit `c59e7bdc2` reverted change 6 on reading run 4's slow beamer restores as its doing; run 3
 showed them on main too, and `af9071d41` put it back. The branch head's tree is run 4's.
 
-## 4. Checks (NixOS PC)
+## 4. Checks (VERIFIED, NixOS PC, at `af9071d41`, whose engine tree is run 4's)
 
-See the PR for the final results at the branch head (T1 lockstep, P-T fixtures with BOX-MEMO off
-and on; `incremental`, `host_incremental`, `intrinsics`, `checkpoint`, `boxmemo` and `iso::` with
-BOX-MEMO default, on and off; `sweeps.yml` default and `boxmemo=verify`; `scripts/gate.sh quick`).
-Known: `checkpoint.rs`'s `selftest` with `FLASHTEX_BOXMEMO=on` fails, as on main (BOX-MEMO.md §11.4).
+- T1 lockstep 1,468 / 1,468 equal; P-T1 88/88 and P-T2 88/88; with BOX-MEMO off and on
+  (`scripts/engine-parity.sh`).
+- `tests/incremental.rs` (80), `host_incremental.rs` (27, 1 ignored), `intrinsics.rs` (7),
+  `checkpoint.rs` (3), `boxmemo.rs` (10) and the lib's `iso::` tests pass with BOX-MEMO at the
+  hosts' default, `on` and `off`, except `checkpoint.rs`'s `selftest` with `FLASHTEX_BOXMEMO=on`,
+  which fails on main too (BOX-MEMO.md §11.4).
+- The lib tests `arena::`, `system::`, `boxmemo`, `checkpoint`, `hashcache`, `host::resident` and
+  `diff_edit` (74 pass), the runtime's `os::`, `logalloc`, `resolver`, `statsig`, `fswatch` and
+  `lookupproof` (14), flashtex-display-list's (15); `tests/lookup_memo.rs`, `lookup_racy.rs`,
+  `lookup_memo_db.rs`.
+- `scripts/gate.sh quick` (rustup 1.98.1, fresh target directory) at `827dce9ff`: passed. Two
+  earlier runs failed: one on rustfmt and clippy's `type_complexity` (fixed in `2a1da168b`), one
+  because a second gate run deleted the shared target directory under it.
+- `sweeps.yml` with `ref=agent/kabir-claude/t7-headroom` at `af9071d41`: default (run 39627470545)
+  success; `boxmemo=verify` (run 39627476644): see the PR. At `b82e507ad` both passed (39618674314,
+  39618678779).
 
 ## 5. Next steps, by expected gain
 
