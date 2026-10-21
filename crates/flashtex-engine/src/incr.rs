@@ -4149,7 +4149,9 @@ impl Session {
                     }
                     let paused_s = t0.elapsed().as_secs_f64();
                     let paused_instr = i0.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
-                    let paused_flt = f0.zip(crate::os::events()).map(|(a, b)| (b.0 - a.0, b.1 - a.1));
+                    let paused_flt = f0
+                        .zip(crate::os::events())
+                        .map(|(a, b)| (b.0 - a.0, b.1 - a.1));
                     let mut rep = self.finish()?;
                     rep.paused_how = "continued";
                     rep.paused_s = paused_s;
@@ -4175,7 +4177,9 @@ impl Session {
         }
         let paused_s = t0.elapsed().as_secs_f64();
         let paused_instr = i0.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
-        let paused_flt = f0.zip(crate::os::events()).map(|(a, b)| (b.0 - a.0, b.1 - a.1));
+        let paused_flt = f0
+            .zip(crate::os::events())
+            .map(|(a, b)| (b.0 - a.0, b.1 - a.1));
         if let Some(g) = self.g.as_mut() {
             g.layer().stats = Default::default();
         }
@@ -6167,7 +6171,9 @@ impl Session {
         let restore_s = t1.elapsed().as_secs_f64();
         drop(busy_restore);
         let restore_instr = i1.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
-        let restore_flt = f1.zip(crate::os::events()).map(|(a, b)| (b.0 - a.0, b.1 - a.1));
+        let restore_flt = f1
+            .zip(crate::os::events())
+            .map(|(a, b)| (b.0 - a.0, b.1 - a.1));
         obs.old_pages = self.pages[base..].to_vec();
         obs.old_lines = obs
             .old_pages

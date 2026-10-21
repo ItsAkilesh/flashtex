@@ -2200,7 +2200,10 @@ impl Arena {
         let mut v = all[off..off + len].to_vec();
         if let Some(l) = &c.lazy {
             for &(ch, p) in &l.redo {
-                let (lo, hi) = ((ch as usize) << CHUNK_SHIFT, (ch as usize + 1) << CHUNK_SHIFT);
+                let (lo, hi) = (
+                    (ch as usize) << CHUNK_SHIFT,
+                    (ch as usize + 1) << CHUNK_SHIFT,
+                );
                 let (a, b) = (lo.max(off), hi.min(off + len));
                 if a >= b {
                     continue;
@@ -4360,7 +4363,10 @@ mod tests {
             assert_eq!(a.checkpoint_ids(), &ids[..=i]);
             new_run(&mut a, &mut arr, 20 + i as u64);
             a.reattach(br).unwrap();
-            assert!(arr[..] == end[..], "the branch reattaches to the end from {i}");
+            assert!(
+                arr[..] == end[..],
+                "the branch reattaches to the end from {i}"
+            );
             assert_eq!(a.checkpoint_ids(), &ids[..]);
             // a write makes it whole first
             let br = a.restore_branch(ids[i]).unwrap();
@@ -4383,7 +4389,10 @@ mod tests {
             a.reattach_lazy(br).unwrap();
             let other = if i == 0 { 3 } else { i - 1 };
             let br = a.restore_branch(ids[other]).unwrap();
-            assert!(arr[..] == copies[other][..], "restore {other} after a lazy reattach");
+            assert!(
+                arr[..] == copies[other][..],
+                "restore {other} after a lazy reattach"
+            );
             a.reattach(br).unwrap();
             assert!(arr[..] == end[..]);
             // the scalars read from the state under it
@@ -4391,13 +4400,20 @@ mod tests {
             a.write_through(0, &[i as u8 + 1; 64]);
             a.reattach_lazy(br).unwrap();
             let lazy = a.read_state(0, 64);
-            assert_eq!(lazy, vec![12u8; 64], "the old run's scalars under a lazy reattach");
+            assert_eq!(
+                lazy,
+                vec![12u8; 64],
+                "the old run's scalars under a lazy reattach"
+            );
             a.materialize();
             assert_eq!(lazy, a.read(0, 64));
         }
         for (i, &id) in ids.iter().enumerate().rev() {
             a.restore_discard(id).unwrap();
-            assert!(arr[..] == copies[i][..], "restore {i} after lazy reattaches");
+            assert!(
+                arr[..] == copies[i][..],
+                "restore {i} after lazy reattaches"
+            );
         }
     }
 

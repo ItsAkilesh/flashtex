@@ -1909,40 +1909,37 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
     // T7-MARGIN: on the M5 Pro's APFS a letter typed or deleted, which sets
     // the length, took 0.45-0.8 ms here, a newline in place of a space,
     // which keeps it, 0.12-0.14 ms; reference run 2026-10-21b).
-    let write_from = |path: &Path,
-                      data: Vec<u8>,
-                      from: usize,
-                      old: Option<usize>,
-                      written: &mut Written| {
-        let r = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(path)
-            .and_then(|f| {
-                let n = data.len() as u64;
-                match old {
-                    Some(o) if o <= data.len() => {
-                        crate::os::write_all_at(&f, &data[from..], from as u64)
+    let write_from =
+        |path: &Path, data: Vec<u8>, from: usize, old: Option<usize>, written: &mut Written| {
+            let r = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(path)
+                .and_then(|f| {
+                    let n = data.len() as u64;
+                    match old {
+                        Some(o) if o <= data.len() => {
+                            crate::os::write_all_at(&f, &data[from..], from as u64)
+                        }
+                        Some(_) => {
+                            crate::os::write_all_at(&f, &data[from..], from as u64)?;
+                            f.set_len(n)
+                        }
+                        None => {
+                            f.set_len(n)?;
+                            crate::os::write_all_at(&f, &data[from..], from as u64)
+                        }
                     }
-                    Some(_) => {
-                        crate::os::write_all_at(&f, &data[from..], from as u64)?;
-                        f.set_len(n)
-                    }
-                    None => {
-                        f.set_len(n)?;
-                        crate::os::write_all_at(&f, &data[from..], from as u64)
-                    }
-                }
-            });
-        r.map_err(|e| format!("{}: {e}", path.display()))?;
-        let held = sig(path).map(|s| (s, Arc::new(data)));
-        crate::system::note_known_content(path, held.clone());
-        if let Some(h) = held {
-            written.insert(path.to_path_buf(), h);
-        }
-        Ok::<(), String>(())
-    };
+                });
+            r.map_err(|e| format!("{}: {e}", path.display()))?;
+            let held = sig(path).map(|s| (s, Arc::new(data)));
+            crate::system::note_known_content(path, held.clone());
+            if let Some(h) = held {
+                written.insert(path.to_path_buf(), h);
+            }
+            Ok::<(), String>(())
+        };
     for b in req.get("buffers").and_then(Json::as_array).unwrap_or(&[]) {
         let p = b.str_field("path").ok_or("a buffer needs path")?;
         let text = b.str_field("text").ok_or("a buffer needs text")?;
