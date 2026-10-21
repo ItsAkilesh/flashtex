@@ -133,7 +133,11 @@ six keys of the final typing@60 run, before the slice was stopped, took 9.1–9.
     Bisected on the PC: main and `11282390c` pass, `efb529808` and later fail (the hook is a
     BOX-MEMO name from there); fixed in `506b33c4a` (`iso.rs`), after which the same 100 compiles
     pass and the edited source's command-line verify runs report 159 and 163 replays, 0 differences;
-  - on `506b33c4a` and later: default and verify runs in the PR.
+  - after the fix: the product default on `506b33c4a` (run 39520971283) and BOX-MEMO verify on
+    `632ff9ed5` (run 39520974683, the same code with these notes) passed every gate: 0 bad, 0
+    wrong, 0 aborts.
+- **The final code** (`506b33c4a`): the engine tests above in the three modes again (the same
+  result), and `scripts/gate.sh quick` on the PC passes every step.
 
 ## Remaining (beliefs unless marked)
 
