@@ -168,7 +168,7 @@ impl DlSnap {
                 };
                 for k in 0..LEAF {
                     if x[k] != y[k] || !span_ok(x[k]) {
-                        let p = ((gi << GROUP_SHIFT | li) << LEAF_SHIFT) | k;
+                        let p = (((gi << GROUP_SHIFT) | li) << LEAF_SHIFT) | k;
                         if p >= a.len.max(b.len) {
                             break;
                         }
