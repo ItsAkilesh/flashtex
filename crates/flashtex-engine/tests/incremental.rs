@@ -2150,6 +2150,71 @@ fn destinations_under_a_matrix_equal_scratch_runs() {
     }
 }
 
+/// Lane T7-LAST12 (`iso.rs`, `506b33c4a`): a page insertion record's
+/// `broken_ptr` and `broken_ins` are compared only for an overflowed class
+/// (`split_up`), the only kind pdfTeX reads them in (tex.web §986, §1021);
+/// an `inserting` record holds there what `get_node` left. Footnotes on
+/// every page put `inserting` records in the states the convergence test
+/// compares between pages: a letter before them converges, and every
+/// compile equals a scratch run. A footnote long enough to be split puts a
+/// `split_up` record there: a sentence before it moves the split, the run
+/// does not converge on the split's page, and every compile still equals a
+/// scratch run. (The comparison of the two kinds of record, stale fields
+/// that differ included, is `iso::tests`; what `get_node` leaves cannot be
+/// chosen from a document.)
+#[test]
+fn page_insertion_records_compare_their_split_fields_only_when_split_up() {
+    let Some(e) = env() else {
+        common::no_texlive();
+        return;
+    };
+    let dir = e.dir.join("pageins");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let long = "A footnote long enough to be broken across the foot of two pages. ".repeat(60);
+    let doc = |word: &str, extra: &str| -> String {
+        let mut s = String::from(
+            "\\documentclass{article}\n\\interfootnotelinepenalty=0\n\\begin{document}\n",
+        );
+        for i in 0..36 {
+            let w = if i == 1 { word } else { "eta" };
+            if i == 20 {
+                s.push_str(extra);
+                s.push_str(&format!("Before the long one.\\footnote{{{long}}}\n\n"));
+            }
+            s.push_str(&para(i, w).replace(
+                "math",
+                &format!("note\\footnote{{The note of paragraph {i}.}} and math"),
+            ));
+        }
+        s.push_str("\\end{document}\n");
+        s
+    };
+    let mut h = Host::start(&e, &dir);
+    for k in 0..4 {
+        let r = compile_and_check(&e, &mut h, &dir, &[("doc.tex", &doc("eta", ""))], "settle");
+        if r.contains("\"mode\":\"unchanged\"") || k == 3 {
+            break;
+        }
+    }
+    // `inserting` records between pages: a letter on page 1 converges
+    for (word, what) in [("xeta", "a letter"), ("eta", "the revert")] {
+        let r = compile_and_check(&e, &mut h, &dir, &[("doc.tex", &doc(word, ""))], what);
+        assert!(r.contains("\"mode\":\"incremental\""), "{what}: {r}");
+        assert_ne!(field(&r, "converged_at"), "null", "{what}: {r}");
+    }
+    // a `split_up` record: a sentence before the long footnote moves its
+    // split, and no page from the restart to the split's converges
+    let sentence = "A sentence added before the long footnote, long enough to take \
+                    a line or two of the page away from the footnote's part on it. \
+                    Another line of it, to be sure.\n\n";
+    for (extra, what) in [(sentence, "a sentence"), ("", "its revert")] {
+        let r = compile_and_check(&e, &mut h, &dir, &[("doc.tex", &doc("eta", extra))], what);
+        assert!(r.contains("\"mode\":\"incremental\""), "{what}: {r}");
+        eprintln!("PAGEINS {what}: restart {} converged {} diffs {}", field(&r, "restart_pages"), field(&r, "converged_at"), r.split("\"diffs\":").nth(1).unwrap_or("").chars().take(600).collect::<String>());
+    }
+}
+
 /// P4-CONVERGENCE (T7, `docs/evidence/t7-latency-2026-10-02/`): hyperref's
 /// `\pdfstringdefPreHook` (filled by siunitx) is a guarded intrinsic
 /// (DESIGN.md §5.6 item 4). A letter added before the first page ships
