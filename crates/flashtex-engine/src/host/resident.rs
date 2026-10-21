@@ -875,6 +875,7 @@ impl Engine {
             }
         };
         let t_apply = Instant::now();
+        let ev_apply = crate::os::events();
         // (the host's copies stand for files only within the compile that
         // wrote them: `system::KNOWN`)
         crate::system::clear_known_content();
@@ -883,6 +884,10 @@ impl Engine {
             return self.resume_deferred(&conn);
         }
         let apply_ms = t_apply.elapsed().as_secs_f64() * 1e3;
+        // (its page faults and, on macOS, system calls: `os::events`)
+        let apply_ev = ev_apply
+            .zip(crate::os::events())
+            .map(|(a, b)| (b.0 - a.0, b.1 - a.1));
         let started = |mode: &str, keep: bool, extra: Vec<(String, Json)>| {
             let mut kv = vec![
                 ("id".to_string(), Json::Int(id)),
@@ -1296,6 +1301,10 @@ impl Engine {
                     ),
                 ),
                 ("apply".to_string(), m(apply_ms)),
+                (
+                    "apply_sys".to_string(),
+                    apply_ev.map_or(Json::Null, |e| Json::Int(e.1 as i64)),
+                ),
                 ("move_spans".to_string(), m(move_ms)),
                 ("first_page".to_string(), o(t.first_page_ms)),
                 ("first_page_cpu".to_string(), o(t.first_cpu_ms)),
@@ -1894,16 +1903,37 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
         }
         std::fs::read(path).map(Arc::new)
     };
-    // Write `data` to `path`, whose bytes before `from` are already these.
-    let write_from = |path: &Path, data: Vec<u8>, from: usize, written: &mut Written| {
+    // Write `data` to `path`, whose bytes before `from` are already these
+    // and whose length is `old` (when known). The length is set only where
+    // the write leaves it wrong: a file that grows grows by the write (lane
+    // T7-MARGIN: on the M5 Pro's APFS a letter typed or deleted, which sets
+    // the length, took 0.45-0.8 ms here, a newline in place of a space,
+    // which keeps it, 0.12-0.14 ms; reference run 2026-10-21b).
+    let write_from = |path: &Path,
+                      data: Vec<u8>,
+                      from: usize,
+                      old: Option<usize>,
+                      written: &mut Written| {
         let r = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(false)
             .open(path)
             .and_then(|f| {
-                f.set_len(data.len() as u64)?;
-                crate::os::write_all_at(&f, &data[from..], from as u64)
+                let n = data.len() as u64;
+                match old {
+                    Some(o) if o <= data.len() => {
+                        crate::os::write_all_at(&f, &data[from..], from as u64)
+                    }
+                    Some(_) => {
+                        crate::os::write_all_at(&f, &data[from..], from as u64)?;
+                        f.set_len(n)
+                    }
+                    None => {
+                        f.set_len(n)?;
+                        crate::os::write_all_at(&f, &data[from..], from as u64)
+                    }
+                }
             });
         r.map_err(|e| format!("{}: {e}", path.display()))?;
         let held = sig(path).map(|s| (s, Arc::new(data)));
@@ -1923,7 +1953,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                     written.insert(path, (s, d));
                 }
             }
-            _ => write_from(&path, text.as_bytes().to_vec(), 0, written)?,
+            _ => write_from(&path, text.as_bytes().to_vec(), 0, None, written)?,
         }
     }
     for e in req.get("edits").and_then(Json::as_array).unwrap_or(&[]) {
@@ -1937,6 +1967,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
             return Err(format!("{p}: edit outside the file"));
         }
         let (at, del) = (at as usize, del as usize);
+        let old = d.len();
         if d[at..at + del] == *ins.as_bytes() {
             // nothing changes (the file is left alone, as before)
             if let Some(s) = sig(&path) {
@@ -1960,7 +1991,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                 n
             }
         };
-        write_from(&path, d, at, written)?;
+        write_from(&path, d, at, Some(old), written)?;
     }
     Ok(())
 }
