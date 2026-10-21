@@ -214,4 +214,21 @@ version and files (fetching nothing); *Fetch* fetches it into the cache and
 recompiles. A mistyped or private package name never leaves your Mac unless
 you click one of them. `fetch = "always"` is the standing consent: such a
 package is fetched at once. Projects with pins or libraries no longer fall
-back to the previous engine; `[fonts]` still does.
+back to the previous engine.
+
+**`[fonts]` on the new engine** is applied in Unicode mode (`mode =
+"unicode"`, or a `% !TEX program = xelatex` line), as `xelatex` would apply
+the equivalent fontspec setup: `text`, `sans` and `mono` become
+`\setmainfont`, `\setsansfont` and `\setmonofont` once the class is loaded,
+and `math` becomes `unicode-math`'s `\setmathfont` at `\begin{document}`
+unless the document loads `unicode-math` itself. The document's own font
+commands still win, and each role applied is a `FlashTeX [fonts]:` line in
+the log. Names resolve as XeTeX resolves them: the fonts installed on the
+machine and `FLASHTEX_FONT_DIRS`; the project's `fonts/` folder is not
+searched by name (as with `xelatex`), and a font file name TeX Live finds
+(say `texgyrepagella-regular.otf`) loads that file. Changing the table (the Fonts sheet or an
+edit) compiles again, and the sheet lists the families Unicode mode finds
+(`flashtex-host-unicode --list-fonts`). Classic mode is pdfLaTeX-compatible
+and does not apply `[fonts]`; until the previous engine is retired, a
+Classic project with `[fonts]` is typeset by the previous engine, and the
+window offers the switch to Unicode mode.

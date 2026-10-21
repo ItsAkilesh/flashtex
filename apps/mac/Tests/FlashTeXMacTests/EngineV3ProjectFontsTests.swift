@@ -131,7 +131,7 @@ final class EngineV3ProjectFontsTests: XCTestCase {
         XCTAssertTrue(m.engineAnnouncements.isEmpty, "\(m.engineAnnouncements)")
         XCTAssertNil(UnicodeModeSuggestionBanner.message(m), "no suggestion in Unicode mode")
 
-        // Classic (S5's interim rule): the visible fallback, and the suggestion.
+        // Classic, chosen in flashtex.toml (S5's interim rule): the visible fallback.
         current = Self.manifest(root: root, mode: "classic", fonts: ["text": Self.family])
         m.manifest.refresh()
         XCTAssertEqual(m.documentMode.mode, .classic)
@@ -280,8 +280,8 @@ final class EngineV3ProjectFontsTests: XCTestCase {
 
     /// A9: `[fonts] text = "Georgia"` in a Unicode-mode project is applied
     /// by the new engine as `xelatex` applies `\setmainfont{Georgia}`: the
-    /// body font the document reports is the oracle's, the log says the
-    /// role was applied, and the page draws that face.
+    /// body font the document reports is the oracle's, and the log says the
+    /// role was applied.
     func testUnicodeModeAppliesTheProjectsFontsAsXeLaTeXDoes() async throws {
         let (m, _, _) = try await started(fonts: ["text": Self.family])
         defer { m.engineV3.stop() }
