@@ -214,6 +214,28 @@ impl Handles {
             .count()
     }
 
+    /// Whether every handle below [`OTHER_BASE`] refers to an equal
+    /// glyph-info array here and in `other`, or to none in both: what the
+    /// convergence test's walk asks of a native word's handle (`crate::iso`,
+    /// `glyphs`), for every handle at once (`crate::conv`: the states'
+    /// words are equal, so a native word holds the same handle in both).
+    pub fn same_glyphs(&self, other: &Handles) -> bool {
+        fn glyphs(s: Option<&Option<Object>>) -> Result<Option<&Arc<GlyphInfo>>, ()> {
+            match s {
+                None | Some(None) => Ok(None),
+                Some(Some(Object::GlyphInfo(g))) => Ok(Some(g)),
+                Some(Some(_)) => Err(()),
+            }
+        }
+        (0..self.table.len().max(other.table.len())).all(|i| {
+            match (glyphs(self.table.get(i)), glyphs(other.table.get(i))) {
+                (Ok(None), Ok(None)) => true,
+                (Ok(Some(x)), Ok(Some(y))) => Arc::ptr_eq(x, y) || **x == **y,
+                _ => false,
+            }
+        })
+    }
+
     /// The glyph-info array of handle `h`.
     pub fn glyph_info(&self, h: i32) -> Option<&Arc<GlyphInfo>> {
         match self.get(h)? {
@@ -260,6 +282,8 @@ pub struct Host {
     /// later answers, so a checkpoint saves both.
     pub brk_iter: Option<crate::native::linebreak::Rules>,
     pub brk_locale_str_num: i32,
+    /// READ-TRACK (`crate::dormant`): the run's counts, never restored.
+    pub dorm: flashtex_engine::dormant::Counts,
     /// The iterator's text, as the boundaries `ubrk_next` returns for it, and
     /// how many it has returned. `do_locale_linebreaks` reads them all
     /// within one command, so a checkpoint does not save them.
@@ -385,6 +409,8 @@ impl Globals {
             .ok_or_else(|| format!("no host state saved with checkpoint {id:?}"))?;
         self.arena.restore_discard(id)?;
         self.fill_scalars();
+        // (another run from here on: `crate::dormant`)
+        self.host.dorm.new_epoch();
         let kept: Vec<_> = self.arena.checkpoint_ids().to_vec();
         self.host.checkpoints.retain(|k, _| kept.contains(k));
         self.host.font_mgr = saved.font_mgr;
@@ -414,6 +440,7 @@ impl Globals {
             .ok_or_else(|| format!("no host state saved with checkpoint {id:?}"))?;
         let b = self.arena.restore_branch(id)?;
         self.fill_scalars();
+        self.host.dorm.new_epoch();
         self.host.font_mgr = saved.font_mgr;
         self.host.full_name_of_file = saved.full_name_of_file;
         self.host.protrusion = saved.protrusion;
@@ -584,6 +611,37 @@ mod tests {
         assert_eq!(h.alloc(gi(5)), 1);
         assert_eq!(h.alloc(gi(6)), 4);
         assert_eq!(h.glyph_info(1).unwrap().ids, vec![5]);
+    }
+
+    /// `same_glyphs` (READ-TRACK-2, the convergence test of an equal state):
+    /// equal arrays behind every glyph-info handle, shared or remade, and a
+    /// free slot free in both; a free slot, a longer table or another array
+    /// in one of them is a difference; the other objects are not compared.
+    #[test]
+    fn same_glyphs_compares_every_glyph_info_handle() {
+        let mut a = Handles::default();
+        let (x, _y) = (a.alloc(gi(1)), a.alloc(gi(2)));
+        a.alloc(Object::PicPath(Arc::from(&b"p"[..])));
+        let mut b = a.clone();
+        assert!(a.same_glyphs(&b));
+        // (remade: another Arc, equal arrays)
+        b.free(x);
+        assert_eq!(b.alloc(gi(1)), x);
+        assert!(a.same_glyphs(&b) && b.same_glyphs(&a));
+        // (other objects aside)
+        b.alloc(Object::PicPath(Arc::from(&b"q"[..])));
+        assert!(a.same_glyphs(&b));
+        let mut c = b.clone();
+        c.free(x);
+        assert!(!a.same_glyphs(&c) && !c.same_glyphs(&a));
+        c.alloc(gi(7));
+        assert!(!a.same_glyphs(&c));
+        let mut d = b.clone();
+        let z = d.alloc(gi(3));
+        assert!(!a.same_glyphs(&d) && !d.same_glyphs(&a));
+        // (a slot freed in both is the same)
+        d.free(z);
+        assert!(a.same_glyphs(&d) && d.same_glyphs(&a));
     }
 
     /// A checkpoint saves the handle table with the word space: after a

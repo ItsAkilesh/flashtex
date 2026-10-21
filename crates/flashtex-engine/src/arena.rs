@@ -704,7 +704,15 @@ pub(crate) struct Core {
     /// Bumped by every change to the logs' contents that keeps the
     /// checkpoint list (`or_from`): a `Prepared` from before it is stale.
     history_gen: u64,
+    /// The buffer of the last `Prepared` a restore used, kept for the next
+    /// `reattach`'s: a fresh one of megabytes faults its pages in at every
+    /// abandoned compile (1 ms of a typed key's 2 on a 1,000-page
+    /// document, lane T7-LAST12). At most [`SPARE_MAX`] bytes.
+    spare: Vec<u64>,
 }
+
+/// The largest buffer `Core::spare` keeps.
+const SPARE_MAX: usize = 64 << 20;
 
 /// The state at checkpoint `id` of the chunks the logs from `id` on hold,
 /// worked out while the engine was idle: a later `restore_branch(id)` of
@@ -1449,7 +1457,13 @@ impl Core {
             );
         }
         let redo = match prepared {
-            Some(p) => self.rewind_prepared(&p, old_logs.last()),
+            Some(p) => {
+                let redo = self.rewind_prepared(&p, old_logs.last());
+                if p.buf.capacity() * 8 <= SPARE_MAX && p.buf.capacity() > self.spare.capacity() {
+                    self.spare = p.buf;
+                }
+                redo
+            }
             None => self.rewind(&old_logs, true),
         };
         self.ids.push(old_ids[0]);
@@ -1541,6 +1555,7 @@ impl Core {
     /// the restore had not happened.
     fn reattach(&mut self, branch: Branch) -> Result<(), String> {
         self.drop_part();
+        let t0 = std::time::Instant::now();
         let target = *branch.ids.first().ok_or("empty branch")?;
         let Some(k) = self.index_of(target) else {
             self.drop_branch(branch);
@@ -1552,6 +1567,7 @@ impl Core {
         for log in later {
             self.free_log(log);
         }
+        let t_rewind = t0.elapsed();
         let Branch { ids, logs, redo } = branch;
         // The live state is the target's now. The chunks the branch's logs
         // hold are the redo's (the restore that detached the branch saved
@@ -1564,21 +1580,26 @@ impl Core {
         let prepared = if self.prepare_on_reattach {
             let mut cs: Vec<u32> = redo.iter().map(|&(c, _)| c).collect();
             cs.sort_unstable();
-            let mut buf = vec![0u64; cs.len() * CHUNK_WORDS];
-            for (i, &c) in cs.iter().enumerate() {
+            let mut buf = std::mem::take(&mut self.spare);
+            buf.clear();
+            buf.reserve(cs.len() * CHUNK_WORDS);
+            for &c in &cs {
                 // SAFETY: a live chunk of CHUNK_WORDS words.
                 let src =
                     unsafe { std::slice::from_raw_parts(self.chunk_ptr(c as usize), CHUNK_WORDS) };
-                buf[i * CHUNK_WORDS..(i + 1) * CHUNK_WORDS].copy_from_slice(src);
+                buf.extend_from_slice(src);
             }
             Some((cs, buf))
         } else {
             None
         };
+        let t_pre = t0.elapsed();
         self.copy_in(&redo);
+        let n_redo = redo.len();
         for (_, p) in redo {
             self.slab.give(p);
         }
+        let t_copy = t0.elapsed();
         self.ids.extend(ids);
         self.logs.extend(logs);
         self.clear_saved();
@@ -1603,6 +1624,16 @@ impl Core {
             }
         });
         self.set_prepared(prepared);
+        if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
+            let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
+            eprintln!(
+                "[arena] reattach: rewind {:.2}, prepare copy {:.2}, redo in {:.2} ({n_redo} chunks), rest {:.2} ms",
+                ms(t_rewind),
+                ms(t_pre - t_rewind),
+                ms(t_copy - t_pre),
+                ms(t0.elapsed() - t_copy)
+            );
+        }
         if std::env::var_os("FLASHTEX_VERIFY_PREPARED").is_some() {
             if let Err(e) = self.verify_prepared() {
                 // (a verify mode: loud, so that a sweep fails)
@@ -1987,6 +2018,7 @@ impl Arena {
             part: None,
             history_gen: 0,
             prepare_on_reattach: std::env::var_os("FLASHTEX_NO_PREPARE").is_none(),
+            spare: Vec::new(),
         });
         Arena {
             core: Box::into_raw(core),
@@ -2228,48 +2260,104 @@ impl Arena {
     /// live word is written without the barrier (the open log's copy is
     /// changed like the others). Returns how many copies were changed.
     pub fn or_from(&mut self, from: CheckpointId, off: usize, bits: u64) -> Result<usize, String> {
+        self.rewrite_from(from, &[off], &|_, v| v | bits, "or_from")
+    }
+
+    /// Put each value of `words` (8-byte words at byte offsets, distinct)
+    /// in the state at checkpoint `from`, at every later checkpoint of the
+    /// live chain and in the live state, as `or_from` adds bits: as if the
+    /// word had held it from `from` on (READ-TRACK, `crate::dormant`: words
+    /// no state from `from` on read). The checkpoints before `from` keep
+    /// their values. One pass over the logs for all the words.
+    pub fn set_from(
+        &mut self,
+        from: CheckpointId,
+        words: &[(usize, u64)],
+    ) -> Result<usize, String> {
+        let offs: Vec<usize> = words.iter().map(|w| w.0).collect();
+        self.rewrite_from(from, &offs, &|i, _| words[i].1, "set_from")
+    }
+
+    /// `or_from` and `set_from`: every copy of word `offs[i]` from `from`
+    /// on, and the live word, becomes `f(i, itself)`.
+    fn rewrite_from(
+        &mut self,
+        from: CheckpointId,
+        offs: &[usize],
+        f: &dyn Fn(usize, u64) -> u64,
+        what: &str,
+    ) -> Result<usize, String> {
         let core = self.core_mut();
-        if !off.is_multiple_of(8) || off + 8 > core.bytes {
-            return Err(format!("or_from: word {off} outside the space"));
+        for (i, &off) in offs.iter().enumerate() {
+            if !off.is_multiple_of(8) || off + 8 > core.bytes {
+                return Err(format!("{what}: word {off} outside the space"));
+            }
+            if offs[..i].contains(&off) {
+                return Err(format!("{what}: word {off} named twice"));
+            }
+        }
+        if offs.is_empty() {
+            return Ok(0);
         }
         let k = core
             .index_of(from)
-            .ok_or_else(|| format!("or_from: checkpoint {from} is not in the live chain"))?;
+            .ok_or_else(|| format!("{what}: checkpoint {from} is not in the live chain"))?;
         core.history_gen += 1;
-        let c = (off >> CHUNK_SHIFT) as u32;
-        let w = (off & (CHUNK_BYTES - 1)) / 8;
-        let (mw, b) = (w / 64, w % 64);
-        // The checkpoints before `from` keep the word as it was: the log
-        // into `from` (sealed) must hold its value there, which is its value
-        // at `from` unless that interval wrote it (then it holds it already).
+        // each word's chunk and place in it
+        let pos: Vec<(u32, usize)> = offs
+            .iter()
+            .map(|&off| ((off >> CHUNK_SHIFT) as u32, (off & (CHUNK_BYTES - 1)) / 8))
+            .collect();
+        let mut cs: Vec<u32> = pos.iter().map(|p| p.0).collect();
+        cs.sort_unstable();
+        cs.dedup();
+        let held_in = |d: &Delta, c: u32, w: usize| d.c == c && d.mask[w / 64] >> (w % 64) & 1 == 1;
+        // the word's place among a delta's words, in bit order
+        let place = |mask: &[u64; MASK_WORDS], w: usize| {
+            let (mw, b) = (w / 64, w % 64);
+            mask[..mw]
+                .iter()
+                .map(|m| m.count_ones() as usize)
+                .sum::<usize>()
+                + (mask[mw] & ((1u64 << b) - 1)).count_ones() as usize
+        };
+        // The checkpoints before `from` keep the words as they were: the log
+        // into `from` (sealed) must hold their values there, which are their
+        // values at `from` unless that interval wrote them (then it holds
+        // them already).
         if k > 0 {
             let live = |cc: u32| core.chunk_ptr(cc as usize) as *const u64;
-            let v = rewound(core.nchunks, &[c], &live, &core.logs[k..])[w];
+            let at = rewound(core.nchunks, &cs, &live, &core.logs[k..]);
             let prev = &mut core.logs[k - 1];
             if !prev.entries.is_empty() {
-                return Err("or_from: the log before the checkpoint is not sealed".into());
+                return Err(format!(
+                    "{what}: the log before the checkpoint is not sealed"
+                ));
             }
-            let held = prev
-                .deltas
+            let missing: Vec<(u32, usize, u64)> = pos
                 .iter()
-                .any(|d| d.c == c && d.mask[mw] >> b & 1 == 1);
-            if !held {
+                .filter(|&&(c, w)| !prev.deltas.iter().any(|d| held_in(d, c, w)))
+                .map(|&(c, w)| {
+                    let ci = cs.binary_search(&c).expect("a chunk of the words");
+                    (c, w, at[ci * CHUNK_WORDS + w])
+                })
+                .collect();
+            if !missing.is_empty() {
                 let before = prev.sealed_bytes();
-                prev.rewrite(|ds| match ds.iter_mut().find(|e| e.0 == c) {
-                    Some((_, mask, vals)) => {
-                        // the word's place among the delta's words, in bit order
-                        let idx = mask[..mw]
-                            .iter()
-                            .map(|m| m.count_ones() as usize)
-                            .sum::<usize>()
-                            + (mask[mw] & ((1u64 << b) - 1)).count_ones() as usize;
-                        vals.insert(idx, v);
-                        mask[mw] |= 1u64 << b;
-                    }
-                    None => {
-                        let mut mask = [0u64; MASK_WORDS];
-                        mask[mw] = 1u64 << b;
-                        ds.push((c, mask, vec![v]));
+                prev.rewrite(|ds| {
+                    for &(c, w, v) in &missing {
+                        let (mw, b) = (w / 64, w % 64);
+                        match ds.iter_mut().find(|e| e.0 == c) {
+                            Some((_, mask, vals)) => {
+                                vals.insert(place(mask, w), v);
+                                mask[mw] |= 1u64 << b;
+                            }
+                            None => {
+                                let mut mask = [0u64; MASK_WORDS];
+                                mask[mw] = 1u64 << b;
+                                ds.push((c, mask, vec![v]));
+                            }
+                        }
                     }
                 });
                 core.sealed_bytes = core.sealed_bytes + prev.sealed_bytes() - before;
@@ -2278,37 +2366,45 @@ impl Arena {
         let mut n = 0;
         for log in &mut core.logs[k..] {
             for &(cc, p) in &log.entries {
-                if cc == c {
-                    // SAFETY: a slab chunk of CHUNK_WORDS words.
-                    unsafe { *p.add(w) |= bits };
-                    n += 1;
+                if cs.binary_search(&cc).is_err() {
+                    continue;
+                }
+                for (i, &(c, w)) in pos.iter().enumerate() {
+                    if cc == c {
+                        // SAFETY: a slab chunk of CHUNK_WORDS words.
+                        unsafe { *p.add(w) = f(i, *p.add(w)) };
+                        n += 1;
+                    }
                 }
             }
             if log
                 .deltas
                 .iter()
-                .any(|d| d.c == c && d.mask[mw] >> b & 1 == 1)
+                .any(|d| pos.iter().any(|&(c, w)| held_in(d, c, w)))
             {
                 let before = log.sealed_bytes();
                 log.rewrite(|ds| {
                     for (dc, mask, vals) in ds.iter_mut() {
-                        if *dc == c && mask[mw] >> b & 1 == 1 {
-                            let idx = mask[..mw]
-                                .iter()
-                                .map(|m| m.count_ones() as usize)
-                                .sum::<usize>()
-                                + (mask[mw] & ((1u64 << b) - 1)).count_ones() as usize;
-                            vals[idx] |= bits;
-                            n += 1;
+                        for (i, &(c, w)) in pos.iter().enumerate() {
+                            if *dc == c && mask[w / 64] >> (w % 64) & 1 == 1 {
+                                let idx = place(mask, w);
+                                vals[idx] = f(i, vals[idx]);
+                                n += 1;
+                            }
                         }
                     }
                 });
                 core.sealed_bytes = core.sealed_bytes + log.sealed_bytes() - before;
             }
         }
-        // SAFETY: inside the mapping, 8-byte aligned.
-        unsafe { *(core.base.add(off) as *mut u64) |= bits };
-        Ok(n + 1)
+        for (i, &off) in offs.iter().enumerate() {
+            // SAFETY: inside the mapping, 8-byte aligned.
+            unsafe {
+                let p = core.base.add(off) as *mut u64;
+                *p = f(i, *p);
+            }
+        }
+        Ok(n + offs.len())
     }
 
     /// Write `src` at byte `off` of the space through the barrier, touching
@@ -3021,6 +3117,17 @@ impl ChunkDiff {
         self.old_at.keys().copied().collect()
     }
 
+    /// The old run's words through the chunk table ([`table`](Self::table)):
+    /// [`old_word`](Self::old_word) without a map lookup per word, for a
+    /// reader of many (the free lists of the convergence test).
+    pub fn old_words<'a>(&'a self, a: &'a Arena) -> OldWords<'a> {
+        OldWords {
+            table: self.table(a),
+            d: self,
+            a,
+        }
+    }
+
     /// The old run's 8-byte word at byte `off` of the space.
     pub fn old_word(&self, a: &Arena, off: usize) -> u64 {
         let c = (off >> CHUNK_SHIFT) as u32;
@@ -3032,6 +3139,27 @@ impl ChunkDiff {
             .unwrap_or_else(|| a.core().chunk_ptr(c as usize) as *const u64);
         // SAFETY: a chunk of CHUNK_WORDS words; w < CHUNK_WORDS.
         unsafe { *p.add(w) }
+    }
+}
+
+/// [`ChunkDiff::old_words`].
+pub struct OldWords<'a> {
+    table: Vec<*const u64>,
+    d: &'a ChunkDiff,
+    a: &'a Arena,
+}
+
+impl OldWords<'_> {
+    /// [`ChunkDiff::old_word`].
+    #[inline]
+    pub fn word(&self, off: usize) -> u64 {
+        match self.table.get(off >> CHUNK_SHIFT) {
+            // SAFETY: the table holds chunk pointers of CHUNK_BYTES each,
+            // valid while the arena and the diff are unchanged (both
+            // borrowed).
+            Some(&p) if !p.is_null() => unsafe { *p.add((off & (CHUNK_BYTES - 1)) >> 3) },
+            _ => self.d.old_word(self.a, off),
+        }
     }
 }
 
@@ -3945,6 +4073,50 @@ mod tests {
         };
         assert!(arr[w] == end[w] | bits && arr[quiet] == end[quiet] | bits);
         for i in [3usize, 7, 12, 19, 0] {
+            let br = a.restore_branch(ids[i]).unwrap();
+            assert!(arr[..] == expect(&copies[i], i)[..], "restore to {i}");
+            a.converge(br, ids[i]).unwrap();
+        }
+        a.restore_discard(ids[10]).unwrap();
+        assert!(arr[..] == expect(&copies[10], 10)[..]);
+    }
+
+    /// `set_from`: the value is the word's at the checkpoint named, at every
+    /// later one and in the live state, and nowhere before.
+    #[test]
+    fn set_from_rewrites_the_later_history() {
+        let (mut a, mut arr) = space(200_000);
+        scribble(&mut arr, 1, 5000);
+        let mut ids = vec![];
+        let mut copies = vec![];
+        for k in 0..20 {
+            ids.push(a.checkpoint());
+            copies.push(arr.to_vec());
+            scribble(&mut arr, 100 + k, 3000);
+        }
+        let end = arr.to_vec();
+        // a word some logs hold (written after checkpoint 7, and later) and
+        // one none do
+        let w = (0..arr.len())
+            .find(|&i| copies[8][i] != copies[7][i] && copies[12][i] != copies[8][i])
+            .unwrap();
+        let quiet = (0..arr.len())
+            .find(|&i| copies.iter().all(|c| c[i] == end[i]) && i != w)
+            .unwrap();
+        let value = 0x005e_ed0f_da7a_u64;
+        let off = |i: usize| (&arr[i] as *const u64 as usize) - (a.bytes().as_ptr() as usize);
+        let words = [(off(w), value), (off(quiet), value)];
+        a.set_from(ids[7], &words).unwrap();
+        let expect = |c: &Vec<u64>, k: usize| {
+            let mut c = c.clone();
+            if k >= 7 {
+                c[w] = value;
+                c[quiet] = value;
+            }
+            c
+        };
+        assert!(arr[w] == value && arr[quiet] == value);
+        for i in [3usize, 6, 7, 12, 19, 0] {
             let br = a.restore_branch(ids[i]).unwrap();
             assert!(arr[..] == expect(&copies[i], i)[..], "restore to {i}");
             a.converge(br, ids[i]).unwrap();

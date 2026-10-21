@@ -102,25 +102,20 @@ pub struct Tables {
 }
 
 impl Tables {
-    /// Whether these tables begin with `other`'s first `spans` spans and
-    /// `files` files (a converged run's numbering is the old run's so far).
-    pub fn starts_like(&self, other: &Tables, (spans, files): (usize, usize)) -> bool {
-        self.spans.len() == spans
-            && self.files.len() == files
-            && other.spans.get(..spans) == Some(&self.spans[..])
-            && other.files.get(..files) == Some(&self.files[..])
-    }
-
     pub fn place(&self, l: Loc) -> Place<'_> {
-        if l == 0 {
-            return None;
-        }
-        let s = loc_span(l);
-        let rest = l & !(0xFFFF_FFFFu64 << 16);
-        let (f, line) = self.spans.get((s as usize).checked_sub(1)?).copied()?;
-        let path = self.files.get((f as usize).checked_sub(1)?)?;
-        Some((path.as_str(), line, rest))
+        place_in(&self.spans, &self.files, l)
     }
+}
+
+fn place_in<'a>(spans: &[(u32, u32)], files: &'a [String], l: Loc) -> Place<'a> {
+    if l == 0 {
+        return None;
+    }
+    let s = loc_span(l);
+    let rest = l & !(0xFFFF_FFFFu64 << 16);
+    let (f, line) = spans.get((s as usize).checked_sub(1)?).copied()?;
+    let path = files.get((f as usize).checked_sub(1)?)?;
+    Some((path.as_str(), line, rest))
 }
 
 impl DlSnap {
@@ -132,6 +127,60 @@ impl DlSnap {
     /// Node `p`'s position in this snapshot.
     pub fn at(&self, p: i32) -> Loc {
         self.side.get(p as u32 as usize)
+    }
+
+    /// The entries of the side table that may name another place here than
+    /// in `live` (at most `cap` of them, `None` past that), where `live`
+    /// numbers its spans and files as this snapshot's run did
+    /// ([`DlSource::numbered_like`] with [`lens`](Self::lens)): an entry
+    /// that differs, or an equal one of a span this snapshot had not named.
+    /// Every other entry is the same place in both (`crate::conv`, the
+    /// convergence test of an equal state). A leaf or group both tables
+    /// share holds the same entries, written while the run that made them
+    /// had named no more spans than it then kept (a restore cuts both back
+    /// together, `DlSource::restore`).
+    pub fn side_diffs(&self, live: &DlSource, cap: usize) -> Option<Vec<usize>> {
+        let spans = self.spans as u64;
+        let (a, b) = (&self.side, &live.side);
+        let mut out = vec![];
+        let span_ok = |x: Loc| x == 0 || u64::from(loc_span(x)) <= spans;
+        let groups = a.groups.len().max(b.groups.len());
+        for gi in 0..groups {
+            let (ga, gb) = (
+                a.groups.get(gi).and_then(Option::as_ref),
+                b.groups.get(gi).and_then(Option::as_ref),
+            );
+            if let (Some(x), Some(y)) = (ga, gb) {
+                if Arc::ptr_eq(x, y) {
+                    continue;
+                }
+            }
+            for li in 0..LEAVES {
+                let la = ga.and_then(|g| g.0[li].as_ref());
+                let lb = gb.and_then(|g| g.0[li].as_ref());
+                let (x, y): (&Leaf, &Leaf) = match (la, lb) {
+                    (None, None) => continue,
+                    (Some(x), Some(y)) if Arc::ptr_eq(x, y) => continue,
+                    (x, y) => (
+                        x.map_or(&[0; LEAF], |l| &**l),
+                        y.map_or(&[0; LEAF], |l| &**l),
+                    ),
+                };
+                for k in 0..LEAF {
+                    if x[k] != y[k] || !span_ok(x[k]) {
+                        let p = (((gi << GROUP_SHIFT) | li) << LEAF_SHIFT) | k;
+                        if p >= a.len.max(b.len) {
+                            break;
+                        }
+                        if out.len() == cap {
+                            return None;
+                        }
+                        out.push(p);
+                    }
+                }
+            }
+        }
+        Some(out)
     }
 }
 
@@ -159,6 +208,20 @@ impl DlSource {
     /// Node `p`'s position now.
     pub fn at(&self, p: i32) -> Loc {
         self.get(p)
+    }
+
+    /// [`Tables::place`] in these tables (without copying them).
+    pub fn place(&self, l: Loc) -> Place<'_> {
+        place_in(&self.spans, &self.files, l)
+    }
+
+    /// Whether these tables are `t`'s first `spans` spans and `files` files
+    /// (a converged run's numbering is the old run's so far).
+    pub fn numbered_like(&self, t: &Tables, (spans, files): (usize, usize)) -> bool {
+        self.spans.len() == spans
+            && self.files.len() == files
+            && t.spans.get(..spans) == Some(&self.spans[..])
+            && t.files.get(..files) == Some(&self.files[..])
     }
 
     /// Whether a display list is made.
@@ -275,20 +338,23 @@ impl DlSource {
         }
         entries.enc(w);
         self.files[..s.files.min(self.files.len())].to_vec().enc(w);
-        let ids: Vec<(Vec<u8>, u32)> = self
+        // (the maps in key order: the same S₀ makes the same file)
+        let mut ids: Vec<(Vec<u8>, u32)> = self
             .file_ids
             .iter()
             .filter(|(_, &id)| id as usize <= s.files)
             .map(|(k, &id)| (k.clone(), id))
             .collect();
+        ids.sort_unstable();
         ids.enc(w);
         self.spans[..s.spans.min(self.spans.len())].to_vec().enc(w);
-        let ids: Vec<((u32, u32), u32)> = self
+        let mut ids: Vec<((u32, u32), u32)> = self
             .span_ids
             .iter()
             .filter(|(_, &id)| id as usize <= s.spans)
             .map(|(k, &id)| (*k, id))
             .collect();
+        ids.sort_unstable();
         ids.enc(w);
         s.last.enc(w);
         s.file_level.enc(w);
@@ -773,4 +839,51 @@ impl Globals {
 /// or a pseudo file).
 fn is_file(r: &in_state_record) -> bool {
     r.state_field != token_list && r.name_field > 17
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `DlSnap::side_diffs` (READ-TRACK-2, the convergence test of an equal
+    /// state): the entries written since the snapshot that differ, those of
+    /// a leaf or group one table has and the other not, and an equal entry
+    /// of a span the snapshot had not named; nothing in what both share.
+    #[test]
+    fn side_diffs_finds_the_entries_that_may_differ() {
+        let n = 3 * LEAF * LEAVES + 17;
+        let mut d = DlSource::default();
+        d.set_on(true, n);
+        let f = d.file_id(b"a.tex");
+        let (s1, s2) = (d.span_id(f, 1), d.span_id(f, 2));
+        d.set(5, pack(s1, 3));
+        d.set((LEAF * LEAVES + 9) as i32, pack(s2, 0));
+        let snap = d.snapshot();
+        assert_eq!(snap.side_diffs(&d, 8), Some(vec![]));
+        assert!(d.numbered_like(&d.tables(), snap.lens()));
+        // (a write of the same value copies the leaf: still the same)
+        d.set(5, pack(s1, 3));
+        assert_eq!(snap.side_diffs(&d, 8), Some(vec![]));
+        // (a write into a group neither had, and one into a copied leaf)
+        let far = 2 * LEAF * LEAVES + 3;
+        d.set(far as i32, pack(s1, 1));
+        d.set(6, pack(s2, 4));
+        assert_eq!(snap.side_diffs(&d, 8), Some(vec![6, far]));
+        assert_eq!(snap.side_diffs(&d, 1), None);
+        // (an equal entry of a span the snapshot had not named, in a leaf
+        // the tables no longer share)
+        d.restore(&snap);
+        d.set(7, pack(9, 0));
+        let odd = d.snapshot();
+        assert_eq!(odd.side_diffs(&d, 8), Some(vec![]));
+        d.set(8, pack(s1, 0));
+        assert_eq!(odd.side_diffs(&d, 8), Some(vec![7, 8]));
+        // (a span named since: numbered otherwise)
+        let t = d.tables();
+        d.span_id(f, 3);
+        assert!(!d.numbered_like(&t, odd.lens()));
+        assert!(d
+            .place(pack(s2, 4))
+            .is_some_and(|(_, line, col)| line == 2 && col == 4));
+    }
 }

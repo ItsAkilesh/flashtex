@@ -238,12 +238,18 @@ impl Key {
     /// The part of `check` about the files and lookups the run read.
     fn check_files<'a>(&'a self) -> Result<Fresh, String> {
         let mut fresh = Fresh::default();
+        // (TeX Live's files as the watches vouch for them: `fswatch`)
+        let _check = crate::fswatch::check();
         // One signature and one content hash per path: a preamble opens
         // many files more than once (beamer's: 432 reads of 189 files), and
         // the key lists every read. Each read is still compared with what
         // it recorded, against the file as this check found it.
         let mut sigs: HashMap<&str, Option<StatSig>> = HashMap::new();
-        let mut sig_of = |path: &'a str| *sigs.entry(path).or_insert_with(|| StatSig::of(path));
+        let mut sig_of = |path: &'a str| {
+            *sigs
+                .entry(path)
+                .or_insert_with(|| crate::fswatch::sig(path))
+        };
         let mut hashes: HashMap<&str, Option<[u64; 2]>> = HashMap::new();
         // A file both written before S₀ and read before it is keyed by
         // what was read; `rewrite_outputs` puts back what was written.
@@ -283,6 +289,13 @@ impl Key {
                 .iter()
                 .zip(&now)
                 .all(|((_, s), n)| n.as_ref() == Some(s));
+        if !dirs_same && std::env::var_os("FLASHTEX_FSWATCH_DEBUG").is_some() {
+            for ((d, s), n) in self.dirs.iter().zip(&now) {
+                if n.as_ref() != Some(s) {
+                    eprintln!("[fswatch] key dir {d:?} differs: {s:?} now {n:?}");
+                }
+            }
+        }
         // Whether the answers depend on nothing the key does not watch (a
         // lookup that finds the same may depend on more than when S₀ was
         // taken, #1562): if they do, the signatures stay as they were, and
@@ -1225,8 +1238,10 @@ pub fn read_s0(
 }
 
 // (v4: the key's reads at the document's start, `Key::arm`; v5: the pages,
-// page-aligned, `S0_PAGE`)
-const MAGIC: &[u8] = b"flashtex S0 v5";
+// page-aligned, `S0_PAGE`; v6: the key's stat signatures hold the change
+// time, `StatSig::ctime_ns`; v7: the records hold READ-TRACK's counts,
+// `crate::dormant::Dorm`)
+const MAGIC: &[u8] = b"flashtex S0 v7";
 
 /// The granule of S₀'s pages in the file (v5): Apple silicon's page, which
 /// every supported system's page size divides (4 KB elsewhere).
@@ -1333,6 +1348,10 @@ mod key_tests {
             .set_modified(old)
             .unwrap();
         open_dir_for_times(&d).set_modified(old).unwrap();
+        // (putting the times back moved the change times: their tick too)
+        std::thread::sleep(std::time::Duration::from_millis(
+            (crate::system::RACY_NS / 1_000_000) as u64 + 100,
+        ));
         key.check_refresh((0, 0), b"main").unwrap();
         assert!(!key.files[0].2.racy, "the file's signature is still racy");
         assert!(

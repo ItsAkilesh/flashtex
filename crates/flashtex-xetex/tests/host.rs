@@ -626,6 +626,118 @@ fn low_memory_keeps_no_spare() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A font file whose path is 256 bytes or longer: XDV keeps the path's
+/// length in one byte (as XeTeX's), so the writer takes the engine's own
+/// path (`page::Metrics::native_path`); before, its glyphs were dropped
+/// without a word (a bundle cache under a long home directory).
+#[test]
+fn a_font_at_a_long_path_is_drawn() {
+    let src = Path::new("/System/Library/Fonts/Supplemental/Georgia.ttf");
+    if !texlive() || !src.is_file() {
+        eprintln!("skipped: no TeX Live or no Georgia.ttf");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-longpath-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut fonts = dir.join("proj");
+    while fonts.as_os_str().len() < 270 {
+        fonts = fonts.join("a-rather-long-directory-name");
+    }
+    std::fs::create_dir_all(&fonts).unwrap();
+    std::fs::copy(src, fonts.join("Georgia.ttf")).unwrap();
+    let doc = format!(
+        "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\
+         \\setmainfont{{Georgia.ttf}}[Path={}/]\n\\begin{{document}}\nHello.\n\\end{{document}}\n",
+        fonts.display()
+    );
+    let (proj, out) = project(&dir, &doc);
+    let h = start(&dir);
+    let mut c = Client::connect(&h.sock).unwrap();
+    c.compile(&request(1, &proj, &out)).unwrap();
+    let (ev, done) = events(&mut c, 1);
+    assert_eq!(done.str_field("status"), Some("ok"), "{done:?}");
+    let fonts: Vec<_> = ev
+        .iter()
+        .filter_map(|e| match e {
+            Event::Font(f) => Some(f.info.str_field("ps_name").unwrap_or("").to_string()),
+            _ => None,
+        })
+        .collect();
+    assert!(fonts.iter().any(|p| p == "Georgia"), "{fonts:?}");
+    c.bye().unwrap();
+    drop(h);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// bibtex and makeindex are the engine's own ports (`host/proc.rs`,
+/// `--run-tool flashtex:...`), so a bibliography and an index need no TeX
+/// Live: their outputs equal TeX Live 2026's bibtex and makeindex on the
+/// same document (fixtures/notex-tools, which `scripts/notex-host-check.sh`
+/// checks for the pdfTeX host), and a follow-up compile reads them.
+#[test]
+fn bibtex_and_makeindex_are_built_in() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let fx = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/notex-tools");
+    let dir = std::env::temp_dir().join(format!("flashtex-host-tools-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let proj = dir.join("proj");
+    std::fs::create_dir_all(&proj).unwrap();
+    for f in ["main.tex", "refs.bib"] {
+        std::fs::copy(fx.join(f), proj.join(f)).unwrap();
+    }
+    let out = dir.join("out").to_string_lossy().into_owned();
+    let h = start(&dir);
+    let mut c = Client::connect(&h.sock).unwrap();
+    let mut r = request(1, &proj, &out);
+    r.external_tools = Some("auto".into());
+    c.compile(&r).unwrap();
+    // a DONE per compile (the first, then the follow-up the tools' outputs
+    // ask for), and the rounds' end
+    let mut ev = vec![];
+    loop {
+        let e = c.next_event().unwrap().expect("the host closed");
+        let end = matches!(&e, Event::Tool(j) if j.str_field("event") == Some("settled"));
+        if let Event::Done(j) = &e {
+            assert_eq!(j.str_field("status"), Some("ok"), "{j:?}");
+        }
+        ev.push(e);
+        if end {
+            break;
+        }
+    }
+    assert!(
+        ev.iter().filter(|e| matches!(e, Event::Done(_))).count() >= 2,
+        "no follow-up compile"
+    );
+    let ran: Vec<(String, String)> = ev
+        .iter()
+        .filter_map(|e| match e {
+            Event::Tool(j) if j.str_field("event") == Some("done") => Some((
+                j.str_field("tool").unwrap_or("").to_string(),
+                j.str_field("status").unwrap_or("").to_string(),
+            )),
+            _ => None,
+        })
+        .collect();
+    for tool in ["bibtex", "makeindex"] {
+        assert!(
+            ran.iter().any(|(t, s)| t == tool && s == "ok"),
+            "{tool} did not run cleanly: {ran:?}"
+        );
+    }
+    for name in ["main.bbl", "main.blg", "main.ind", "main.ilg"] {
+        let got = std::fs::read(Path::new(&out).join(name)).unwrap();
+        let want = std::fs::read(fx.join("expected").join(name)).unwrap();
+        assert!(got == want, "{name} differs from TeX Live's");
+    }
+    c.bye().unwrap();
+    drop(h);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Compiles in the host's own process (`crate::resident`; from the second
 /// run on, from the state kept where the format is loaded, and an edit after
 /// the preamble from S₀) write what runs in processes of their own write,
@@ -886,13 +998,25 @@ fn a_reopened_document_goes_on_from_its_persisted_s0() {
     };
     let (status, _, _) = compile(&with_cache, "first");
     assert_eq!(status, "ok");
-    let saved: Vec<_> = std::fs::read_dir(&cache)
+    let mut saved: Vec<_> = std::fs::read_dir(&cache)
         .expect("the S0 cache")
-        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .map(|e| e.unwrap().path())
         .collect();
+    saved.sort_by_key(|p| p.extension().map(|e| e.to_os_string()));
+    let size = |p: &Path| std::fs::metadata(p).unwrap().len();
+    // S₀, and the base it is a delta against (the state after the format
+    // load, made from the format point)
     assert!(
-        saved.len() == 1 && saved[0].ends_with(".xs0"),
-        "one S0 saved: {saved:?}"
+        saved.len() == 2
+            && saved[0].extension().is_some_and(|e| e == "xs0")
+            && saved[1].extension().is_some_and(|e| e == "xs0base"),
+        "one S0 and its base saved: {saved:?}"
+    );
+    assert!(
+        size(&saved[0]) * 4 < size(&saved[1]),
+        "S0 holds what differs from its base: {} and {} bytes",
+        size(&saved[0]),
+        size(&saved[1])
     );
     // edited in its body while closed: from S₀
     std::fs::write(
@@ -908,6 +1032,202 @@ fn a_reopened_document_goes_on_from_its_persisted_s0() {
         "fresh",
         "a changed font file refuses S0"
     );
+    // its base gone while closed: S₀ refused; that run makes the base and
+    // S₀ again, and the next goes on from them
+    std::fs::remove_file(&saved[1]).unwrap();
+    assert_eq!(against_scratch("no base"), "fresh", "no base refuses S0");
+    assert!(saved[1].is_file(), "the base is made again");
+    assert_eq!(against_scratch("base again"), "s0", "the new base serves");
+    // a base cut short while closed: S₀ refused; the run's save makes the
+    // base again in its place (rather than saving S₀ whole), and collects
+    // a base of no S₀ older than a day (not a recent one)
+    let stale = cache.join("0000000000000000000000000000dead.xs0base");
+    let recent = cache.join("0000000000000000000000000000beef.xs0base");
+    for b in [&stale, &recent] {
+        std::fs::write(b, b"an old base").unwrap();
+    }
+    std::fs::File::options()
+        .write(true)
+        .open(&stale)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(2 * 24 * 3600))
+        .unwrap();
+    let whole = size(&saved[1]);
+    std::fs::File::options()
+        .write(true)
+        .open(&saved[1])
+        .unwrap()
+        .set_len(whole / 2)
+        .unwrap();
+    assert_eq!(
+        against_scratch("cut base"),
+        "fresh",
+        "a cut base refuses S0"
+    );
+    assert_eq!(size(&saved[1]), whole, "the base is made again");
+    assert!(
+        size(&saved[0]) * 4 < whole,
+        "S0 is saved against the new base, not whole: {} bytes",
+        size(&saved[0])
+    );
+    assert!(!stale.exists(), "the stale base is collected");
+    assert!(recent.exists(), "a recent base is kept");
+    assert_eq!(
+        against_scratch("base made again"),
+        "s0",
+        "the base made again serves"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A persisted S₀ is saved when the engine is idle (`host::inproc`,
+/// `Engine::save_pending`): a keystroke right after a cold compile runs
+/// first. The file then written is the one a save made at once writes,
+/// byte for byte (what it holds besides S₀'s words is taken when the save
+/// is asked for; S₀'s words are a checkpoint's).
+#[test]
+fn an_s0_saved_after_a_keystroke_is_the_one_saved_at_once() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-host-s0later-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let doc = "\\documentclass{article}\n\\usepackage{fontspec}\n\\begin{document}\n\\section{One}\\label{one}\nSome words, ffi. See section~\\ref{one}.\n\n\\end{document}\n";
+    let (proj, out) = project(&dir, doc);
+    // the S₀ file in `cache` after one host's compiles of `texts` (each in
+    // the editor's buffer, one right after the other)
+    let saved = |cache: &Path, texts: &[&str], tag: &str| -> Vec<u8> {
+        let _ = std::fs::remove_dir_all(&out);
+        let cache_s = cache.to_string_lossy().into_owned();
+        let h = start_with(
+            &dir,
+            &[
+                ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+                ("FLASHTEX_S0_CACHE", cache_s.as_str()),
+                // (no save before the second compile: it comes at once)
+                ("FLASHTEX_UNICODE_SAVE_IDLE_MS", "3000"),
+            ],
+            &dir.join(format!("{tag}.err")),
+        );
+        let mut c = Client::connect(&h.sock).unwrap();
+        for (i, t) in texts.iter().enumerate() {
+            let id = i as i64 + 1;
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), t.to_string())];
+            c.compile(&r).unwrap();
+            let (_, done) = events(&mut c, id);
+            assert_eq!(done.str_field("status"), Some("ok"), "{tag}: compile {id}");
+        }
+        c.bye().unwrap();
+        let mut h = h;
+        let t = Instant::now();
+        while h.child.try_wait().unwrap().is_none() {
+            assert!(
+                t.elapsed() < Duration::from_secs(120),
+                "the host did not end"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let mut files: Vec<PathBuf> = std::fs::read_dir(cache)
+            .expect("the S0 cache")
+            .map(|e| e.unwrap().path())
+            .collect();
+        // (the S₀ first, then its base)
+        files.sort_by_key(|p| p.extension().is_some_and(|e| e == "xs0base"));
+        assert!(
+            files.len() == 2
+                && files[0].extension().is_some_and(|e| e == "xs0")
+                && files[1].extension().is_some_and(|e| e == "xs0base"),
+            "{tag}: one S0 and its base saved: {files:?}"
+        );
+        // (each cache has a base of its own, and a base's identity is a
+        // nonce of the file written: S₀ refers to it, so it is masked
+        // here; the nonce follows the base's magic)
+        let base = std::fs::read(&files[1]).unwrap();
+        let magic = b"flashtex xetex S0 base v1";
+        let at = base
+            .windows(magic.len())
+            .position(|w| w == magic)
+            .expect("the base's magic")
+            + magic.len();
+        let nonce = &base[at..at + 16];
+        let mut s0 = std::fs::read(&files[0]).unwrap();
+        let refs: Vec<usize> = s0
+            .windows(16)
+            .enumerate()
+            .filter(|(_, w)| *w == nonce)
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(refs.len(), 1, "{tag}: S0 refers to its base once");
+        s0[refs[0]..refs[0] + 16].fill(0);
+        s0
+    };
+    // where two files differ: the header's length, the first differing
+    // byte, and the differing 16 KiB blocks after the header
+    let diff = |a: &[u8], b: &[u8]| -> String {
+        let head = u64::from_le_bytes(a[..8].try_into().unwrap()) as usize + 8;
+        let first = a.iter().zip(b).position(|(x, y)| x != y);
+        let blocks: Vec<usize> = (0..a.len().min(b.len()).div_ceil(16384))
+            .filter(|&k| {
+                let r = k * 16384..((k + 1) * 16384).min(a.len()).min(b.len());
+                a[r.clone()] != b[r]
+            })
+            .collect();
+        // (the bytes around the first difference, as text)
+        let around = |x: &[u8]| -> String {
+            first.map_or(String::new(), |f| {
+                String::from_utf8_lossy(&x[f.saturating_sub(48)..(f + 48).min(x.len())])
+                    .escape_debug()
+                    .to_string()
+            })
+        };
+        format!(
+            "{} and {} bytes, header {head} bytes, first difference at {first:?}, {} blocks differ: {:?}; around it: {:?} vs {:?}",
+            a.len(),
+            b.len(),
+            blocks.len(),
+            &blocks[..blocks.len().min(20)],
+            around(a),
+            around(b)
+        )
+    };
+    let at_once = saved(&dir.join("cache-a"), &[doc], "at-once");
+    // Two hosts that save at once write the same file but for the stat
+    // signatures S₀'s key holds of the files it read (`StatSig`: the
+    // `.aux` the first pass wrote has times of its own in each host).
+    // Those bytes (times and inode numbers, within the header), each with
+    // the 7 on either side (a signature's field is 8 bytes), are the only
+    // ones a deferred save may differ in.
+    let again = saved(&dir.join("cache-c"), &[doc], "at-once-again");
+    assert_eq!(at_once.len(), again.len(), "two hosts' S0 files' sizes");
+    let head = u64::from_le_bytes(at_once[..8].try_into().unwrap()) as usize + 8;
+    let mut volatile = vec![false; at_once.len()];
+    let mut differ = 0;
+    for p in (0..at_once.len()).filter(|&p| at_once[p] != again[p]) {
+        differ += 1;
+        volatile[p.saturating_sub(7)..(p + 8).min(at_once.len())].fill(true);
+        assert!(
+            p < head,
+            "two hosts' S0 files differ past the header: {}",
+            diff(&at_once, &again)
+        );
+    }
+    assert!(
+        differ <= 256,
+        "two hosts' S0 files differ in {differ} bytes: {}",
+        diff(&at_once, &again)
+    );
+    let edited = doc.replace("Some words", "Some more words");
+    let later = saved(&dir.join("cache-b"), &[doc, &edited], "later");
+    assert!(
+        at_once.len() == later.len()
+            && (0..at_once.len()).all(|p| volatile[p] || at_once[p] == later[p]),
+        "the S0 saved after a keystroke differs from the one saved at once: {}",
+        diff(&at_once, &later)
+    );
+    let log = std::fs::read_to_string(dir.join("later.err")).unwrap_or_default();
+    assert!(log.contains("\"saved_s0\""), "the save was made: {log}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1336,6 +1656,112 @@ fn a_converged_run_writes_what_a_run_of_its_own_writes() {
         assert_eq!(got.2, want.2);
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// READ-TRACK (`crate::dormant`, docs/design/engine-v2/READ-TRACK.md): a
+/// command with an optional argument, alone on its line, peeks at the next
+/// line and then typesets pages. Keystrokes at the start of that line after
+/// the first change only its unread rest: the run jumps to the old run's
+/// last page before it reads the line (here the `\end{document}` line's, and
+/// one read before more pages), and every compile's PDF, `.aux` and log are
+/// a run of its own's.
+#[test]
+fn a_dormant_line_is_kept_until_it_is_read() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let para = |i: usize, w: &str| {
+        format!(
+            "Paragraph {i} with the word {w}, and enough text to fill a few lines of the \
+             page so that the document ships several pages.\n\n"
+        )
+    };
+    let tail: String = (0..160).map(|i| para(i, "tail")).collect();
+    let more: String = (0..60).map(|i| para(i, "more")).collect();
+    let body: String = (0..40).map(|i| para(i, "body")).collect();
+    for (name, line) in [("end", ""), ("read", "Zword \\more\n")] {
+        let dir = std::env::temp_dir().join(format!(
+            "flashtex-host-dormant-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let doc = format!(
+            "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\
+             \\newcommand\\tail[1][]{{#1{tail}}}\n\\newcommand\\more{{{more}}}\n\
+             \\begin{{document}}\n{body}\\tail\n{line}\\end{{document}}\n"
+        );
+        let at = doc.find("\\tail\n").unwrap() + "\\tail\n".len();
+        let keys: Vec<String> = (1..=3)
+            .map(|k| {
+                let mut t = doc.clone();
+                t.insert_str(at, &"x".repeat(k));
+                t
+            })
+            .collect();
+        let sub = dir.join("run");
+        let (proj, out) = project(&sub, &doc);
+        let err = sub.join("host.err");
+        let o = Path::new(&out);
+        let outputs = || {
+            (
+                std::fs::read(o.join("main.pdf")).unwrap(),
+                std::fs::read_to_string(o.join("main.aux")).unwrap(),
+                std::fs::read_to_string(o.join("main.log")).unwrap(),
+            )
+        };
+        let compile = |c: &mut Client, id: i64, text: &str| {
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.to_string())];
+            c.compile(&r).unwrap();
+            events(c, id).1
+        };
+        let h = start_with(
+            &sub,
+            &[
+                ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+                ("FLASHTEX_UNICODE_CONV_DEBUG", "1"),
+            ],
+            &err,
+        );
+        let mut c = Client::connect(&h.sock).unwrap();
+        compile(&mut c, 1, &doc);
+        compile(&mut c, 2, &doc);
+        let mut got = vec![];
+        for (k, text) in keys.iter().enumerate() {
+            compile(&mut c, 3 + k as i64, text);
+            got.push(outputs());
+        }
+        c.bye().unwrap();
+        drop(h);
+        let log = std::fs::read_to_string(&err).unwrap();
+        assert!(
+            log.contains("a dormant line"),
+            "{name}: no dormant line: {log}"
+        );
+        assert!(log.contains("[conv] jumped"), "{name}: no jump: {log}");
+        assert!(!log.contains("UNSOUND"), "{name}: {log}");
+        for (text, got) in keys.iter().zip(got) {
+            let h = start_with(
+                &sub,
+                &[
+                    ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+                    ("FLASHTEX_UNICODE_INPROCESS", "0"),
+                ],
+                &sub.join("host2.err"),
+            );
+            let mut c = Client::connect(&h.sock).unwrap();
+            compile(&mut c, 1, text);
+            compile(&mut c, 2, text);
+            let want = outputs();
+            c.bye().unwrap();
+            drop(h);
+            assert!(got.0 == want.0, "{name}: the PDFs differ");
+            assert_eq!(got.1, want.1, "{name}");
+            assert_eq!(got.2, want.2, "{name}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// The bundle's fonts by name (#1783) in both kinds of run: in the host's

@@ -855,14 +855,43 @@ impl ByteFile {
     }
 }
 
+// The word straight from the reader's buffer when it holds one, which is
+// every word of a format but those at a buffer's end: the same bytes
+// `read_exact` copies, without depending on how the compiler inlines it into
+// the 3,000 calls of `load_fmt_file`, which a change elsewhere in the crate
+// moved (READ-TRACK measured 16-52 M more instructions of a cold compile,
+// up to 5.5 %, with the same code).
+#[inline]
 pub fn get_word(f: &mut WordFile) {
-    let mut b = [0u8; 8];
-    match f.input.as_mut().map(|r| r.read_exact(&mut b)) {
-        Some(Ok(())) => f.buf = memory_word::from_bits(u64::from_le_bytes(b)),
-        _ => {
-            f.at_eof = true;
-            f.buf = memory_word::default();
+    if let Some(r) = f.input.as_mut() {
+        if let Some(w) = r.buffer().get(..8) {
+            let w = u64::from_le_bytes(w.try_into().expect("8 bytes"));
+            r.consume(8);
+            f.buf = memory_word::from_bits(w);
+            return;
         }
+    }
+    get_word_slow(f);
+}
+
+#[inline(never)]
+fn get_word_slow(f: &mut WordFile) {
+    let mut b = [0u8; 8];
+    let ok = match f.input.as_mut() {
+        Some(r) => match r.read_exact(&mut b) {
+            Ok(()) => true,
+            Err(e) => {
+                drop(e);
+                false
+            }
+        },
+        None => false,
+    };
+    if ok {
+        f.buf = memory_word::from_bits(u64::from_le_bytes(b));
+    } else {
+        f.at_eof = true;
+        f.buf = memory_word::default();
     }
 }
 pub fn put_word(f: &mut WordFile) {
@@ -3442,7 +3471,16 @@ pub fn exit_process(g: &mut Globals, code: i32) -> ! {
     {
         g.flashtex_prof_finish();
         g.flashtex_intr_finish();
+        g.flashtex_bm_finish();
     }
+    // FLASHTEX_BOXMEMO_VERIFY_FAIL: a BOX-MEMO verification difference
+    // makes the run fail (exit status 3), for the gates
+    #[cfg(not(feature = "tex82"))]
+    let code = if crate::boxmemo::fail_on_difference() {
+        3
+    } else {
+        code
+    };
     let _ = std::io::stdout().flush();
     g.log_file.flush();
     for f in g.write_file.iter_mut() {
@@ -4278,7 +4316,10 @@ pub struct ReadLog {
     /// Files opened for output, in order (a file the preamble writes and
     /// closes is part of what S₀ stands for).
     pub outputs: Vec<String>,
-    seen: std::collections::HashSet<String>,
+    /// (This and the two maps below are shared between a log and its
+    /// clones until one changes them: a journal is cloned several times a
+    /// compile, and a beamer preamble's listings hold thousands of names.)
+    seen: std::sync::Arc<std::collections::HashSet<String>>,
     /// Keep the content of the user's files read (`FileRead::content`).
     pub keep_content: bool,
     /// The directories lookups depended on, each with its stat signature
@@ -4288,12 +4329,12 @@ pub struct ReadLog {
     /// The directories `note_lookup_dirs` listed, each once a run: their
     /// entries' names, lower-cased (`lookupproof::folded_listing`) and
     /// sorted (`None`: not listable).
-    listings: std::collections::HashMap<String, Option<Vec<String>>>,
+    listings: std::sync::Arc<std::collections::HashMap<String, Option<Vec<String>>>>,
     /// Where `note_dep` put each entry of `dirs` (a hint: `dirs` is public
     /// and may have been replaced since, so a position is used only where
     /// it still holds the entry; an entry it does not know is added again,
     /// which only makes the check stricter).
-    dir_at: std::collections::HashMap<String, usize>,
+    dir_at: std::sync::Arc<std::collections::HashMap<String, usize>>,
 }
 
 impl ReadLog {
@@ -4304,7 +4345,7 @@ impl ReadLog {
     fn listing(&mut self, dir: &str) -> Option<&Vec<String>> {
         if !self.listings.contains_key(dir) {
             let l = crate::lookupproof::folded_listing(dir);
-            self.listings.insert(dir.to_string(), l);
+            std::sync::Arc::make_mut(&mut self.listings).insert(dir.to_string(), l);
         }
         self.listings.get(dir)?.as_ref()
     }
@@ -4331,7 +4372,7 @@ impl ReadLog {
     /// Mark `path` as already noted (a journal carried over from an earlier
     /// run segment, `crate::incr`).
     pub fn mark_seen(&mut self, path: &str) {
-        self.seen.insert(path.to_string());
+        std::sync::Arc::make_mut(&mut self.seen).insert(path.to_string());
     }
 }
 
@@ -4390,41 +4431,8 @@ fn recording_reads() -> bool {
     READS.with(|r| r.borrow().is_some())
 }
 
-/// An entry of [`ReadLog::dirs`] (`host::Key::dirs`) for a lookup whose
-/// dependencies are not known (`FileResolver::lookup_dirs`, #1562): it has
-/// no signature, so it never equals the one recorded, and the lookups are
-/// made again at every check.
-pub const DEP_UNKNOWN: &str = "\0lookup dependencies not known";
-
-/// The prefix of an entry of [`ReadLog::dirs`] for a lookup's answer found
-/// on disk, which must stay a readable file (kpathsea's
-/// `kpathsea_readable_file`): a file made unreadable keeps its directory's
-/// listing (#1562). Its "signature" says whether it is readable.
-const DEP_READABLE: &str = "\0readable\0";
-
-/// The entry of [`ReadLog::dirs`] for an answer found on disk at `path`
-/// ([`DEP_READABLE`]).
-pub(crate) fn readable_dep(path: &str) -> String {
-    format!("{DEP_READABLE}{path}")
-}
-
-/// The signature of an entry of [`ReadLog::dirs`]: a directory's
-/// `StatSig`; for [`DEP_READABLE`], whether the file is readable; for
-/// [`DEP_UNKNOWN`], none.
-pub fn dep_sig(entry: &str) -> Option<StatSig> {
-    if let Some(p) = entry.strip_prefix(DEP_READABLE) {
-        // (kpathsea's READABLE: `access(R_OK)`, and not a directory)
-        let ok = std::fs::metadata(p).is_ok_and(|m| !m.is_dir()) && File::open(p).is_ok();
-        return Some(StatSig {
-            len: ok as u64,
-            ..StatSig::default()
-        });
-    }
-    if entry.starts_with('\0') {
-        return None;
-    }
-    StatSig::of(entry)
-}
+use flashtex_runtime::lookupproof::DEP_READABLE;
+pub use flashtex_runtime::lookupproof::{dep_sig, DEP_UNKNOWN};
 
 /// `entry` among `log.dirs`, signed now if it is new.
 fn note_dep(log: &mut ReadLog, entry: &str) {
@@ -4436,7 +4444,8 @@ fn note_dep(log: &mut ReadLog, entry: &str) {
         .is_some_and(|&i| log.dirs.get(i).is_some_and(|(x, _)| x == entry));
     if !known && !log.dirs.iter().any(|(x, _)| x == entry) {
         let sig = dep_sig(entry).unwrap_or_default();
-        log.dir_at.insert(entry.to_string(), log.dirs.len());
+        let at = log.dirs.len();
+        std::sync::Arc::make_mut(&mut log.dir_at).insert(entry.to_string(), at);
         log.dirs.push((entry.to_string(), sig));
     }
 }
@@ -4603,7 +4612,7 @@ pub fn note_file(path: &str) {
     READS.with(|r| {
         let mut b = r.borrow_mut();
         let Some(log) = b.as_mut() else { return };
-        if !log.seen.insert(path.to_string()) {
+        if log.seen.contains(path) {
             // Read again (a `.toc` at every \tableofcontents, a file \input
             // twice): an incremental journal lists every read, since a run
             // that converges keeps the old run's later reads (`crate::incr`
@@ -4615,6 +4624,7 @@ pub fn note_file(path: &str) {
             }
             return;
         }
+        std::sync::Arc::make_mut(&mut log.seen).insert(path.to_string());
         let stat = StatSig::of(path).unwrap_or_default();
         // A file whose bytes are kept is read whole; any other (the format,
         // the font map, TeX Live's files) only hashed, through a buffer.
@@ -4879,20 +4889,7 @@ fn in_offset<R: std::io::Seek>(r: &mut R, path: &Option<String>) -> Result<(Stri
     Ok((p, off))
 }
 
-/// Debugging (`FLASHTEX_FILE_TRACE=FILE`): append one line per change the
-/// checkpoint layer makes to an output file.
-pub fn file_trace(msg: impl FnOnce() -> String) {
-    static T: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-    if let Some(p) = T.get_or_init(|| std::env::var("FLASHTEX_FILE_TRACE").ok()) {
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(p)
-        {
-            let _ = writeln!(f, "{}", msg());
-        }
-    }
-}
+pub use flashtex_runtime::trace::file_trace;
 
 /// The length of `path` on disk now (`None`: no such file).
 pub fn disk_len(path: &str) -> Option<u64> {
@@ -5409,9 +5406,12 @@ mod confined_read_tests {
 mod statsig_tests {
     use super::*;
 
-    /// A signature taken within the modification-time granularity of the
-    /// file's time equals none, not even itself; an older one equals its
-    /// twin and not a file changed since.
+    /// A signature taken within the time granularity of the file's
+    /// modification or change time equals none, not even itself; an older
+    /// one equals its twin. (Putting the modification time back moves the
+    /// change time, so that signature is racy until the change time is old
+    /// too; flashtex-runtime's `statsig` tests cover the window on each
+    /// time, a time far ahead, and a rewrite with the time put back.)
     #[test]
     fn racy_signatures_equal_nothing() {
         let d = std::env::temp_dir().join(format!("flashtex-statsig-{}", std::process::id()));
@@ -5431,25 +5431,10 @@ mod statsig_tests {
             .set_modified(old)
             .unwrap();
         let a = StatSig::of(p).unwrap();
-        let b = StatSig::of(p).unwrap();
+        assert!(a.racy || a.ctime_ns == 0, "the change time has just moved");
+        let a = StatSig::of_within(p, 0).unwrap();
+        let b = StatSig::of_within(p, 0).unwrap();
         assert!(!a.racy && a == b);
-        // a time within the tick ahead is racy too; one far ahead is not
-        let soon = std::time::SystemTime::now() + std::time::Duration::from_millis(500);
-        std::fs::File::options()
-            .write(true)
-            .open(&f)
-            .unwrap()
-            .set_modified(soon)
-            .unwrap();
-        assert!(StatSig::of(p).unwrap().racy);
-        let far = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
-        std::fs::File::options()
-            .write(true)
-            .open(&f)
-            .unwrap()
-            .set_modified(far)
-            .unwrap();
-        assert!(!StatSig::of(p).unwrap().racy);
         let _ = std::fs::remove_dir_all(&d);
     }
 }

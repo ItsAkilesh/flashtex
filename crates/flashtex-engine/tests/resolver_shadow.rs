@@ -248,7 +248,7 @@ fn files_added_to_texmfhome_and_texinputs_shadow_at_once() {
         log().contains("flashtex-shadow"),
         "the TEXMFHOME package was not read: {report}"
     );
-    drop(compile);
+    drop(input);
     let _ = h.kill();
     let _ = h.wait();
     let _ = std::fs::remove_dir_all(&d);

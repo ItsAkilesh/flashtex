@@ -675,6 +675,31 @@ pub fn span_location(s: u32) -> Option<(u32, u32)> {
     with(|st| st.spans.get((s as usize).checked_sub(1)?).copied()).flatten()
 }
 
+/// Whether side-table entries `a` and `b` (of an old run's node and the
+/// live run's) name the same place: the same column of the same (file,
+/// line). Span ids are names, and a line can have more than one: an edit
+/// retires the spans of the lines it replaced (`move_lines`) and the new
+/// run gives that material a new span, so the convergence test meets the
+/// old run's position under the retired span and the new run's under the
+/// new one. Spans on one line stay on one line (`State::move_spans_of`
+/// moves or keeps every span of a line alike), so a page that ships
+/// either entry, now or after later edits, names the same place. Without
+/// the writer (or a span it does not know) only equal entries are.
+pub fn same_place(a: u64, b: u64) -> bool {
+    if a == b {
+        return true;
+    }
+    let (sa, sb) = (loc_span(a), loc_span(b));
+    if loc_col(a) != loc_col(b) || sa == 0 || sb == 0 {
+        return false;
+    }
+    with(|st| {
+        let at = |s: u32| st.spans.get(s as usize - 1);
+        at(sa).is_some() && at(sa) == at(sb)
+    })
+    .unwrap_or(false)
+}
+
 /// The absolute path of file id `f`.
 pub fn file_path(f: u32) -> Option<String> {
     with(|st| st.file_paths.get((f as usize).checked_sub(1)?).cloned()).flatten()
@@ -859,6 +884,9 @@ impl Globals {
 
     #[inline(never)]
     fn dl_note_node(&mut self, p: i32) {
+        // (newer work for the host: `Globals::flashtex_preempt_poll`, here
+        // because nodes are allocated everywhere, the output routine too)
+        self.flashtex_preempt_poll();
         let v = if HYPH_ON.load(Ordering::Relaxed) {
             HYPH_LOC.load(Ordering::Relaxed)
         } else if self.output_active {
@@ -2567,6 +2595,37 @@ mod tests {
         assert!(src.files.is_empty(), "the reader has the file already");
         assert!(peer.moved_spans().is_none());
         DL.with(|d| *d.borrow_mut() = None);
+    }
+
+    /// `same_place`: an edited line's retired span and its new one are the
+    /// same place at the same column, now and after the line moves; other
+    /// lines, columns and "no span" are not.
+    #[test]
+    fn a_retired_span_is_the_place_of_its_line() {
+        DL.with(|d| *d.borrow_mut() = Some(Box::new(State::new())));
+        let (old, other) = with(|st| {
+            let f = st.file_id(b"/p/main.tex");
+            (st.span_id(f, 8), st.span_id(f, 9))
+        })
+        .unwrap();
+        // A letter typed on line 8: its span retires, new text has another.
+        move_lines("/p/main.tex", 8, 9, 9);
+        let new = with(|st| st.span_id(1, 8)).unwrap();
+        assert_ne!(new, old);
+        let at = |s: u32, col: u16| loc_pack(s, col);
+        assert!(same_place(at(old, 332), at(new, 332)));
+        assert!(!same_place(at(old, 332), at(new, 333)));
+        assert!(!same_place(at(old, 332), at(other, 332)));
+        assert!(!same_place(at(old, 332), 0));
+        assert!(!same_place(at(old, 332), at(9999, 332)));
+        // Two lines inserted above: both spans move to line 10 together.
+        move_lines("/p/main.tex", 2, 2, 4);
+        assert_eq!(span_location(old), Some((1, 10)));
+        assert!(same_place(at(old, 332), at(new, 332)));
+        DL.with(|d| *d.borrow_mut() = None);
+        // without the writer, only equal entries
+        assert!(!same_place(at(old, 332), at(new, 332)));
+        assert!(same_place(at(old, 332), at(old, 332)));
     }
 
     /// A destination carries only the words pdfTeX writes for its kind.

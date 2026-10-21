@@ -40,6 +40,12 @@
 //! * **The fonts' catalog** (the installed fonts' names, which a lookup by
 //!   name reads) is kept across runs by the host ([`Fonts`]) while the font
 //!   directories are unchanged.
+//! * **Fonts loaded again are not opened again.** A run from S₀ loads every
+//!   font its body selects anew; the FreeType faces with their HarfBuzz
+//!   fonts and the TECkit mappings (`crate::native::cache`), and what the
+//!   output parses of each font program (`crate::out::fonts::FontCache`),
+//!   are kept across runs while their files are unchanged. Each layout
+//!   engine is still made anew, so no shaping state is shared.
 //!
 //! The engine's runtime (`flashtex_engine::system`: the run's
 //! configuration, the resolver, the read journal) is still per process (the
@@ -128,6 +134,9 @@ pub struct Resident {
     /// checkpoints.
     pub(crate) thinning: Option<crate::ckpt::Thinning>,
     fonts: Box<dyn Fonts>,
+    /// The native fonts' faces and mappings the engine's runs share
+    /// (`crate::native::cache`); none for a run that is not the engine's.
+    pub(crate) loads: Option<Arc<std::sync::Mutex<crate::native::cache::LoadCache>>>,
 }
 
 impl Resident {
@@ -436,6 +445,9 @@ pub struct Engine {
     pub keep_pages: bool,
     /// The output's font map index and font programs, kept across runs.
     font_cache: Arc<crate::out::fonts::FontCache>,
+    /// The native fonts' faces and mappings, kept across runs
+    /// (`crate::native::cache`).
+    loads: Arc<std::sync::Mutex<crate::native::cache::LoadCache>>,
     /// The convergence measurement (`crate::conv`): the last complete
     /// run's pages, and the `eqtb` pointer entries of each checkpoint
     /// restored.
@@ -449,11 +461,33 @@ pub struct Engine {
     opened: Option<(PointKey, Option<FormatFile>)>,
     /// The S₀ already in its file (saved or opened).
     s0_saved: Option<CheckpointId>,
+    /// The S₀ bases this engine has opened an S₀ against or saved one
+    /// against (`crate::s0file`): never collected by its saves.
+    bases_in_use: Vec<PathBuf>,
     /// The S₀ writers still running.
     writers: Vec<std::thread::JoinHandle<()>>,
     /// The last run was in Low Memory: S₀ is written on the engine thread,
     /// from the engine (no copy of it).
     lean_save: bool,
+    /// A save of S₀ asked for and not made yet ([`Engine::save_s0`],
+    /// [`Engine::save_pending`]).
+    pending_save: Option<PendingSave>,
+}
+
+/// A save of S₀ asked for after a compile's DONE: what it writes, taken
+/// then, so that a save made later (when the engine is idle, after other
+/// runs) writes the bytes it would have written then. The chunks' words
+/// are S₀'s (and the format point's) whenever they are read: both are
+/// checkpoints.
+struct PendingSave {
+    id: CheckpointId,
+    path: PathBuf,
+    root: PathBuf,
+    meta: crate::s0file::Meta,
+    base: Option<crate::s0file::BaseSpec>,
+    touched: Vec<u64>,
+    lean: bool,
+    asked: std::time::Instant,
 }
 
 /// Resets every file of the engine: closed, as at the start of a run.
@@ -548,13 +582,16 @@ impl Engine {
             keep_s0: env_on("FLASHTEX_UNICODE_S0"),
             keep_pages: env_on("FLASHTEX_UNICODE_PAGES"),
             font_cache: Arc::default(),
+            loads: Arc::default(),
             last_pages: vec![],
             eqtb_pointers: HashMap::new(),
             cursor: 0,
             opened: None,
             s0_saved: None,
+            bases_in_use: vec![],
             writers: vec![],
             lean_save: false,
+            pending_save: None,
         }
     }
 
@@ -568,6 +605,7 @@ impl Engine {
     /// Forget the engine, its point, S₀ and the pages (memory back; the
     /// next run starts from the start).
     pub fn clear(&mut self) {
+        self.pending_save = None;
         self.pages.clear();
         self.s0 = None;
         self.point = None;
@@ -634,6 +672,12 @@ impl Engine {
         );
         self.fonts = fonts;
         let o = r?;
+        let (mapped_pages, base_pages) = (o.mapped_pages, o.base_pages);
+        if let Some(b) = &o.base {
+            if !self.bases_in_use.contains(b) {
+                self.bases_in_use.push(b.clone());
+            }
+        }
         let (k, f) = found.ok_or("not checked")?;
         self.clear();
         let m = o.meta;
@@ -653,16 +697,21 @@ impl Engine {
         self.opened = Some((k, f));
         self.g = Some(o.g);
         Ok(format!(
-            "S0 opened from {} in {:.1} ms ({} pages mapped)",
+            "S0 opened from {} in {:.1} ms ({} pages mapped, {} of them from its base)",
             path.display(),
             t.elapsed().as_secs_f64() * 1e3,
-            o.mapped_pages
+            mapped_pages,
+            base_pages
         ))
     }
 
-    /// Persist S₀ to `path` (`crate::s0file`) if it is not there yet: the
-    /// engine thread takes it out of the engine, a thread of its own writes
-    /// it (through a temporary file and a rename). The note to report.
+    /// Ask for S₀ to be persisted to `path` (`crate::s0file`) if it is not
+    /// there yet. What the file holds besides the word space is taken now
+    /// (the key, the record, the texts read, the base it is a delta against,
+    /// the chunks written so far); the copy of S₀'s chunks, the bulk of the
+    /// work, is made by [`Engine::save_pending`] when no run waits, so that
+    /// a keystroke right after a cold compile does not wait for it. The note
+    /// to report.
     pub fn save_s0(&mut self, path: &Path, root: &Path) -> Result<Option<String>, String> {
         let Some(s0) = self.s0.as_ref() else {
             return Ok(None);
@@ -670,21 +719,39 @@ impl Engine {
         if self.s0_saved == Some(s0.id) {
             return Ok(None);
         }
+        // (asked for again by a later compile: the first ask's record
+        // stands, its texts and chunks are S₀'s time's)
+        if self.pending_save.as_ref().is_some_and(|p| p.id == s0.id) {
+            return Ok(None);
+        }
         let (k, f) = match (&self.point, &self.opened) {
             (Some(p), _) => (p.key.clone(), p.format.clone()),
             (None, Some(o)) => o.clone(),
             _ => return Ok(None),
         };
+        // the base S₀ is a delta against: the state after this format's
+        // load (`crate::s0file`), made from the point if there is none yet
+        let base = match (&f, path.parent()) {
+            (Some(ff), Some(dir)) => {
+                use flashtex_engine::persist::Codec;
+                let mut format = vec![];
+                ff.enc(&mut format);
+                Some(crate::s0file::BaseSpec {
+                    dir: dir.to_path_buf(),
+                    format,
+                    point: self.point.as_ref().map(|p| p.id),
+                })
+            }
+            _ => None,
+        };
         // (the engine's document is still this one: another document's
-        // run may have come between its compile and this save; the paths
-        // it read are relative to its directory)
-        if k.root != root || std::env::set_current_dir(root).is_err() {
+        // run may have come between its compile and this save)
+        if k.root != root {
             return Ok(None);
         }
-        let Some(g) = self.g.as_mut() else {
+        let Some(g) = self.g.as_ref() else {
             return Ok(None);
         };
-        let t = std::time::Instant::now();
         let texts = s0
             .rec
             .files
@@ -705,39 +772,137 @@ impl Engine {
             opens: self.opens[..s0.opens.min(self.opens.len())].to_vec(),
             texts,
         };
-        if self.lean_save {
-            // (Low Memory: no copy of the chunks; written here)
-            if let Some(d) = path.parent() {
-                let _ = std::fs::create_dir_all(d);
+        if let Some(b) = base.as_ref().map(|b| crate::s0file::base_path(b, g)) {
+            if !self.bases_in_use.contains(&b) {
+                self.bases_in_use.push(b);
             }
-            let bytes = crate::s0file::write_in_place(g, s0.id, &meta, &path.to_string_lossy())?;
-            self.s0_saved = Some(s0.id);
-            eprintln!(
-                "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{:.1},\"in_place\":true}}",
-                path.display().to_string(),
-                t.elapsed().as_secs_f64() * 1e3
-            );
+        }
+        self.pending_save = Some(PendingSave {
+            id: s0.id,
+            path: path.to_path_buf(),
+            root: root.to_path_buf(),
+            meta,
+            base,
+            touched: crate::s0file::touched(g),
+            lean: self.lean_save,
+            asked: std::time::Instant::now(),
+        });
+        Ok(None)
+    }
+
+    /// A save of S₀ is asked for and not made yet.
+    pub fn has_pending_save(&self) -> bool {
+        self.pending_save.is_some()
+    }
+
+    /// Make the save [`Engine::save_s0`] asked for: the engine thread takes
+    /// S₀ out of the engine (or, in Low Memory, writes it from the engine),
+    /// a thread of its own writes the copy (through a temporary file and a
+    /// rename). It is dropped if the engine no longer holds that S₀ for
+    /// that document (a later run took another, or another document's run
+    /// came). When `stop` says so (a run is waiting), the save stops,
+    /// leaving nothing, and stays asked for. The note to report.
+    pub fn save_pending(&mut self, stop: &dyn Fn() -> bool) -> Result<Option<String>, String> {
+        let Some(p) = self.pending_save.take() else {
+            return Ok(None);
+        };
+        let same = self.s0.as_ref().is_some_and(|s0| s0.id == p.id) && self.s0_saved != Some(p.id);
+        let root_now = match (&self.point, &self.opened) {
+            (Some(pt), _) => Some(pt.key.root.clone()),
+            (None, Some(o)) => Some(o.0.root.clone()),
+            _ => None,
+        };
+        if !same || root_now.as_deref() != Some(p.root.as_path()) {
             return Ok(None);
         }
-        let image = crate::s0file::prepare(g, s0.id, &meta)?;
-        self.s0_saved = Some(s0.id);
+        // (the paths it read are relative to its directory)
+        if std::env::set_current_dir(&p.root).is_err() {
+            return Ok(None);
+        }
+        let Some(g) = self.g.as_mut() else {
+            return Ok(None);
+        };
+        let t = std::time::Instant::now();
+        let waited_ms = p.asked.elapsed().as_secs_f64() * 1e3;
+        // after the save, the bases no S₀ in the cache refers to any more
+        // (old formats and engine builds) go
+        let collect = {
+            let dir = p.path.parent().map(Path::to_path_buf);
+            let keep = self.bases_in_use.clone();
+            move || {
+                if let Some(d) = dir {
+                    for b in crate::s0file::collect_bases(&d, &keep, crate::s0file::BASE_GRACE) {
+                        eprintln!(
+                            "flashtex-host-unicode: {{\"collected_s0_base\":{:?}}}",
+                            b.display().to_string()
+                        );
+                    }
+                }
+            }
+        };
+        let stopped = |t: std::time::Instant| {
+            eprintln!(
+                "flashtex-host-unicode: the S0 save stopped for a request ({:.1} ms in)",
+                t.elapsed().as_secs_f64() * 1e3
+            );
+        };
+        if p.lean {
+            // (Low Memory: no copy of the chunks; written here)
+            if let Some(d) = p.path.parent() {
+                let _ = std::fs::create_dir_all(d);
+            }
+            let Some(bytes) = crate::s0file::write_in_place(
+                g,
+                p.id,
+                &p.meta,
+                &p.path.to_string_lossy(),
+                p.base.as_ref(),
+                &p.touched,
+                stop,
+            )?
+            else {
+                stopped(t);
+                self.pending_save = Some(p);
+                return Ok(None);
+            };
+            self.s0_saved = Some(p.id);
+            eprintln!(
+                "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{:.1},\"after_ms\":{waited_ms:.1},\"in_place\":true}}",
+                p.path.display().to_string(),
+                t.elapsed().as_secs_f64() * 1e3
+            );
+            collect();
+            return Ok(None);
+        }
+        let Some(image) =
+            crate::s0file::prepare(g, p.id, &p.meta, p.base.as_ref(), &p.touched, stop)?
+        else {
+            stopped(t);
+            self.pending_save = Some(p);
+            return Ok(None);
+        };
+        self.s0_saved = Some(p.id);
         let prepare_ms = t.elapsed().as_secs_f64() * 1e3;
+        let [head_ms, view_ms, copy_ms] = image.ms;
         let held = image.bytes();
-        let p = path.to_path_buf();
+        let path = p.path;
         self.writers.retain(|w| !w.is_finished());
         let w = std::thread::Builder::new()
             .name("unicode-s0-write".into())
             .spawn(move || {
-                if let Some(d) = p.parent() {
+                if let Some(d) = path.parent() {
                     let _ = std::fs::create_dir_all(d);
                 }
                 let t = std::time::Instant::now();
-                match image.write(&p.to_string_lossy()) {
-                    Ok(bytes) => eprintln!(
-                        "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{prepare_ms:.1},\"write_ms\":{:.1}}}",
-                        p.display().to_string(),
-                        t.elapsed().as_secs_f64() * 1e3
-                    ),
+                match image.write(&path.to_string_lossy()) {
+                    Ok(bytes) => {
+                        eprintln!(
+                            "flashtex-host-unicode: {{\"saved_s0\":{:?},\"bytes\":{bytes},\"engine_ms\":{prepare_ms:.1},\"header_ms\":{head_ms:.1},\"view_ms\":{view_ms:.1},\"copy_ms\":{copy_ms:.1},\"after_ms\":{waited_ms:.1},\"write_ms\":{:.1}}}",
+                            path.display().to_string(),
+                            t.elapsed().as_secs_f64() * 1e3
+                        );
+                        collect();
+                    }
                     Err(e) => eprintln!("flashtex-host-unicode: saving S0: {e}"),
                 }
             })
@@ -1068,6 +1233,7 @@ impl Engine {
             conv: None,
             thinning: None,
             fonts: Box::new(Unkept),
+            loads: None,
         };
         if start.in_body() {
             let recs = self
@@ -1160,6 +1326,7 @@ impl Engine {
                                     id: c.id,
                                     rec: c.rec.clone(),
                                     reads: c.reads,
+                                    dorm: c.dorm,
                                 })
                                 .collect();
                             let tables = g.host.dl.tables();
@@ -1177,12 +1344,10 @@ impl Engine {
                                     }
                                 }
                             }
-                            let doc_pages = self
-                                .pages
-                                .last()
-                                .and_then(|p| p.out.as_ref())
-                                .map(|o| o.doc.pages.clone())
-                                .unwrap_or_default();
+                            let old_out = self.pages.last().and_then(|p| p.out.as_ref());
+                            let doc_pages =
+                                old_out.map(|o| o.doc.pages.clone()).unwrap_or_default();
+                            let doc_keys = old_out.map(|o| crate::out::doc::DocKeys::of(&o.doc));
                             match g.restore_branch(id) {
                                 Err(e) => Err(e),
                                 Ok(branch) => {
@@ -1203,6 +1368,7 @@ impl Engine {
                                     conv = Some(crate::conv::Old {
                                         branch: Some(branch),
                                         doc_pages,
+                                        doc_keys,
                                         old_files,
                                         old_terminal: Arc::new(self.terminal.clone()),
                                         jumped: None,
@@ -1217,6 +1383,7 @@ impl Engine {
                                         eqtb_pointers: ptrs,
                                         claim: None,
                                         tests: vec![],
+                                        dormant: None,
                                     });
                                     g.term_out = AlphaFile::captured_terminal();
                                     g.restore_record(rec, base)
@@ -1317,6 +1484,7 @@ impl Engine {
             conv,
             thinning,
             fonts: self.fonts.take().unwrap_or_else(|| Box::new(Unkept)),
+            loads: Some(self.loads.clone()),
         });
         let mut out = (!c.no_pdf).then(|| {
             let mut o = crate::out::Output::to_writer(
@@ -1440,6 +1608,10 @@ impl Engine {
         let mut restored_files = vec![];
         if let Some(r) = g.host.resident.take() {
             self.fonts = Some(r.fonts);
+            self.loads
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .end_run();
             kept = r.point;
             taken = r.s0;
             new_pages = r.pages;

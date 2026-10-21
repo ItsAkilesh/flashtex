@@ -240,6 +240,14 @@ fn default_paper() -> Option<(
 struct EngineMetrics<'g>(&'g Globals);
 
 impl page::Metrics for EngineMetrics<'_> {
+    fn native_path(&self, k: i32) -> Option<Vec<u8>> {
+        let f = k + font_base + 1;
+        if f < 0 || f > self.0.font_ptr {
+            return None;
+        }
+        self.0.font_engine(f).map(|e| e.font.filename.clone())
+    }
+
     fn tfm_char(&self, k: i32, c: u32) -> Option<(i32, i32, i32)> {
         let g = self.0;
         // dvi_font_def numbers font f as f - font_base - 1
@@ -361,7 +369,17 @@ pub fn page_done(g: &mut Globals, f: &mut ByteFile) {
 /// ([`doc::Built::replay`]), and sent to the display list, as `page_done`
 /// does. The engine's state is the converged run's after the page (its
 /// fonts are loaded).
-pub fn replay_page(g: &mut Globals, old: &doc::Built, page_no: u32) -> Result<(), String> {
+///
+/// `keys`: the old run's document's resource keys. Where the page built
+/// again has the old one's display list and every id both documents have
+/// names the same resource, its frame is the old one's (`encode` makes it
+/// from these alone), and is not made again (READ-TRACK-2).
+pub fn replay_page(
+    g: &mut Globals,
+    old: &doc::Built,
+    page_no: u32,
+    keys: Option<&doc::DocKeys>,
+) -> Result<(), String> {
     let r = old.replay.clone().ok_or("the page's XDV was not kept")?;
     let mut out = g.host.out.take().ok_or("no output")?;
     out.doc.pictures.extend(r.pictures.iter().cloned());
@@ -377,6 +395,11 @@ pub fn replay_page(g: &mut Globals, old: &doc::Built, page_no: u32) -> Result<()
         Ok(mut b) => {
             b.forms_at = out.doc.forms.len();
             b.replay = Some(r);
+            if let (Some(f), Some(k)) = (old.frame.get(), keys) {
+                if b.dl == old.dl && k.agree(&out.doc) {
+                    let _ = b.frame.set(f.clone());
+                }
+            }
             send_page(&mut out, &b, |spans, sent, files| {
                 g.dl_sources(spans, sent, files)
             });

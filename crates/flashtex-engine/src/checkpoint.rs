@@ -57,6 +57,8 @@ pub struct ExtRecord {
     /// The line journal's length, the line numbers of unknown file and the
     /// marked token lists (`crate::lineshift`, DESIGN.md §5.3 rule (c)).
     pub lines: crate::lineshift::Rec,
+    /// READ-TRACK's counts and watched level (`crate::dormant`).
+    pub dorm: crate::dormant::Dorm,
 }
 
 crate::codec_struct!(ExtRecord {
@@ -71,7 +73,8 @@ crate::codec_struct!(ExtRecord {
     rs,
     notes,
     opens,
-    lines
+    lines,
+    dorm
 });
 
 /// Where an output position `x` of the old run goes when a convergence
@@ -203,6 +206,11 @@ pub trait Observer {
     fn take_held_segment(&mut self, _g: &mut Globals) -> bool {
         true
     }
+    /// Newer work may wait ([`REQ_PREEMPT`]): whether the observer would
+    /// stop the run at a segment checkpoint taken here (it then takes one).
+    fn stops_now(&mut self, _g: &mut Globals) -> bool {
+        false
+    }
     /// The observer as `Any`, to take it back after a run.
     fn into_any(self: Box<Self>) -> Box<dyn std::any::Any>;
     /// The pages the run has shipped so far (with those before its start).
@@ -237,6 +245,29 @@ const REQ_AUX_ARM: i32 = 10;
 /// space at each checkpoint taken meanwhile, so that a run restored there
 /// goes on asking. Any other request may take its place.
 const REQ_S0_WAIT: i32 = 11;
+/// Newer work may wait ([`PREEMPT_HINT`] moved): at this `big_switch`, a
+/// segment checkpoint if the observer stops the run here (`stops_now`).
+const REQ_PREEMPT: i32 = 12;
+
+/// Bumped by the host's server thread whenever newer work for the engine
+/// arrives (a `COMPILE` queued, a `CANCEL`): lane T7-LAST12. A run looks at
+/// it where it allocates a node (`dl_note_node`, thousands of times a
+/// millisecond, the output routine included) and, when it moved, asks for
+/// [`REQ_PREEMPT`]. Before this a running compile noticed newer work only at
+/// its segment checkpoints and shipouts, none of them inside the output
+/// routine: 2-4 ms on a hyperref page (full-1000 typing, PC), which the next
+/// keystroke waited.
+pub static PREEMPT_HINT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+thread_local! {
+    /// The [`PREEMPT_HINT`] this thread's engine last answered.
+    static PREEMPT_SEEN: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Newer work may be waiting for the engine (the host's server thread).
+pub fn hint_preempt() {
+    PREEMPT_HINT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
 
 /// `hash_base` (tex.web §222): `active_base + 256 + 256 + 1`, the same in
 /// every configuration.
@@ -503,6 +534,8 @@ pub struct Layer {
     pub main_read: std::cell::Cell<Option<crate::midline::MainRead>>,
     pub midlines: Vec<(CheckpointId, crate::midline::MidLine)>,
     pub midline_force: bool,
+    /// READ-TRACK (`crate::dormant`): the run's counts.
+    pub dorm: crate::dormant::Counts,
     /// PREAMBLE-PATCH (`incr::PrePatch`): a run restarted in the preamble
     /// takes a checkpoint at the end of this line of the main file, the
     /// first after the edited ones, where the read-set begins a segment;
@@ -830,6 +863,11 @@ impl Globals {
             .unwrap_or_default()
     }
 
+    /// Is a restore's branch (the old run's future) pending?
+    pub fn has_pending(&self) -> bool {
+        self.layer_ref().is_some_and(|l| l.pending.is_some())
+    }
+
     /// Drop the pending branch (the old run's future): the new run will
     /// not converge.
     pub fn abandon_pending(&mut self) {
@@ -856,6 +894,8 @@ impl Globals {
         // program sets (tex.ch [49.1265]): kpathsea's mktex discard flag,
         // as the restored state's `\batchmode` (or other mode) left it.
         crate::system::set_mktex_discard(self.kpse_make_tex_discard_errors);
+        // A BOX-MEMO recording cannot span a restore (BOX-MEMO.md §6).
+        crate::boxmemo::after_restore(self);
     }
 
     /// The whole engine state as bytes (scalars spilled first): what "bit
@@ -912,6 +952,7 @@ impl Globals {
             notes: crate::diag::len(),
             opens: system::opens_len(),
             lines: crate::lineshift::record(self),
+            dorm: self.dorm_record(),
         })
     }
 
@@ -938,6 +979,8 @@ impl Globals {
         // (`crate::midline`: set again from a mid-line point's record)
         self.layer().main_read.set(None);
         crate::lineshift::restore(self, &rec.lines);
+        // (another run from here on: `crate::dormant`)
+        self.dorm_new_epoch();
         match err {
             Some(e) => Err(format!("cannot restore the files: {e}")),
             None => Ok(()),
@@ -961,6 +1004,8 @@ impl Globals {
     /// or after a run, or inside `flashtex_checkpoint_hook`).
     pub fn checkpoint(&mut self) -> Result<CheckpointId, String> {
         let cpu0 = crate::incr::thread_cpu_s();
+        // (READ-TRACK: the watch, armed in the state taken)
+        self.dorm_arm();
         let ext = self.capture_ext()?;
         let t = std::time::Instant::now();
         let cpu = crate::incr::thread_cpu_s();
@@ -1030,6 +1075,31 @@ impl Globals {
     /// The retained checkpoints, oldest first.
     pub fn checkpoints(&self) -> Vec<CheckpointId> {
         self.arena.checkpoint_ids().to_vec()
+    }
+
+    /// `f` on the record of checkpoint `id`, if it has one.
+    pub fn patch_record(&mut self, id: CheckpointId, f: &mut dyn FnMut(&mut ExtRecord)) {
+        for (i, r) in self.layer().records.iter_mut() {
+            if *i == id {
+                f(r);
+            }
+        }
+    }
+
+    /// READ-TRACK (`crate::dormant::apply`): `f` on the record of every
+    /// checkpoint of the live chain after `id`.
+    pub fn patch_records_after(&mut self, id: CheckpointId, f: &mut dyn FnMut(&mut ExtRecord)) {
+        let chain = self.arena.checkpoint_ids().to_vec();
+        let Some(at) = chain.iter().position(|&i| i == id) else {
+            return;
+        };
+        let after: std::collections::HashSet<CheckpointId> =
+            chain[at + 1..].iter().copied().collect();
+        for (i, r) in self.layer().records.iter_mut() {
+            if after.contains(i) {
+                f(r);
+            }
+        }
     }
 
     /// The host record of checkpoint `id`.
@@ -1693,7 +1763,11 @@ impl Globals {
             // replaces) hand their line journals to `id`'s record: the
             // reads and prints of line numbers since the checkpoint before
             // (`crate::lineshift`, as `retain_checkpoints` does).
+            // (READ-TRACK, `crate::dormant`: what follows `id` is the old
+            // run's, so its counts there are the later records' baseline)
+            let dorm = at_id.dorm;
             let mut at_id = now.clone();
+            at_id.dorm = dorm;
             let mut here = vec![];
             for (i, r) in layer.records.iter_mut() {
                 if !keep.contains(i) || *i == id {
@@ -2026,6 +2100,22 @@ impl Globals {
         None
     }
 
+    /// Look at [`PREEMPT_HINT`] (`dl_note_node`): when it moved since this
+    /// thread last looked, ask for [`REQ_PREEMPT`] at the next `big_switch`
+    /// of a run that takes segment checkpoints (where newer work can stop
+    /// it), unless another request is pending (its hook asks the observer
+    /// too, or the next segment checkpoint does).
+    #[inline]
+    pub fn flashtex_preempt_poll(&mut self) {
+        let h = PREEMPT_HINT.load(std::sync::atomic::Ordering::Relaxed);
+        if h != PREEMPT_SEEN.with(|s| s.get()) {
+            PREEMPT_SEEN.with(|s| s.set(h));
+            if self.ckpt_request == 0 && self.ckpt_on_segment != 0 {
+                self.ckpt_request = REQ_PREEMPT;
+            }
+        }
+    }
+
     /// Called at `big_switch` whenever `ckpt_request` is nonzero
     /// (changes/checkpoint.ch).
     pub fn flashtex_checkpoint_hook(&mut self) {
@@ -2164,6 +2254,20 @@ impl Globals {
                     self.hook_checkpoint(Point::PreambleLine);
                     let l = self.layer();
                     l.arm_ck = l.taken.last().map(|t| t.0).filter(|&id| Some(id) != before);
+                }
+            }
+            REQ_PREEMPT => {
+                let stop = match self.layer().observer.take() {
+                    Some(mut obs) => {
+                        let s = obs.stops_now(self);
+                        self.layer().observer = Some(obs);
+                        s
+                    }
+                    None => false,
+                };
+                if stop {
+                    self.layer().stats.segments += 1;
+                    self.hook_checkpoint(Point::Segment);
                 }
             }
             REQ_SEGMENT => {

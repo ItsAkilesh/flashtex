@@ -52,6 +52,35 @@ const RULE_NODE_SIZE: i32 = crate::generated::consts::rule_node_size;
 const MEDIUM_NODE_SIZE: i32 = crate::generated::consts::medium_node_size;
 const EMPTY_FLAG: i32 = 268_435_455;
 
+thread_local! {
+    /// `align_by_words`: the alignment preamble is compared by its words.
+    static ALIGN_BY_WORDS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// `with_dormant`: the dormant input level (-1: none).
+    static DORMANT: std::cell::Cell<i32> = const { std::cell::Cell::new(-1) };
+}
+
+/// Run `f` with input level `j`'s `limit`, and the stale `limit`s of the
+/// token lists above it other than macros', left out of the comparison
+/// (READ-TRACK, `crate::dormant`: the test of a dormant line).
+pub(crate) fn with_dormant<R>(j: i32, f: impl FnOnce() -> R) -> R {
+    DORMANT.with(|c| c.set(j));
+    let r = f();
+    DORMANT.with(|c| c.set(-1));
+    r
+}
+
+/// Run `f` with the alignment preamble compared by its words rather than
+/// walked (BOX-MEMO's full-state verifier, `incr::same_state`; see `roots`).
+pub(crate) fn align_by_words<R>(f: impl FnOnce() -> R) -> R {
+    ALIGN_BY_WORDS.with(|c| c.set(true));
+    let r = f();
+    ALIGN_BY_WORDS.with(|c| c.set(false));
+    r
+}
+
+/// A page insertion record's type for an overflowed class (tex.web §981).
+const SPLIT_UP: i32 = crate::generated::consts::split_up;
+
 // the static heads (tex.web §162, pdftex.web)
 const PAGE_INS_HEAD: i32 = MEM_TOP;
 const CONTRIB_HEAD: i32 = MEM_TOP - 1;
@@ -500,6 +529,10 @@ pub struct Iso<'a, O: Space, N: Space> {
     /// The convergence test walks token lists last (`check`): while this
     /// is `Some`, `run` sets their tasks aside here.
     toks_later: Option<Vec<(K, i32, i32)>>,
+    /// The convergence test (`check`): a token whose word is the same at
+    /// the same address in both states is paired without a cover
+    /// (`chain_from`), since only differing words are looked up in it.
+    equal_tokens: bool,
 }
 
 /// The hasher of the relocation map (`Iso::fwd`, keyed by `mem` address,
@@ -582,6 +615,7 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
             side_later: Vec::new(),
             steps: 0,
             toks_later: None,
+            equal_tokens: false,
         }
     }
 
@@ -783,8 +817,9 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
         // list's side table. Nothing TeX computes reads it, but the node is
         // live: a later page ships it, and its glyphs name that position,
         // which the convergence takes over from the old run. Spans are the
-        // host's and move with their lines, so equal entries are the same
-        // place.
+        // host's and move with their lines; an edited line's material has a
+        // new span in each run, so entries are compared as places (file,
+        // line, column: `displaylist::same_place`), not as span ids.
         if let Some(written) = self.side_written {
             // (the live state's entry; the old run's is the live one where
             // neither run wrote the table since the restore target, and is
@@ -794,7 +829,7 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
                 Some(c) if bit(written, c as i32) => self.side_later.push((a, sn)),
                 Some(_) => {
                     let so = self.n.side(a);
-                    if so != sn {
+                    if !crate::displaylist::same_place(so, sn) {
                         fail!(
                             self,
                             "a node's source position differs ({so:#x} vs {sn:#x})"
@@ -1196,6 +1231,31 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
             }
             if a == NULL || b == NULL {
                 fail!(self, "a token list is longer in one state");
+            }
+            // (READ-TRACK-2, the convergence test: a token at the same
+            // address in both states whose word is the same in both is
+            // paired with itself as `pair` pairs it, and the walk goes on to
+            // the same successor, without covering the cell -- only a
+            // differing word needs a cover, `bad_mem`, and this one is not)
+            if self.equal_tokens && a == b && self.watch != a && Self::in_mem(a) {
+                let x = self.o.mem(a);
+                if x == self.n.mem(a) {
+                    if bit(&self.head_o, a) {
+                        if self.fwd.contains_key(&a) {
+                            fail!(self, "token {a}/{b} paired inconsistently");
+                        }
+                        return;
+                    }
+                    if bit(&self.head_n, a) {
+                        fail!(self, "token {a}/{b} paired inconsistently");
+                    }
+                    set(&mut self.head_o, a);
+                    set(&mut self.head_n, a);
+                    self.nodes += 1;
+                    a = rh(x);
+                    b = a;
+                    continue;
+                }
             }
             match self.pair(a, b) {
                 None => fail!(self, "token {a}/{b} paired inconsistently"),
@@ -1793,6 +1853,22 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
             if (h == TEMP_HEAD || h == BACKUP_HEAD) && self.scratch_heads_dead {
                 continue;
             }
+            // Inside an alignment the preamble (`link(align_head)`) alternates
+            // tabskip glue and alignrecords, whose `info` is `end_span` or a
+            // span list, not a node type (tex.web §770, §801): this walk does
+            // not know them. BOX-MEMO's verifier (`align_by_words`), which
+            // compares a call's two paths from one state, takes the preamble
+            // by its words instead: neither path made it, so its nodes are at
+            // the same places in both, and a word either path changed there
+            // is left unexplained by any pairing and reported. (The
+            // convergence test still walks it, and fails, as before.)
+            if h == ALIGN_HEAD
+                && ALIGN_BY_WORDS.with(|c| c.get())
+                && o.sc("align_ptr") != NULL
+                && n.sc("align_ptr") != NULL
+            {
+                continue;
+            }
             q.push((k, rh(o.mem(h)), rh(n.mem(h))));
         }
         let _ = (ACTIVE, END_SPAN, NULL_LIST, LIG_TRICK, HI_MEM_STAT_MIN);
@@ -1927,9 +2003,15 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
             self.cover(a, b, 4);
             let (x, y) = (self.o.mem(a), self.n.mem(b));
             self.eq("page insertion type/box", lh(x), lh(y));
+            // (an overflowed class's only: `broken_ptr` and `broken_ins` are
+            // read only when `type(r)=split_up`, tex.web §986 and §1021,
+            // and an `inserting` record holds there what `get_node` left,
+            // §1008-§1009: memory the allocation order decides)
             let (x1, y1) = (self.o.mem(a + 1), self.n.mem(b + 1));
-            self.later("broken_ptr", rh(x1), rh(y1));
-            self.later("broken_ins", lh(x1), lh(y1));
+            if b0(x) == SPLIT_UP {
+                self.later("broken_ptr", rh(x1), rh(y1));
+                self.later("broken_ins", lh(x1), lh(y1));
+            }
             let (x2, y2) = (self.o.mem(a + 2), self.n.mem(b + 2));
             self.later("last_ins_ptr", rh(x2), rh(y2));
             self.later("best_ins_ptr", lh(x2), lh(y2));
@@ -2261,7 +2343,11 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
         self.nest_record(po, &x, &y);
     }
 
-    fn input_record(&mut self, x: &in_state_record, y: &in_state_record) {
+    /// Input level `k` (`input_ptr` for `cur_input`) of both states.
+    fn input_record(&mut self, k: i32, x: &in_state_record, y: &in_state_record) {
+        let dormant = DORMANT.with(|c| c.get());
+        // (`with_dormant`: a dormant level's `limit`, or a stale copy above it)
+        let skip_limit = dormant >= 0 && k >= dormant;
         self.eq("input state", x.state_field, y.state_field);
         self.eq("input index", x.index_field, y.index_field);
         self.eq("input name", x.name_field, y.name_field);
@@ -2283,14 +2369,16 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
             self.later("loc", x.loc_field, y.loc_field);
             if t == MACRO {
                 self.eq("param_start", x.limit_field, y.limit_field);
-            } else {
+            } else if !skip_limit {
                 self.eq("limit", x.limit_field, y.limit_field);
             }
             let _ = PARAMETER;
         } else {
             self.eq("start", x.start_field, y.start_field);
             self.eq("loc", x.loc_field, y.loc_field);
-            self.eq("limit", x.limit_field, y.limit_field);
+            if !(skip_limit && k == dormant) {
+                self.eq("limit", x.limit_field, y.limit_field);
+            }
         }
     }
 
@@ -2302,11 +2390,11 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
         }
         for k in 0..po {
             let (x, y) = (self.o.input(k), self.n.input(k));
-            self.input_record(&x, &y);
+            self.input_record(k, &x, &y);
         }
         let x: in_state_record = rec_from(&self.o.sc_bytes("cur_input"));
         let y: in_state_record = rec_from(&self.n.sc_bytes("cur_input"));
-        self.input_record(&x, &y);
+        self.input_record(po, &x, &y);
         let (qo, qn) = (self.o.sc("param_ptr"), self.n.sc("param_ptr"));
         self.eq("param_ptr", qo, qn);
         for k in 0..qo.max(0) as usize {
@@ -2534,8 +2622,16 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
                 Some(_) => fail!(self, "{what}: {a} is paired with another node than {b}"),
                 None => {
                     // not reached by the walk: only the same address in both
-                    // states is safe, and only for a static head
-                    if !(a == b && (a >= HI_MEM_STAT_MIN || a <= LO_MEM_STAT_MAX)) {
+                    // states is safe, and only for a static head -- or, for
+                    // BOX-MEMO's verifier (`align_by_words`), anywhere: its
+                    // two states come from one, so an address not reached
+                    // holds what it held there unless a path wrote it, and
+                    // a word a path wrote that no pairing explains is
+                    // reported by the word comparison (the templates and
+                    // the alignment's pointers into the preamble, which it
+                    // compares by its words)
+                    let by_words = ALIGN_BY_WORDS.with(|c| c.get());
+                    if !(a == b && (by_words || a >= HI_MEM_STAT_MIN || a <= LO_MEM_STAT_MAX)) {
                         fail!(self, "{what}: {a}/{b} points at nothing the walk reached");
                     }
                 }
@@ -2613,6 +2709,7 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
         w.hyph_len = hyph_len;
         w.dest_dims_dead = dest_dims_dead;
         w.scratch_heads_dead = true;
+        w.equal_tokens = true;
         w.stop = Some(stop);
         let mut fetch = None;
         if let Some(sd) = side {
@@ -2655,7 +2752,7 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
                 let at = off + a as usize * 8;
                 let c = (at >> CHUNK_SHIFT) as u32;
                 let so = old[&c][(at & (CHUNK_BYTES - 1)) >> 3];
-                if so != sn {
+                if !crate::displaylist::same_place(so, sn) {
                     return Err(format!(
                         "a node's source position differs ({so:#x} vs {sn:#x}, node {a})"
                     ));
@@ -2945,4 +3042,126 @@ pub fn who_points(g: &Globals, slots: &[ScalarSlot], targets: &[i32], max: usize
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const INSERTING: i32 = crate::generated::consts::inserting;
+
+    /// A word space holding only the words a test puts in `mem` (every
+    /// other word 0).
+    #[derive(Default)]
+    struct Words(HashMap<usize, u64>);
+
+    impl Space for Words {
+        fn word(&self, off: usize) -> u64 {
+            self.0.get(&off).copied().unwrap_or(0)
+        }
+    }
+
+    impl Words {
+        fn put(&mut self, p: i32, w: u64) {
+            self.0.insert(p as usize * 8, w);
+        }
+    }
+
+    fn hh(b0: i32, b1: i32, rh: i32) -> u64 {
+        ((b0 as u64) << 48) | ((b1 as u64 & 0xFFFF) << 32) | rh as u32 as u64
+    }
+
+    fn halves(lh: i32, rh: i32) -> u64 {
+        ((lh as u32 as u64) << 32) | rh as u32 as u64
+    }
+
+    /// `mem` at offset 0, nothing else.
+    fn layout() -> Layout {
+        let none = usize::MAX;
+        Layout {
+            mem: 0,
+            eqtb: none,
+            save_stack: none,
+            nest: none,
+            input_stack: none,
+            param_stack: none,
+            cur_mark: none,
+            font_glue: none,
+            hyph_list: none,
+            hyph_word: none,
+            disc_ptr: none,
+            sa_root: none,
+            if_stack: none,
+            pdf_mem: none,
+            obj_tab: none,
+            head_tab: none,
+            pdf_link_stack: none,
+            intr_state: none,
+            intr_data: none,
+            ls_nest_tag: none,
+            ls_grp_tag: none,
+            ls_cond_tag: none,
+            dl_side: (none, 0),
+            scalars: HashMap::new(),
+        }
+    }
+
+    /// A page insertion list of one record at `r` (class 100, height 10pt)
+    /// of `kind`, its `broken_ptr` and `broken_ins` as given.
+    fn page_ins_list(r: i32, kind: i32, broken_ptr: i32, broken_ins: i32) -> Words {
+        let mut w = Words::default();
+        w.put(PAGE_INS_HEAD, hh(0, 0, r));
+        w.put(r, hh(kind, 100, PAGE_INS_HEAD));
+        w.put(r + 1, halves(broken_ins, broken_ptr));
+        w.put(r + 2, halves(NULL, NULL));
+        w.put(r + 3, 10 << 16);
+        w
+    }
+
+    fn compare(o: &Words, n: &Words) -> Result<(), String> {
+        let l = layout();
+        let so = St {
+            sp: o,
+            l: &l,
+            hi_mem_min: HI_MEM_STAT_MIN,
+        };
+        let sn = St {
+            sp: n,
+            l: &l,
+            hi_mem_min: HI_MEM_STAT_MIN,
+        };
+        let mut w = Iso::new(so, sn);
+        w.page_ins();
+        w.finish();
+        w.err.map_or(Ok(()), Err)
+    }
+
+    /// The fields of an `inserting` record hold what `get_node` left
+    /// (tex.web §1008-§1009) and are never read: two runs whose records
+    /// differ there only are the same state (it failed before `506b33c4a`:
+    /// "broken_ptr: ... points at nothing the walk reached").
+    #[test]
+    fn an_inserting_records_stale_broken_fields_are_not_compared() {
+        let o = page_ins_list(1000, INSERTING, 4_677_821, 2_345_678);
+        let n = page_ins_list(1000, INSERTING, 3_122_334, 1_234_567);
+        assert_eq!(compare(&o, &n), Ok(()));
+    }
+
+    /// A `split_up` record's are read where its class is broken (tex.web
+    /// §1021): different ones are different states.
+    #[test]
+    fn a_split_up_records_broken_fields_are_compared() {
+        let o = page_ins_list(1000, SPLIT_UP, 4_677_821, 2_345_678);
+        let n = page_ins_list(1000, SPLIT_UP, 3_122_334, 1_234_567);
+        let e = compare(&o, &n).expect_err("split_up records with different broken fields");
+        assert!(e.contains("broken_"), "{e}");
+        // ... and equal ones (pointing at nothing the walk reaches here) are
+        // still followed: the same address in both is not enough
+        let o = page_ins_list(1000, SPLIT_UP, 4_000, 4_001);
+        let n = page_ins_list(1000, SPLIT_UP, 4_000, 4_001);
+        assert!(compare(&o, &n).is_err());
+        // (and an `inserting` record with null fields, as always)
+        let o = page_ins_list(1000, INSERTING, NULL, NULL);
+        assert_eq!(compare(&o, &o), Ok(()));
+    }
 }
