@@ -512,7 +512,7 @@ struct Doc {
     /// The user's files as the last compile read them (to move source
     /// spans with their lines when they are edited), each with its stat
     /// signature then (`None`: unknown, so it is compared again).
-    texts: HashMap<String, (Arc<Vec<u8>>, Option<crate::system::StatSig>, Option<Ends>)>,
+    texts: HashMap<String, Text>,
     tools: DocTools,
     /// A run from the format was stopped by newer work (past S₀, which it
     /// keeps): S₀ is persisted after the next compile that completes, not
@@ -562,6 +562,10 @@ pub(crate) struct Engine {
 }
 
 type Written = HashMap<PathBuf, (crate::system::StatSig, Arc<Vec<u8>>)>;
+
+/// A user's file as the host last saw it (`Doc::texts`): its bytes, their
+/// stat signature, and their line ends when counted (`Ends`).
+type Text = (Arc<Vec<u8>>, Option<crate::system::StatSig>, Option<Ends>);
 
 impl Engine {
     pub fn new(cfg: Arc<Config>, tx: mpsc::Sender<Req>) -> Engine {
@@ -1428,7 +1432,12 @@ impl Engine {
                 ));
                 st.push((
                     "restore_us".to_string(),
-                    Json::Arr(t.first_restore_us.iter().map(|&u| Json::Int(u as i64)).collect()),
+                    Json::Arr(
+                        t.first_restore_us
+                            .iter()
+                            .map(|&u| Json::Int(u as i64))
+                            .collect(),
+                    ),
                 ));
             }
             // Page faults and system calls (macOS; `_sys`): the whole
@@ -2297,7 +2306,10 @@ fn line_change_edit(
             &new[..new.len() - tail],
             old.len().min(new.len()) - tail,
         );
-    (line_change_lf(old, new, pre, suf, Some((had.lf, now.lf))), now)
+    (
+        line_change_lf(old, new, pre, suf, Some((had.lf, now.lf))),
+        now,
+    )
 }
 
 /// [`line_change`] of texts with LF line ends only, whose common prefix is
@@ -2551,7 +2563,9 @@ mod tests {
                 _ => rnd(len + 1),
             };
             let del = rnd(len - at + 1).min([0, 1, 2, 9, a + 3][rnd(5)]);
-            let ins: String = (0..[0, 1, 2, 7][rnd(4)]).map(|_| ['x', '\n', 'y'][rnd(3)]).collect();
+            let ins: String = (0..[0, 1, 2, 7][rnd(4)])
+                .map(|_| ['x', '\n', 'y'][rnd(3)])
+                .collect();
             let req = obj([(
                 "edits",
                 Json::Arr(vec![obj([
@@ -2563,7 +2577,11 @@ mod tests {
             )]);
             super::apply_changes(&dir, &req, &mut written).unwrap();
             text.splice(at..at + del, ins.bytes());
-            assert_eq!(std::fs::read(dir.join("m.tex")).unwrap(), text, "edit {k}: at {at} del {del}");
+            assert_eq!(
+                std::fs::read(dir.join("m.tex")).unwrap(),
+                text,
+                "edit {k}: at {at} del {del}"
+            );
             let (_, held) = written.get(&dir.join("m.tex")).expect("the host's copy");
             assert_eq!(held.as_slice(), text.as_slice(), "edit {k}");
         }

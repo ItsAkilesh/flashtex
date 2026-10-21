@@ -590,8 +590,7 @@ impl Peer {
                 self.spans.insert(s, (file, line));
             }
         });
-        (!src.files.is_empty() || !src.spans.is_empty())
-            .then(|| src.to_json_string().into_bytes())
+        (!src.files.is_empty() || !src.spans.is_empty()).then(|| src.to_json_string().into_bytes())
     }
 
     /// A `SOURCES` body re-declaring the spans the reader knows that have
@@ -619,8 +618,7 @@ impl Peer {
                 }
             }
         });
-        (!src.files.is_empty() || !src.spans.is_empty())
-            .then(|| src.to_json_string().into_bytes())
+        (!src.files.is_empty() || !src.spans.is_empty()).then(|| src.to_json_string().into_bytes())
     }
 }
 

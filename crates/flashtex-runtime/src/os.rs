@@ -330,7 +330,14 @@ pub fn thread_user_sys_us() -> (u64, Option<u64>) {
         let mut n = 10u32;
         // SAFETY: the kernel writes at most `n` integers into `v`; flavor 3
         // is THREAD_BASIC_INFO; `pthread_mach_thread_np` adds no reference.
-        let r = unsafe { thread_info(pthread_mach_thread_np(pthread_self()), 3, v.as_mut_ptr(), &mut n) };
+        let r = unsafe {
+            thread_info(
+                pthread_mach_thread_np(pthread_self()),
+                3,
+                v.as_mut_ptr(),
+                &mut n,
+            )
+        };
         if r == 0 {
             let us = |s: i32, u: i32| s as u64 * 1_000_000 + u as u64;
             return (us(v[0], v[1]), Some(us(v[2], v[3])));

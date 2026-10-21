@@ -146,7 +146,11 @@ pub fn diff_edit_at(path: &str, old: &[u8], new: &[u8], at: usize, del: usize, i
     let s = if tail >= max_s {
         max_s
     } else {
-        tail + common_suffix(&old[..old.len() - tail], &new[..new.len() - tail], max_s - tail)
+        tail + common_suffix(
+            &old[..old.len() - tail],
+            &new[..new.len() - tail],
+            max_s - tail,
+        )
     };
     Edit {
         path: path.to_string(),

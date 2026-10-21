@@ -385,10 +385,21 @@ mod tests {
     fn sources_written_directly_as_the_tree_writes_them() {
         let mut s = Sources::default();
         assert_eq!(s.to_json_string(), s.to_json().to_string());
-        s.files = vec![(1, "main.tex".into()), (7, "d\"ir\\a\nb\u{1}\u{e9}.tex".into())];
-        s.spans = vec![(1, 1, 1), (10, 7, 0), (u32::MAX, 4_294_967_295, 1_000_000), (99, 0, 9)];
+        s.files = vec![
+            (1, "main.tex".into()),
+            (7, "d\"ir\\a\nb\u{1}\u{e9}.tex".into()),
+        ];
+        s.spans = vec![
+            (1, 1, 1),
+            (10, 7, 0),
+            (u32::MAX, 4_294_967_295, 1_000_000),
+            (99, 0, 9),
+        ];
         assert_eq!(s.to_json_string(), s.to_json().to_string());
-        assert_eq!(Sources::from_json(&Json::parse(&s.to_json_string()).unwrap()).unwrap(), s);
+        assert_eq!(
+            Sources::from_json(&Json::parse(&s.to_json_string()).unwrap()).unwrap(),
+            s
+        );
     }
 
     /// 3.3 (spec §11.1, §11.5).
