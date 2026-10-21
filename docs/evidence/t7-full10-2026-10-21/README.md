@@ -122,7 +122,7 @@ pages on letter@start and 3 on letter@middle, in every run).
   (`scripts/engine-parity.sh`).
 - `tests/incremental.rs` (80), `host_incremental.rs` (27, 1 ignored), `intrinsics.rs` (7),
   `checkpoint.rs` (3), `boxmemo.rs` (10) and the lib's `iso::` tests pass with BOX-MEMO at the
-  hosts' default, `on` and `off`. One exception, as on main (BOX-MEMO.md §11.4): `checkpoint.rs`'s
+  hosts' default, `on` and `off`. One exception, which T7-MARGIN recorded on main too (BOX-MEMO.md §11.4; not re-run on main here): `checkpoint.rs`'s
   `selftest` with `FLASHTEX_BOXMEMO=on`.
 - `tests/lookup_memo.rs`, `lookup_racy.rs` and `lookup_memo_db.rs` pass. So do the lib tests
   `arena::`, `system::`, `boxmemo`, `checkpoint` and `hashcache` (66 pass), and the runtime's
