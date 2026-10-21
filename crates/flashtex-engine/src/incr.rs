@@ -3175,8 +3175,8 @@ fn truncate_journal(
     checked: &[(String, StatSig)],
 ) -> ReadLog {
     let mut out = ReadLog::keeping_content();
-    out.files = j.files[..n.0.min(j.files.len())].to_vec();
-    out.lookups = j.lookups[..n.1.min(j.lookups.len())].to_vec();
+    out.files = j.files[..n.0.min(j.files.len())].to_vec().into();
+    out.lookups = j.lookups[..n.1.min(j.lookups.len())].to_vec().into();
     out.outputs = j.outputs[..n.2.min(j.outputs.len())].to_vec();
     out.barriers = j.barriers.clone();
     // The directories the kept lookups depend on, as they were just
@@ -3531,7 +3531,7 @@ impl Session {
         // prefixes).
         let mut j = ReadLog::keeping_content();
         for (path, hash, stat) in &s0.key.files {
-            j.files.push(FileRead {
+            j.files_mut().push(FileRead {
                 path: path.clone(),
                 hash: *hash,
                 stat: *stat,
@@ -3553,7 +3553,7 @@ impl Session {
                 } else {
                     (system::hash_logical(path).map_err(err)?, None)
                 };
-                j.files.push(FileRead {
+                j.files_mut().push(FileRead {
                     path: path.clone(),
                     hash,
                     stat: StatSig::of(path).unwrap_or_default(),
@@ -3572,7 +3572,7 @@ impl Session {
         // runs from the format when one changes)
         let arm_at = j.files.len();
         for (path, size, stamp, hash) in &s0.key.arm {
-            j.files.push(FileRead {
+            j.files_mut().push(FileRead {
                 path: path.clone(),
                 hash: *hash,
                 stat: StatSig::default(),
@@ -3590,7 +3590,7 @@ impl Session {
             l.arm_ck = None;
         }
         for (name, fmt, must, found) in &s0.key.lookups {
-            j.lookups.push(system::Lookup {
+            j.lookups_mut().push(system::Lookup {
                 name: name.clone(),
                 format: crate::resolver::Format::all()[*fmt as usize],
                 must_exist: *must,
@@ -5068,7 +5068,7 @@ impl Session {
         // A file the journal lists more than once (read again) is read once.
         let mut now_of: HashMap<String, Option<std::sync::Arc<Vec<u8>>>> = HashMap::new();
         let fixed = self.fixed_inputs.clone();
-        for (i, f) in j.files.iter_mut().enumerate() {
+        for (i, f) in j.files_mut().iter_mut().enumerate() {
             // S₀'s key checked the files read before it, except those still
             // open there (only their prefix is keyed).
             if i < key_files && !key_open.contains(&f.path) {
@@ -6499,10 +6499,10 @@ impl Session {
         let mut jn = system::record_reads_into(None).unwrap_or_default();
         if let Some(jo) = &self.journal {
             for f in &jo.files[rec_old.reads.0.min(jo.files.len())..] {
-                jn.files.push(f.clone());
+                jn.files_mut().push(f.clone());
                 jn.mark_seen(&f.path);
             }
-            jn.lookups
+            jn.lookups_mut()
                 .extend_from_slice(&jo.lookups[rec_old.reads.1.min(jo.lookups.len())..]);
             jn.outputs
                 .extend_from_slice(&jo.outputs[rec_old.reads.2.min(jo.outputs.len())..]);
@@ -6834,7 +6834,7 @@ impl Session {
             let mut jn = system::record_reads_into(None).unwrap_or_default();
             if let Some(jo) = &self.journal {
                 for f in &jo.files[rec_old.reads.0.min(jo.files.len())..] {
-                    jn.files.push(f.clone());
+                    jn.files_mut().push(f.clone());
                     jn.mark_seen(&f.path);
                 }
                 jn.lookups

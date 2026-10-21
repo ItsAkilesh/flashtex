@@ -4310,8 +4310,13 @@ pub struct Lookup {
 /// capture (a shell command, a pipe, a font made by mktex).
 #[derive(Clone, Debug, Default)]
 pub struct ReadLog {
-    pub files: Vec<FileRead>,
-    pub lookups: Vec<Lookup>,
+    /// (The files and lookups are shared between a log and its clones
+    /// until one changes them, as `seen` is below: a journal is cloned at
+    /// every pass and restore, and a clone of thousands of entries was a
+    /// quarter of the host's work before a beamer keystroke's restore, lane
+    /// T7-MARGIN. `files_mut`, `lookups_mut` change them.)
+    pub files: std::sync::Arc<Vec<FileRead>>,
+    pub lookups: std::sync::Arc<Vec<Lookup>>,
     pub barriers: Vec<String>,
     /// Files opened for output, in order (a file the preamble writes and
     /// closes is part of what S₀ stands for).
@@ -4348,6 +4353,16 @@ impl ReadLog {
             std::sync::Arc::make_mut(&mut self.listings).insert(dir.to_string(), l);
         }
         self.listings.get(dir)?.as_ref()
+    }
+
+    /// The files, to change (copied first if a clone shares them).
+    pub fn files_mut(&mut self) -> &mut Vec<FileRead> {
+        std::sync::Arc::make_mut(&mut self.files)
+    }
+
+    /// The lookups, to change (copied first if a clone shares them).
+    pub fn lookups_mut(&mut self) -> &mut Vec<Lookup> {
+        std::sync::Arc::make_mut(&mut self.lookups)
     }
 
     /// A log that keeps the content of the user's files it notes.
@@ -4542,7 +4557,7 @@ fn note_lookup(
             // its first occurrence (#1502: `\pdffilesize` early, the same
             // file tested pages later). Other read-sets keep the first.
             if log.keep_content || !log.lookups.contains(&l) {
-                log.lookups.push(l);
+                log.lookups_mut().push(l);
             }
             // The directory whose listing decides this lookup, as it was
             // the first time one depended on it (`host::Key::dirs`): the
@@ -4619,7 +4634,7 @@ pub fn note_file(path: &str) {
             // must know that the old future reads a file that changed).
             if log.keep_content {
                 if let Some(first) = log.files.iter().find(|f| f.path == path).cloned() {
-                    log.files.push(first);
+                    log.files_mut().push(first);
                 }
             }
             return;
@@ -4640,7 +4655,7 @@ pub fn note_file(path: &str) {
         };
         let norm = |p: &str| p.strip_prefix("./").unwrap_or(p).to_string();
         let written_before = log.outputs.iter().any(|o| norm(o) == norm(path));
-        log.files.push(FileRead {
+        log.files_mut().push(FileRead {
             path: path.to_string(),
             hash,
             stat,
@@ -4667,7 +4682,7 @@ fn note_close(path: &str, consumed: u64) {
         };
         let mut e = first.clone();
         e.closed_at = Some(consumed);
-        log.files.push(e);
+        log.files_mut().push(e);
     })
 }
 
@@ -4692,7 +4707,7 @@ pub fn note_whole_read(path: &str) {
         e.closed_at = Some(u64::MAX);
         e.stamp = None;
         e.size = None;
-        log.files.push(e);
+        log.files_mut().push(e);
     })
 }
 

@@ -284,7 +284,7 @@ mod tests {
     fn the_window_is_left_out_and_the_rest_keeps_its_place() {
         let mut j = ReadLog::default();
         for p in ["a", "b", "c", "d"] {
-            j.files.push(system::FileRead {
+            j.files_mut().push(system::FileRead {
                 path: p.into(),
                 hash: [0, 0],
                 stat: Default::default(),
