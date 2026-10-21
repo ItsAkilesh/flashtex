@@ -1862,10 +1862,13 @@ fn bundle_fonts_are_found_by_name_resident_or_not() {
 #[test]
 fn the_font_lists_name_the_families_a_lookup_finds() {
     let fonts = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/mac/Fonts");
+    // the catalog's name cache, never the user's
+    let cache = std::env::temp_dir().join(format!("flashtex-host-font-list-{}", std::process::id()));
     let list = |flag: &str| -> Vec<String> {
         let out = Command::new(env!("CARGO_BIN_EXE_flashtex-host-unicode"))
             .arg(flag)
             .env("FLASHTEX_FONT_DIRS", &fonts)
+            .env("FLASHTEX_CACHE_DIR", &cache)
             .output()
             .unwrap();
         assert!(
@@ -1901,4 +1904,5 @@ fn the_font_lists_name_the_families_a_lookup_finds() {
         math.iter().all(|m| all.contains(m)),
         "every math family is listed"
     );
+    let _ = std::fs::remove_dir_all(&cache);
 }
