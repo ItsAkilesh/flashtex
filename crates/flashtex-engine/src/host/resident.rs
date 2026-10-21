@@ -463,6 +463,8 @@ impl Live {
                 t.first_emit_ms = Some((displaylist::emit_ns() - t.emit0) as f64 * 1e-6);
                 t.first_send_ms = Some(t.send_ns as f64 * 1e-6);
                 t.first_pmu = crate::os::thread_counts();
+                // (`FLASHTEX_PERF_MARKS`: `d`, the first page delivered)
+                crate::os::perf_mark_as('d');
                 let count = t.old_count.max(i + 1);
                 t.pages_status(count, false);
             }

@@ -505,7 +505,10 @@ struct Frame {
     fonts: (i32, i32),
     font_glue: Vec<i32>,
     marks: Vec<i32>,
-    obj_ptr: i32,
+    /// `obj_ptr` and `sys_obj_ptr` (pdftex.web: an object stream's number
+    /// is taken from `sys_obj_ptr` with `obj_ptr` left behind it, "not
+    /// accessible to user", until the next object makes them equal again).
+    obj_ptr: (i32, i32),
     interaction: i32,
     arm: (i32, i32),
     outputs: (i32, i32, u64, usize, usize),
@@ -1983,7 +1986,7 @@ impl Globals {
             fonts: (self.font_ptr, self.fmem_ptr),
             font_glue,
             marks,
-            obj_ptr: self.obj_ptr,
+            obj_ptr: (self.obj_ptr, self.sys_obj_ptr),
             interaction: self.interaction,
             arm: (self.ckpt_arm_cs, self.ckpt_arm_level),
             outputs: (
@@ -3418,12 +3421,16 @@ impl Globals {
             Some("Marks")
         } else if !self
             .bm_with_rec(|r| {
-                // only the links' objects, made one after the other
-                r.new_objs.len() as i32 == end.obj_ptr - start.obj_ptr
-                    && r.new_objs
-                        .iter()
-                        .zip(start.obj_ptr + 1..)
-                        .all(|(&o, n)| o == n)
+                // only the links' objects, made one after the other: counted
+                // by `sys_obj_ptr`, which every object moves. `obj_ptr` is
+                // behind it after an object stream's number was taken (a
+                // shipout's `pdf_os_prepare_obj`, before the call), and the
+                // call's first object makes them equal again, as the replay's
+                // `pdf_new_objnum` does; with none, it stays where it was.
+                let ((p0, s0), (p1, s1)) = (start.obj_ptr, end.obj_ptr);
+                r.new_objs.len() as i32 == s1 - s0
+                    && r.new_objs.iter().zip(s0 + 1..).all(|(&o, n)| o == n)
+                    && p1 == if r.new_objs.is_empty() { p0 } else { s1 }
                     && (self.pdf_last_link == r.last_link
                         || r.new_objs.contains(&self.pdf_last_link))
             })
