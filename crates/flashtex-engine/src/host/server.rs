@@ -1086,7 +1086,8 @@ impl Job {
         } else {
             self.root.join(&self.out_dir)
         };
-        canon(&out).is_some() && canon(&out) == canon(&self.root)
+        let out = canon(&out);
+        out.is_some() && out == canon(&self.root)
     }
 
     /// pdflatex's command line for the job (without argv[0]).

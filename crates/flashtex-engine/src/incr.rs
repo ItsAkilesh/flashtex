@@ -5089,6 +5089,10 @@ impl Session {
         let mut shifts = vec![];
         // A file the journal lists more than once (read again) is read once.
         let mut now_of: HashMap<String, Option<std::sync::Arc<Vec<u8>>>> = HashMap::new();
+        // ... and its signature taken once, after that read (a file written
+        // within the racy window, the `.aux`, the edited source, matches no
+        // signature: each of its entries took a `stat`, lane T7-FULL10)
+        let mut sig_of: HashMap<String, Option<StatSig>> = HashMap::new();
         let fixed = self.fixed_inputs.clone();
         for (i, f) in j.files_mut().iter_mut().enumerate() {
             // S₀'s key checked the files read before it, except those still
@@ -5124,8 +5128,9 @@ impl Session {
             let moved = f
                 .stamp
                 .is_some_and(|t| system::mtime_secs(&f.path) != Some(t));
+            let mut sig_now = || *sig_of.entry(f.path.clone()).or_insert_with(|| StatSig::of(&f.path));
             if same && !moved {
-                if let Some(s) = StatSig::of(&f.path) {
+                if let Some(s) = sig_now() {
                     f.stat = s;
                 }
                 continue;
@@ -5156,7 +5161,7 @@ impl Session {
             // The run about to start reads the file as it is now (a restart
             // point is before the change): the journal says so.
             if let Some(n) = now {
-                f.stat = StatSig::of(&f.path).unwrap_or_default();
+                f.stat = sig_now().unwrap_or_default();
                 if f.content.is_some() {
                     f.content = Some(n);
                     // what the content hashes to, when a check needs it
