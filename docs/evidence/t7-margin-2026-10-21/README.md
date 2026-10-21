@@ -136,6 +136,21 @@ Each change on its own (PC):
   preamble row (a run from the format) 24.48 → 24.14 G instructions for the compile, 5.29 → 5.24 G
   to its first page, 406 / 408 against 406 / 409 ms; reopen unchanged (150 / 151 ms).
 
+**Callgrind** (PC, `valgrind --tool=callgrind`, instrumentation on while dl3-keys typed 4 keys after
+one warm-up key, the whole host, background work included; base against the branch at `e1e68fc73`):
+
+| session | base | branch |
+|---|---:|---:|
+| beamer-30 letter@start (39:7) | 2,986.0 M | 2,991.7 M (+0.2 %) |
+| full-10 letter@start | 1,967.4 M | 1,955.6 M (−0.6 %) |
+
+Under valgrind the parsefunc gain does not show: the first measured key recorded the four
+`\pgf@parsefunc` calls with both engines (BOX-MEMO's commit counts), so those calls' keys differed
+from the open's there, which they do not in the native T7 runs (`pf*`: key 1 commits none and hits
+323 calls). The likely difference is the time-based segment checkpoints, 50 times denser in work under
+valgrind, which move the restart point; not investigated further. The lazy reattach is not in these
+sessions (no typing interval).
+
 ## 5. Belief: the Mac after these changes (not measured)
 
 - **full-1000 typing@60/@100:** the abandon cost 19.6 M and 1.92 ms there, against 6.6 M on the PC;
@@ -174,5 +189,8 @@ Next steps, by expected gain per effort:
 - The lib's `arena::`, `system::`, `boxmemo` and `checkpoint` tests (61 pass), and the runtime's
   `os::` and `logalloc` tests (6).
 - T1 lockstep 1,468 / 1,468 equal; P-T1 88/88 and P-T2 88/88; with BOX-MEMO off and on.
-- `scripts/gate.sh quick` (rustup 1.98.1, fresh target dir) and `sweeps.yml` with `ref=` the
-  branch, default and `boxmemo=verify`: in the PR.
+- `scripts/gate.sh quick` (rustup 1.98.1, fresh target dir) at `102e0d988`: passed (rustfmt, clippy,
+  tests of the changed crates, trip, etrip). Its first run, at `97d6202b8`, failed: flashtex-xetex's
+  journal call sites (fixed) and `a_cold_run_stops_no_earlier_than_s0` (the thinning's look at newer
+  work, fixed in §3.1).
+- `sweeps.yml` with `ref=` the branch, default and `boxmemo=verify`: in the PR.
