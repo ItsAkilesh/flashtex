@@ -313,6 +313,142 @@ pub fn thread_counts() -> Option<(u64, u64)> {
     }
 }
 
+/// This thread's user and system CPU time so far, in µs. macOS:
+/// `thread_info`'s `THREAD_BASIC_INFO`; elsewhere the thread's CPU time as
+/// the user time, the system time unknown (`None`). Measurement only.
+pub fn thread_user_sys_us() -> (u64, Option<u64>) {
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            fn pthread_self() -> usize;
+            fn pthread_mach_thread_np(t: usize) -> u32;
+            fn thread_info(thread: u32, flavor: u32, info: *mut i32, count: *mut u32) -> i32;
+        }
+        // `thread_basic_info`: user_time and system_time (seconds and µs
+        // each), then six more integers
+        let mut v = [0i32; 10];
+        let mut n = 10u32;
+        // SAFETY: the kernel writes at most `n` integers into `v`; flavor 3
+        // is THREAD_BASIC_INFO; `pthread_mach_thread_np` adds no reference.
+        let r = unsafe {
+            thread_info(
+                pthread_mach_thread_np(pthread_self()),
+                3,
+                v.as_mut_ptr(),
+                &mut n,
+            )
+        };
+        if r == 0 {
+            let us = |s: i32, u: i32| s as u64 * 1_000_000 + u as u64;
+            return (us(v[0], v[1]), Some(us(v[2], v[3])));
+        }
+        ((thread_cpu_s() * 1e6) as u64, None)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        ((thread_cpu_s() * 1e6) as u64, None)
+    }
+}
+
+thread_local! {
+    /// [`phase_mark`]'s marks since the last `a` (a compile's start).
+    static PHASES: std::cell::RefCell<Vec<PhaseMark>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A [`phase_mark`]: its letter, when (monotonic, ns), and the thread's
+/// user and system CPU time then (µs; [`thread_user_sys_us`]).
+#[derive(Clone, Copy, Debug)]
+pub struct PhaseMark {
+    pub mark: char,
+    pub ns: u64,
+    pub user_us: u64,
+    pub sys_us: Option<u64>,
+}
+
+/// Note a point of a compile on this thread (every [`perf_mark_as`]; the
+/// host's `a` starts the list again): the latency accounting's split of
+/// the wall time into user, system and off-CPU time by phase (lane
+/// T7-HEADROOM). Measurement only, a few µs a compile.
+pub fn phase_mark(mark: char) {
+    phase_push(mark);
+    // (`FLASHTEX_PERF_MARKS_ALL`: these marks in `FLASHTEX_PERF_MARKS` too)
+    static ALL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ALL.get_or_init(|| std::env::var_os("FLASHTEX_PERF_MARKS_ALL").is_some()) {
+        marks_file(mark);
+    }
+}
+
+fn phase_push(mark: char) {
+    #[cfg(unix)]
+    let ns = imp::monotonic_ns();
+    #[cfg(not(unix))]
+    let ns = 0u64;
+    let (user_us, sys_us) = thread_user_sys_us();
+    PHASES.with(|p| {
+        let mut p = p.borrow_mut();
+        if mark == 'a' {
+            p.clear();
+            IO.with(|c| c.set([(0, 0); 8]));
+        }
+        if p.len() < 64 {
+            p.push(PhaseMark {
+                mark,
+                ns,
+                user_us,
+                sys_us,
+            });
+        }
+    });
+}
+
+thread_local! {
+    /// [`io_time`]'s calls and wall time (ns) by kind since the last `a`.
+    static IO: std::cell::Cell<[(u32, u64); 8]> = const { std::cell::Cell::new([(0, 0); 8]) };
+}
+
+/// The kinds of [`io_time`]: an output file's write (`Tracked`), an input
+/// file's lookup (`input_path`), opening a TFM file, opening a text
+/// file, the watches' drain (`fswatch::sync`), a read's journal entry
+/// (`note_file`), the lookup memo's check of an answer (`still_holds`), a
+/// directory listed to check one (`tried_names_clear`).
+pub mod io {
+    pub const WRITE: usize = 0;
+    pub const LOOKUP: usize = 1;
+    pub const TFM: usize = 2;
+    pub const TEXT: usize = 3;
+    pub const DRAIN: usize = 4;
+    pub const NOTE: usize = 5;
+    pub const HOLDS: usize = 6;
+    pub const LISTING: usize = 7;
+}
+
+/// `f`, its wall time counted under `kind` ([`io`]): where a compile's
+/// file work goes, kernel and waits included (lane T7-HEADROOM,
+/// measurement only; nested kinds count in both).
+#[inline]
+pub fn io_time<R>(kind: usize, f: impl FnOnce() -> R) -> R {
+    let t = std::time::Instant::now();
+    let r = f();
+    let ns = t.elapsed().as_nanos() as u64;
+    IO.with(|c| {
+        let mut v = c.get();
+        v[kind].0 += 1;
+        v[kind].1 += ns;
+        c.set(v);
+    });
+    r
+}
+
+/// [`io_time`]'s counts since the compile's start: (calls, ns) by kind.
+pub fn io_times() -> [(u32, u64); 8] {
+    IO.with(|c| c.get())
+}
+
+/// The marks since the compile's start (`a`), oldest first.
+pub fn phase_marks() -> Vec<PhaseMark> {
+    PHASES.with(|p| p.borrow().clone())
+}
+
 /// Profiling one interval (measurement only): with `FLASHTEX_PERF_MARKS` set
 /// to a file, the host appends `b NS` when an edit's engine resumes after the
 /// restore and `e NS` at the edited page's shipout (NS: CLOCK_MONOTONIC), so
@@ -325,6 +461,12 @@ pub fn perf_mark(on: bool) {
 /// [`perf_mark`] with the mark's letter given (the host's `a`: a compile's
 /// start, so that `a`..`b` is what comes before the typesetting).
 pub fn perf_mark_as(mark: char) {
+    phase_push(mark);
+    marks_file(mark);
+}
+
+/// [`perf_mark_as`]'s line in `FLASHTEX_PERF_MARKS`.
+fn marks_file(mark: char) {
     use std::io::Write;
     static MARKS: std::sync::OnceLock<Option<std::sync::Mutex<std::fs::File>>> =
         std::sync::OnceLock::new();
@@ -711,6 +853,41 @@ pub fn write_all_at(f: &std::fs::File, buf: &[u8], offset: u64) -> std::io::Resu
         let mut f = f;
         f.seek(std::io::SeekFrom::Start(offset))?;
         f.write_all(buf)
+    }
+}
+
+/// Read exactly `buf.len()` bytes at byte `offset` of `f` (`pread`; on
+/// Windows `seek_read`, which moves the file position, which no caller
+/// relies on).
+pub fn read_exact_at(f: &std::fs::File, buf: &mut [u8], offset: u64) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::FileExt::read_exact_at(f, buf, offset)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileExt;
+        let (mut buf, mut offset) = (buf, offset);
+        while !buf.is_empty() {
+            match f.seek_read(buf, offset) {
+                Ok(0) => return Err(std::io::ErrorKind::UnexpectedEof.into()),
+                Ok(n) => {
+                    buf = &mut buf[n..];
+                    offset += n as u64;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+    // std's WASI `FileExt` is unstable: a seek, then the read.
+    #[cfg(target_os = "wasi")]
+    {
+        use std::io::{Read, Seek};
+        let mut f = f;
+        f.seek(std::io::SeekFrom::Start(offset))?;
+        f.read_exact(buf)
     }
 }
 

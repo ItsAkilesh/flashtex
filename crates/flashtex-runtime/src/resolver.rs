@@ -792,6 +792,18 @@ mod kpse {
         found_base: Option<&std::ffi::OsStr>,
         ascii_only: bool,
     ) -> Result<(), &'static str> {
+        crate::os::io_time(crate::os::io::LISTING, || {
+            tried_names_clear_timed(d, name, found_dir, found_base, ascii_only)
+        })
+    }
+
+    fn tried_names_clear_timed(
+        d: &str,
+        name: &str,
+        found_dir: Option<&Path>,
+        found_base: Option<&std::ffi::OsStr>,
+        ascii_only: bool,
+    ) -> Result<(), &'static str> {
         let lname = crate::lookupproof::fold(name);
         let dotted = format!("{lname}.");
         let here = found_dir.is_some_and(|fd| Path::new(d).components().eq(fd.components()));
@@ -1282,7 +1294,9 @@ mod kpse {
                 None
             };
             if let (Some(e), Some(searched)) = (self.memo.entries.get(&key), searched) {
-                if let Some(fresh) = self.still_holds(e, name, f, &searched) {
+                if let Some(fresh) = crate::os::io_time(crate::os::io::HOLDS, || {
+                    self.still_holds(e, name, f, &searched)
+                }) {
                     MEMO_HITS.fetch_add(1, Relaxed);
                     let e = self.memo.entries.get_mut(&key).expect("just found");
                     if !fresh.is_empty() {

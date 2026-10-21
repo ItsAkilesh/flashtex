@@ -104,6 +104,15 @@ impl Tracked {
 
 impl Write for Tracked {
     fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        crate::os::io_time(crate::os::io::WRITE, || self.write_timed(b))
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.f.flush()
+    }
+}
+
+impl Tracked {
+    fn write_timed(&mut self, b: &[u8]) -> std::io::Result<usize> {
         note_foreign(&self.path);
         let at = if self.logical {
             use std::io::Seek;
@@ -121,9 +130,6 @@ impl Write for Tracked {
             set_stamp(&self.path, stamp_of(&m));
         }
         Ok(n)
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.f.flush()
     }
 }
 
@@ -186,6 +192,11 @@ struct Keep {
     old_len: u64,
     saved: Vec<u8>,
     end: Vec<u8>,
+    /// The file, open for reading (`keep_tail`'s descriptor): each write
+    /// over the kept tail reads the old bytes it covers first, which opened
+    /// the file again every time (open, seek, read, close; lane
+    /// T7-HEADROOM).
+    file: Option<File>,
 }
 
 impl Keep {
@@ -215,13 +226,16 @@ impl Keep {
         if to <= from {
             return Ok(());
         }
-        use std::io::Seek;
-        let mut f = File::open(path)?;
-        f.seek(std::io::SeekFrom::Start(from))?;
+        if self.file.is_none() {
+            self.file = Some(File::open(path)?);
+        }
         let n = self.saved.len();
         let mut saved = std::mem::take(&mut self.saved);
         saved.resize(n + (to - from) as usize, 0);
-        let r = f.read_exact(&mut saved[n..]);
+        let r = match &self.file {
+            Some(f) => crate::os::read_exact_at(f, &mut saved[n..], from),
+            None => Ok(()),
+        };
         if r.is_ok() {
             self.unblank(from, &mut saved[n..]);
         } else {
@@ -263,23 +277,35 @@ pub fn logical_len(path: &str) -> Option<u64> {
 /// logical end becomes `base`, and nothing is read or cut. The tail's old
 /// bytes come from [`kept_tail`] while the restore is pending.
 pub fn keep_tail(path: &str, base: u64) -> Result<(), String> {
-    let old_len = match logical_len(path) {
-        Some(n) => n,
-        None => std::fs::metadata(path)
-            .map(|m| m.len())
-            .map_err(|e| format!("{path}: {e}"))?,
-    };
+    let e = |x: std::io::Error| format!("{path}: {x}");
+    // One open, and the descriptor's `stat` before and after the blank: a
+    // call by path for each step took ten a file, and on the M5 Pro the
+    // restore's output files 0.4-0.8 ms of a beamer keystroke (lane
+    // T7-HEADROOM).
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(e)?;
+    let m = f.metadata().map_err(e)?;
+    let old_len = logical_len(path).unwrap_or(m.len());
     if old_len < base {
         return Err(format!("{path} holds {old_len} bytes, fewer than {base}"));
     }
     // (blanked: the old run's end; the restore checked that the file is
     // the engine's, `checkpoint::changed_outside`)
-    if let Some(why) = outside_change(path) {
+    if let Some(why) = why_changed_as(path, true, Some(stamp_of(&m))) {
         return Err(why);
     }
     let end_at = old_len.saturating_sub(BLANK_END).max(base);
-    let end = blank(path, end_at, old_len).map_err(|e| format!("{path}: {e}"))?;
-    stamp_output(path);
+    let mut end = vec![0u8; (old_len - end_at) as usize];
+    crate::os::read_exact_at(&f, &mut end, end_at).map_err(e)?;
+    crate::os::write_all_at(&f, &vec![b' '; end.len()], end_at).map_err(e)?;
+    // (`stamp_output`, from the descriptor)
+    if let Ok(m) = f.metadata() {
+        set_stamp(path, stamp_of(&m));
+    }
+    FOREIGN.with(|f| f.borrow_mut().remove(&out_key(path)));
     file_trace(|| format!("keep_tail {path} base {base} old_len {old_len} blank {end_at}"));
     LOGICAL.with(|m| {
         m.borrow_mut().insert(
@@ -291,6 +317,7 @@ pub fn keep_tail(path: &str, base: u64) -> Result<(), String> {
                     old_len,
                     saved: Vec::new(),
                     end,
+                    file: Some(f),
                 }),
             },
         )
@@ -315,12 +342,14 @@ pub fn kept_tail(path: &str, base: u64, skip: u64) -> Result<Vec<u8>, String> {
             .unwrap_or_default();
         let from = k.saved_to().max(base + skip);
         if from < k.old_len {
-            use std::io::Seek;
-            let mut f = File::open(path).map_err(e)?;
-            f.seek(std::io::SeekFrom::Start(from)).map_err(e)?;
+            if k.file.is_none() {
+                k.file = Some(File::open(path).map_err(e)?);
+            }
             let n = out.len();
             out.resize(n + (k.old_len - from) as usize, 0);
-            f.read_exact(&mut out[n..]).map_err(e)?;
+            if let Some(f) = &k.file {
+                crate::os::read_exact_at(f, &mut out[n..], from).map_err(e)?;
+            }
             k.unblank(from, &mut out[n..]);
         }
         Ok(out)
@@ -2525,6 +2554,12 @@ impl Globals {
     /// `a_make_name_string` -- and therefore the `(` line in the log --
     /// shows `./story.tex` exactly as pdfTeX's does.
     fn input_path(&mut self, default: Format, must_exist: bool) -> Option<String> {
+        crate::os::io_time(crate::os::io::LOOKUP, || {
+            self.input_path_timed(default, must_exist)
+        })
+    }
+
+    fn input_path_timed(&mut self, default: Format, must_exist: bool) -> Option<String> {
         FULL_NAME_OF_FILE.with(|f| *f.borrow_mut() = None);
         // (only a `stat` made by this lookup may stand for the file when
         // it is opened next: `open_bytes`)
@@ -2687,6 +2722,10 @@ impl Globals {
     }
 
     pub fn a_open_in(&mut self, f: &mut AlphaFile) -> bool {
+        crate::os::io_time(crate::os::io::TEXT, || self.a_open_in_timed(f))
+    }
+
+    fn a_open_in_timed(&mut self, f: &mut AlphaFile) -> bool {
         *f = AlphaFile::default();
         f.err = 1;
         if let Some(ok) = self.open_in_pipe(f) {
@@ -2761,6 +2800,10 @@ impl Globals {
     }
 
     pub fn b_open_in(&mut self, f: &mut ByteFile) -> bool {
+        crate::os::io_time(crate::os::io::TFM, || self.b_open_in_timed(f))
+    }
+
+    fn b_open_in_timed(&mut self, f: &mut ByteFile) -> bool {
         *f = ByteFile::default();
         f.err = 1;
         let Some(name) = self.input_path(Format::Tfm, true) else {
@@ -4069,6 +4112,9 @@ struct Known {
     path: std::path::PathBuf,
     sig: StatSig,
     data: std::sync::Arc<Vec<u8>>,
+    /// The edit that made `data`: bytes `at..at + del` of the copy `pre`
+    /// replaced by `ins` bytes ([`note_known_edit`]).
+    edit: Option<(std::sync::Arc<Vec<u8>>, usize, usize, usize)>,
 }
 
 /// The copies [`known_content`] may stand for the files with. Only within
@@ -4091,8 +4137,50 @@ pub fn note_known_content(path: &Path, held: Option<(StatSig, std::sync::Arc<Vec
     let mut k = KNOWN.lock().unwrap_or_else(|e| e.into_inner());
     k.retain(|e| e.path != path);
     if let Some((sig, data)) = held {
-        k.push(Known { path, sig, data });
+        k.push(Known {
+            path,
+            sig,
+            data,
+            edit: None,
+        });
     }
+}
+
+/// The host's copy of `path` ([`note_known_content`], just noted) is the
+/// copy `pre` with bytes `at..at + del` replaced by `ins` bytes.
+pub fn note_known_edit(
+    path: &Path,
+    pre: std::sync::Arc<Vec<u8>>,
+    at: usize,
+    del: usize,
+    ins: usize,
+) {
+    let Ok(path) = std::fs::canonicalize(path) else {
+        return;
+    };
+    let mut k = KNOWN.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(e) = k.iter_mut().find(|e| e.path == path) {
+        e.edit = Some((pre, at, del, ins));
+    }
+}
+
+/// The edit (`at`, `del`, `ins`) by which the host made its copy `new` of `path`
+/// out of `old` itself (the same allocation: `Arc::ptr_eq`), if it did.
+pub fn known_edit(
+    path: &str,
+    old: &std::sync::Arc<Vec<u8>>,
+    new: &std::sync::Arc<Vec<u8>>,
+) -> Option<(usize, usize, usize)> {
+    let k = KNOWN.lock().unwrap_or_else(|e| e.into_inner());
+    if !k.iter().any(|e| e.edit.is_some()) {
+        return None;
+    }
+    let path = std::fs::canonicalize(path).ok()?;
+    k.iter().find(|e| e.path == path).and_then(|e| {
+        let (pre, at, del, ins) = e.edit.as_ref()?;
+        (std::sync::Arc::ptr_eq(pre, old) && std::sync::Arc::ptr_eq(&e.data, new))
+            .then_some((*at, *del, *ins))
+    })
 }
 
 /// Forget every copy: a compile starts or has ended.
@@ -4160,12 +4248,17 @@ pub fn outside_change(path: &str) -> Option<String> {
 }
 
 fn why_changed(path: &str, foreign_too: bool) -> Option<String> {
+    why_changed_as(path, foreign_too, None)
+}
+
+/// [`why_changed`] with the file's stamp now, when the caller has it.
+fn why_changed_as(path: &str, foreign_too: bool, now: Option<Stamp>) -> Option<String> {
     let k = out_key(path);
     if foreign_too && FOREIGN.with(|f| f.borrow().contains(&k)) {
         return Some(format!("{path} was changed by another program"));
     }
     let st = STAMPS.with(|m| m.borrow().get(&k).copied())?;
-    let now = disk_stamp(path);
+    let now = now.or_else(|| disk_stamp(path));
     if now == Some(st) {
         return None;
     }
@@ -4688,6 +4781,10 @@ fn note_lookup(
 /// file opens call it (the Unicode engine's, `crates/flashtex-xetex`, for
 /// what it finds without the resolver); a lookup that finds a file notes it.
 pub fn note_file(path: &str) {
+    crate::os::io_time(crate::os::io::NOTE, || note_file_timed(path))
+}
+
+fn note_file_timed(path: &str) {
     note_ahead_read(path);
     READS.with(|r| {
         let mut b = r.borrow_mut();

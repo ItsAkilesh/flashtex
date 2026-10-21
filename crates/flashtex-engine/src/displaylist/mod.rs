@@ -590,23 +590,35 @@ impl Peer {
                 self.spans.insert(s, (file, line));
             }
         });
-        (!src.files.is_empty() || !src.spans.is_empty())
-            .then(|| src.to_json().to_string().into_bytes())
+        (!src.files.is_empty() || !src.spans.is_empty()).then(|| src.to_json_string().into_bytes())
     }
 
     /// A `SOURCES` body re-declaring the spans the reader knows that have
     /// moved since ([`move_lines`]), if any.
     pub fn moved_spans(&mut self) -> Option<Vec<u8>> {
-        let mut moved: Vec<u32> = with(|st| {
-            self.spans
-                .iter()
-                .filter(|(s, at)| st.spans.get(**s as usize - 1) != Some(*at))
-                .map(|(s, _)| *s)
-                .collect()
-        })
-        .unwrap_or_default();
-        moved.sort_unstable();
-        self.sources_for(&moved)
+        // (`sources_for` of the moved spans, sorted, in one pass over the
+        // reader's spans: a split near the middle of a 1,000-page source
+        // moves every later span; lane T7-HEADROOM)
+        let mut src = Sources::default();
+        with(|st| {
+            for (s, at) in self.spans.iter_mut() {
+                if let Some(&now) = st.spans.get(*s as usize - 1) {
+                    if now != *at {
+                        *at = now;
+                        src.spans.push((*s, now.0, now.1));
+                    }
+                }
+            }
+            src.spans.sort_unstable_by_key(|x| x.0);
+            for &(_, file, _) in &src.spans {
+                if self.files.insert(file) {
+                    if let Some(p) = st.file_paths.get(file as usize - 1) {
+                        src.files.push((file, p.clone()));
+                    }
+                }
+            }
+        });
+        (!src.files.is_empty() || !src.spans.is_empty()).then(|| src.to_json_string().into_bytes())
     }
 }
 

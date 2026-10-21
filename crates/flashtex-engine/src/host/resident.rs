@@ -211,6 +211,11 @@ struct Target {
     /// (`os::events`).
     flt0: Option<(u64, u64)>,
     first_flt: Option<(u64, u64)>,
+    /// The phases to the first page (`os::phase_marks`) and the restore's
+    /// steps (`checkpoint::take_restore_steps`), taken then.
+    first_marks: Vec<crate::os::PhaseMark>,
+    first_restore_us: [u64; 5],
+    first_io: [(u32, u64); 8],
 }
 
 impl Target {
@@ -468,6 +473,10 @@ impl Live {
                 t.first_send_ms = Some(t.send_ns as f64 * 1e-6);
                 t.first_pmu = crate::os::thread_counts();
                 t.first_flt = crate::os::events();
+                crate::os::phase_mark('d');
+                t.first_marks = crate::os::phase_marks();
+                t.first_restore_us = crate::checkpoint::take_restore_steps();
+                t.first_io = crate::os::io_times();
                 // (`FLASHTEX_PERF_MARKS`: `d`, the first page delivered)
                 crate::os::perf_mark_as('d');
                 let count = t.old_count.max(i + 1);
@@ -503,7 +512,7 @@ struct Doc {
     /// The user's files as the last compile read them (to move source
     /// spans with their lines when they are edited), each with its stat
     /// signature then (`None`: unknown, so it is compared again).
-    texts: HashMap<String, (Arc<Vec<u8>>, Option<crate::system::StatSig>)>,
+    texts: HashMap<String, Text>,
     tools: DocTools,
     /// A run from the format was stopped by newer work (past S₀, which it
     /// keeps): S₀ is persisted after the next compile that completes, not
@@ -553,6 +562,10 @@ pub(crate) struct Engine {
 }
 
 type Written = HashMap<PathBuf, (crate::system::StatSig, Arc<Vec<u8>>)>;
+
+/// A user's file as the host last saw it (`Doc::texts`): its bytes, their
+/// stat signature, and their line ends when counted (`Ends`).
+type Text = (Arc<Vec<u8>>, Option<crate::system::StatSig>, Option<Ends>);
 
 impl Engine {
     pub fn new(cfg: Arc<Config>, tx: mpsc::Sender<Req>) -> Engine {
@@ -877,6 +890,7 @@ impl Engine {
         let t_apply = Instant::now();
         let ev_apply = crate::os::events();
         APPLY_STEPS.with(|a| a.set([0; 5]));
+        EDITED.with(|e| e.borrow_mut().clear());
         // (the host's copies stand for files only within the compile that
         // wrote them: `system::KNOWN`)
         crate::system::clear_known_content();
@@ -885,6 +899,7 @@ impl Engine {
             return self.resume_deferred(&conn);
         }
         let apply_ms = t_apply.elapsed().as_secs_f64() * 1e3;
+        crate::os::phase_mark('p');
         // (its page faults and, on macOS, system calls: `os::events`)
         let apply_ev = ev_apply
             .zip(crate::os::events())
@@ -944,6 +959,7 @@ impl Engine {
         let t_moved = Instant::now();
         move_spans(doc, &self.written);
         let move_ms = t_moved.elapsed().as_secs_f64() * 1e3;
+        crate::os::phase_mark('m');
         let mut ps = self.peers.remove(&conn.id).unwrap_or_else(PeerState::new);
         let keep = incremental && ps.doc_gen == doc.gen;
         if !keep {
@@ -1001,6 +1017,9 @@ impl Engine {
             first_pmu: None,
             flt0,
             first_flt: None,
+            first_marks: vec![],
+            first_restore_us: [0; 5],
+            first_io: [(0, 0); 8],
         });
         let stop_at = req
             .int_field("viewport")
@@ -1374,6 +1393,53 @@ impl Engine {
                 st.push(("old_kept".to_string(), Json::Int(kept as i64)));
                 st.push(("old_rewound".to_string(), Json::Int(rewound as i64)));
             }
+            // The phases to the first page: wall, user and (macOS) system
+            // time in µs from the mark before (`os::phase_marks`; `a` the
+            // compile's start, `p` the edits applied, `m` the spans moved,
+            // `f` the restart point found, `r` the checkpoint restored, `k`
+            // the restore done, `b` the engine resumed, `e` the edited
+            // page's shipout, `d` the first page delivered), and the
+            // restore's steps (`checkpoint::take_restore_steps`)
+            if !t.first_marks.is_empty() {
+                let m = &t.first_marks;
+                let v = m
+                    .windows(2)
+                    .map(|w| {
+                        let (a, b) = (w[0], w[1]);
+                        Json::Arr(vec![
+                            js(b.mark.to_string()),
+                            Json::Int(((b.ns.saturating_sub(a.ns)) / 1000) as i64),
+                            Json::Int(b.user_us.saturating_sub(a.user_us) as i64),
+                            match (a.sys_us, b.sys_us) {
+                                (Some(x), Some(y)) => Json::Int(y.saturating_sub(x) as i64),
+                                _ => Json::Null,
+                            },
+                        ])
+                    })
+                    .collect();
+                st.push(("marks".to_string(), Json::Arr(v)));
+                // (`os::io_time`: calls and µs by kind, to the first page)
+                st.push((
+                    "io_us".to_string(),
+                    Json::Arr(
+                        t.first_io
+                            .iter()
+                            .map(|&(n, ns)| {
+                                Json::Arr(vec![Json::Int(n as i64), Json::Int((ns / 1000) as i64)])
+                            })
+                            .collect(),
+                    ),
+                ));
+                st.push((
+                    "restore_us".to_string(),
+                    Json::Arr(
+                        t.first_restore_us
+                            .iter()
+                            .map(|&u| Json::Int(u as i64))
+                            .collect(),
+                    ),
+                ));
+            }
             // Page faults and system calls (macOS; `_sys`): the whole
             // compile, to the first page, the restore and what an abandoned
             // run's handling took (`os::events`)
@@ -1519,7 +1585,7 @@ impl Engine {
             m.push(("form_cache".into(), Json::Int(forms)));
             m.push((
                 "texts".into(),
-                Json::Int(doc.texts.values().map(|(t, _)| t.len() as i64).sum()),
+                Json::Int(doc.texts.values().map(|(t, _, _)| t.len() as i64).sum()),
             ));
             m.push((
                 "written".into(),
@@ -1912,9 +1978,12 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
     // Write `data` to `path`, whose bytes before `from` are already these
     // and whose length is `old` (when known). The length is set only where
     // the write leaves it wrong: a file that grows grows by the write (lane
-    // T7-MARGIN: on the M5 Pro's APFS a letter typed or deleted, which sets
-    // the length, took 0.45-0.8 ms here, a newline in place of a space,
-    // which keeps it, 0.12-0.14 ms; reference run 2026-10-21b).
+    // T7-MARGIN). A file that gets shorter is cut at the 16 KB boundary at
+    // or before its new end, and written from there (or from `from`, if
+    // that comes first): on the M5 Pro's APFS, cutting a file to a length
+    // inside a block blocked for 0.33-0.83 ms (`ftruncate`, every deleted
+    // letter's keystroke), and the restore after it was 0.2 ms slower; to a
+    // 16 KB boundary it took 0.04 ms (lane T7-HEADROOM, Mac run 2).
     let write_from =
         |path: &Path, data: Vec<u8>, from: usize, old: Option<usize>, written: &mut Written| {
             // (each step's time, for the latency accounting: `APPLY_STEPS`)
@@ -1937,9 +2006,11 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                             crate::os::write_all_at(&f, &data[from..], from as u64)
                         }
                         Some(_) => {
-                            crate::os::write_all_at(&f, &data[from..], from as u64)?;
-                            lap(1, &mut t);
-                            f.set_len(n)
+                            let to = data.len() & !(CUT_ALIGN - 1);
+                            f.set_len(to as u64)?;
+                            lap(2, &mut t);
+                            let at = from.min(to);
+                            crate::os::write_all_at(&f, &data[at..], at as u64)
                         }
                         None => {
                             f.set_len(n)?;
@@ -1947,14 +2018,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                             crate::os::write_all_at(&f, &data[from..], from as u64)
                         }
                     };
-                    lap(
-                        if matches!(old, Some(o) if o > data.len()) {
-                            2
-                        } else {
-                            1
-                        },
-                        &mut t,
-                    );
+                    lap(1, &mut t);
                     drop(f);
                     lap(3, &mut t);
                     r
@@ -2010,22 +2074,65 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
         // In place when the copy is the host's alone; else (`Doc::texts`
         // holds it too) the new text in one copy rather than a copy and a
         // splice.
-        let d = match Arc::try_unwrap(d) {
+        // (the edit, for `move_spans`: one edit of the text `Doc::texts`
+        // holds, whose lines it then counts only near the edit; a second
+        // edit of the file in this compile, or a whole write, and it counts
+        // them all)
+        let edited = EDITED.with(|e| {
+            let mut e = e.borrow_mut();
+            let twice = e.iter().any(|x| x.path == path);
+            e.retain(|x| x.path != path);
+            !twice
+        });
+        let (d, pre) = match Arc::try_unwrap(d) {
             Ok(mut d) => {
                 d.splice(at..at + del, ins.bytes());
-                d
+                (d, None)
             }
             Err(d) => {
                 let mut n = Vec::with_capacity(d.len() - del + ins.len());
                 n.extend_from_slice(&d[..at]);
                 n.extend_from_slice(ins.as_bytes());
                 n.extend_from_slice(&d[at + del..]);
-                n
+                (n, Some(d))
             }
         };
         write_from(&path, d, at, Some(old), written)?;
+        if let (true, Some(p)) = (edited, &pre) {
+            crate::system::note_known_edit(&path, p.clone(), at, del, ins.len());
+        }
+        EDITED.with(|e| {
+            e.borrow_mut().push(Edited {
+                path: path.clone(),
+                pre: if edited { pre } else { None },
+                at,
+                del,
+                ins: ins.as_bytes().to_vec(),
+            })
+        });
     }
     Ok(())
+}
+
+/// Where `apply_changes` cuts a file that gets shorter: a multiple of
+/// this (arm64 macOS's page; APFS's blocks are 4 KB).
+const CUT_ALIGN: usize = 16 << 10;
+
+/// An edit `apply_changes` made in this compile: bytes `at..at + del` of
+/// `pre` (the text before it, `Doc::texts`' copy) replaced by `ins`. `pre`
+/// is `None` where `move_spans` cannot use it (the file's second edit in
+/// the compile, or a copy only the host held).
+struct Edited {
+    path: PathBuf,
+    pre: Option<Arc<Vec<u8>>>,
+    at: usize,
+    del: usize,
+    ins: Vec<u8>,
+}
+
+thread_local! {
+    /// `apply_changes`' edits in this compile, by file (at most one each).
+    static EDITED: RefCell<Vec<Edited>> = const { RefCell::new(Vec::new()) };
 }
 
 thread_local! {
@@ -2044,7 +2151,8 @@ thread_local! {
 /// host's copy, not read again (lane P4-PAGE-COST).
 fn move_spans(doc: &mut Doc, written: &Written) {
     use crate::system::StatSig;
-    for (path, (old, sig)) in doc.texts.iter_mut() {
+    let edited = EDITED.with(|e| std::mem::take(&mut *e.borrow_mut()));
+    for (path, (old, sig, ends)) in doc.texts.iter_mut() {
         let now = StatSig::of(path);
         if sig.is_some() && now == *sig {
             continue;
@@ -2056,10 +2164,19 @@ fn move_spans(doc: &mut Doc, written: &Written) {
             written
                 .iter()
                 .find(|(p, (s, _))| p.file_name() == name && n.same_fields(s))
-                .map(|(_, (_, d))| d.clone())
+                .map(|(p, (_, d))| (p, d.clone()))
+        });
+        // The edit that made the host's copy out of this text, if it was
+        // the file's one edit.
+        let edit = ours.as_ref().and_then(|(p, d)| {
+            edited.iter().find(|e| {
+                e.path == **p
+                    && e.pre.as_ref().is_some_and(|x| Arc::ptr_eq(x, old))
+                    && d.len() + e.del == old.len() + e.ins.len()
+            })
         });
         let (new, new_sig) = match ours {
-            Some(d) => (d, now),
+            Some((_, d)) => (d, now),
             None => match read_signed(path) {
                 Some((d, s)) => (Arc::new(d), s),
                 None => continue,
@@ -2067,7 +2184,15 @@ fn move_spans(doc: &mut Doc, written: &Written) {
         };
         *sig = new_sig;
         if !Arc::ptr_eq(&new, old) && new.as_slice() != old.as_slice() {
-            let (from, old_end, new_end) = line_change(old, &new);
+            let ((from, old_end, new_end), now) = match edit {
+                Some(e) => {
+                    let had = ends.unwrap_or_else(|| Ends::of(old));
+                    let (c, n) = line_change_edit(old, &new, e.at, e.del, &e.ins, had);
+                    (c, Some(n))
+                }
+                None => (line_change(old, &new), None),
+            };
+            *ends = now;
             displaylist::move_lines(path, from, old_end, new_end);
         }
         *old = new;
@@ -2109,7 +2234,7 @@ fn remember_texts(doc: &mut Doc) {
             continue;
         }
         if let Some((d, s)) = read_signed(&p) {
-            doc.texts.insert(p, (Arc::new(d), s));
+            doc.texts.insert(p, (Arc::new(d), s, None));
         }
     }
 }
@@ -2127,25 +2252,101 @@ fn line_change(old: &[u8], new: &[u8]) -> (u32, u32, u32) {
     if old.contains(&b'\r') || new.contains(&b'\r') {
         return line_change_tex(old, new);
     }
-    // equal leading lines
     let pre = crate::incr::common_prefix(old, new);
+    let suf = crate::incr::common_suffix(old, new, old.len().min(new.len()));
+    line_change_lf(old, new, pre, suf, None)
+}
+
+/// A text's line ends as `line_change` counts them: its LFs, and whether it
+/// has a CR (`Doc::texts`, kept with the text it describes).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Ends {
+    lf: usize,
+    cr: bool,
+}
+
+impl Ends {
+    fn of(t: &[u8]) -> Ends {
+        Ends {
+            lf: lf_count(t),
+            cr: t.contains(&b'\r'),
+        }
+    }
+}
+
+/// [`line_change`] of `old` and `new`, where `new` is `old` with bytes
+/// `at..at + del` replaced by `ins` and `had` are `old`'s line ends; and
+/// `new`'s line ends. Only the bytes near the edit and before it are read,
+/// not the 4 MB of a 1,000-page source four times over (0.5-0.6 ms of a
+/// keystroke on the M5 Pro, lane T7-HEADROOM); `tests::line_change_of_an_edit`
+/// holds it to `line_change`.
+fn line_change_edit(
+    old: &[u8],
+    new: &[u8],
+    at: usize,
+    del: usize,
+    ins: &[u8],
+    had: Ends,
+) -> ((u32, u32, u32), Ends) {
+    let gone = &old[at..at + del];
+    let cr = had.cr && (new.contains(&b'\r')) || ins.contains(&b'\r');
+    let now = Ends {
+        lf: had.lf - lf_count(gone) + lf_count(ins),
+        cr,
+    };
+    if had.cr || now.cr {
+        return (line_change_tex(old, new), now);
+    }
+    // (equal before `at`, and in the `tail` after the edit)
+    let pre = at + crate::incr::common_prefix(&old[at..], &new[at..]);
+    let tail = old.len() - at - del;
+    let suf = tail
+        + crate::incr::common_suffix(
+            &old[..old.len() - tail],
+            &new[..new.len() - tail],
+            old.len().min(new.len()) - tail,
+        );
+    (
+        line_change_lf(old, new, pre, suf, Some((had.lf, now.lf))),
+        now,
+    )
+}
+
+/// [`line_change`] of texts with LF line ends only, whose common prefix is
+/// `pre` bytes long and whose common suffix (no longer than the shorter
+/// text) is `suf`; `lfs`, the texts' LF counts when known.
+fn line_change_lf(
+    old: &[u8],
+    new: &[u8],
+    pre: usize,
+    suf: usize,
+    lfs: Option<(usize, usize)>,
+) -> (u32, u32, u32) {
+    // equal leading lines
     let ls = old[..pre]
         .iter()
         .rposition(|&c| c == b'\n')
         .map_or(0, |i| i + 1);
     let mut p = lf_count(&old[..ls]);
     // the common suffix, and every text's LFs counted once
-    let suf = crate::incr::common_suffix(old, new, old.len().min(new.len()));
     let (so, sn) = (old.len() - suf, new.len() - suf);
     let (mo, mn) = (so.max(ls), sn.max(ls));
-    let tail_o = lf_count(&old[mo..]);
-    let tail_n = if so >= ls && sn >= ls {
-        tail_o // the same bytes
-    } else {
-        lf_count(&new[mn..])
+    let (mid_o, mid_n) = (lf_count(&old[ls..mo]), lf_count(&new[ls..mn]));
+    let (tail_o, tail_n) = match lfs {
+        // (the texts are equal before `ls`, which holds `p` of each's LFs)
+        Some((a, b)) => (a - p - mid_o, b - p - mid_n),
+        None => {
+            let tail_o = lf_count(&old[mo..]);
+            let tail_n = if so >= ls && sn >= ls {
+                tail_o // the same bytes
+            } else {
+                lf_count(&new[mn..])
+            };
+            (tail_o, tail_n)
+        }
     };
-    let na = p + lf_count(&old[ls..mo]) + tail_o + 1;
-    let nb = p + lf_count(&new[ls..mn]) + tail_n + 1;
+    let na = p + mid_o + tail_o + 1;
+    let nb = p + mid_n + tail_n + 1;
     // the line holding the first difference is equal only when it ends
     // there in one text and at a LF in the other (or at the end of both)
     let line_end = |b: &[u8]| {
@@ -2163,7 +2364,9 @@ fn line_change(old: &[u8], new: &[u8]) -> (u32, u32, u32) {
     let mut s = if so >= ls {
         tail_o
     } else {
-        lf_count(&old[so..])
+        // (`mo` is `ls`: `old[so..]`'s LFs are those before `ls` and
+        // `tail_o`)
+        lf_count(&old[so..ls]) + tail_o
     };
     // ... and so does the suffix itself where a line starts there in both
     // texts (at a text's start, or after a LF)
@@ -2331,6 +2534,60 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Edits that shrink, grow and keep a file, near and across the cut's
+    /// 16 KB boundaries (`CUT_ALIGN`), leave it holding exactly the edited
+    /// text, and the host's copy (`written`) the same bytes.
+    #[test]
+    fn edits_leave_the_file_as_the_text() {
+        use flashtex_display_list::json::{obj, s as js, Json};
+        let dir = std::env::temp_dir().join(format!("ftx-apply-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut seed = 0x0dd5_eed5_1234_5678u64;
+        let mut rnd = |n: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % n.max(1) as u64) as usize
+        };
+        let a = super::CUT_ALIGN;
+        let mut text: Vec<u8> = (0..2 * a + 5).map(|i| b"ab \n"[i % 4]).collect();
+        std::fs::write(dir.join("m.tex"), &text).unwrap();
+        let mut written = super::Written::new();
+        for k in 0..400 {
+            // around a boundary, or anywhere
+            let len = text.len();
+            let at = match k % 3 {
+                0 => (len & !(a - 1)).saturating_sub(rnd(3)).min(len),
+                1 => len.saturating_sub(rnd(4)),
+                _ => rnd(len + 1),
+            };
+            let del = rnd(len - at + 1).min([0, 1, 2, 9, a + 3][rnd(5)]);
+            let ins: String = (0..[0, 1, 2, 7][rnd(4)])
+                .map(|_| ['x', '\n', 'y'][rnd(3)])
+                .collect();
+            let req = obj([(
+                "edits",
+                Json::Arr(vec![obj([
+                    ("path", js("m.tex")),
+                    ("offset", Json::Int(at as i64)),
+                    ("delete", Json::Int(del as i64)),
+                    ("insert", js(ins.as_str())),
+                ])]),
+            )]);
+            super::apply_changes(&dir, &req, &mut written).unwrap();
+            text.splice(at..at + del, ins.bytes());
+            assert_eq!(
+                std::fs::read(dir.join("m.tex")).unwrap(),
+                text,
+                "edit {k}: at {at} del {del}"
+            );
+            let (_, held) = written.get(&dir.join("m.tex")).expect("the host's copy");
+            assert_eq!(held.as_slice(), text.as_slice(), "edit {k}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The line-by-line definition `line_change` computes.
     fn line_change_by_lines(old: &[u8], new: &[u8]) -> (u32, u32, u32) {
         let a: Vec<&[u8]> = old.split(|&c| c == b'\n').collect();
@@ -2432,6 +2689,34 @@ mod tests {
                 let want = if fill == b'\n' { v.len() - off } else { 0 };
                 assert_eq!(super::lf_count(&v[off..]), want);
             }
+        }
+    }
+
+    /// `line_change_edit` is `line_change`, and its line ends the new
+    /// text's, for edits of texts with and without CRs.
+    #[test]
+    fn line_change_of_an_edit() {
+        let mut seed = 0x51f1_5eed_0bad_cafeu64;
+        let mut rnd = |n: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % n as u64) as usize
+        };
+        for round in 0..40_000 {
+            let alpha: &[u8] = if round % 4 == 0 { b"ab\n\r" } else { b"ab\n" };
+            let n = rnd(18);
+            let old: Vec<u8> = (0..n).map(|_| alpha[rnd(alpha.len())]).collect();
+            let at = rnd(n + 1);
+            let del = rnd(n + 1 - at);
+            let ins: Vec<u8> = (0..rnd(4)).map(|_| alpha[rnd(alpha.len())]).collect();
+            let mut new = old[..at].to_vec();
+            new.extend_from_slice(&ins);
+            new.extend_from_slice(&old[at + del..]);
+            let (c, e) = super::line_change_edit(&old, &new, at, del, &ins, super::Ends::of(&old));
+            let show = (String::from_utf8_lossy(&old), String::from_utf8_lossy(&new));
+            assert_eq!(c, line_change(&old, &new), "{show:?}");
+            assert_eq!(e, super::Ends::of(&new), "{show:?}");
         }
     }
 
