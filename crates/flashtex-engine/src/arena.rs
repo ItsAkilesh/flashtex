@@ -4321,6 +4321,85 @@ mod tests {
         }
     }
 
+    /// A lazy reattach (`Lazy`) and a restore to its target leave what a
+    /// reattach and that restore leave (the target's state, its
+    /// checkpoints, a branch that reattaches to the old run's end); a write,
+    /// a restore elsewhere or any other change of the space under it makes
+    /// it whole first, so each sees the old run's end.
+    #[test]
+    fn a_lazy_reattach_is_a_reattach() {
+        let (mut a, mut arr) = space(200_000);
+        scribble(&mut arr, 1, 5000);
+        let mut ids = vec![];
+        let mut copies = vec![];
+        for k in 0..12 {
+            ids.push(a.checkpoint());
+            copies.push(arr.to_vec());
+            scribble(&mut arr, 100 + k, 3000);
+            a.write_through(0, &[k as u8 + 1; 64]);
+        }
+        let end = arr.to_vec();
+        let new_run = |a: &mut Arena, arr: &mut Arr<u64>, s: u64| {
+            scribble(arr, 900 + s, 4000);
+            a.checkpoint();
+            scribble(arr, 950 + s, 4000);
+            a.checkpoint();
+            scribble(arr, 990 + s, 100);
+        };
+        for i in [0usize, 5, 11] {
+            // a restore to the target takes the redo back
+            let br = a.restore_branch(ids[i]).unwrap();
+            new_run(&mut a, &mut arr, i as u64);
+            a.reattach_lazy(br).unwrap();
+            assert_eq!(a.lazy_target(), Some(ids[i]));
+            assert_eq!(a.checkpoint_ids(), &ids[..], "the old checkpoints from {i}");
+            assert!(arr[..] == copies[i][..], "the live space is the target's");
+            let br = a.restore_branch(ids[i]).unwrap();
+            assert_eq!(a.lazy_target(), None);
+            assert!(arr[..] == copies[i][..], "restored to {i}");
+            assert_eq!(a.checkpoint_ids(), &ids[..=i]);
+            new_run(&mut a, &mut arr, 20 + i as u64);
+            a.reattach(br).unwrap();
+            assert!(arr[..] == end[..], "the branch reattaches to the end from {i}");
+            assert_eq!(a.checkpoint_ids(), &ids[..]);
+            // a write makes it whole first
+            let br = a.restore_branch(ids[i]).unwrap();
+            new_run(&mut a, &mut arr, 40 + i as u64);
+            a.reattach_lazy(br).unwrap();
+            let j = arr.len() / 3;
+            arr[j] ^= 0x5a5a;
+            assert_eq!(a.lazy_target(), None);
+            let mut want = end.clone();
+            want[j] ^= 0x5a5a;
+            assert!(arr[..] == want[..], "a write sees the end from {i}");
+            a.restore_discard(*ids.last().unwrap()).unwrap();
+            assert!(arr[..] == copies[11][..]);
+            scribble(&mut arr, 111, 3000);
+            assert!(arr[..] == end[..]);
+            // a restore elsewhere makes it whole first
+            let br = a.restore_branch(ids[i]).unwrap();
+            new_run(&mut a, &mut arr, 60 + i as u64);
+            a.reattach_lazy(br).unwrap();
+            let other = if i == 0 { 3 } else { i - 1 };
+            let br = a.restore_branch(ids[other]).unwrap();
+            assert!(arr[..] == copies[other][..], "restore {other} after a lazy reattach");
+            a.reattach(br).unwrap();
+            assert!(arr[..] == end[..]);
+            // the scalars read from the state under it
+            let br = a.restore_branch(ids[i]).unwrap();
+            a.write_through(0, &[i as u8 + 1; 64]);
+            a.reattach_lazy(br).unwrap();
+            let lazy = a.read_state(0, 64);
+            assert_eq!(lazy, vec![12u8; 64], "the old run's scalars under a lazy reattach");
+            a.materialize();
+            assert_eq!(lazy, a.read(0, 64));
+        }
+        for (i, &id) in ids.iter().enumerate().rev() {
+            a.restore_discard(id).unwrap();
+            assert!(arr[..] == copies[i][..], "restore {i} after lazy reattaches");
+        }
+    }
+
     #[test]
     fn straddling_elements_are_saved_whole() {
         #[derive(Clone, Copy, PartialEq, Debug)]
