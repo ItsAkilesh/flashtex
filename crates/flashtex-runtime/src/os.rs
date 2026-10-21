@@ -199,12 +199,29 @@ pub fn thread_cpu_s() -> f64 {
     imp::thread_cpu_s()
 }
 
-/// Page faults (minor and major) so far, for measurement only: this
-/// thread's on Linux (`RUSAGE_THREAD`), the process's on other Unix systems
-/// (macOS counts none per thread). A fault's kernel work is invisible to the
-/// PC's user-space instruction counts but in the Mac's (lane T7-MARGIN).
-pub fn faults() -> Option<u64> {
-    #[cfg(unix)]
+/// Page faults and system calls so far, for measurement only (lane
+/// T7-MARGIN): their kernel work is in the Mac's instruction counts
+/// (`thread_counts`) but not in the PC's, which count user space. macOS:
+/// the task's (`TASK_EVENTS_INFO`: faults; Unix and Mach calls), which has
+/// no per-thread counts; Linux: this thread's faults (`RUSAGE_THREAD`), no
+/// count of calls (0).
+pub fn events() -> Option<(u64, u64)> {
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            static mach_task_self_: u32;
+            fn task_info(task: u32, flavor: u32, info: *mut i32, count: *mut u32) -> i32;
+        }
+        // `task_events_info`: faults, pageins, cow_faults, messages_sent,
+        // messages_received, syscalls_mach, syscalls_unix, csw
+        let mut v = [0i32; 8];
+        let mut n = 8u32;
+        // SAFETY: the kernel writes at most `n` integers into `v`; flavor 2
+        // is TASK_EVENTS_INFO.
+        let r = unsafe { task_info(mach_task_self_, 2, v.as_mut_ptr(), &mut n) };
+        (r == 0).then(|| (v[0] as u32 as u64, v[5] as u32 as u64 + v[6] as u32 as u64))
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         #[cfg(target_os = "linux")]
         let who = libc::RUSAGE_THREAD;
@@ -213,7 +230,7 @@ pub fn faults() -> Option<u64> {
         // SAFETY: `getrusage` writes one `rusage` into `u`.
         let mut u: libc::rusage = unsafe { std::mem::zeroed() };
         let r = unsafe { libc::getrusage(who, &mut u) };
-        (r == 0).then_some((u.ru_minflt + u.ru_majflt) as u64)
+        (r == 0).then_some(((u.ru_minflt + u.ru_majflt) as u64, 0))
     }
     #[cfg(not(unix))]
     {

@@ -207,9 +207,10 @@ struct Target {
     /// compile and at the first page (`os::thread_counts`; macOS, Linux).
     pmu0: Option<(u64, u64)>,
     first_pmu: Option<(u64, u64)>,
-    /// Page faults at the start and at the first page (`os::faults`).
-    flt0: Option<u64>,
-    first_flt: Option<u64>,
+    /// Page faults and system calls at the start and at the first page
+    /// (`os::events`).
+    flt0: Option<(u64, u64)>,
+    first_flt: Option<(u64, u64)>,
 }
 
 impl Target {
@@ -466,7 +467,7 @@ impl Live {
                 t.first_emit_ms = Some((displaylist::emit_ns() - t.emit0) as f64 * 1e-6);
                 t.first_send_ms = Some(t.send_ns as f64 * 1e-6);
                 t.first_pmu = crate::os::thread_counts();
-                t.first_flt = crate::os::faults();
+                t.first_flt = crate::os::events();
                 // (`FLASHTEX_PERF_MARKS`: `d`, the first page delivered)
                 crate::os::perf_mark_as('d');
                 let count = t.old_count.max(i + 1);
@@ -860,7 +861,7 @@ impl Engine {
         ));
         let cpu0 = incr::thread_cpu_s();
         let pmu0 = crate::os::thread_counts();
-        let flt0 = crate::os::faults();
+        let flt0 = crate::os::events();
         let out = conn.out.clone();
         let Some(id) = req.int_field("id") else {
             server::error(&out, None, "request", "COMPILE needs an integer id");
@@ -1358,17 +1359,22 @@ impl Engine {
                 st.push(("old_kept".to_string(), Json::Int(kept as i64)));
                 st.push(("old_rewound".to_string(), Json::Int(rewound as i64)));
             }
-            // Page faults: the whole compile, to the first page, the restore
-            // and an abandoned run's (`os::faults`)
-            if let (Some(a), Some(b)) = (t.flt0, crate::os::faults()) {
-                st.push(("flt".to_string(), Json::Int((b - a) as i64)));
+            // Page faults and system calls (macOS; `_sys`): the whole
+            // compile, to the first page, the restore and what an abandoned
+            // run's handling took (`os::events`)
+            if let (Some(a), Some(b)) = (t.flt0, crate::os::events()) {
+                let mut both = |k: &str, v: (u64, u64)| {
+                    st.push((format!("{k}flt"), Json::Int(v.0 as i64)));
+                    st.push((format!("{k}sys"), Json::Int(v.1 as i64)));
+                };
+                both("", (b.0 - a.0, b.1 - a.1));
                 if let Some(f) = t.first_flt {
-                    st.push(("first_page_flt".to_string(), Json::Int((f - a) as i64)));
+                    both("first_page_", (f.0 - a.0, f.1 - a.1));
                 }
                 if let Ok(rep) = &result {
-                    for (k, v) in [("restore_flt", rep.restore_flt), ("paused_flt", rep.paused_flt)] {
+                    for (k, v) in [("restore_", rep.restore_flt), ("paused_", rep.paused_flt)] {
                         if let Some(v) = v {
-                            st.push((k.to_string(), Json::Int(v as i64)));
+                            both(k, v);
                         }
                     }
                 }

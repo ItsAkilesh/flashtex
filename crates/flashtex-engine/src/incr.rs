@@ -316,9 +316,10 @@ pub struct Report {
     /// page's shipout, and in the convergence tests (`os::thread_counts`;
     /// macOS and Linux, for measurement).
     pub restore_instr: Option<u64>,
-    /// Page faults in the restore and in `paused_how` (`os::faults`).
-    pub restore_flt: Option<u64>,
-    pub paused_flt: Option<u64>,
+    /// Page faults and system calls in the restore and in `paused_how`
+    /// (`os::events`).
+    pub restore_flt: Option<(u64, u64)>,
+    pub paused_flt: Option<(u64, u64)>,
     pub edited_instr: Option<u64>,
     pub test_instr: Option<u64>,
     /// Of `edited_instr`, from the engine's resumption after the restore
@@ -4102,7 +4103,7 @@ impl Session {
             system::refresh_disk_dirs();
         }
         let i0 = crate::os::thread_counts();
-        let f0 = crate::os::faults();
+        let f0 = crate::os::events();
         let mut paused_how = "";
         // A run stopped for this compile (preempted, or at a viewport).
         let ahead = self.paused.as_ref().and_then(|_| system::take_ahead_read());
@@ -4134,7 +4135,7 @@ impl Session {
                     }
                     let paused_s = t0.elapsed().as_secs_f64();
                     let paused_instr = i0.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
-                    let paused_flt = f0.zip(crate::os::faults()).map(|(a, b)| b - a);
+                    let paused_flt = f0.zip(crate::os::events()).map(|(a, b)| (b.0 - a.0, b.1 - a.1));
                     let mut rep = self.finish()?;
                     rep.paused_how = "continued";
                     rep.paused_s = paused_s;
@@ -4160,7 +4161,7 @@ impl Session {
         }
         let paused_s = t0.elapsed().as_secs_f64();
         let paused_instr = i0.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
-        let paused_flt = f0.zip(crate::os::faults()).map(|(a, b)| b - a);
+        let paused_flt = f0.zip(crate::os::events()).map(|(a, b)| (b.0 - a.0, b.1 - a.1));
         if let Some(g) = self.g.as_mut() {
             g.layer().stats = Default::default();
         }
@@ -5957,7 +5958,7 @@ impl Session {
         obs.changed_lookup_last = self.changed_lookup_last;
         let t1 = Instant::now();
         let i1 = crate::os::thread_counts();
-        let f1 = crate::os::faults();
+        let f1 = crate::os::events();
         let end = self.end_point();
         let g = self.g.as_mut().unwrap();
         let rec = g.record_of(r)?;
@@ -6151,7 +6152,7 @@ impl Session {
         let restore_s = t1.elapsed().as_secs_f64();
         drop(busy_restore);
         let restore_instr = i1.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
-        let restore_flt = f1.zip(crate::os::faults()).map(|(a, b)| b - a);
+        let restore_flt = f1.zip(crate::os::events()).map(|(a, b)| (b.0 - a.0, b.1 - a.1));
         obs.old_pages = self.pages[base..].to_vec();
         obs.old_lines = obs
             .old_pages
