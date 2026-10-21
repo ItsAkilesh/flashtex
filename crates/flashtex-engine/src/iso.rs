@@ -66,6 +66,9 @@ pub(crate) fn align_by_words<R>(f: impl FnOnce() -> R) -> R {
     r
 }
 
+/// A page insertion record's type for an overflowed class (tex.web §981).
+const SPLIT_UP: i32 = crate::generated::consts::split_up;
+
 // the static heads (tex.web §162, pdftex.web)
 const PAGE_INS_HEAD: i32 = MEM_TOP;
 const CONTRIB_HEAD: i32 = MEM_TOP - 1;
@@ -1958,9 +1961,15 @@ impl<O: Space, N: Space> Iso<'_, O, N> {
             self.cover(a, b, 4);
             let (x, y) = (self.o.mem(a), self.n.mem(b));
             self.eq("page insertion type/box", lh(x), lh(y));
+            // (an overflowed class's only: `broken_ptr` and `broken_ins` are
+            // read only when `type(r)=split_up`, tex.web §986 and §1021,
+            // and an `inserting` record holds there what `get_node` left,
+            // §1008-§1009: memory the allocation order decides)
             let (x1, y1) = (self.o.mem(a + 1), self.n.mem(b + 1));
-            self.later("broken_ptr", rh(x1), rh(y1));
-            self.later("broken_ins", lh(x1), lh(y1));
+            if b0(x) == SPLIT_UP {
+                self.later("broken_ptr", rh(x1), rh(y1));
+                self.later("broken_ins", lh(x1), lh(y1));
+            }
             let (x2, y2) = (self.o.mem(a + 2), self.n.mem(b + 2));
             self.later("last_ins_ptr", rh(x2), rh(y2));
             self.later("best_ins_ptr", lh(x2), lh(y2));
