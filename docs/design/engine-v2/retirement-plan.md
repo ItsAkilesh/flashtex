@@ -85,7 +85,7 @@
 4. **"Gates, not a soak"** (revision 2's question): S4's three consecutive boards and S5's T7 requirement are gates. Q1 and Q3 being decided removes their dependency on an open question.
 5. **Ruling 4 at S6** (§5.3): a document still recorded as `previous` gets a one-time sheet that must be acknowledged.
 6. **§10's TFM wording** (§2): only `math-layout/src/tfm.rs` survives, in place.
-7. **The Commander's open RQs:** RQ3, RQ7 and RQ10 (§7). RQ6 was ruled on 2026-10-11.
+7. **The Commander's open RQs:** RQ3 and RQ10 (§7). RQ6 was ruled on 2026-10-11, and RQ7 and RQ20 on 2026-10-21.
 
 ---
 
@@ -574,11 +574,11 @@ A failure blocks the queue until the Commander either accepts the measured rollb
 | Row | What S6 needs |
 |---|---|
 | **A9** | The Unicode mode carries `[fonts]` and `fontspec` documents (decision 3A), and **its M3 gate has passed** (modes Q1). Until then the old engine stays as their explicit fallback, which is why S6 and S7 wait for M3. |
-| **A17** | No TeX Live: the in-app TTBv1 bundle route (#1471, #1523), with an app test of a real download (missing today, L116, L245). A declined download: the owner rules what happens when no old engine is left. |
+| **A17** | No TeX Live: the in-app TTBv1 bundle route (#1471, #1523), with an app test of a real download (missing today, L116, L245). A declined download: *ruled (RQ20) (Commander under delegated app rulings, 2026-10-21): no fallback; a plain, non-blocking message that compiling needs the TeX bundle or a TeX Live install, with a Download button that retries.* |
 | **C25** | Preview Debug Status: a v3 test, or owner retirement (it is developer-facing). |
-| **E2** | The capture `projectId` is `"demo"` under v3 (`ShellModel.swift` L669): a fix with a test. |
-| **E3** | The capture proposal preview, which v3 refuses: a v3 route with a test, or owner retirement. |
-| **E5** | Durable History, paused under v3: RQ7, then a test or owner retirement. |
+| **E2** | The capture `projectId` is `"demo"` under v3 (`ShellModel.swift` L669): a fix with a test. *Ruled (Commander under delegated app rulings, 2026-10-21): accepted. The old route is also `"demo"` (its request seeds the id from the same expression and the worker echoes it), so the row is the same on both routes. `projectId` stays the constant `"demo"`.* |
+| **E3** | The capture proposal preview, which v3 refuses: a v3 route with a test, or owner retirement. *Ruled (Commander under delegated app rulings, 2026-10-21): retired. Approve inserts one edit that ⌘Z undoes, and the live v3 compile shows the diagnostics.* |
+| **E5** | Durable History, paused under v3: RQ7, then a test or owner retirement. *Ruled (Commander under delegated app rulings, 2026-10-21): retired with the controller route (RQ7).* |
 | All S5 rows | Their tests pass **on S6's own tip, with the old helpers absent from the bundle**, so that no row is met by old code. |
 
 ### 4.5 Perf digests
@@ -681,7 +681,7 @@ S3r's named tests (#1611):
   - A document with a `record` entry keeps its engine across the flip (`testFlippingTheDefaultKeepsTypesetDocumentsOnTheirEngine`).
   - Only the user switches it, through *Typeset ▸ Engine*, the window override or the app setting.
 - **Records exist only from #1421 on.** A document last typeset before the release that shipped #1421 has no record, so it would follow a flipped default. **S5 needs one shipped release with #1421/#1427 in it** before the flip, so that documents opened in that release get records. A record backfill is not planned.
-- **At S6 the old engine is gone.** A document still recorded as `previous` opens with a one-time sheet saying that the new engine now typesets it. The record switches only after the user acknowledges it. **[The Commander confirms that this meets ruling 4.]**
+- **At S6 the old engine is gone.** A document still recorded as `previous` opens on the new engine, with a one-time, dismissable banner saying that the new engine now typesets it and why. The record switches to `new` at that open. *Ruled: a banner, not a sheet: the least code that still means "never silently" (Commander under delegated app rulings, 2026-10-21 (DESIGN §13)).*
 
 ### 5.4 Documents being edited
 
@@ -697,7 +697,7 @@ These rules are carried over from revision 2 and match the code.
 
 | Data | Rule |
 |---|---|
-| Edit ledgers (`ledgers/`, preview-controller route) | Kept on disk untouched. RQ7 decides whether the Edit History panel still reads them. Nothing is deleted. |
+| Edit ledgers (`ledgers/`, preview-controller route) | Kept on disk untouched. Nothing is deleted. RQ7 is ruled: the app no longer reads them, because the Durable History panel retires with the controller route. |
 | Review history | Engine-neutral; kept |
 | `FlashTeX.EngineV3.documents`, `.defaultEngine` | Kept. `previous` entries trigger the S6 sheet (§5.3), then become `new`. |
 | `FlashTeX.EngineV3.enabled`, `.legacyMigrated.v1`, `FlashTeX.Preview.v1.debugStatus`; `FLASHTEX_PREVIEW_V2`, `FLASHTEX_LAYOUT_CAPABILITIES`, `FLASHTEX_PDF_EXACT`, `FLASHTEX_COMPILER` | A one-time defaults migration at the first launch of the S6 build removes them. A test asserts that none is read any more. |
@@ -761,7 +761,7 @@ executable: this is aggregation, and check E refuses any link. Before S6 lands:
 | RQ4 | Move the oracles under `tests/` | Commander | **Ruled:** move (S8) |
 | **RQ5** | Where `supported-latex.json` comes from | Commander (owner-delegated) | **Ruled** 2026-10-11: generated from the new engine's measured package support (package-smoke tier, oracle-verified); an MIT data file owned by the app, regenerated by a script; replaces `sync-supported-latex.sh`'s old-compiler source after S7. No longer blocks S1(c) or S7. |
 | RQ6 | Release artifacts, and the CLI's name and packaging. #1436's `flashtex-v3` is the successor (D5 partial); what remains is the rename to `flashtex`, release.yml packaging and the source offer. | Commander, then owner | **Ruled** 2026-10-11: `flashtex-v3` is renamed to `flashtex` and becomes the packaged CLI at S7; the source offer is RQ19's. No longer blocks S7. |
-| RQ7 | preview-controller after S6: retire it, or keep it for ledger and history (row E5) | Commander | Open; blocks S6 |
+| RQ7 | preview-controller after S6: retire it, or keep it for ledger and history (row E5) | Commander | **Ruled** 2026-10-21: the controller route is retired from the app in S6 (Durable History, `PreviewControllerClient`, `ShellModel+Controller`, `HistoricalPreview`, Citation Rename's helper path). Ledgers stay on disk (§5.5). The `preview-controller` crate goes in S7 (Commander under delegated app rulings, 2026-10-21 (DESIGN §13)) |
 | RQ8 | Host field in the parity baseline | — | **Done** (S1b): `baseline-fixtures.json` schema /2 has `host`; the 2026-09-22 recording keeps only `system: Darwin`, the rest `null` until S5 re-records it |
 | RQ10 | Open old-path PRs before S7 | Commander | **0 open** (#1120 closed 2026-10-06); must stay 0 at S7 |
 | RQ15 | Drop the `[fonts]` roles? | Owner | **Superseded** by Q-new-1 / 3A (DESIGN §13 L1202): the Unicode mode carries them. Row A9. |
@@ -769,7 +769,7 @@ executable: this is aggregation, and check E refuses any link. Before S6 lands:
 | RQ17 | P5 thresholds (Q3) | Owner | **Decided** 2026-10-05 (§4.2) |
 | RQ18 | T7 reference host (Q1) | Owner | **Decided** 2026-10-05: `scripts/t7-reference.sh` (#1609) |
 | **RQ19** | The §3 legal review and the source offer | **Owner** | **Closed** 2026-10-11: publish source; the GPL source stays public in this repository, linked from the About box and the release notes (#1806). No longer blocks S6. |
-| RQ20 (new) | What a declined bundle download does when no old engine is left (row A17 at S6) | Owner | Open; blocks S6 |
+| RQ20 (new) | What a declined bundle download does when no old engine is left (row A17 at S6) | Owner (delegated) | **Ruled** 2026-10-21: it never falls back to another engine. The app shows a plain, non-blocking message that compiling needs the TeX bundle or a TeX Live install, with a Download button that retries the download (Commander under delegated app rulings, 2026-10-21 (DESIGN §13)) |
 
 RQ9 is superseded by RQ18. RQ11–RQ14 were never used.
 
@@ -797,7 +797,7 @@ RQ9 is superseded by RQ18. RQ11–RQ14 were never used.
   - L1093 says A9 is an owner question;
   - §10 L987–992 point to the 10-03 checklist.
 - **It does not redo** #1340–#1344, #1400, #1421 or #1427.
-- **It does not decide** RQ5, RQ19 or RQ20.
+- **It does not decide** RQ5, RQ19 or RQ20. They were decided later, in DESIGN §13.
 
 ---
 
