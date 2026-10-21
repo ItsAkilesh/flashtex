@@ -417,3 +417,53 @@ The watch in `pop_input` is most of it.
 
 Rejected after measuring: no structural walk past a dormant line. It saved c1's keystroke 2
 but lost c2's (13 pages re-run instead of 2).
+
+## 12. READ-TRACK-2: the walk and the kept pages (measured)
+
+Lane READ-TRACK-2 took the two costs §11 left: the Unicode test's walk of an equal state, and
+the kept pages. The evidence is in `docs/evidence/read-track-2-2026-10-20/` (NixOS PC,
+callgrind, main `99a06dc01`).
+
+**An equal Unicode state is not walked.** Once the dead and dormant words are set aside and
+the free cells dropped, no word may be left for the walk. Then every word the walk reads is
+the same in both states, so it would pair each node with itself. All it could still find is a
+difference outside the word space:
+- a native word's glyphs, read through its handle;
+- a node's source position, read from the side table.
+
+So `conv::same_outside` compares those two tables directly, and the walk runs only where they
+differ.
+- `Handles::same_glyphs` checks that every glyph-info handle has an equal array in both runs.
+- `DlSnap::side_diffs` lists the side-table entries that may name other places. It skips the
+  leaves both tables share. An entry that differs is then compared by place, as the walk
+  compares it.
+
+This holds only where the live run numbers its spans as the old run did at the checkpoint
+(`numbered_like`, the jump's own condition). The test never adds "converged": where the tables
+differ, or more than 256 entries differ, it walks as before.
+
+**An equal token is not compared.** In the convergence walk of both engines (`Iso::check`), a
+token at the same address in both states whose word is the same in both is paired with itself
+without a cover. Only differing words are looked up in the covers (`bad_mem`), and this word is
+not one. The pairing bits are still set, so a later pointer into the list is checked as before.
+
+**Free lists by chunk table.** `drop_free_mem` reads the old run's free lists through the chunk
+table (`ChunkDiff::old_words`), not with a map lookup per word.
+
+**Kept pages reuse their frames.** A page's frame (`out::encode`) is a function of its display
+list and of the keys of the fonts and images it names. A kept page built again from its XDV gets
+the old run's frame when two things hold:
+- its display list is the old one's;
+- every resource id both documents have names the same key (`DocKeys`; both tables only grow).
+
+**Measured:**
+- **b4's M3 row:** 322.6 M → **194.9 M**.
+  - The walk's 107 M became 0.6 M.
+  - A kept page costs 4.4 M instead of 7.9 M.
+- **Classic c1-lipsum, three keystrokes at the end:** 529.5 M → **482.4 M**. That is 3.6 % less
+  than before #1861 (500.7 M); #1861 had left it 5.8 % more.
+  - Keystroke 2 costs 230 M → 183 M: the walk 92 M → 54 M, the free lists 17 M → 8 M.
+- **c2:** 461.4 M → 429.0 M.
+- **In-body keystrokes:** plain-100 −1.4 %, full-100 −2.8 %, c1 `{Thr` −2.6 %.
+- **Cold compiles:** +0.03 % at most (code layout).
+- **Pages re-run** are main's in every session.

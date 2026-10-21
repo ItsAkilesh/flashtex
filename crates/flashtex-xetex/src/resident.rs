@@ -1344,12 +1344,10 @@ impl Engine {
                                     }
                                 }
                             }
-                            let doc_pages = self
-                                .pages
-                                .last()
-                                .and_then(|p| p.out.as_ref())
-                                .map(|o| o.doc.pages.clone())
-                                .unwrap_or_default();
+                            let old_out = self.pages.last().and_then(|p| p.out.as_ref());
+                            let doc_pages =
+                                old_out.map(|o| o.doc.pages.clone()).unwrap_or_default();
+                            let doc_keys = old_out.map(|o| crate::out::doc::DocKeys::of(&o.doc));
                             match g.restore_branch(id) {
                                 Err(e) => Err(e),
                                 Ok(branch) => {
@@ -1370,6 +1368,7 @@ impl Engine {
                                     conv = Some(crate::conv::Old {
                                         branch: Some(branch),
                                         doc_pages,
+                                        doc_keys,
                                         old_files,
                                         old_terminal: Arc::new(self.terminal.clone()),
                                         jumped: None,

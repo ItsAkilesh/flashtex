@@ -99,6 +99,33 @@ pub struct Built {
     pub replay: Option<std::sync::Arc<Replay>>,
 }
 
+/// The keys of a document's fonts and images by id (`out::encode` hashes a
+/// page's resources by these): a run's, for a later run that sends its pages
+/// again (`out::replay_page`). Both tables only grow, so an id keeps its key.
+#[derive(Clone, Debug, Default)]
+pub struct DocKeys {
+    pub fonts: Vec<[u8; 32]>,
+    pub images: Vec<[u8; 32]>,
+}
+
+impl DocKeys {
+    pub fn of(doc: &Doc) -> DocKeys {
+        DocKeys {
+            fonts: doc.fonts.res.iter().map(|r| r.key).collect(),
+            images: doc.images.res.iter().map(|i| i.key).collect(),
+        }
+    }
+
+    /// Whether every id both documents have gives the same key in `doc`
+    /// as here: a page that names the same ids (the same display list) then
+    /// encodes alike in both.
+    pub fn agree(&self, doc: &Doc) -> bool {
+        let (f, i) = (&doc.fonts.res, &doc.images.res);
+        self.fonts.iter().zip(f).all(|(k, r)| *k == r.key)
+            && self.images.iter().zip(i).all(|(k, r)| *k == r.key)
+    }
+}
+
 /// What a page was built from ([`Built::replay`]): its XDV bytes, the
 /// source map's markers in them, `\mag`, and the pictures the engine's
 /// lookup found for it.
