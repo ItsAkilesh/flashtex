@@ -669,8 +669,12 @@ pub fn mode() -> Mode {
 /// takes from the intrinsics wherever it is on (`owns`): hyperref's
 /// `\pdfstringdefPreHook` (§12.2). Its calls hit on every later page, a
 /// cold pass's included, and its entries survive the restores that take
-/// the intrinsics' recordings away.
-pub const RECORD_ANYWHERE: &[&str] = &["pdfstringdefPreHook"];
+/// the intrinsics' recordings away. And pgf's `\pgf@parsefunc` (§14): a
+/// shading declaration around it is refused (its `\pdfxform`), and a call
+/// is never offered inside another's recording, so in the window it was
+/// first recorded at the second key on a frame; recorded where the open's
+/// cold run first parses each function, it hits from the first.
+pub const RECORD_ANYWHERE: &[&str] = &["pdfstringdefPreHook", "pgf@parsefunc"];
 
 fn record_anywhere() -> &'static [Vec<u8>] {
     static R: std::sync::OnceLock<Vec<Vec<u8>>> = std::sync::OnceLock::new();
