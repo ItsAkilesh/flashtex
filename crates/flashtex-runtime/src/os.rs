@@ -199,6 +199,28 @@ pub fn thread_cpu_s() -> f64 {
     imp::thread_cpu_s()
 }
 
+/// Page faults (minor and major) so far, for measurement only: this
+/// thread's on Linux (`RUSAGE_THREAD`), the process's on other Unix systems
+/// (macOS counts none per thread). A fault's kernel work is invisible to the
+/// PC's user-space instruction counts but in the Mac's (lane T7-MARGIN).
+pub fn faults() -> Option<u64> {
+    #[cfg(unix)]
+    {
+        #[cfg(target_os = "linux")]
+        let who = libc::RUSAGE_THREAD;
+        #[cfg(not(target_os = "linux"))]
+        let who = libc::RUSAGE_SELF;
+        // SAFETY: `getrusage` writes one `rusage` into `u`.
+        let mut u: libc::rusage = unsafe { std::mem::zeroed() };
+        let r = unsafe { libc::getrusage(who, &mut u) };
+        (r == 0).then_some((u.ru_minflt + u.ru_majflt) as u64)
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
 /// Instructions retired and cycles elapsed by this thread so far, from the
 /// CPU's fixed counters (macOS: the kernel's per-thread counts, which do not
 /// move with other processes' load; for measurement only, DESIGN.md §5.6).

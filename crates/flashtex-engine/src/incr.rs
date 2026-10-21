@@ -316,6 +316,9 @@ pub struct Report {
     /// page's shipout, and in the convergence tests (`os::thread_counts`;
     /// macOS and Linux, for measurement).
     pub restore_instr: Option<u64>,
+    /// Page faults in the restore and in `paused_how` (`os::faults`).
+    pub restore_flt: Option<u64>,
+    pub paused_flt: Option<u64>,
     pub edited_instr: Option<u64>,
     pub test_instr: Option<u64>,
     /// Of `edited_instr`, from the engine's resumption after the restore
@@ -463,6 +466,9 @@ struct Obs {
     page_s: f64,
     /// Checkpoints this run took, with the pages shipped by then.
     taken: Vec<(CheckpointId, usize)>,
+    /// The thinning at `on_checkpoint` waits for a checkpoint without
+    /// newer work (`newer_waiting`).
+    thin_due: bool,
     tests: usize,
     test_s: f64,
     debug: bool,
@@ -2905,12 +2911,23 @@ impl Observer for Obs {
             p(self.pass, self.pages_so_far(), g);
         }
         // (within the budget too: segment checkpoints far from the cursor
-        // go, see `thin`)
-        if self.taken.len() % 32 == 31 {
-            self.thin(g);
-        }
-        if self.taken.len() % 32 == 31 {
-            self.thin_pending(g);
+        // go, see `thin`). Not while newer work waits: the merges take
+        // milliseconds that nothing stops (2.7 ms of queue wait on 3 of
+        // full-1000 typing@100's keys, reference run 2026-10-21b), and the
+        // run stops at this checkpoint or the next anyway. The next
+        // checkpoint without newer work thins instead (lane T7-MARGIN).
+        let due = std::mem::take(&mut self.thin_due);
+        if due || self.taken.len() % 32 == 31 {
+            if self.newer_waiting() {
+                self.thin_due = true;
+            } else {
+                if due || self.taken.len() % 32 == 31 {
+                    self.thin(g);
+                }
+                if due || self.taken.len() % 32 == 31 {
+                    self.thin_pending(g);
+                }
+            }
         }
         if why != Point::Shipout {
             self.taken.push((id, self.pages_so_far()));
@@ -3100,6 +3117,14 @@ impl Obs {
                 .cancel
                 .as_ref()
                 .is_some_and(|c| c(self.pass, self.new_pages.len()))
+    }
+
+    /// Newer work waits (the host's `set_preempt` callback, which only
+    /// reads), whether or not it may stop the run here.
+    fn newer_waiting(&self) -> bool {
+        self.preempt
+            .as_ref()
+            .is_some_and(|p| p(self.pass, self.new_pages.len()))
     }
 
     /// Newer work waits: stop the run at this checkpoint. A run from the
@@ -4071,6 +4096,7 @@ impl Session {
             system::refresh_disk_dirs();
         }
         let i0 = crate::os::thread_counts();
+        let f0 = crate::os::faults();
         let mut paused_how = "";
         // A run stopped for this compile (preempted, or at a viewport).
         let ahead = self.paused.as_ref().and_then(|_| system::take_ahead_read());
@@ -4102,10 +4128,12 @@ impl Session {
                     }
                     let paused_s = t0.elapsed().as_secs_f64();
                     let paused_instr = i0.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
+                    let paused_flt = f0.zip(crate::os::faults()).map(|(a, b)| b - a);
                     let mut rep = self.finish()?;
                     rep.paused_how = "continued";
                     rep.paused_s = paused_s;
                     rep.paused_instr = paused_instr;
+                    rep.paused_flt = paused_flt;
                     return Ok(rep);
                 }
                 // it typeset pages before the change: they stay
@@ -4126,6 +4154,7 @@ impl Session {
         }
         let paused_s = t0.elapsed().as_secs_f64();
         let paused_instr = i0.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
+        let paused_flt = f0.zip(crate::os::faults()).map(|(a, b)| b - a);
         if let Some(g) = self.g.as_mut() {
             g.layer().stats = Default::default();
         }
@@ -4135,6 +4164,7 @@ impl Session {
             rep.paused_how = paused_how;
             rep.paused_s = paused_s;
             rep.paused_instr = paused_instr;
+            rep.paused_flt = paused_flt;
         }
         rep.passes = 1;
         rep.pass_modes.push(rep.mode.clone());
@@ -5689,6 +5719,7 @@ impl Session {
             converged: None,
             page_s: 0.0,
             taken: vec![],
+            thin_due: false,
             tests: 0,
             test_s: 0.0,
             debug: self.opts.debug,
@@ -5914,6 +5945,7 @@ impl Session {
         obs.changed_lookup_last = self.changed_lookup_last;
         let t1 = Instant::now();
         let i1 = crate::os::thread_counts();
+        let f1 = crate::os::faults();
         let end = self.end_point();
         let g = self.g.as_mut().unwrap();
         let rec = g.record_of(r)?;
@@ -6107,6 +6139,7 @@ impl Session {
         let restore_s = t1.elapsed().as_secs_f64();
         drop(busy_restore);
         let restore_instr = i1.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
+        let restore_flt = f1.zip(crate::os::faults()).map(|(a, b)| b - a);
         obs.old_pages = self.pages[base..].to_vec();
         obs.old_lines = obs
             .old_pages
@@ -6365,6 +6398,7 @@ impl Session {
             find_s,
             restore_s,
             restore_instr,
+            restore_flt,
             ..Report::default()
         };
         self.after_run(t0, status, &mut rep)?;
