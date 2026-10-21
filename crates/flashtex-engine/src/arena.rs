@@ -4375,6 +4375,7 @@ mod tests {
             a.restore_discard(*ids.last().unwrap()).unwrap();
             assert!(arr[..] == copies[11][..]);
             scribble(&mut arr, 111, 3000);
+            a.write_through(0, &[12; 64]);
             assert!(arr[..] == end[..]);
             // a restore elsewhere makes it whole first
             let br = a.restore_branch(ids[i]).unwrap();
