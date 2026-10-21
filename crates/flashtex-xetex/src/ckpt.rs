@@ -60,7 +60,9 @@ pub struct PageCk {
     /// The pages shipped by then.
     pub pages: usize,
     pub rec: Record,
-    pub out: Option<OutSnap>,
+    /// (shared: a later run that converges with this one takes the
+    /// document over, `crate::conv`)
+    pub out: Option<std::sync::Arc<OutSnap>>,
     /// The read journal's lengths then (files, lookups, outputs).
     pub reads: (usize, usize, usize),
     /// How many output opens the run had made (`Resident::opens`).
@@ -383,10 +385,12 @@ impl Globals {
         if !self.host.resident.as_ref().is_some_and(|r| r.pages_on) {
             return;
         }
-        let out = self.host.out.as_ref().map(|o| OutSnap {
-            doc: o.doc.clone(),
-            pdf_name: o.pdf_name.clone(),
-            pdf_open: o.pdf.is_some(),
+        let out = self.host.out.as_ref().map(|o| {
+            std::sync::Arc::new(OutSnap {
+                doc: o.doc.clone(),
+                pdf_name: o.pdf_name.clone(),
+                pdf_open: o.pdf.is_some(),
+            })
         });
         let Ok(rec) = self.capture_record(false) else {
             return;

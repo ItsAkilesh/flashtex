@@ -450,40 +450,64 @@ impl Log {
         self.deltas.iter().map(|d| d.len()).sum()
     }
 
-    /// Rewrite the sealed log through `f`, which sees each delta as its
-    /// chunk, mask and values (in bit order) and may change them or add
-    /// deltas (kept sorted by chunk). For the rare edits of a sealed log
-    /// (`Arena::or_from`), not for restores.
-    fn rewrite(&mut self, f: impl FnOnce(&mut Vec<(u32, [u64; MASK_WORDS], Vec<u64>)>)) {
-        let mut buf = [0u64; CHUNK_WORDS];
-        let mut v: Vec<(u32, [u64; MASK_WORDS], Vec<u64>)> = self
-            .deltas
-            .iter()
-            .map(|d| {
-                d.unpack(&self.bytes, &mut buf);
-                (d.c, d.mask, buf[..d.len()].to_vec())
-            })
-            .collect();
-        f(&mut v);
-        v.sort_by_key(|e| e.0);
-        let mut deltas = Vec::with_capacity(v.len());
-        let mut bytes = Vec::with_capacity(self.bytes.len() + 16);
-        for (c, mask, vals) in &v {
-            debug_assert_eq!(
-                vals.len(),
-                mask.iter().map(|m| m.count_ones() as usize).sum::<usize>()
-            );
-            let at = bytes.len() as u32;
-            pack_words(vals, &mut bytes);
-            deltas.push(Delta {
-                c: *c,
-                at,
-                mask: *mask,
-            });
+    /// Edit the sealed log's delta of chunk `c` through `f`, which sees its
+    /// mask and values (in bit order; both empty when the log holds no delta
+    /// of `c`) and may change them, keeping one value per bit. Only that
+    /// delta's bytes are packed again (the others' stay where they are), so
+    /// an edit costs the delta, not the log. For the rare edits of a sealed
+    /// log (`Arena::or_from`, `Arena::set_from`), not for restores.
+    fn edit_chunk(&mut self, c: u32, f: impl FnOnce(&mut [u64; MASK_WORDS], &mut Vec<u64>)) {
+        let at = self.deltas.partition_point(|d| d.c < c);
+        let found = self.deltas.get(at).is_some_and(|d| d.c == c);
+        let (mut mask, mut vals, old) = if found {
+            let d = self.deltas[at];
+            let mut buf = [0u64; CHUNK_WORDS];
+            d.unpack(&self.bytes, &mut buf);
+            let n = d.len();
+            let span = d.at as usize..d.at as usize + d.packed_len(&self.bytes);
+            (d.mask, buf[..n].to_vec(), Some(span))
+        } else {
+            ([0u64; MASK_WORDS], Vec::new(), None)
+        };
+        f(&mut mask, &mut vals);
+        debug_assert_eq!(
+            vals.len(),
+            mask.iter().map(|m| m.count_ones() as usize).sum::<usize>()
+        );
+        let mut packed = Vec::with_capacity(vals.len() * 9 / 2 + 1);
+        pack_words(&vals, &mut packed);
+        let empty = mask.iter().all(|&m| m == 0);
+        match old {
+            Some(span) => {
+                let (from, old_len) = (span.start, span.len());
+                // the bytes after it move by the change of its length
+                let grow = packed.len() as i64 - old_len as i64;
+                if empty {
+                    self.bytes.drain(span);
+                } else {
+                    self.bytes.splice(span, packed);
+                }
+                let shift = if empty { -(old_len as i64) } else { grow };
+                if shift != 0 {
+                    for d in self.deltas.iter_mut() {
+                        if d.at as usize > from {
+                            d.at = (d.at as i64 + shift) as u32;
+                        }
+                    }
+                }
+                if empty {
+                    self.deltas.remove(at);
+                } else {
+                    self.deltas[at].mask = mask;
+                }
+            }
+            None if empty => {}
+            None => {
+                let pos = self.bytes.len() as u32;
+                self.bytes.extend_from_slice(&packed);
+                self.deltas.insert(at, Delta { c, at: pos, mask });
+            }
         }
-        bytes.shrink_to_fit();
-        self.deltas = deltas;
-        self.bytes = bytes;
     }
 }
 
@@ -2344,22 +2368,12 @@ impl Arena {
                 .collect();
             if !missing.is_empty() {
                 let before = prev.sealed_bytes();
-                prev.rewrite(|ds| {
-                    for &(c, w, v) in &missing {
-                        let (mw, b) = (w / 64, w % 64);
-                        match ds.iter_mut().find(|e| e.0 == c) {
-                            Some((_, mask, vals)) => {
-                                vals.insert(place(mask, w), v);
-                                mask[mw] |= 1u64 << b;
-                            }
-                            None => {
-                                let mut mask = [0u64; MASK_WORDS];
-                                mask[mw] = 1u64 << b;
-                                ds.push((c, mask, vec![v]));
-                            }
-                        }
-                    }
-                });
+                for &(c, w, v) in &missing {
+                    prev.edit_chunk(c, |mask, vals| {
+                        vals.insert(place(mask, w), v);
+                        mask[w / 64] |= 1u64 << (w % 64);
+                    });
+                }
                 core.sealed_bytes = core.sealed_bytes + prev.sealed_bytes() - before;
             }
         }
@@ -2377,23 +2391,29 @@ impl Arena {
                     }
                 }
             }
-            if log
-                .deltas
-                .iter()
-                .any(|d| pos.iter().any(|&(c, w)| held_in(d, c, w)))
-            {
-                let before = log.sealed_bytes();
-                log.rewrite(|ds| {
-                    for (dc, mask, vals) in ds.iter_mut() {
-                        for (i, &(c, w)) in pos.iter().enumerate() {
-                            if *dc == c && mask[w / 64] >> (w % 64) & 1 == 1 {
-                                let idx = place(mask, w);
-                                vals[idx] = f(i, vals[idx]);
-                                n += 1;
-                            }
+            // (only the deltas of the words' chunks are packed again)
+            let before = log.sealed_bytes();
+            let mut edited = false;
+            for &c in &cs {
+                let at = log.deltas.partition_point(|d| d.c < c);
+                let Some(d) = log.deltas.get(at).filter(|d| d.c == c) else {
+                    continue;
+                };
+                if !pos.iter().any(|&(pc, w)| held_in(d, pc, w)) {
+                    continue;
+                }
+                log.edit_chunk(c, |mask, vals| {
+                    for (i, &(pc, w)) in pos.iter().enumerate() {
+                        if pc == c && mask[w / 64] >> (w % 64) & 1 == 1 {
+                            let idx = place(mask, w);
+                            vals[idx] = f(i, vals[idx]);
+                            n += 1;
                         }
                     }
                 });
+                edited = true;
+            }
+            if edited {
                 core.sealed_bytes = core.sealed_bytes + log.sealed_bytes() - before;
             }
         }
@@ -4085,44 +4105,48 @@ mod tests {
     /// later one and in the live state, and nowhere before.
     #[test]
     fn set_from_rewrites_the_later_history() {
-        let (mut a, mut arr) = space(200_000);
-        scribble(&mut arr, 1, 5000);
-        let mut ids = vec![];
-        let mut copies = vec![];
-        for k in 0..20 {
-            ids.push(a.checkpoint());
-            copies.push(arr.to_vec());
-            scribble(&mut arr, 100 + k, 3000);
-        }
-        let end = arr.to_vec();
-        // a word some logs hold (written after checkpoint 7, and later) and
-        // one none do
-        let w = (0..arr.len())
-            .find(|&i| copies[8][i] != copies[7][i] && copies[12][i] != copies[8][i])
-            .unwrap();
-        let quiet = (0..arr.len())
-            .find(|&i| copies.iter().all(|c| c[i] == end[i]) && i != w)
-            .unwrap();
-        let value = 0x005e_ed0f_da7a_u64;
-        let off = |i: usize| (&arr[i] as *const u64 as usize) - (a.bytes().as_ptr() as usize);
-        let words = [(off(w), value), (off(quiet), value)];
-        a.set_from(ids[7], &words).unwrap();
-        let expect = |c: &Vec<u64>, k: usize| {
-            let mut c = c.clone();
-            if k >= 7 {
-                c[w] = value;
-                c[quiet] = value;
+        // a large value, zero and a small one: the packed delta grows,
+        // shrinks or keeps its length (`Log::edit_chunk` moves the bytes
+        // after it)
+        for value in [0x005e_ed0f_da7a_u64, 0, 7] {
+            let (mut a, mut arr) = space(200_000);
+            scribble(&mut arr, 1, 5000);
+            let mut ids = vec![];
+            let mut copies = vec![];
+            for k in 0..20 {
+                ids.push(a.checkpoint());
+                copies.push(arr.to_vec());
+                scribble(&mut arr, 100 + k, 3000);
             }
-            c
-        };
-        assert!(arr[w] == value && arr[quiet] == value);
-        for i in [3usize, 6, 7, 12, 19, 0] {
-            let br = a.restore_branch(ids[i]).unwrap();
-            assert!(arr[..] == expect(&copies[i], i)[..], "restore to {i}");
-            a.converge(br, ids[i]).unwrap();
+            let end = arr.to_vec();
+            // a word some logs hold (written after checkpoint 7, and later) and
+            // one none do
+            let w = (0..arr.len())
+                .find(|&i| copies[8][i] != copies[7][i] && copies[12][i] != copies[8][i])
+                .unwrap();
+            let quiet = (0..arr.len())
+                .find(|&i| copies.iter().all(|c| c[i] == end[i]) && i != w)
+                .unwrap();
+            let off = |i: usize| (&arr[i] as *const u64 as usize) - (a.bytes().as_ptr() as usize);
+            let words = [(off(w), value), (off(quiet), value)];
+            a.set_from(ids[7], &words).unwrap();
+            let expect = |c: &Vec<u64>, k: usize| {
+                let mut c = c.clone();
+                if k >= 7 {
+                    c[w] = value;
+                    c[quiet] = value;
+                }
+                c
+            };
+            assert!(arr[w] == value && arr[quiet] == value);
+            for i in [3usize, 6, 7, 12, 19, 0] {
+                let br = a.restore_branch(ids[i]).unwrap();
+                assert!(arr[..] == expect(&copies[i], i)[..], "restore to {i}");
+                a.converge(br, ids[i]).unwrap();
+            }
+            a.restore_discard(ids[10]).unwrap();
+            assert!(arr[..] == expect(&copies[10], 10)[..]);
         }
-        a.restore_discard(ids[10]).unwrap();
-        assert!(arr[..] == expect(&copies[10], 10)[..]);
     }
 
     #[test]

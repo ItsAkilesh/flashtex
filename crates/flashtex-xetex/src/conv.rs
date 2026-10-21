@@ -44,6 +44,8 @@ pub struct OldPage {
     pub opens: usize,
     pub id: CheckpointId,
     pub rec: Record,
+    /// Its output's state (the document then).
+    pub out: Option<Arc<crate::ckpt::OutSnap>>,
     pub reads: (usize, usize, usize),
     /// READ-TRACK (`crate::dormant`): its record of the counts.
     pub dorm: flashtex_engine::dormant::Dorm,
@@ -344,6 +346,25 @@ impl Globals {
             return Err("the document's pages are not the run's".into());
         }
         let (pdf_name, pdf_open) = (out.pdf_name.clone(), out.pdf.is_some());
+        // READ-TRACK-3: where this run's document at the convergence point
+        // is the old run's there (`out::same_doc`), building the old pages
+        // again would make the old run's later documents. Then those are
+        // taken over (`out::adopt_doc`), with the pages' frames, and the
+        // carried checkpoints keep the old run's documents.
+        let adopt: Option<Vec<Arc<crate::ckpt::OutSnap>>> = op
+            .out
+            .as_ref()
+            .filter(|at_k| crate::out::same_doc(&out.doc, &at_k.doc))
+            .and_then(|_| {
+                c.pages[i + 1..=j]
+                    .iter()
+                    .map(|p| {
+                        p.out
+                            .clone()
+                            .filter(|s| s.pdf_name == pdf_name && s.pdf_open == pdf_open)
+                    })
+                    .collect()
+            });
         if self.host.dl.on() {
             let (_, old_dl) = self.host_vs(op.id)?;
             if !self.host.dl.numbered_like(&c.tables, old_dl.lens()) {
@@ -510,10 +531,26 @@ impl Globals {
         jn.outputs
             .extend_from_slice(&jo.outputs[op_reads.2..l_reads.2]);
         flashtex_engine::system::record_reads_into(Some(jn));
-        // the old run's pages, built again into this run's document
+        // the old run's pages, taken over or built again into this run's
+        // document
         let t_state = t_jump.elapsed();
         let (mut t_replay, mut t_snap) = (0.0, 0.0);
+        let adopted = adopt.is_some();
+        if let Some(snaps) = adopt {
+            let t = Instant::now();
+            let at_l = snaps.last().expect("a page carried");
+            if let Err(e) = crate::out::adopt_doc(self, &at_l.doc, k) {
+                fail("the old document", e);
+            }
+            for (ck, s) in carried.iter_mut().zip(snaps) {
+                ck.out = Some(s);
+            }
+            t_replay = t.elapsed().as_secs_f64() * 1e3;
+        }
         for (n, b) in old_built.to_vec().iter().enumerate() {
+            if adopted {
+                break;
+            }
             let page_no = k + n + 1;
             let t = Instant::now();
             if let Err(e) = crate::out::replay_page(self, b, page_no as u32, c.doc_keys.as_ref()) {
@@ -522,19 +559,22 @@ impl Globals {
             t_replay += t.elapsed().as_secs_f64() * 1e3;
             let t = Instant::now();
             if let Some(ck) = carried.iter_mut().find(|p| p.pages == page_no) {
-                ck.out = self.host.out.as_ref().map(|o| crate::ckpt::OutSnap {
-                    doc: o.doc.clone(),
-                    pdf_name: pdf_name.clone(),
-                    pdf_open,
+                ck.out = self.host.out.as_ref().map(|o| {
+                    Arc::new(crate::ckpt::OutSnap {
+                        doc: o.doc.clone(),
+                        pdf_name: pdf_name.clone(),
+                        pdf_open,
+                    })
                 });
             }
             t_snap += t.elapsed().as_secs_f64() * 1e3;
         }
         if on() {
             eprintln!(
-                "[conv]   jump: state {:.2} ms, {} pages built again {t_replay:.2} ms, their documents kept {t_snap:.2} ms",
+                "[conv]   jump: state {:.2} ms, {} pages {} {t_replay:.2} ms, their documents kept {t_snap:.2} ms",
                 t_state.as_secs_f64() * 1e3,
-                old_built.len()
+                old_built.len(),
+                if adopted { "taken over" } else { "built again" }
             );
         }
         if let Some(r) = self.host.resident.as_mut() {

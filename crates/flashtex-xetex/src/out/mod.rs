@@ -411,6 +411,73 @@ pub fn replay_page(
     Ok(())
 }
 
+/// Whether two resident runs' documents are alike, judged by how they were
+/// made (READ-TRACK-3). Every such document is `Doc::new`'s, then the pages
+/// built in turn ([`page_done`]; a run from a page checkpoint goes on from
+/// a copy of that checkpoint's document), and the builder is a function of
+/// the document, the page's XDV bytes, its markers, `\mag`, the pictures
+/// found for it and the engine's metrics of the fonts the XDV names (the
+/// same fonts: the XDV defines them, here or on an earlier page). So two
+/// documents are alike when they have the same pages, each the same one or
+/// built from the same inputs ([`Replay`](doc::Replay)) after the same
+/// number of forms, and the same paper, XDV comment, pictures and errors (a
+/// page that could not be built leaves an error, not a page).
+pub fn same_doc(new: &doc::Doc, old: &doc::Doc) -> bool {
+    let same_page = |a: &std::sync::Arc<Built>, b: &std::sync::Arc<Built>| {
+        std::sync::Arc::ptr_eq(a, b)
+            || a.forms_at == b.forms_at
+                && match (&a.replay, &b.replay) {
+                    (Some(x), Some(y)) => {
+                        std::sync::Arc::ptr_eq(x, y)
+                            || x.mag == y.mag
+                                && x.xdv == y.xdv
+                                && x.marks == y.marks
+                                && x.pictures == y.pictures
+                    }
+                    _ => false,
+                }
+    };
+    new.pages.len() == old.pages.len()
+        && new.forms.len() == old.forms.len()
+        && new.errors == old.errors
+        && new.dvi_comment == old.dvi_comment
+        && new.default_paper == old.default_paper
+        && new.pictures == old.pictures
+        // (from the last page: a page this run built is likelier to differ)
+        && new
+            .pages
+            .iter()
+            .rev()
+            .zip(old.pages.iter().rev())
+            .all(|(a, b)| same_page(a, b))
+}
+
+/// The convergence jump (`crate::conv`) where this run's document at page
+/// `k`, the convergence point, is the old run's there ([`same_doc`]): the
+/// old run's document at its later checkpoint, `at_l`, is what building its
+/// pages after `k` again would make. It is taken over, with this run's
+/// pages up to `k` and its font cache, and the pages after `k` are sent
+/// with the frames they were sent with.
+pub fn adopt_doc(g: &mut Globals, at_l: &doc::Doc, k: usize) -> Result<(), String> {
+    let mut out = g.host.out.take().ok_or("no output")?;
+    if out.doc.pages.len() != k || at_l.pages.len() < k {
+        g.host.out = Some(out);
+        return Err("the documents' pages are not the jump's".into());
+    }
+    let mut d = at_l.clone();
+    d.fonts.cache = out.doc.fonts.cache.take();
+    d.pages[..k].clone_from_slice(&out.doc.pages);
+    out.doc = d;
+    let later: Vec<std::sync::Arc<Built>> = out.doc.pages[k..].to_vec();
+    for b in &later {
+        send_page(&mut out, b, |spans, sent, files| {
+            g.dl_sources(spans, sent, files)
+        });
+    }
+    g.host.out = Some(out);
+    Ok(())
+}
+
 /// The end of the run (`dvi_close`): the PDF. 0, or a nonzero driver
 /// return code.
 pub fn finish(g: &mut Globals) -> i32 {
