@@ -1311,7 +1311,6 @@ impl Engine {
                     "apply_us".to_string(),
                     Json::Arr(apply_steps.iter().map(|&u| Json::Int(u as i64)).collect()),
                 ),
-
                 ("move_spans".to_string(), m(move_ms)),
                 ("first_page".to_string(), o(t.first_page_ms)),
                 ("first_page_cpu".to_string(), o(t.first_cpu_ms)),
@@ -1948,7 +1947,14 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                             crate::os::write_all_at(&f, &data[from..], from as u64)
                         }
                     };
-                    lap(if matches!(old, Some(o) if o > data.len()) { 2 } else { 1 }, &mut t);
+                    lap(
+                        if matches!(old, Some(o) if o > data.len()) {
+                            2
+                        } else {
+                            1
+                        },
+                        &mut t,
+                    );
                     drop(f);
                     lap(3, &mut t);
                     r

@@ -5128,7 +5128,11 @@ impl Session {
             let moved = f
                 .stamp
                 .is_some_and(|t| system::mtime_secs(&f.path) != Some(t));
-            let mut sig_now = || *sig_of.entry(f.path.clone()).or_insert_with(|| StatSig::of(&f.path));
+            let mut sig_now = || {
+                *sig_of
+                    .entry(f.path.clone())
+                    .or_insert_with(|| StatSig::of(&f.path))
+            };
             if same && !moved {
                 if let Some(s) = sig_now() {
                     f.stat = s;

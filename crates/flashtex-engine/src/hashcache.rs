@@ -234,8 +234,7 @@ fn kept_bytes_within(
         Some(m) => Ident::of_metadata(m),
         None => Ident::of(path).ok()?,
     };
-    if !keeps_bytes(path, now.size) || now.racy(window) || !local(path, now.dev)
-    {
+    if !keeps_bytes(path, now.size) || now.racy(window) || !local(path, now.dev) {
         return None;
     }
     let c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
@@ -263,19 +262,40 @@ mod tests {
         std::fs::write(&f, b"tfm one").unwrap();
         std::fs::write(&g, b"sty one").unwrap();
         let (p, q) = (f.to_str().unwrap(), g.to_str().unwrap());
-        assert_eq!(kept_bytes_within(p, None, 0), None, "kept before it was read");
+        assert_eq!(
+            kept_bytes_within(p, None, 0),
+            None,
+            "kept before it was read"
+        );
         assert_eq!(hash_file_within(p, 0).unwrap(), hash_of(&f));
         hash_file_within(q, 0).unwrap();
-        assert_eq!(kept_bytes_within(p, None, 0).as_deref(), Some(&b"tfm one"[..]));
+        assert_eq!(
+            kept_bytes_within(p, None, 0).as_deref(),
+            Some(&b"tfm one"[..])
+        );
         let m = std::fs::metadata(&f).unwrap();
-        assert_eq!(kept_bytes_within(p, Some(&m), 0).as_deref(), Some(&b"tfm one"[..]));
-        assert_eq!(kept_bytes_within(q, None, 0), None, "a style file's bytes kept");
+        assert_eq!(
+            kept_bytes_within(p, Some(&m), 0).as_deref(),
+            Some(&b"tfm one"[..])
+        );
+        assert_eq!(
+            kept_bytes_within(q, None, 0),
+            None,
+            "a style file's bytes kept"
+        );
         // within the racy window nothing is given back
-        assert_eq!(kept_bytes_within(p, None, i128::MAX / 4), None, "racy, kept");
+        assert_eq!(
+            kept_bytes_within(p, None, i128::MAX / 4),
+            None,
+            "racy, kept"
+        );
         std::fs::write(&f, b"tfm two!").unwrap();
         assert_eq!(kept_bytes_within(p, None, 0), None, "kept after a change");
         assert_eq!(hash_file_within(p, 0).unwrap(), hash_of(&f));
-        assert_eq!(kept_bytes_within(p, None, 0).as_deref(), Some(&b"tfm two!"[..]));
+        assert_eq!(
+            kept_bytes_within(p, None, 0).as_deref(),
+            Some(&b"tfm two!"[..])
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 

@@ -1848,9 +1848,15 @@ mod tests {
                 let _b = super::cwd_scope();
                 assert_eq!(super::cwd().unwrap(), now, "an inner scope looks afresh");
             }
-            assert_eq!(super::cwd().unwrap(), std::path::PathBuf::from("/elsewhere"));
+            assert_eq!(
+                super::cwd().unwrap(),
+                std::path::PathBuf::from("/elsewhere")
+            );
         }
-        assert!(super::CWD.with(|c| c.borrow().is_none()), "a scope left behind");
+        assert!(
+            super::CWD.with(|c| c.borrow().is_none()),
+            "a scope left behind"
+        );
         // another thread is not in this thread's scope
         let _a = super::cwd_scope();
         super::CWD.with(|c| *c.borrow_mut() = Some("/elsewhere".into()));
