@@ -70,7 +70,9 @@ full-1000's 4 MB file), whose edit (a newline for a space) keeps the file's leng
    checkpoint a running compile merges logs (`thin`, `thin_pending`) before it asks whether newer
    work waits: milliseconds nothing stops. A key arriving just before it waited for it (typing@100,
    run b: 2.70-2.78 ms on 3 of 40 keys). Now the merge is skipped while newer work waits and made at
-   the next checkpoint without it.
+   the next checkpoint without it. The look asks the host's callback only where the preemption check
+   would, and its answer is acted on at the next check (the soundness driver's callbacks answer once:
+   `tests/incremental.rs`' `a_cold_run_stops_no_earlier_than_s0` failed until it was).
 2. **An abandoned run's reattach copies nothing when the restore goes back to its target**
    (`arena::Lazy`, `Globals::reattach_pending_lazily`, `incr::Session::compile`). Typing on a long
    document: the next key abandons the running compile, which put the old run back whole (its latest
