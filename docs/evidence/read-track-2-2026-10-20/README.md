@@ -138,4 +138,14 @@ No engine path of a cold compile changed. The differences are code layout.
 - Unicode b4 end with `FLASHTEX_UNICODE_CONV_DEBUG`: the claim holds at page 12 for keystrokes
   2 and 3 (the host's own check against the old run's pages).
 
-`sweeps.yml` and `sweeps-unicode.yml` with `ref=agent/kabir-claude/read-track-2`: see the PR.
+**Sweeps** (GitHub-hosted, `ref=agent/kabir-claude/read-track-2` at `76072a9c3`): `sweeps.yml`
+run 39529723930 and `sweeps-unicode.yml` run 39529727186 both passed.
+
+**Suites** (`gate.sh`: `scripts/gate.sh quick` at `76072a9c3`, rustup stable 1.98.1, a fresh
+target directory, TeX Live 2026):
+- passed: rustfmt, clippy for both crates, trip and etrip;
+- tests: every test passed except `fontmap_cache::a_cached_parse_writes_what_a_parse_writes`. It
+  fails on main on this PC too (READ-TRACK's evidence).
+- the new unit tests `dlsource::tests::side_diffs_finds_the_entries_that_may_differ` and
+  `state::tests::same_glyphs_compares_every_glyph_info_handle` passed;
+- `tests/incremental.rs` (79 tests) and the XeTeX `tests/host.rs` (20 tests) passed.
