@@ -2179,7 +2179,7 @@ fn page_insertion_records_compare_their_split_fields_only_when_split_up() {
         let mut s = String::from(
             "\\documentclass{article}\n\\interfootnotelinepenalty=0\n\\begin{document}\n",
         );
-        for i in 0..36 {
+        for i in 0..90 {
             let w = if i == 1 { word } else { "eta" };
             if i == 20 {
                 s.push_str(extra);
