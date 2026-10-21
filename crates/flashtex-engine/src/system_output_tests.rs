@@ -422,7 +422,10 @@ fn a_tail_from_an_empty_file_stays_in_the_file() {
         assert_eq!(pending_read(&g), Some(0), "the tail was read");
         // nothing cut: the old bytes, the end blanked
         let n = tail.len() - BLANK_END as usize;
-        assert_eq!(read(&p), format!("{}{}", &tail[..n], " ".repeat(BLANK_END as usize)));
+        assert_eq!(
+            read(&p),
+            format!("{}{}", &tail[..n], " ".repeat(BLANK_END as usize))
+        );
         write(&mut g, 0, new);
         write(&mut g, 0, more);
         g.checkpoint().unwrap();
