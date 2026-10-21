@@ -120,9 +120,11 @@ pub fn exclude(prefix: &str) {
 
 /// Drain the kernel's queue of events now.
 pub fn sync() {
-    if let Some(w) = W.lock().unwrap().as_mut() {
-        w.drain();
-    }
+    crate::os::io_time(crate::os::io::DRAIN, || {
+        if let Some(w) = W.lock().unwrap().as_mut() {
+            w.drain();
+        }
+    })
 }
 
 /// A check: [`sync`] first, then [`sig`] and [`readable`] serve vouched

@@ -104,6 +104,15 @@ impl Tracked {
 
 impl Write for Tracked {
     fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        crate::os::io_time(crate::os::io::WRITE, || self.write_timed(b))
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.f.flush()
+    }
+}
+
+impl Tracked {
+    fn write_timed(&mut self, b: &[u8]) -> std::io::Result<usize> {
         note_foreign(&self.path);
         let at = if self.logical {
             use std::io::Seek;
@@ -121,9 +130,6 @@ impl Write for Tracked {
             set_stamp(&self.path, stamp_of(&m));
         }
         Ok(n)
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.f.flush()
     }
 }
 
@@ -186,6 +192,11 @@ struct Keep {
     old_len: u64,
     saved: Vec<u8>,
     end: Vec<u8>,
+    /// The file, open for reading (`keep_tail`'s descriptor): each write
+    /// over the kept tail reads the old bytes it covers first, which opened
+    /// the file again every time (open, seek, read, close; lane
+    /// T7-HEADROOM).
+    file: Option<File>,
 }
 
 impl Keep {
@@ -215,13 +226,16 @@ impl Keep {
         if to <= from {
             return Ok(());
         }
-        use std::io::Seek;
-        let mut f = File::open(path)?;
-        f.seek(std::io::SeekFrom::Start(from))?;
+        if self.file.is_none() {
+            self.file = Some(File::open(path)?);
+        }
         let n = self.saved.len();
         let mut saved = std::mem::take(&mut self.saved);
         saved.resize(n + (to - from) as usize, 0);
-        let r = f.read_exact(&mut saved[n..]);
+        let r = match &self.file {
+            Some(f) => crate::os::read_exact_at(f, &mut saved[n..], from),
+            None => Ok(()),
+        };
         if r.is_ok() {
             self.unblank(from, &mut saved[n..]);
         } else {
@@ -303,6 +317,7 @@ pub fn keep_tail(path: &str, base: u64) -> Result<(), String> {
                     old_len,
                     saved: Vec::new(),
                     end,
+                    file: Some(f),
                 }),
             },
         )
@@ -327,12 +342,14 @@ pub fn kept_tail(path: &str, base: u64, skip: u64) -> Result<Vec<u8>, String> {
             .unwrap_or_default();
         let from = k.saved_to().max(base + skip);
         if from < k.old_len {
-            use std::io::Seek;
-            let mut f = File::open(path).map_err(e)?;
-            f.seek(std::io::SeekFrom::Start(from)).map_err(e)?;
+            if k.file.is_none() {
+                k.file = Some(File::open(path).map_err(e)?);
+            }
             let n = out.len();
             out.resize(n + (k.old_len - from) as usize, 0);
-            f.read_exact(&mut out[n..]).map_err(e)?;
+            if let Some(f) = &k.file {
+                crate::os::read_exact_at(f, &mut out[n..], from).map_err(e)?;
+            }
             k.unblank(from, &mut out[n..]);
         }
         Ok(out)
@@ -2537,6 +2554,12 @@ impl Globals {
     /// `a_make_name_string` -- and therefore the `(` line in the log --
     /// shows `./story.tex` exactly as pdfTeX's does.
     fn input_path(&mut self, default: Format, must_exist: bool) -> Option<String> {
+        crate::os::io_time(crate::os::io::LOOKUP, || {
+            self.input_path_timed(default, must_exist)
+        })
+    }
+
+    fn input_path_timed(&mut self, default: Format, must_exist: bool) -> Option<String> {
         FULL_NAME_OF_FILE.with(|f| *f.borrow_mut() = None);
         // (only a `stat` made by this lookup may stand for the file when
         // it is opened next: `open_bytes`)
@@ -2699,6 +2722,10 @@ impl Globals {
     }
 
     pub fn a_open_in(&mut self, f: &mut AlphaFile) -> bool {
+        crate::os::io_time(crate::os::io::TEXT, || self.a_open_in_timed(f))
+    }
+
+    fn a_open_in_timed(&mut self, f: &mut AlphaFile) -> bool {
         *f = AlphaFile::default();
         f.err = 1;
         if let Some(ok) = self.open_in_pipe(f) {
@@ -2773,6 +2800,10 @@ impl Globals {
     }
 
     pub fn b_open_in(&mut self, f: &mut ByteFile) -> bool {
+        crate::os::io_time(crate::os::io::TFM, || self.b_open_in_timed(f))
+    }
+
+    fn b_open_in_timed(&mut self, f: &mut ByteFile) -> bool {
         *f = ByteFile::default();
         f.err = 1;
         let Some(name) = self.input_path(Format::Tfm, true) else {
@@ -4750,6 +4781,10 @@ fn note_lookup(
 /// file opens call it (the Unicode engine's, `crates/flashtex-xetex`, for
 /// what it finds without the resolver); a lookup that finds a file notes it.
 pub fn note_file(path: &str) {
+    crate::os::io_time(crate::os::io::NOTE, || note_file_timed(path))
+}
+
+fn note_file_timed(path: &str) {
     note_ahead_read(path);
     READS.with(|r| {
         let mut b = r.borrow_mut();

@@ -215,6 +215,7 @@ struct Target {
     /// steps (`checkpoint::take_restore_steps`), taken then.
     first_marks: Vec<crate::os::PhaseMark>,
     first_restore_us: [u64; 5],
+    first_io: [(u32, u64); 8],
 }
 
 impl Target {
@@ -475,6 +476,7 @@ impl Live {
                 crate::os::phase_mark('d');
                 t.first_marks = crate::os::phase_marks();
                 t.first_restore_us = crate::checkpoint::take_restore_steps();
+                t.first_io = crate::os::io_times();
                 // (`FLASHTEX_PERF_MARKS`: `d`, the first page delivered)
                 crate::os::perf_mark_as('d');
                 let count = t.old_count.max(i + 1);
@@ -1013,6 +1015,7 @@ impl Engine {
             first_flt: None,
             first_marks: vec![],
             first_restore_us: [0; 5],
+            first_io: [(0, 0); 8],
         });
         let stop_at = req
             .int_field("viewport")
@@ -1411,6 +1414,18 @@ impl Engine {
                     })
                     .collect();
                 st.push(("marks".to_string(), Json::Arr(v)));
+                // (`os::io_time`: calls and µs by kind, to the first page)
+                st.push((
+                    "io_us".to_string(),
+                    Json::Arr(
+                        t.first_io[..6]
+                            .iter()
+                            .map(|&(n, ns)| {
+                                Json::Arr(vec![Json::Int(n as i64), Json::Int((ns / 1000) as i64)])
+                            })
+                            .collect(),
+                    ),
+                ));
                 st.push((
                     "restore_us".to_string(),
                     Json::Arr(t.first_restore_us.iter().map(|&u| Json::Int(u as i64)).collect()),

@@ -381,6 +381,7 @@ fn phase_push(mark: char) {
         let mut p = p.borrow_mut();
         if mark == 'a' {
             p.clear();
+            IO.with(|c| c.set([(0, 0); 8]));
         }
         if p.len() < 64 {
             p.push(PhaseMark {
@@ -391,6 +392,46 @@ fn phase_push(mark: char) {
             });
         }
     });
+}
+
+thread_local! {
+    /// [`io_time`]'s calls and wall time (ns) by kind since the last `a`.
+    static IO: std::cell::Cell<[(u32, u64); 8]> = const { std::cell::Cell::new([(0, 0); 8]) };
+}
+
+/// The kinds of [`io_time`]: an output file's write (`Tracked`), an input
+/// file's lookup (`input_path`), opening a TFM file, opening a text
+/// file, the watches' drain (`fswatch::sync`), a read's journal entry
+/// (`note_file`).
+pub mod io {
+    pub const WRITE: usize = 0;
+    pub const LOOKUP: usize = 1;
+    pub const TFM: usize = 2;
+    pub const TEXT: usize = 3;
+    pub const DRAIN: usize = 4;
+    pub const NOTE: usize = 5;
+}
+
+/// `f`, its wall time counted under `kind` ([`io`]): where a compile's
+/// file work goes, kernel and waits included (lane T7-HEADROOM,
+/// measurement only; nested kinds count in both).
+#[inline]
+pub fn io_time<R>(kind: usize, f: impl FnOnce() -> R) -> R {
+    let t = std::time::Instant::now();
+    let r = f();
+    let ns = t.elapsed().as_nanos() as u64;
+    IO.with(|c| {
+        let mut v = c.get();
+        v[kind].0 += 1;
+        v[kind].1 += ns;
+        c.set(v);
+    });
+    r
+}
+
+/// [`io_time`]'s counts since the compile's start: (calls, ns) by kind.
+pub fn io_times() -> [(u32, u64); 8] {
+    IO.with(|c| c.get())
 }
 
 /// The marks since the compile's start (`a`), oldest first.
