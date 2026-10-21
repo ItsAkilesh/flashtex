@@ -573,7 +573,7 @@ A failure blocks the queue until the Commander either accepts the measured rollb
 
 | Row | What S6 needs |
 |---|---|
-| **A9** | The Unicode mode carries `[fonts]` and `fontspec` documents (decision 3A), and **its M3 gate has passed** (modes Q1). Until then the old engine stays as their explicit fallback, which is why S6 and S7 wait for M3. |
+| **A9** | The Unicode mode carries `[fonts]` and `fontspec` documents (decision 3A), and **its M3 gate has passed** (modes Q1). Until then the old engine stays as their explicit fallback, which is why S6 and S7 wait for M3. *Row done 2026-10-21 (lane A9-FONTS): Unicode mode applies `[fonts]` on the new engine, a `[fonts]` change compiles again, and the Fonts sheet and `\setmainfont{` list the Unicode host's own catalog (`flashtex-host-unicode --list-fonts`), with the row's tests in `app-parity-rows.json`. Left for S6: the Classic-mode `Blocker.projectFonts` fallback goes with the `.previous` engine; a Classic `[fonts]` project then gets PROPOSAL §4.5's notice (UnicodeModeSuggestionBanner's text must drop "the compatibility engine applies them"), and `InstalledFonts.lister()` drops its `flashtex-render` fallback.* |
 | **A17** | No TeX Live: the in-app TTBv1 bundle route (#1471, #1523), with an app test of a real download (missing today, L116, L245). A declined download: the owner rules what happens when no old engine is left. |
 | **C25** | Preview Debug Status: a v3 test, or owner retirement (it is developer-facing). |
 | **E2** | The capture `projectId` is `"demo"` under v3 (`ShellModel.swift` L669): a fix with a test. |

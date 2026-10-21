@@ -65,18 +65,19 @@ in #1337.
 | main `442ca71bb` (2026-10-03 file) | 32 | 9 | 18 | 10 |
 | 2026-10-03's "after #1408 + #1409 + #1410" | 41 | 7 | 11 | 10 |
 | main `0752115a1` (this audit) | 56 | 3 | 1 | 9 |
-| **2026-10-06 revision** | **60** | **0** | **1** | **8** |
+| 2026-10-06 revision | 60 | 0 | 1 | 8 |
+| **2026-10-21 (A9 done, lane A9-FONTS)** | **61** | **0** | **0** | **8** |
 
-By section, 2026-10-06 revision:
+By section, 2026-10-21:
 
 | Section | done | partial | missing | different |
 |---|---|---|---|---|
-| A (21) | 17 | 0 | 1 | 3 |
+| A (21) | 18 | 0 | 0 | 3 |
 | B (13) | 13 | 0 | 0 | 0 |
 | C (25) | 23 | 0 | 0 | 2 |
 | D (5) | 5 | 0 | 0 | 0 |
 | E (5) | 2 | 0 | 0 | 3 |
-| **Total (69)** | **60** | **0** | **1** | **8** |
+| **Total (69)** | **61** | **0** | **0** | **8** |
 
 **What moved since 2026-10-03:**
 - To **done**: A8, A15, A17, A21, B4, B5, B8, B10, B11, B12, C2, C4, C6, C7, C8, C10,
@@ -118,7 +119,7 @@ By section, 2026-10-06 revision:
 | A6 | `\include` / `\input` resolution | different (intended); **accepted** (2026-10-07) | [B] Real TeX over a symlinked copy, capped at 20,000 entries (`EngineV3Snapshot.swift:69`, `maxEntries`). **Ruling:** accepted by the owner's delegation to the Commander, 2026-10-07: the v3 behaviour is kept for speed and maintainability |
 | A7 | Which file compiles from a chapter tab | different; **accepted** (2026-10-07) | The entry; else the first open document with `\documentclass` (`EngineV3Session.mainFile`, `EngineV3Session.swift:808`). [V] `EngineV3OpenTests.testOpeningAnotherFileCompilesThatFile`. **Ruling:** accepted by the owner's delegation to the Commander, 2026-10-07: the v3 behaviour is kept for speed and maintainability |
 | A8 | `flashtex.toml` texinputs and packages, Fetch Missing Packages | **done** (#1421, #1444) | [V] `EngineChoiceTests.testTheNewEngineFindsTexinputsPackages` (texinputs, real host); [F] `EngineV3PackagesTests.testAPinnedPackageAndALibraryCompileUnderTheNewEngine` (pins and libraries), `EngineChoiceTests.testManifestRules`, `.testTexinputsLinksYieldToProjectFiles` |
-| A9 | Project and system fonts (`[fonts]`) | **missing**; **P5 scope via the Unicode mode** (owner, 2026-10-05) | v3 is pdfLaTeX only. Since #1421, a `[fonts]` project visibly falls back to the old engine, with a banner, the status item and a VoiceOver announcement (`EngineChoice.Blocker.projectFonts`, `EngineChoice.swift:78`). [V] `EngineChoiceTests.testProjectFontsFallBackAndSayWhy`, `.testStatusItemAndBannerShowTheFallback`. The owner ruled (2026-10-05, Q-new-1) that the Unicode mode (XeTeX, lane XETEX-S1) carries `[fonts]` in P5, so this row closes when a `[fonts]` project compiles on the Unicode mode instead of falling back |
+| A9 | Project and system fonts (`[fonts]`) | **done** (2026-10-21, lane A9-FONTS) | A `[fonts]` project in Unicode mode is typeset by the new engine, no fallback: `flashtex-host-unicode` applies the roles as the equivalent fontspec/unicode-math setup on the first line (`crates/flashtex-xetex/src/host/fonts.rs`, PROPOSAL §4.5), and a change of `[fonts]` compiles again (`EngineV3Session.manifestChanged`). The Fonts sheet and `\setmainfont{` completion list the families the new engine's catalog finds by name (`flashtex-host-unicode --list-fonts`, `FontCatalog::family_names`), not `flashtex-render`'s. [V] `EngineV3ProjectFontsTests.testAFontsProjectInUnicodeModeIsTypesetByTheNewEngine`, `.testTheFamiliesComeFromTheNewEngine` (hosted); `.testUnicodeModeAppliesTheProjectsFontsAsXeLaTeXDoes`, `.testAChangeOfFontsCompilesAgainWithThem` (host leg: the expected body font is TeX Live `xelatex`'s, run in the test); Rust `fontmgr::catalog::the_families_are_the_names_xelatex_finds` (names from a TeX Live `xetex` run), `tests/host.rs::the_font_lists_name_the_families_a_lookup_finds`. Classic mode does not apply `[fonts]` (PROPOSAL §4.5, owner Q5); until S6 such a project still falls back visibly to the old engine (`Blocker.projectFonts`), which S6 removes with the `.previous` engine |
 | A10 | BibTeX, biber, makeindex | done (trusted projects) | [V] `EngineV3ToolsTests.testTrustedProjectRunsBibtexAndTheCitationResolves`; [F] `.testRequestCarriesExternalToolsAndTheClientSays32` |
 | A11 | Tool-run status | done | [V] `EngineV3ToolsTests.testUntrustedProjectRunsNoToolAndSaysWhy`, `.testTrustingTheProjectMidSessionRunsTheTools`, `EngineV3RunawayTests.testASupersededRunLeavesTheCurrentCyclesRowsAndNote` |
 | A12 | Shell escape and project trust | done | [V] `EngineV3TrustTests.testQuarantinedProjectCompilesWithShellEscapeOffUntilTrusted`; [F] 11 more in `EngineV3TrustTests` |
@@ -218,7 +219,7 @@ pages, dimmed. Strict mode sends halt-on-error ([F] `EngineV3BestEffortTests`, 6
   `.previous` (`EngineChoice.swift:130`). Flipping it is the S5 gate and an owner
   decision. It is not a parity row.
 - **Remaining fallbacks:**
-  - `[fonts]` (A9);
+  - `[fonts]` in Classic mode (A9 is done in Unicode mode; this fallback goes in S6);
   - no TeX Live and no bundle;
   - a declined bundle download (`EngineChoice.swift:68–81`).
 
@@ -226,10 +227,8 @@ pages, dimmed. Strict mode sends halt-on-error ([F] `EngineV3BestEffortTests`, 6
 
 **As of the 2026-10-06 revision.** `python3 tools/parity/app_parity_rows.py gate S5` prints this list from the rows file.
 
-**Missing (1 row).** **A9, project fonts (`[fonts]`)** is P5 scope via the Unicode mode (owner, 2026-10-05).
-- Every `[fonts]` project stays on the old engine, with a visible banner.
-- At S5 that fallback is allowed (plan §4.4).
-- It blocks S6 and S7 for those users until the Unicode mode (XeTeX, lane XETEX-S1) compiles them.
+**Missing (0 rows).** **A9, project fonts (`[fonts]`)** is done (2026-10-21, lane A9-FONTS): Unicode mode applies `[fonts]` on the new engine.
+- A Classic-mode `[fonts]` project still falls back visibly to the old engine until S6 removes that engine (plan §4.4); Classic does not apply `[fonts]` (PROPOSAL §4.5).
 
 **Different, accepted (5 rows).** Plan §4.4 asked for the owner's retirement in writing before S5. These five were accepted by the owner's delegation to the Commander, 2026-10-07: the v3 behaviour is kept for speed and maintainability:
 - **A6**, `\include` / `\input` resolution: real TeX over a symlinked copy, capped at 20,000 entries.
