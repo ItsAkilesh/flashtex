@@ -193,4 +193,5 @@ Next steps, by expected gain per effort:
   tests of the changed crates, trip, etrip). Its first run, at `97d6202b8`, failed: flashtex-xetex's
   journal call sites (fixed) and `a_cold_run_stops_no_earlier_than_s0` (the thinning's look at newer
   work, fixed in §3.1).
-- `sweeps.yml` with `ref=` the branch, default and `boxmemo=verify`: in the PR.
+- `sweeps.yml` with `ref=` the branch at `e1e68fc73`: default (run 39567122916) and `boxmemo=verify`
+  (run 39567127814), both success.
