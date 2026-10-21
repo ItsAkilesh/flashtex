@@ -914,7 +914,9 @@ fn same_outside(
     for p in diffs {
         let (x, y) = (old_dl.at(p as i32), dl.at(p as i32));
         if !(x == y && x == 0 || c.tables.place(x) == dl.place(y)) {
-            return Err(format!("the side table's entry {p} differs ({x:#x} vs {y:#x})"));
+            return Err(format!(
+                "the side table's entry {p} differs ({x:#x} vs {y:#x})"
+            ));
         }
     }
     Ok(())

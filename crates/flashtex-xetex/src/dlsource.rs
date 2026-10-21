@@ -882,6 +882,8 @@ mod tests {
         let t = d.tables();
         d.span_id(f, 3);
         assert!(!d.numbered_like(&t, odd.lens()));
-        assert!(d.place(pack(s2, 4)).is_some_and(|(_, line, col)| line == 2 && col == 4));
+        assert!(d
+            .place(pack(s2, 4))
+            .is_some_and(|(_, line, col)| line == 2 && col == 4));
     }
 }
