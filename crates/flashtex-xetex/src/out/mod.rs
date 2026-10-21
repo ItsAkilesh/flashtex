@@ -420,8 +420,9 @@ pub fn replay_page(
 /// same fonts: the XDV defines them, here or on an earlier page). So two
 /// documents are alike when they have the same pages, each the same one or
 /// built from the same inputs ([`Replay`](doc::Replay)) after the same
-/// number of forms, and the same paper, XDV comment, pictures and errors (a
-/// page that could not be built leaves an error, not a page).
+/// number of forms, and the same paper, XDV comment and pictures. A
+/// document with an error is never alike: a page that could not be built
+/// leaves an error, not a page, and may have changed the document.
 pub fn same_doc(new: &doc::Doc, old: &doc::Doc) -> bool {
     let same_page = |a: &std::sync::Arc<Built>, b: &std::sync::Arc<Built>| {
         std::sync::Arc::ptr_eq(a, b)
@@ -439,7 +440,8 @@ pub fn same_doc(new: &doc::Doc, old: &doc::Doc) -> bool {
     };
     new.pages.len() == old.pages.len()
         && new.forms.len() == old.forms.len()
-        && new.errors == old.errors
+        && new.errors.is_empty()
+        && old.errors.is_empty()
         && new.dvi_comment == old.dvi_comment
         && new.default_paper == old.default_paper
         && new.pictures == old.pictures

@@ -351,7 +351,7 @@ impl Globals {
         // again would make the old run's later documents. Then those are
         // taken over (`out::adopt_doc`), with the pages' frames, and the
         // carried checkpoints keep the old run's documents.
-        let adopt: Option<Vec<Arc<crate::ckpt::OutSnap>>> = op
+        let take_docs: Option<Vec<Arc<crate::ckpt::OutSnap>>> = op
             .out
             .as_ref()
             .filter(|at_k| crate::out::same_doc(&out.doc, &at_k.doc))
@@ -535,8 +535,8 @@ impl Globals {
         // document
         let t_state = t_jump.elapsed();
         let (mut t_replay, mut t_snap) = (0.0, 0.0);
-        let adopted = adopt.is_some();
-        if let Some(snaps) = adopt {
+        let adopted = take_docs.is_some();
+        if let Some(snaps) = take_docs {
             let t = Instant::now();
             let at_l = snaps.last().expect("a page carried");
             if let Err(e) = crate::out::adopt_doc(self, &at_l.doc, k) {

@@ -35,6 +35,11 @@
 //! cost address space, not memory.
 
 use std::collections::HashMap;
+
+/// A map by chunk number, with a cheap hash (the convergence test's
+/// maps of the chunks it compares: SipHash was 3 M instructions a test on
+/// the Unicode bench b4, READ-TRACK-3).
+type ChunkMap<V> = HashMap<u32, V, std::hash::BuildHasherDefault<crate::iso::FastHasher>>;
 use std::marker::PhantomData;
 use std::ops::{Deref, Index, IndexMut};
 
@@ -1939,7 +1944,7 @@ struct OldCache {
 
 /// One checkpoint's kept chunks: (checkpoint, history_gen, chunk -> index
 /// into the words / CHUNK_WORDS, the words).
-type OldAt = (CheckpointId, u64, HashMap<u32, usize>, Vec<u64>);
+type OldAt = (CheckpointId, u64, ChunkMap<usize>, Vec<u64>);
 
 /// Checkpoints `OldCache` keeps, and the chunks it keeps in all (1 KB each).
 const OLD_CACHE_CHECKPOINTS: usize = 4;
@@ -1960,7 +1965,7 @@ impl OldCache {
                 let e = self.at.remove(k);
                 self.at.push(e);
             }
-            None => self.at.push((id, gen, HashMap::new(), vec![])),
+            None => self.at.push((id, gen, ChunkMap::default(), vec![])),
         }
         // Room first, least recently used checkpoints out (never the one
         // being filled, now the last): the cache never holds more than
@@ -2741,7 +2746,7 @@ impl Arena {
             .position(|&x| x == old)
             .ok_or_else(|| format!("checkpoint {old} is not in the detached run"))?;
         let want: std::collections::HashSet<u32> = cs.iter().copied().collect();
-        let mut redo_of: HashMap<u32, *const u64> = HashMap::new();
+        let mut redo_of: ChunkMap<*const u64> = ChunkMap::default();
         for &(c, p) in &b.redo {
             if want.contains(&c) {
                 redo_of.insert(c, p as *const u64);
@@ -2818,7 +2823,7 @@ impl Arena {
             }
         }
         // The old run's last value of the candidates it wrote at all.
-        let mut redo_of: HashMap<u32, *const u64> = HashMap::new();
+        let mut redo_of: ChunkMap<*const u64> = ChunkMap::default();
         for &(c, p) in &b.redo {
             if bit(&seen, c as usize) {
                 redo_of.insert(c, p as *const u64);
@@ -2932,7 +2937,8 @@ impl Arena {
                 (t.elapsed() - t_old).as_secs_f64() * 1e3
             );
         }
-        let mut old_at: HashMap<u32, *const u64> = HashMap::with_capacity(cand.len());
+        let mut old_at: ChunkMap<*const u64> =
+            ChunkMap::with_capacity_and_hasher(cand.len(), Default::default());
         for (i, &c) in in_old.iter().enumerate() {
             old_at.insert(c, old_buf[i * CHUNK_WORDS..].as_ptr());
         }
@@ -2943,7 +2949,7 @@ impl Arena {
         let mut out = ChunkDiff {
             compared: cand.len(),
             differing: Vec::new(),
-            old_at: HashMap::new(),
+            old_at: ChunkMap::default(),
             _bufs: (old_buf, r_buf),
         };
         for c in cand {
@@ -3112,7 +3118,7 @@ pub struct ChunkDiff {
     pub differing: Vec<(u32, *const u64, *const u64)>,
     /// The old run's value of every chunk either run wrote since the
     /// restore target (every other chunk is the live one).
-    old_at: HashMap<u32, *const u64>,
+    old_at: ChunkMap<*const u64>,
     /// Where `old_at` points.
     _bufs: (Vec<u64>, Vec<u64>),
 }

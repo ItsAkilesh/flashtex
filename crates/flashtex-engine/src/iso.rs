@@ -568,6 +568,9 @@ impl std::hash::Hasher for FastHasher {
     fn write_i32(&mut self, x: i32) {
         self.write_u64(x as u32 as u64);
     }
+    fn write_u32(&mut self, x: u32) {
+        self.write_u64(x as u64);
+    }
 }
 
 fn bit(v: &[u64], p: i32) -> bool {
