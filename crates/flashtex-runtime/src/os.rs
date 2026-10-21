@@ -363,6 +363,15 @@ pub struct PhaseMark {
 /// the wall time into user, system and off-CPU time by phase (lane
 /// T7-HEADROOM). Measurement only, a few µs a compile.
 pub fn phase_mark(mark: char) {
+    phase_push(mark);
+    // (`FLASHTEX_PERF_MARKS_ALL`: these marks in `FLASHTEX_PERF_MARKS` too)
+    static ALL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ALL.get_or_init(|| std::env::var_os("FLASHTEX_PERF_MARKS_ALL").is_some()) {
+        marks_file(mark);
+    }
+}
+
+fn phase_push(mark: char) {
     #[cfg(unix)]
     let ns = imp::monotonic_ns();
     #[cfg(not(unix))]
@@ -401,8 +410,13 @@ pub fn perf_mark(on: bool) {
 /// [`perf_mark`] with the mark's letter given (the host's `a`: a compile's
 /// start, so that `a`..`b` is what comes before the typesetting).
 pub fn perf_mark_as(mark: char) {
+    phase_push(mark);
+    marks_file(mark);
+}
+
+/// [`perf_mark_as`]'s line in `FLASHTEX_PERF_MARKS`.
+fn marks_file(mark: char) {
     use std::io::Write;
-    phase_mark(mark);
     static MARKS: std::sync::OnceLock<Option<std::sync::Mutex<std::fs::File>>> =
         std::sync::OnceLock::new();
     let marks = MARKS.get_or_init(|| {

@@ -131,6 +131,31 @@ pub fn diff_edit(path: &str, old: &[u8], new: &[u8]) -> Edit {
     }
 }
 
+/// [`diff_edit`] of `old` and `new` where `new` is known to be `old` with
+/// bytes `at..at + del` replaced by `ins` bytes: the same edit, from the
+/// bytes near the edit only (a 1,000-page source is 4 MB, compared from
+/// both ends at every keystroke; lane T7-HEADROOM).
+pub fn diff_edit_at(path: &str, old: &[u8], new: &[u8], at: usize, del: usize, ins: usize) -> Edit {
+    if at + del > old.len() || at + ins > new.len() || old.len() - del != new.len() - ins {
+        return diff_edit(path, old, new);
+    }
+    // (equal before `at`, and in the `tail` after the edit)
+    let p = at + common_prefix(&old[at..], &new[at..]);
+    let max_s = old.len().min(new.len()) - p;
+    let tail = old.len() - at - del;
+    let s = if tail >= max_s {
+        max_s
+    } else {
+        tail + common_suffix(&old[..old.len() - tail], &new[..new.len() - tail], max_s - tail)
+    };
+    Edit {
+        path: path.to_string(),
+        prefix: p as u64,
+        old_mid: (old.len() - p - s) as u64,
+        new_mid: (new.len() - p - s) as u64,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Options {
     /// Preview mode: PDF streams are stored, not compressed (the export
@@ -511,7 +536,7 @@ struct Obs {
     shifts: Vec<crate::lineshift::Shift>,
     /// The line shifts each old page checkpoint still owes (`Reloc`): its
     /// stored state numbers lines as the run that took it did.
-    old_lines: HashMap<CheckpointId, Vec<crate::lineshift::Shift>>,
+    old_lines: HashMap<CheckpointId, std::sync::Arc<Vec<crate::lineshift::Shift>>>,
     /// The last of the old run's lookups (an index into its journal's) whose
     /// answer is different now (`Session::changes`): a checkpoint taken
     /// before it would keep the old run's answer (#1502).
@@ -1110,7 +1135,11 @@ impl Obs {
         let mut char_or = vec![];
         // (compared as the restore would correct it, then shifted by the
         // edit)
-        let mut stages = self.old_lines.get(&old).cloned().unwrap_or_default();
+        let mut stages = self
+            .old_lines
+            .get(&old)
+            .map(|v| v.to_vec())
+            .unwrap_or_default();
         stages.extend(self.shifts.iter().cloned());
         let active = crate::lineshift::Active::new(&stages);
         let mut aside = level.map(|level| crate::dormant::Aside {
@@ -1408,7 +1437,11 @@ impl Obs {
         // `P2` does not keep: compared here)
         let (last_byte_dead, dest_dims_dead) = (false, false);
         let mut char_or = vec![];
-        let mut stages = self.old_lines.get(&old).cloned().unwrap_or_default();
+        let mut stages = self
+            .old_lines
+            .get(&old)
+            .map(|v| v.to_vec())
+            .unwrap_or_default();
         stages.extend(self.shifts.iter().cloned());
         let active = crate::lineshift::Active::new(&stages);
         let t = Instant::now();
@@ -4448,6 +4481,7 @@ impl Session {
             }
         }
         let key_s = t0.elapsed().as_secs_f64();
+        crate::os::phase_mark('K');
         let s0_id = self.s0.as_ref().map(|s| s.id).ok_or("no S0")?;
         let pre_r = pre.as_ref().map(|p| p.0);
         let changes = match pre {
@@ -4463,6 +4497,7 @@ impl Session {
             Err(why) => return self.cold(t0, stop_at, Some(why)),
         };
         let changes_s = t0.elapsed().as_secs_f64() - key_s;
+        crate::os::phase_mark('C');
         // pages an abandoned run shipped are to be shipped again (from a
         // retained restart point of this engine at or after S₀, which has a
         // page count)
@@ -5143,7 +5178,12 @@ impl Session {
                 changed.push(f.path.clone());
                 match (&f.content, &now) {
                     (Some(old), Some(new)) => {
-                        let e = diff_edit(&f.path, old, new.as_slice());
+                        // (the host's edit, when it made `new` out of
+                        // this very copy: `system::known_edit`)
+                        let e = match system::known_edit(&f.path, old, new) {
+                            Some((at, del, ins)) => diff_edit_at(&f.path, old, new, at, del, ins),
+                            None => diff_edit(&f.path, old, new.as_slice()),
+                        };
                         shifts.extend(crate::lineshift::Shift::pending(
                             &f.path,
                             old,
@@ -6060,6 +6100,7 @@ impl Session {
             // (the run's own output again, not another program's)
             system::stamp_output(p);
         }
+        crate::os::phase_mark('P');
         if let Some(rs) = self.reloc.get(&r) {
             rs.apply(g);
             if rs.count > 0 && g.rs_on {
@@ -6128,6 +6169,7 @@ impl Session {
             l.aux_path = None;
             l.aux_armed = false;
         }
+        crate::os::phase_mark('L');
         let mut patches = self.defpatch.get(&r).cloned().unwrap_or_default();
         patches.extend(patch.iter().cloned());
         for p in &patches {
@@ -6165,6 +6207,7 @@ impl Session {
         // `first` and all; and the merged shift keeps every name, so that
         // two byte-identical files edited alike both keep their lines'
         // shift.)
+        crate::os::phase_mark('Z');
         let mut pending: Vec<crate::lineshift::Pending> = vec![];
         for p in std::mem::take(&mut self.line_shifts) {
             match pending.iter_mut().find(|q| q.same_edit(&p)) {
@@ -6180,6 +6223,7 @@ impl Session {
             })
             .collect();
         // (the definitions this run makes are in the new numbering)
+        crate::os::phase_mark('H');
         crate::diag::new_run();
         let jr = self.journal.as_ref().ok_or("no journal")?;
         system::record_reads_into(Some(truncate_journal(jr, rec.reads, &self.dirs_checked)));
@@ -6190,6 +6234,7 @@ impl Session {
         let restore_flt = f1
             .zip(crate::os::events())
             .map(|(a, b)| (b.0 - a.0, b.1 - a.1));
+        crate::os::phase_mark('O');
         obs.old_pages = self.pages[base..].to_vec();
         obs.old_lines = obs
             .old_pages
@@ -6201,6 +6246,7 @@ impl Session {
             })
             .collect();
         obs.edits = edits;
+        crate::os::phase_mark('E');
         obs.changed = changed;
         obs.old_journal_files = old_files;
         obs.old_journal_all = jr.files.iter().map(|f| f.path.clone()).collect();
@@ -7646,7 +7692,10 @@ struct Reloc {
     /// (word's offset in the space, value written, value where its entry
     /// is shifted).
     overrides: Vec<(usize, u64, u64)>,
-    lines: Vec<crate::lineshift::Shift>,
+    /// (shared with the observer's `old_lines`, which took a copy of every
+    /// old page's at each restore: 0.2 ms of a split's keystroke on a
+    /// 1,000-page document, NixOS PC; lane T7-HEADROOM)
+    lines: std::sync::Arc<Vec<crate::lineshift::Shift>>,
     /// Steps after the composed ones, applied one by one (see above).
     rest: Vec<Step>,
     /// Steps composed or kept.
@@ -7761,7 +7810,9 @@ impl Reloc {
 
     /// Compose step `s` after the ones this holds.
     fn push(&mut self, s: &Step) {
-        self.lines.extend(s.lines.iter().cloned());
+        if !s.lines.is_empty() {
+            std::sync::Arc::make_mut(&mut self.lines).extend(s.lines.iter().cloned());
+        }
         self.count += 1;
         if verify_reloc() {
             self.steps.push(s.clone());
@@ -7839,7 +7890,7 @@ impl Reloc {
         for s in &self.rest {
             s.apply_positions(g);
         }
-        for s in &self.lines {
+        for s in self.lines.iter() {
             s.relocate(g);
         }
         if let Some(before) = before {
@@ -8269,6 +8320,12 @@ mod tests {
                 assert_eq!(
                     (e.prefix, e.old_mid, e.new_mid),
                     naive(&base, &new),
+                    "len {len} at {at} del {del} ins {ins:?}"
+                );
+                let h = super::diff_edit_at("f", &base, &new, at, del, ins.len());
+                assert_eq!(
+                    (h.prefix, h.old_mid, h.new_mid),
+                    (e.prefix, e.old_mid, e.new_mid),
                     "len {len} at {at} del {del} ins {ins:?}"
                 );
             }
