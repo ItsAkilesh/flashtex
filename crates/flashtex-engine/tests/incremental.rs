@@ -2171,7 +2171,10 @@ fn page_insertion_records_compare_their_split_fields_only_when_split_up() {
     let dir = e.dir.join("pageins");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let long = "A footnote long enough to be broken across the foot of two pages. ".repeat(60);
+    let long = format!(
+        "\\label{{ls}}{}\\label{{le}}",
+        "A footnote long enough to be broken across the foot of two pages. ".repeat(150)
+    );
     let doc = |word: &str, extra: &str| -> String {
         let mut s = String::from(
             "\\documentclass{article}\n\\interfootnotelinepenalty=0\n\\begin{document}\n",
@@ -2208,10 +2211,21 @@ fn page_insertion_records_compare_their_split_fields_only_when_split_up() {
     let sentence = "A sentence added before the long footnote, long enough to take \
                     a line or two of the page away from the footnote's part on it. \
                     Another line of it, to be sure.\n\n";
+    // (the pages the long footnote begins and ends on, from the `.aux`)
+    let page_of = |label: &str| -> usize {
+        let aux = std::fs::read_to_string(dir.join("doc.aux")).unwrap();
+        let key = format!("\\newlabel{{{label}}}{{{{");
+        let at = aux.find(&key).expect(label) + key.len();
+        let rest = &aux[at..];
+        let rest = &rest[rest.find("}{").unwrap() + 2..];
+        rest[..rest.find('}').unwrap()].parse().unwrap()
+    };
     for (extra, what) in [(sentence, "a sentence"), ("", "its revert")] {
         let r = compile_and_check(&e, &mut h, &dir, &[("doc.tex", &doc("eta", extra))], what);
         assert!(r.contains("\"mode\":\"incremental\""), "{what}: {r}");
-        eprintln!("PAGEINS {what}: restart {} converged {} diffs {}", field(&r, "restart_pages"), field(&r, "converged_at"), r.split("\"diffs\":").nth(1).unwrap_or("").chars().take(600).collect::<String>());
+        let (from, to) = (page_of("ls"), page_of("le"));
+        assert!(from < to, "{what}: the long footnote is not split ({from}, {to})");
+        eprintln!("PAGEINS {what}: split {from}-{to} restart {} converged {} diffs {}", field(&r, "restart_pages"), field(&r, "converged_at"), r.split("\"diffs\":").nth(1).unwrap_or("").chars().take(700).collect::<String>());
     }
 }
 
