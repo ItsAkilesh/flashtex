@@ -581,6 +581,15 @@ converged; letter@middle unchanged (92.6 M, 93.5 M). `intrinsics_recorded_after_
 and the rest of `tests/incremental.rs` and `tests/host_incremental.rs` pass with BOX-MEMO on (the
 hosts' default) and off.
 
+**A hole the verify sweep found** (sweep A, full-100, run 39509942631): on the command line's
+verify mode (the whole state after each replay compared with the normal path's), a replay of the
+hook on a page with a pending footnote "differed" in a page insertion record's `broken_ptr`. The
+structural comparison (`iso.rs`, used by the convergence test too) followed `broken_ptr` and
+`broken_ins` in every record, but pdfTeX reads them only when the record's type is `split_up`
+(tex.web §986, §1021); an `inserting` record holds there what `get_node` left, which the
+allocation order decides (and a replay's elided groups change it). They are now compared only for
+`split_up` records. The case reproduced on the PC (its edited source, run twice) and passes after.
+
 ### 12.3 Calls that enter control sequences (`Op::NewCs`)
 
 §4.1 refused a call that left a new string or control sequence: `\csname` of a name never made

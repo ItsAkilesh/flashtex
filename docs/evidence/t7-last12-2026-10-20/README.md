@@ -93,6 +93,9 @@ six keys of the final typing@60 run, before the slice was stopped, took 9.1–9.
     pauses at the convergence point, as when the comparison is stopped.
   - The abandon's prepared restore reuses the last one's buffer (at most 64 MB kept): on
     full-1000 its 3.2 MB were faulted in at every abandoned compile (1.0 → 0.2 ms).
+  - The structural comparison (`iso.rs`) follows a page insertion record's `broken_ptr` and
+    `broken_ins` only for a `split_up` record, the only kind pdfTeX reads them in (found by the
+    verify sweep, below).
   - The NewCs host test turns BOX-MEMO on itself; the intrinsics' verifier leaves BOX-MEMO's
     `bm_at_switch` flag as it leaves its own (it failed `tests/intrinsics.rs` with
     `FLASHTEX_BOXMEMO=on`, also on main).
@@ -120,8 +123,17 @@ six keys of the final typing@60 run, before the slice was stopped, took 9.1–9.
   - host (`FLASHTEX_BOXMEMO=verify`, the normal path's operation log compared with the entry's),
     6 keys each: beamer-30 @middle 2,455 and @start 3,170 calls, beamer-5 716, full-10 letter@start
     26, 0 differences.
-- **Sweeps** (`sweeps.yml`, `ref=agent/kabir-claude/t7-last12`): default run 39509938355, verify
-  run 39509942631: results in the PR.
+- **Sweeps** (`sweeps.yml`, `ref=agent/kabir-claude/t7-last12`):
+  - on `b613b19f5`: the product default (run 39509938355) passed every gate, 0 bad, 0 wrong, 0
+    aborts. BOX-MEMO verify (run 39509942631) found one bad compile, sweep A on full-100 (trial
+    22, an insert on page 39): the reference compile, run on the command line in verify mode, stopped
+    at page 88 on a full-state difference after a replay of `\pdfstringdefPreHook`. The difference
+    was in a page insertion record's `broken_ptr`, which the structural comparison followed in
+    records that pdfTeX never reads it in (BOX-MEMO.md §12.2, "A hole the verify sweep found").
+    Bisected on the PC: main and `11282390c` pass, `efb529808` and later fail (the hook is a
+    BOX-MEMO name from there); fixed in `506b33c4a` (`iso.rs`), after which the same 100 compiles
+    pass and the edited source's command-line verify runs report 159 and 163 replays, 0 differences;
+  - on `506b33c4a` and later: default and verify runs in the PR.
 
 ## Remaining (beliefs unless marked)
 
