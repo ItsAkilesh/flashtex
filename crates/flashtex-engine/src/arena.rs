@@ -39,7 +39,30 @@ use std::collections::HashMap;
 /// A map by chunk number, with a cheap hash (the convergence test's
 /// maps of the chunks it compares: SipHash was 3 M instructions a test on
 /// the Unicode bench b4, READ-TRACK-3).
-type ChunkMap<V> = HashMap<u32, V, std::hash::BuildHasherDefault<crate::iso::FastHasher>>;
+type ChunkMap<V> = HashMap<u32, V, std::hash::BuildHasherDefault<ChunkHasher>>;
+
+/// [`ChunkMap`]'s hash of a chunk number: a multiply and a fold (the
+/// numbers are dense and not chosen by an adversary).
+#[derive(Default)]
+struct ChunkHasher(u64);
+
+impl std::hash::Hasher for ChunkHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.write_u64(b as u64);
+        }
+    }
+    fn write_u32(&mut self, x: u32) {
+        self.write_u64(x as u64);
+    }
+    fn write_u64(&mut self, x: u64) {
+        let h = (self.0.rotate_left(5) ^ x).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        self.0 = h ^ (h >> 32);
+    }
+}
 use std::marker::PhantomData;
 use std::ops::{Deref, Index, IndexMut};
 

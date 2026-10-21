@@ -489,7 +489,8 @@ from their XDV as before.
 - the forwarder reads a page's item opcodes without decoding it (`page::item_ops`), and decodes
   only a page that uses an item the client did not accept;
 - `Arena::set_from` and `or_from` pack again only the deltas they edit (`Log::edit_chunk`), not
-  every delta of each log; the chunk maps of the convergence test hash with `FastHasher`.
+  every delta of each log; the chunk maps of the convergence test hash with a multiply and a
+  fold (`ChunkHasher`).
 
 **Measured:** b4 end 194.9 M → 151.7 M; b5 end 339.2 M → 135.8 M; EDITPOINT and Classic rows
 equal or lower; cold compiles within ±0.004 % (Classic) and −0.9 % to +0.04 % (Unicode, the

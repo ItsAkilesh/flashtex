@@ -37,7 +37,7 @@ The counts are of the whole process, so the forwarder's thread is in them. The b
 - **The forwarder decoded every page** (0.6–0.8 M) to look for items the client did not accept.
   The bench's client accepts none of them. The forwarder now reads the item opcodes without
   decoding the page.
-- **The convergence test's chunk maps** hashed with SipHash (about 3 M); they use `FastHasher`.
+- **The convergence test's chunk maps** hashed with SipHash (about 3 M); they use a multiply and a fold (`ChunkHasher`).
 
 ## Unicode (`unicode.py --keys 3 --callgrind`, M to the edited page, then the whole compile)
 
