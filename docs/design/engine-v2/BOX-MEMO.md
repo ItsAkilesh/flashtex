@@ -726,3 +726,22 @@ The second key after the first edit on the first block frame still records a few
 a PDF object and are refused, and a call is never offered inside another call's recording (§1),
 so the inner calls are first offered at the key after the refusal. Recording inner calls while an
 outer one records would need a stack of recordings; not done.
+
+## 14. Revision 5: `\pgf@parsefunc` recorded anywhere (lane T7-MARGIN, 2026-10-21)
+
+§13.3's second key: on beamer-30's first block frame the key after the first edit still recorded
+the block's four `\pgf@parsefunc` calls (about 50 M instructions, the row's slowest key and so its
+p95 on the 2026-10-21b reference run). In the window they could not be recorded earlier: the
+shading declarations around them are refused (their `\immediate\pdfxform`), and a call is never
+offered inside another call's recording.
+
+`\pgf@parsefunc` is now one of `RECORD_ANYWHERE` (§12.2), so the host records it wherever it is
+offered outside a recording, the open's cold run included: there each function is recorded where
+it is first parsed, and every later key that parses it again, the second on a frame included, hits.
+A cold run's calls of the same function hit too (Madrid declares the same four shadings at every
+block). The intrinsics have no `\pgf@parsefunc`, so `owns` changes nothing for them.
+
+Measured (NixOS PC, T7 beamer-30, two rounds of 19 keys, instructions to the edited page): letter@start
+key 1 143 M → 93 M (the steady keys 92 M); the open's preamble row (a run from the format) 24.5 G →
+24.1 G instructions for the whole compile, 5.29 G → 5.24 G to its first page, wall unchanged.
+Evidence: `docs/evidence/t7-margin-2026-10-21/`.

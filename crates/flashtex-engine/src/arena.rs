@@ -709,6 +709,26 @@ pub(crate) struct Core {
     /// abandoned compile (1 ms of a typed key's 2 on a 1,000-page
     /// document, lane T7-LAST12). At most [`SPARE_MAX`] bytes.
     spare: Vec<u64>,
+    /// A `reattach_lazy` whose redo is not copied in yet (`Lazy`).
+    lazy: Option<Lazy>,
+}
+
+/// A reattach whose last step waits (`Core::reattach_lazy`, lane T7-MARGIN):
+/// the checkpoints and logs are the old run's again, but the live space is
+/// still the restore target's, and the old run's latest value of each chunk
+/// it differs in is `redo` (the branch's redo, as the restore that detached
+/// it saved them). An abandoned compile is followed at once by a restore,
+/// nearly always to that same target (typing: the same paragraph again),
+/// which then takes `redo` back as its own (`restore_branch`): the copies
+/// in and out, a prepared restore's and its redo's (4 x the redo's chunks,
+/// 1.9 ms of a key on full-1000 typing on the M5 Pro), are not made. Any
+/// other use of the space first makes the reattach whole (`materialize`):
+/// every method of the arena that changes it, the barrier's first write to
+/// a chunk (`Core::save`: the barrier's flags are all clear meanwhile), and
+/// the methods that read it assert there is none (`Arena::live`).
+struct Lazy {
+    target: CheckpointId,
+    redo: Vec<(u32, ChunkPtr)>,
 }
 
 /// The largest buffer `Core::spare` keeps.
@@ -796,6 +816,12 @@ impl Core {
     #[inline(never)]
     #[cold]
     fn save(&mut self, c: usize) {
+        if self.lazy.is_some() {
+            self.materialize();
+            if self.saved()[c] != 0 {
+                return;
+            }
+        }
         self.touched[c] = 1;
         self.saved()[c] = 1;
         if self.logs.is_empty() {
@@ -1358,6 +1384,10 @@ impl Core {
     /// Restore to `id`, keeping the old run's later checkpoints and a redo
     /// log so that `converge` can jump back to the old run's latest state.
     fn restore_branch(&mut self, id: CheckpointId) -> Result<Branch, String> {
+        if self.lazy.as_ref().is_some_and(|l| l.target == id) {
+            return self.restore_lazy();
+        }
+        self.materialize();
         let k = self
             .index_of(id)
             .ok_or_else(|| format!("checkpoint {id} is not retained"))?;
@@ -1476,6 +1506,40 @@ impl Core {
         })
     }
 
+    /// `restore_branch` to a lazy reattach's target (`Lazy`): the live
+    /// space is that state already, untouched since (a write would have
+    /// made the reattach whole), and the redo the old run's latest values
+    /// of exactly the chunks the logs from the target on hold (the logs a
+    /// branch's `retain_branch` merged hold the same chunks). So the
+    /// branch is detached again as it was, with nothing copied: the same
+    /// checkpoints, logs and redo values a whole reattach and a restore
+    /// leave.
+    fn restore_lazy(&mut self) -> Result<Branch, String> {
+        let Lazy { target, redo } = self.lazy.take().ok_or("no lazy reattach")?;
+        let k = self
+            .index_of(target)
+            .ok_or_else(|| format!("checkpoint {target} is not retained"))?;
+        self.drop_part();
+        self.set_prepared(None);
+        let old_logs = self.logs.split_off(k);
+        let old_ids = self.ids.split_off(k);
+        if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
+            eprintln!(
+                "[arena] restore to {target}: the lazy reattach's redo taken back ({} chunks, {} logs)",
+                redo.len(),
+                old_logs.len()
+            );
+        }
+        self.ids.push(old_ids[0]);
+        self.logs.push(Log::default());
+        self.clear_saved();
+        Ok(Branch {
+            ids: old_ids,
+            logs: old_logs,
+            redo,
+        })
+    }
+
     /// The convergence jump (DESIGN.md §5.3): the live state equals the old
     /// run's state at `old`, and the newest checkpoint was taken there with
     /// nothing written since. Jump to the old run's latest state and keep its
@@ -1554,6 +1618,17 @@ impl Core {
     /// run's latest state (the redo log) and its checkpoints back -- as if
     /// the restore had not happened.
     fn reattach(&mut self, branch: Branch) -> Result<(), String> {
+        self.reattach_lazy(branch)?;
+        self.materialize();
+        Ok(())
+    }
+
+    /// `reattach` but its last step, the old run's latest state copied in
+    /// (`Lazy`): the restore target's state stays live until
+    /// `materialize`, or a `restore_branch` to the target takes the redo
+    /// back.
+    fn reattach_lazy(&mut self, branch: Branch) -> Result<(), String> {
+        self.materialize();
         self.drop_part();
         let t0 = std::time::Instant::now();
         let target = *branch.ids.first().ok_or("empty branch")?;
@@ -1569,6 +1644,31 @@ impl Core {
         }
         let t_rewind = t0.elapsed();
         let Branch { ids, logs, redo } = branch;
+        self.set_prepared(None);
+        self.ids.extend(ids);
+        self.logs.extend(logs);
+        // (every flag clear: the barrier's first write to any chunk
+        // materializes, `save`)
+        self.clear_saved();
+        self.lazy = Some(Lazy { target, redo });
+        if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
+            eprintln!(
+                "[arena] reattach: rewind {:.2} ms, redo of {} chunks waits",
+                t_rewind.as_secs_f64() * 1e3,
+                self.lazy.as_ref().map_or(0, |l| l.redo.len())
+            );
+        }
+        Ok(())
+    }
+
+    /// Make a lazy reattach whole (`Lazy`): the old run's latest state
+    /// copied in, the open log's chunks flagged as saved, and the prepared
+    /// restore to the target `reattach` leaves.
+    fn materialize(&mut self) {
+        let Some(Lazy { target, redo }) = self.lazy.take() else {
+            return;
+        };
+        let t0 = std::time::Instant::now();
         // The live state is the target's now. The chunks the branch's logs
         // hold are the redo's (the restore that detached the branch saved
         // each chunk those logs hold, and nothing else): their values here
@@ -1600,8 +1700,6 @@ impl Core {
             self.slab.give(p);
         }
         let t_copy = t0.elapsed();
-        self.ids.extend(ids);
-        self.logs.extend(logs);
         self.clear_saved();
         let open: Vec<usize> = self
             .logs
@@ -1627,9 +1725,8 @@ impl Core {
         if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
             let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
             eprintln!(
-                "[arena] reattach: rewind {:.2}, prepare copy {:.2}, redo in {:.2} ({n_redo} chunks), rest {:.2} ms",
-                ms(t_rewind),
-                ms(t_pre - t_rewind),
+                "[arena] reattach made whole: prepare copy {:.2}, redo in {:.2} ({n_redo} chunks), rest {:.2} ms",
+                ms(t_pre),
                 ms(t_copy - t_pre),
                 ms(t0.elapsed() - t_copy)
             );
@@ -1641,7 +1738,6 @@ impl Core {
                 std::process::abort();
             }
         }
-        Ok(())
     }
 
     /// `FLASHTEX_VERIFY_PREPARED`, where `restore_branch` uses `p` (the
@@ -2019,6 +2115,7 @@ impl Arena {
             history_gen: 0,
             prepare_on_reattach: std::env::var_os("FLASHTEX_NO_PREPARE").is_none(),
             spare: Vec::new(),
+            lazy: None,
         });
         Arena {
             core: Box::into_raw(core),
@@ -2055,14 +2152,73 @@ impl Arena {
         unsafe { &*self.core }
     }
 
+    /// The core, a lazy reattach made whole first (`Lazy`): every method
+    /// that changes the space or its logs goes through here, but those that
+    /// keep a lazy reattach lazy (`core_lazy`).
     fn core_mut(&mut self) -> &mut Core {
+        let c = self.core_lazy();
+        c.materialize();
+        c
+    }
+
+    fn core_lazy(&mut self) -> &mut Core {
         // SAFETY: as above, and `&mut self` excludes other access.
         unsafe { &mut *self.core }
     }
 
+    /// The core for reading the live space: never under a lazy reattach,
+    /// whose live space is not the state (`Lazy`).
+    fn live(&self) -> &Core {
+        let c = self.core();
+        assert!(c.lazy.is_none(), "the space read under a lazy reattach");
+        c
+    }
+
+    /// Reattach `b` lazily (`Lazy`): `reattach` but for the old run's latest
+    /// state, which a `restore_branch` to the branch's target never needs,
+    /// and anything else copies in first.
+    pub fn reattach_lazy(&mut self, b: Branch) -> Result<(), String> {
+        self.core_lazy().reattach_lazy(b)
+    }
+
+    /// Whether a lazy reattach waits, and its target.
+    pub fn lazy_target(&self) -> Option<CheckpointId> {
+        self.core().lazy.as_ref().map(|l| l.target)
+    }
+
+    /// Make a lazy reattach whole, if one waits.
+    pub fn materialize(&mut self) {
+        self.core_lazy().materialize();
+    }
+
+    /// Bytes `off..off+len` of the state: under a lazy reattach, the live
+    /// space with the old run's latest chunks over it.
+    pub fn read_state(&self, off: usize, len: usize) -> Vec<u8> {
+        let c = self.core();
+        // SAFETY: the mapping is `bytes` long and initialised.
+        let all = unsafe { std::slice::from_raw_parts(c.base, c.bytes) };
+        let mut v = all[off..off + len].to_vec();
+        if let Some(l) = &c.lazy {
+            for &(ch, p) in &l.redo {
+                let (lo, hi) = (
+                    (ch as usize) << CHUNK_SHIFT,
+                    (ch as usize + 1) << CHUNK_SHIFT,
+                );
+                let (a, b) = (lo.max(off), hi.min(off + len));
+                if a >= b {
+                    continue;
+                }
+                // SAFETY: `p` is a whole slab chunk of CHUNK_BYTES bytes.
+                let src = unsafe { std::slice::from_raw_parts(p as *const u8, CHUNK_BYTES) };
+                v[a - off..b - off].copy_from_slice(&src[a - lo..b - lo]);
+            }
+        }
+        v
+    }
+
     /// The whole space, for hashing, persisting and comparing.
     pub fn bytes(&self) -> &[u8] {
-        let c = self.core();
+        let c = self.live();
         // SAFETY: the mapping is `bytes` long and initialised (zero-filled).
         unsafe { std::slice::from_raw_parts(c.base, c.bytes) }
     }
@@ -2083,7 +2239,7 @@ impl Arena {
     pub fn chunk(&self, c: usize) -> &[u64] {
         assert!(c < self.chunks());
         // SAFETY: inside the mapping.
-        unsafe { std::slice::from_raw_parts(self.core().chunk_ptr(c), CHUNK_WORDS) }
+        unsafe { std::slice::from_raw_parts(self.live().chunk_ptr(c), CHUNK_WORDS) }
     }
 
     /// A hash of the whole space: every chunk that is not all zero, with its
@@ -2124,6 +2280,7 @@ impl Arena {
     /// idle trim calls it, on the engine thread. The bytes given back.
     pub fn release_zero_pages(&mut self) -> usize {
         let page = os::page_size();
+        self.materialize();
         let c = self.core();
         if page < CHUNK_BYTES || !page.is_multiple_of(CHUNK_BYTES) {
             return 0;
@@ -2410,6 +2567,11 @@ impl Arena {
     /// Write `src` at byte `off` of the space through the barrier, touching
     /// only the words that differ (the scalar spill).
     pub fn write_through(&mut self, off: usize, src: &[u8]) {
+        // (the state's bytes already: nothing to write, even under a lazy
+        // reattach, which a write would make whole)
+        if self.core().lazy.is_some() && self.read_state(off, src.len()) == src {
+            return;
+        }
         let core = self.core_mut();
         assert!(off + src.len() <= core.bytes);
         // No reference into the space may be live across `save`, which reads
@@ -2464,7 +2626,8 @@ impl Arena {
     }
 
     pub fn restore_branch(&mut self, id: CheckpointId) -> Result<Branch, String> {
-        self.core_mut().restore_branch(id)
+        // (materializes a lazy reattach to another target itself)
+        self.core_lazy().restore_branch(id)
     }
 
     /// Work out a later `restore_branch(id)` now (`Prepared`), while the
@@ -2540,7 +2703,7 @@ impl Arena {
     /// chunk the logs since `id` hold, rewound through them, else the live
     /// chunk.
     pub fn view_at(&self, id: CheckpointId) -> Result<View<'_>, String> {
-        let core = self.core();
+        let core = self.live();
         let k = core
             .index_of(id)
             .ok_or_else(|| format!("checkpoint {id} is not retained"))?;
@@ -2671,7 +2834,7 @@ impl Arena {
         old: CheckpointId,
         name: &str,
     ) -> Result<Vec<u64>, String> {
-        let core = self.core();
+        let core = self.live();
         let r = *b.ids.first().ok_or("empty branch")?;
         let kr = core
             .index_of(r)
@@ -2710,7 +2873,7 @@ impl Arena {
         cs: &[u32],
         stop: &mut dyn FnMut() -> bool,
     ) -> Result<Option<HashMap<u32, Vec<u64>>>, String> {
-        let core = self.core();
+        let core = self.live();
         let r = *b.ids.first().ok_or("empty branch")?;
         let kr = core
             .index_of(r)
@@ -2753,7 +2916,7 @@ impl Arena {
         stop: &mut dyn FnMut() -> bool,
         skip_unstated: bool,
     ) -> Result<Option<ChunkDiff>, String> {
-        let core = self.core();
+        let core = self.live();
         let r = *b.ids.first().ok_or("empty branch")?;
         let kr = core
             .index_of(r)
@@ -4158,6 +4321,99 @@ mod tests {
         for (i, &id) in ids.iter().enumerate().rev() {
             a.restore_discard(id).unwrap();
             assert!(arr[..] == copies[i][..], "restore {i} after reattaches");
+        }
+    }
+
+    /// A lazy reattach (`Lazy`) and a restore to its target leave what a
+    /// reattach and that restore leave (the target's state, its
+    /// checkpoints, a branch that reattaches to the old run's end); a write,
+    /// a restore elsewhere or any other change of the space under it makes
+    /// it whole first, so each sees the old run's end.
+    #[test]
+    fn a_lazy_reattach_is_a_reattach() {
+        let (mut a, mut arr) = space(200_000);
+        scribble(&mut arr, 1, 5000);
+        let mut ids = vec![];
+        let mut copies = vec![];
+        for k in 0..12 {
+            ids.push(a.checkpoint());
+            copies.push(arr.to_vec());
+            scribble(&mut arr, 100 + k, 3000);
+            a.write_through(0, &[k as u8 + 1; 64]);
+        }
+        let end = arr.to_vec();
+        let new_run = |a: &mut Arena, arr: &mut Arr<u64>, s: u64| {
+            scribble(arr, 900 + s, 4000);
+            a.checkpoint();
+            scribble(arr, 950 + s, 4000);
+            a.checkpoint();
+            scribble(arr, 990 + s, 100);
+        };
+        for i in [0usize, 5, 11] {
+            // a restore to the target takes the redo back
+            let br = a.restore_branch(ids[i]).unwrap();
+            new_run(&mut a, &mut arr, i as u64);
+            a.reattach_lazy(br).unwrap();
+            assert_eq!(a.lazy_target(), Some(ids[i]));
+            assert_eq!(a.checkpoint_ids(), &ids[..], "the old checkpoints from {i}");
+            assert!(arr[..] == copies[i][..], "the live space is the target's");
+            let br = a.restore_branch(ids[i]).unwrap();
+            assert_eq!(a.lazy_target(), None);
+            assert!(arr[..] == copies[i][..], "restored to {i}");
+            assert_eq!(a.checkpoint_ids(), &ids[..=i]);
+            new_run(&mut a, &mut arr, 20 + i as u64);
+            a.reattach(br).unwrap();
+            assert!(
+                arr[..] == end[..],
+                "the branch reattaches to the end from {i}"
+            );
+            assert_eq!(a.checkpoint_ids(), &ids[..]);
+            // a write makes it whole first
+            let br = a.restore_branch(ids[i]).unwrap();
+            new_run(&mut a, &mut arr, 40 + i as u64);
+            a.reattach_lazy(br).unwrap();
+            let j = arr.len() / 3;
+            arr[j] ^= 0x5a5a;
+            assert_eq!(a.lazy_target(), None);
+            let mut want = end.clone();
+            want[j] ^= 0x5a5a;
+            assert!(arr[..] == want[..], "a write sees the end from {i}");
+            a.restore_discard(*ids.last().unwrap()).unwrap();
+            assert!(arr[..] == copies[11][..]);
+            scribble(&mut arr, 111, 3000);
+            a.write_through(0, &[12; 64]);
+            assert!(arr[..] == end[..]);
+            // a restore elsewhere makes it whole first
+            let br = a.restore_branch(ids[i]).unwrap();
+            new_run(&mut a, &mut arr, 60 + i as u64);
+            a.reattach_lazy(br).unwrap();
+            let other = if i == 0 { 3 } else { i - 1 };
+            let br = a.restore_branch(ids[other]).unwrap();
+            assert!(
+                arr[..] == copies[other][..],
+                "restore {other} after a lazy reattach"
+            );
+            a.reattach(br).unwrap();
+            assert!(arr[..] == end[..]);
+            // the scalars read from the state under it
+            let br = a.restore_branch(ids[i]).unwrap();
+            a.write_through(0, &[i as u8 + 1; 64]);
+            a.reattach_lazy(br).unwrap();
+            let lazy = a.read_state(0, 64);
+            assert_eq!(
+                lazy,
+                vec![12u8; 64],
+                "the old run's scalars under a lazy reattach"
+            );
+            a.materialize();
+            assert_eq!(lazy, a.read(0, 64));
+        }
+        for (i, &id) in ids.iter().enumerate().rev() {
+            a.restore_discard(id).unwrap();
+            assert!(
+                arr[..] == copies[i][..],
+                "restore {i} after lazy reattaches"
+            );
         }
     }
 

@@ -887,7 +887,8 @@ impl Globals {
 
     /// Read the scalar globals back from the scalar region.
     pub fn fill_scalars(&mut self) {
-        let img = self.arena.read(0, SCALAR_BYTES).to_vec();
+        // (the state's: under a lazy reattach, the old run's, `arena::Lazy`)
+        let img = self.arena.read_state(0, SCALAR_BYTES);
         let mut f = Fill { src: &img, pos: 0 };
         self.visit_scalars(&mut f);
         // The one piece of process state outside the word space that the
@@ -1147,6 +1148,18 @@ impl Globals {
     pub fn restore(&mut self, id: CheckpointId) -> Result<(), String> {
         let _m = crate::memstat::scope(crate::memstat::tag::BRANCH);
         let t0 = std::time::Instant::now();
+        // A lazy reattach (`reattach_pending_lazily`) stays lazy only for a
+        // restore to its target, and only while what the host state's
+        // capture reads of the word space is the scalars (filled from the
+        // state): the conditionals' lines `lineshift::marks` reads from
+        // `mem` when they nest deeper than its tags.
+        if self
+            .arena
+            .lazy_target()
+            .is_some_and(|t| t != id || crate::lineshift::marks_read_mem(self))
+        {
+            self.arena.materialize();
+        }
         system::file_trace(|| format!("restore {id}"));
         let rec = self.record_of(id)?;
         if let Some(p) = rewritten_since(&rec) {
@@ -1336,6 +1349,19 @@ impl Globals {
     /// here and handed them to the next restore, because a restore no
     /// longer reads a tail it can keep in the file.
     pub fn reattach_pending(&mut self) -> Result<(), String> {
+        self.reattach_pending_with(false)
+    }
+
+    /// `reattach_pending` for a compile that restores next (an abandoned
+    /// run: `incr::Session::compile`): the word space's part waits
+    /// (`arena::Lazy`), so that a restore to the same target copies nothing
+    /// in or out. The caller makes it whole (`Arena::materialize`) if it
+    /// does not restore after all.
+    pub fn reattach_pending_lazily(&mut self) -> Result<(), String> {
+        self.reattach_pending_with(true)
+    }
+
+    fn reattach_pending_with(&mut self, lazy: bool) -> Result<(), String> {
         if let Some(why) = self.reattach_blocked() {
             return Err(format!("reattach: {why}"));
         }
@@ -1355,7 +1381,11 @@ impl Globals {
             opens_tail,
         } = p;
         self.spill_scalars();
-        self.arena.reattach(branch)?;
+        if lazy {
+            self.arena.reattach_lazy(branch)?;
+        } else {
+            self.arena.reattach(branch)?;
+        }
         let t_branch = t0.elapsed();
         self.fill_scalars();
         let keep: std::collections::HashSet<CheckpointId> =

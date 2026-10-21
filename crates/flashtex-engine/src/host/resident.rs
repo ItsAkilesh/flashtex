@@ -207,6 +207,10 @@ struct Target {
     /// compile and at the first page (`os::thread_counts`; macOS, Linux).
     pmu0: Option<(u64, u64)>,
     first_pmu: Option<(u64, u64)>,
+    /// Page faults and system calls at the start and at the first page
+    /// (`os::events`).
+    flt0: Option<(u64, u64)>,
+    first_flt: Option<(u64, u64)>,
 }
 
 impl Target {
@@ -463,6 +467,7 @@ impl Live {
                 t.first_emit_ms = Some((displaylist::emit_ns() - t.emit0) as f64 * 1e-6);
                 t.first_send_ms = Some(t.send_ns as f64 * 1e-6);
                 t.first_pmu = crate::os::thread_counts();
+                t.first_flt = crate::os::events();
                 // (`FLASHTEX_PERF_MARKS`: `d`, the first page delivered)
                 crate::os::perf_mark_as('d');
                 let count = t.old_count.max(i + 1);
@@ -856,6 +861,7 @@ impl Engine {
         ));
         let cpu0 = incr::thread_cpu_s();
         let pmu0 = crate::os::thread_counts();
+        let flt0 = crate::os::events();
         let out = conn.out.clone();
         let Some(id) = req.int_field("id") else {
             server::error(&out, None, "request", "COMPILE needs an integer id");
@@ -869,6 +875,7 @@ impl Engine {
             }
         };
         let t_apply = Instant::now();
+        let ev_apply = crate::os::events();
         // (the host's copies stand for files only within the compile that
         // wrote them: `system::KNOWN`)
         crate::system::clear_known_content();
@@ -877,6 +884,10 @@ impl Engine {
             return self.resume_deferred(&conn);
         }
         let apply_ms = t_apply.elapsed().as_secs_f64() * 1e3;
+        // (its page faults and, on macOS, system calls: `os::events`)
+        let apply_ev = ev_apply
+            .zip(crate::os::events())
+            .map(|(a, b)| (b.0 - a.0, b.1 - a.1));
         let started = |mode: &str, keep: bool, extra: Vec<(String, Json)>| {
             let mut kv = vec![
                 ("id".to_string(), Json::Int(id)),
@@ -986,6 +997,8 @@ impl Engine {
             first_send_ms: None,
             pmu0,
             first_pmu: None,
+            flt0,
+            first_flt: None,
         });
         let stop_at = req
             .int_field("viewport")
@@ -1288,6 +1301,10 @@ impl Engine {
                     ),
                 ),
                 ("apply".to_string(), m(apply_ms)),
+                (
+                    "apply_sys".to_string(),
+                    apply_ev.map_or(Json::Null, |e| Json::Int(e.1 as i64)),
+                ),
                 ("move_spans".to_string(), m(move_ms)),
                 ("first_page".to_string(), o(t.first_page_ms)),
                 ("first_page_cpu".to_string(), o(t.first_cpu_ms)),
@@ -1350,6 +1367,26 @@ impl Engine {
                 let (kept, rewound) = doc.session.old_cache_counts();
                 st.push(("old_kept".to_string(), Json::Int(kept as i64)));
                 st.push(("old_rewound".to_string(), Json::Int(rewound as i64)));
+            }
+            // Page faults and system calls (macOS; `_sys`): the whole
+            // compile, to the first page, the restore and what an abandoned
+            // run's handling took (`os::events`)
+            if let (Some(a), Some(b)) = (t.flt0, crate::os::events()) {
+                let mut both = |k: &str, v: (u64, u64)| {
+                    st.push((format!("{k}flt"), Json::Int(v.0 as i64)));
+                    st.push((format!("{k}sys"), Json::Int(v.1 as i64)));
+                };
+                both("", (b.0 - a.0, b.1 - a.1));
+                if let Some(f) = t.first_flt {
+                    both("first_page_", (f.0 - a.0, f.1 - a.1));
+                }
+                if let Ok(rep) = &result {
+                    for (k, v) in [("restore_", rep.restore_flt), ("paused_", rep.paused_flt)] {
+                        if let Some(v) = v {
+                            both(k, v);
+                        }
+                    }
+                }
             }
             // Instructions and cycles of the engine thread, in thousands:
             // the whole compile, to the first page, and (from the session)
@@ -1866,25 +1903,43 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
         }
         std::fs::read(path).map(Arc::new)
     };
-    // Write `data` to `path`, whose bytes before `from` are already these.
-    let write_from = |path: &Path, data: Vec<u8>, from: usize, written: &mut Written| {
-        let r = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(path)
-            .and_then(|f| {
-                f.set_len(data.len() as u64)?;
-                crate::os::write_all_at(&f, &data[from..], from as u64)
-            });
-        r.map_err(|e| format!("{}: {e}", path.display()))?;
-        let held = sig(path).map(|s| (s, Arc::new(data)));
-        crate::system::note_known_content(path, held.clone());
-        if let Some(h) = held {
-            written.insert(path.to_path_buf(), h);
-        }
-        Ok::<(), String>(())
-    };
+    // Write `data` to `path`, whose bytes before `from` are already these
+    // and whose length is `old` (when known). The length is set only where
+    // the write leaves it wrong: a file that grows grows by the write (lane
+    // T7-MARGIN: on the M5 Pro's APFS a letter typed or deleted, which sets
+    // the length, took 0.45-0.8 ms here, a newline in place of a space,
+    // which keeps it, 0.12-0.14 ms; reference run 2026-10-21b).
+    let write_from =
+        |path: &Path, data: Vec<u8>, from: usize, old: Option<usize>, written: &mut Written| {
+            let r = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(path)
+                .and_then(|f| {
+                    let n = data.len() as u64;
+                    match old {
+                        Some(o) if o <= data.len() => {
+                            crate::os::write_all_at(&f, &data[from..], from as u64)
+                        }
+                        Some(_) => {
+                            crate::os::write_all_at(&f, &data[from..], from as u64)?;
+                            f.set_len(n)
+                        }
+                        None => {
+                            f.set_len(n)?;
+                            crate::os::write_all_at(&f, &data[from..], from as u64)
+                        }
+                    }
+                });
+            r.map_err(|e| format!("{}: {e}", path.display()))?;
+            let held = sig(path).map(|s| (s, Arc::new(data)));
+            crate::system::note_known_content(path, held.clone());
+            if let Some(h) = held {
+                written.insert(path.to_path_buf(), h);
+            }
+            Ok::<(), String>(())
+        };
     for b in req.get("buffers").and_then(Json::as_array).unwrap_or(&[]) {
         let p = b.str_field("path").ok_or("a buffer needs path")?;
         let text = b.str_field("text").ok_or("a buffer needs text")?;
@@ -1895,7 +1950,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                     written.insert(path, (s, d));
                 }
             }
-            _ => write_from(&path, text.as_bytes().to_vec(), 0, written)?,
+            _ => write_from(&path, text.as_bytes().to_vec(), 0, None, written)?,
         }
     }
     for e in req.get("edits").and_then(Json::as_array).unwrap_or(&[]) {
@@ -1909,6 +1964,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
             return Err(format!("{p}: edit outside the file"));
         }
         let (at, del) = (at as usize, del as usize);
+        let old = d.len();
         if d[at..at + del] == *ins.as_bytes() {
             // nothing changes (the file is left alone, as before)
             if let Some(s) = sig(&path) {
@@ -1932,7 +1988,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                 n
             }
         };
-        write_from(&path, d, at, written)?;
+        write_from(&path, d, at, Some(old), written)?;
     }
     Ok(())
 }
