@@ -2224,11 +2224,20 @@ fn page_insertion_records_compare_their_split_fields_only_when_split_up() {
         let r = compile_and_check(&e, &mut h, &dir, &[("doc.tex", &doc("eta", extra))], what);
         assert!(r.contains("\"mode\":\"incremental\""), "{what}: {r}");
         let (from, to) = (page_of("ls"), page_of("le"));
-        assert!(from < to, "{what}: the long footnote is not split ({from}, {to})");
+        assert!(
+            from < to,
+            "{what}: the long footnote is not split ({from}, {to})"
+        );
         let restart: usize = field(&r, "restart_pages").parse().unwrap();
-        assert!(restart <= from, "{what}: restarted after the split ({restart}): {r}");
+        assert!(
+            restart <= from,
+            "{what}: restarted after the split ({restart}): {r}"
+        );
         if let Ok(c) = field(&r, "converged_at").parse::<usize>() {
-            assert!(c > to, "{what}: converged at page {c}, within the split {from}-{to}: {r}");
+            assert!(
+                c > to,
+                "{what}: converged at page {c}, within the split {from}-{to}: {r}"
+            );
         }
     }
 }

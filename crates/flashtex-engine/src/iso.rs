@@ -2999,6 +2999,8 @@ pub fn who_points(g: &Globals, slots: &[ScalarSlot], targets: &[i32], max: usize
 mod tests {
     use super::*;
 
+    const INSERTING: i32 = crate::generated::consts::inserting;
+
     /// A word space holding only the words a test puts in `mem` (every
     /// other word 0).
     #[derive(Default)]
@@ -3091,8 +3093,8 @@ mod tests {
     /// "broken_ptr: ... points at nothing the walk reached").
     #[test]
     fn an_inserting_records_stale_broken_fields_are_not_compared() {
-        let o = page_ins_list(1000, crate::generated::consts::inserting, 4_677_821, 2_345_678);
-        let n = page_ins_list(1000, crate::generated::consts::inserting, 3_122_334, 1_234_567);
+        let o = page_ins_list(1000, INSERTING, 4_677_821, 2_345_678);
+        let n = page_ins_list(1000, INSERTING, 3_122_334, 1_234_567);
         assert_eq!(compare(&o, &n), Ok(()));
     }
 
@@ -3110,7 +3112,7 @@ mod tests {
         let n = page_ins_list(1000, SPLIT_UP, 4_000, 4_001);
         assert!(compare(&o, &n).is_err());
         // (and an `inserting` record with null fields, as always)
-        let o = page_ins_list(1000, crate::generated::consts::inserting, NULL, NULL);
+        let o = page_ins_list(1000, INSERTING, NULL, NULL);
         assert_eq!(compare(&o, &o), Ok(()));
     }
 }
