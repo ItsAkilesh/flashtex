@@ -75,7 +75,7 @@ fn sync(f: &std::fs::File) {
 
 /// After compile number `n` (the document's): write out `sources` and, in
 /// mode 2, the output directory's recent files. Returns whether it did.
-pub fn after_compile(n: usize, sources: Vec<PathBuf>, out_dir: &Path) -> bool {
+pub fn after_compile(n: u64, sources: Vec<PathBuf>, out_dir: &Path) -> bool {
     let m = mode();
     if m == 0 || (ab() && (n / 2) % 2 == 1) {
         return false;
