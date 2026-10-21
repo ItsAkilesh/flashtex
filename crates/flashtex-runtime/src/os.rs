@@ -856,6 +856,41 @@ pub fn write_all_at(f: &std::fs::File, buf: &[u8], offset: u64) -> std::io::Resu
     }
 }
 
+/// Read exactly `buf.len()` bytes at byte `offset` of `f` (`pread`; on
+/// Windows `seek_read`, which moves the file position, which no caller
+/// relies on).
+pub fn read_exact_at(f: &std::fs::File, buf: &mut [u8], offset: u64) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::FileExt::read_exact_at(f, buf, offset)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileExt;
+        let (mut buf, mut offset) = (buf, offset);
+        while !buf.is_empty() {
+            match f.seek_read(buf, offset) {
+                Ok(0) => return Err(std::io::ErrorKind::UnexpectedEof.into()),
+                Ok(n) => {
+                    buf = &mut buf[n..];
+                    offset += n as u64;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+    // std's WASI `FileExt` is unstable: a seek, then the read.
+    #[cfg(target_os = "wasi")]
+    {
+        use std::io::{Read, Seek};
+        let mut f = f;
+        f.seek(std::io::SeekFrom::Start(offset))?;
+        f.read_exact(buf)
+    }
+}
+
 /// Make `dst` a copy of `src` sharing its blocks (APFS `clonefile`, O(1));
 /// false where the file system cannot (the caller copies instead).
 pub fn clone_file(src: &str, dst: &str) -> bool {
