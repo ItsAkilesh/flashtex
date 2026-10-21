@@ -35,6 +35,34 @@
 //! cost address space, not memory.
 
 use std::collections::HashMap;
+
+/// A map by chunk number, with a cheap hash (the convergence test's
+/// maps of the chunks it compares: SipHash was 3 M instructions a test on
+/// the Unicode bench b4, READ-TRACK-3).
+type ChunkMap<V> = HashMap<u32, V, std::hash::BuildHasherDefault<ChunkHasher>>;
+
+/// [`ChunkMap`]'s hash of a chunk number: a multiply and a fold (the
+/// numbers are dense and not chosen by an adversary).
+#[derive(Default)]
+struct ChunkHasher(u64);
+
+impl std::hash::Hasher for ChunkHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.write_u64(b as u64);
+        }
+    }
+    fn write_u32(&mut self, x: u32) {
+        self.write_u64(x as u64);
+    }
+    fn write_u64(&mut self, x: u64) {
+        let h = (self.0.rotate_left(5) ^ x).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        self.0 = h ^ (h >> 32);
+    }
+}
 use std::marker::PhantomData;
 use std::ops::{Deref, Index, IndexMut};
 
@@ -450,40 +478,64 @@ impl Log {
         self.deltas.iter().map(|d| d.len()).sum()
     }
 
-    /// Rewrite the sealed log through `f`, which sees each delta as its
-    /// chunk, mask and values (in bit order) and may change them or add
-    /// deltas (kept sorted by chunk). For the rare edits of a sealed log
-    /// (`Arena::or_from`), not for restores.
-    fn rewrite(&mut self, f: impl FnOnce(&mut Vec<(u32, [u64; MASK_WORDS], Vec<u64>)>)) {
-        let mut buf = [0u64; CHUNK_WORDS];
-        let mut v: Vec<(u32, [u64; MASK_WORDS], Vec<u64>)> = self
-            .deltas
-            .iter()
-            .map(|d| {
-                d.unpack(&self.bytes, &mut buf);
-                (d.c, d.mask, buf[..d.len()].to_vec())
-            })
-            .collect();
-        f(&mut v);
-        v.sort_by_key(|e| e.0);
-        let mut deltas = Vec::with_capacity(v.len());
-        let mut bytes = Vec::with_capacity(self.bytes.len() + 16);
-        for (c, mask, vals) in &v {
-            debug_assert_eq!(
-                vals.len(),
-                mask.iter().map(|m| m.count_ones() as usize).sum::<usize>()
-            );
-            let at = bytes.len() as u32;
-            pack_words(vals, &mut bytes);
-            deltas.push(Delta {
-                c: *c,
-                at,
-                mask: *mask,
-            });
+    /// Edit the sealed log's delta of chunk `c` through `f`, which sees its
+    /// mask and values (in bit order; both empty when the log holds no delta
+    /// of `c`) and may change them, keeping one value per bit. Only that
+    /// delta's bytes are packed again (the others' stay where they are), so
+    /// an edit costs the delta, not the log. For the rare edits of a sealed
+    /// log (`Arena::or_from`, `Arena::set_from`), not for restores.
+    fn edit_chunk(&mut self, c: u32, f: impl FnOnce(&mut [u64; MASK_WORDS], &mut Vec<u64>)) {
+        let at = self.deltas.partition_point(|d| d.c < c);
+        let found = self.deltas.get(at).is_some_and(|d| d.c == c);
+        let (mut mask, mut vals, old) = if found {
+            let d = self.deltas[at];
+            let mut buf = [0u64; CHUNK_WORDS];
+            d.unpack(&self.bytes, &mut buf);
+            let n = d.len();
+            let span = d.at as usize..d.at as usize + d.packed_len(&self.bytes);
+            (d.mask, buf[..n].to_vec(), Some(span))
+        } else {
+            ([0u64; MASK_WORDS], Vec::new(), None)
+        };
+        f(&mut mask, &mut vals);
+        debug_assert_eq!(
+            vals.len(),
+            mask.iter().map(|m| m.count_ones() as usize).sum::<usize>()
+        );
+        let mut packed = Vec::with_capacity(vals.len() * 9 / 2 + 1);
+        pack_words(&vals, &mut packed);
+        let empty = mask.iter().all(|&m| m == 0);
+        match old {
+            Some(span) => {
+                let (from, old_len) = (span.start, span.len());
+                // the bytes after it move by the change of its length
+                let grow = packed.len() as i64 - old_len as i64;
+                if empty {
+                    self.bytes.drain(span);
+                } else {
+                    self.bytes.splice(span, packed);
+                }
+                let shift = if empty { -(old_len as i64) } else { grow };
+                if shift != 0 {
+                    for d in self.deltas.iter_mut() {
+                        if d.at as usize > from {
+                            d.at = (d.at as i64 + shift) as u32;
+                        }
+                    }
+                }
+                if empty {
+                    self.deltas.remove(at);
+                } else {
+                    self.deltas[at].mask = mask;
+                }
+            }
+            None if empty => {}
+            None => {
+                let pos = self.bytes.len() as u32;
+                self.bytes.extend_from_slice(&packed);
+                self.deltas.insert(at, Delta { c, at: pos, mask });
+            }
         }
-        bytes.shrink_to_fit();
-        self.deltas = deltas;
-        self.bytes = bytes;
     }
 }
 
@@ -2011,7 +2063,7 @@ struct OldCache {
 
 /// One checkpoint's kept chunks: (checkpoint, history_gen, chunk -> index
 /// into the words / CHUNK_WORDS, the words).
-type OldAt = (CheckpointId, u64, HashMap<u32, usize>, Vec<u64>);
+type OldAt = (CheckpointId, u64, ChunkMap<usize>, Vec<u64>);
 
 /// Checkpoints `OldCache` keeps, and the chunks it keeps in all (1 KB each).
 const OLD_CACHE_CHECKPOINTS: usize = 4;
@@ -2032,7 +2084,7 @@ impl OldCache {
                 let e = self.at.remove(k);
                 self.at.push(e);
             }
-            None => self.at.push((id, gen, HashMap::new(), vec![])),
+            None => self.at.push((id, gen, ChunkMap::default(), vec![])),
         }
         // Room first, least recently used checkpoints out (never the one
         // being filled, now the last): the cache never holds more than
@@ -2501,22 +2553,12 @@ impl Arena {
                 .collect();
             if !missing.is_empty() {
                 let before = prev.sealed_bytes();
-                prev.rewrite(|ds| {
-                    for &(c, w, v) in &missing {
-                        let (mw, b) = (w / 64, w % 64);
-                        match ds.iter_mut().find(|e| e.0 == c) {
-                            Some((_, mask, vals)) => {
-                                vals.insert(place(mask, w), v);
-                                mask[mw] |= 1u64 << b;
-                            }
-                            None => {
-                                let mut mask = [0u64; MASK_WORDS];
-                                mask[mw] = 1u64 << b;
-                                ds.push((c, mask, vec![v]));
-                            }
-                        }
-                    }
-                });
+                for &(c, w, v) in &missing {
+                    prev.edit_chunk(c, |mask, vals| {
+                        vals.insert(place(mask, w), v);
+                        mask[w / 64] |= 1u64 << (w % 64);
+                    });
+                }
                 core.sealed_bytes = core.sealed_bytes + prev.sealed_bytes() - before;
             }
         }
@@ -2534,23 +2576,29 @@ impl Arena {
                     }
                 }
             }
-            if log
-                .deltas
-                .iter()
-                .any(|d| pos.iter().any(|&(c, w)| held_in(d, c, w)))
-            {
-                let before = log.sealed_bytes();
-                log.rewrite(|ds| {
-                    for (dc, mask, vals) in ds.iter_mut() {
-                        for (i, &(c, w)) in pos.iter().enumerate() {
-                            if *dc == c && mask[w / 64] >> (w % 64) & 1 == 1 {
-                                let idx = place(mask, w);
-                                vals[idx] = f(i, vals[idx]);
-                                n += 1;
-                            }
+            // (only the deltas of the words' chunks are packed again)
+            let before = log.sealed_bytes();
+            let mut edited = false;
+            for &c in &cs {
+                let at = log.deltas.partition_point(|d| d.c < c);
+                let Some(d) = log.deltas.get(at).filter(|d| d.c == c) else {
+                    continue;
+                };
+                if !pos.iter().any(|&(pc, w)| held_in(d, pc, w)) {
+                    continue;
+                }
+                log.edit_chunk(c, |mask, vals| {
+                    for (i, &(pc, w)) in pos.iter().enumerate() {
+                        if pc == c && mask[w / 64] >> (w % 64) & 1 == 1 {
+                            let idx = place(mask, w);
+                            vals[idx] = f(i, vals[idx]);
+                            n += 1;
                         }
                     }
                 });
+                edited = true;
+            }
+            if edited {
                 core.sealed_bytes = core.sealed_bytes + log.sealed_bytes() - before;
             }
         }
@@ -2884,7 +2932,7 @@ impl Arena {
             .position(|&x| x == old)
             .ok_or_else(|| format!("checkpoint {old} is not in the detached run"))?;
         let want: std::collections::HashSet<u32> = cs.iter().copied().collect();
-        let mut redo_of: HashMap<u32, *const u64> = HashMap::new();
+        let mut redo_of: ChunkMap<*const u64> = ChunkMap::default();
         for &(c, p) in &b.redo {
             if want.contains(&c) {
                 redo_of.insert(c, p as *const u64);
@@ -2961,7 +3009,7 @@ impl Arena {
             }
         }
         // The old run's last value of the candidates it wrote at all.
-        let mut redo_of: HashMap<u32, *const u64> = HashMap::new();
+        let mut redo_of: ChunkMap<*const u64> = ChunkMap::default();
         for &(c, p) in &b.redo {
             if bit(&seen, c as usize) {
                 redo_of.insert(c, p as *const u64);
@@ -3075,7 +3123,8 @@ impl Arena {
                 (t.elapsed() - t_old).as_secs_f64() * 1e3
             );
         }
-        let mut old_at: HashMap<u32, *const u64> = HashMap::with_capacity(cand.len());
+        let mut old_at: ChunkMap<*const u64> =
+            ChunkMap::with_capacity_and_hasher(cand.len(), Default::default());
         for (i, &c) in in_old.iter().enumerate() {
             old_at.insert(c, old_buf[i * CHUNK_WORDS..].as_ptr());
         }
@@ -3086,7 +3135,7 @@ impl Arena {
         let mut out = ChunkDiff {
             compared: cand.len(),
             differing: Vec::new(),
-            old_at: HashMap::new(),
+            old_at: ChunkMap::default(),
             _bufs: (old_buf, r_buf),
         };
         for c in cand {
@@ -3255,7 +3304,7 @@ pub struct ChunkDiff {
     pub differing: Vec<(u32, *const u64, *const u64)>,
     /// The old run's value of every chunk either run wrote since the
     /// restore target (every other chunk is the live one).
-    old_at: HashMap<u32, *const u64>,
+    old_at: ChunkMap<*const u64>,
     /// Where `old_at` points.
     _bufs: (Vec<u64>, Vec<u64>),
 }
@@ -4248,44 +4297,48 @@ mod tests {
     /// later one and in the live state, and nowhere before.
     #[test]
     fn set_from_rewrites_the_later_history() {
-        let (mut a, mut arr) = space(200_000);
-        scribble(&mut arr, 1, 5000);
-        let mut ids = vec![];
-        let mut copies = vec![];
-        for k in 0..20 {
-            ids.push(a.checkpoint());
-            copies.push(arr.to_vec());
-            scribble(&mut arr, 100 + k, 3000);
-        }
-        let end = arr.to_vec();
-        // a word some logs hold (written after checkpoint 7, and later) and
-        // one none do
-        let w = (0..arr.len())
-            .find(|&i| copies[8][i] != copies[7][i] && copies[12][i] != copies[8][i])
-            .unwrap();
-        let quiet = (0..arr.len())
-            .find(|&i| copies.iter().all(|c| c[i] == end[i]) && i != w)
-            .unwrap();
-        let value = 0x005e_ed0f_da7a_u64;
-        let off = |i: usize| (&arr[i] as *const u64 as usize) - (a.bytes().as_ptr() as usize);
-        let words = [(off(w), value), (off(quiet), value)];
-        a.set_from(ids[7], &words).unwrap();
-        let expect = |c: &Vec<u64>, k: usize| {
-            let mut c = c.clone();
-            if k >= 7 {
-                c[w] = value;
-                c[quiet] = value;
+        // a large value, zero and a small one: the packed delta grows,
+        // shrinks or keeps its length (`Log::edit_chunk` moves the bytes
+        // after it)
+        for value in [0x005e_ed0f_da7a_u64, 0, 7] {
+            let (mut a, mut arr) = space(200_000);
+            scribble(&mut arr, 1, 5000);
+            let mut ids = vec![];
+            let mut copies = vec![];
+            for k in 0..20 {
+                ids.push(a.checkpoint());
+                copies.push(arr.to_vec());
+                scribble(&mut arr, 100 + k, 3000);
             }
-            c
-        };
-        assert!(arr[w] == value && arr[quiet] == value);
-        for i in [3usize, 6, 7, 12, 19, 0] {
-            let br = a.restore_branch(ids[i]).unwrap();
-            assert!(arr[..] == expect(&copies[i], i)[..], "restore to {i}");
-            a.converge(br, ids[i]).unwrap();
+            let end = arr.to_vec();
+            // a word some logs hold (written after checkpoint 7, and later) and
+            // one none do
+            let w = (0..arr.len())
+                .find(|&i| copies[8][i] != copies[7][i] && copies[12][i] != copies[8][i])
+                .unwrap();
+            let quiet = (0..arr.len())
+                .find(|&i| copies.iter().all(|c| c[i] == end[i]) && i != w)
+                .unwrap();
+            let off = |i: usize| (&arr[i] as *const u64 as usize) - (a.bytes().as_ptr() as usize);
+            let words = [(off(w), value), (off(quiet), value)];
+            a.set_from(ids[7], &words).unwrap();
+            let expect = |c: &Vec<u64>, k: usize| {
+                let mut c = c.clone();
+                if k >= 7 {
+                    c[w] = value;
+                    c[quiet] = value;
+                }
+                c
+            };
+            assert!(arr[w] == value && arr[quiet] == value);
+            for i in [3usize, 6, 7, 12, 19, 0] {
+                let br = a.restore_branch(ids[i]).unwrap();
+                assert!(arr[..] == expect(&copies[i], i)[..], "restore to {i}");
+                a.converge(br, ids[i]).unwrap();
+            }
+            a.restore_discard(ids[10]).unwrap();
+            assert!(arr[..] == expect(&copies[10], 10)[..]);
         }
-        a.restore_discard(ids[10]).unwrap();
-        assert!(arr[..] == expect(&copies[10], 10)[..]);
     }
 
     #[test]

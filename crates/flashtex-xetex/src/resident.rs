@@ -1325,6 +1325,7 @@ impl Engine {
                                     opens: c.opens,
                                     id: c.id,
                                     rec: c.rec.clone(),
+                                    out: c.out.clone(),
                                     reads: c.reads,
                                     dorm: c.dorm,
                                 })
