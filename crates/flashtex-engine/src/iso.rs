@@ -242,6 +242,13 @@ fn int(w: u64) -> i32 {
 /// A state's word space, read by byte offset.
 pub trait Space {
     fn word(&self, off: usize) -> u64;
+    /// Whether the word at byte `off` is, by the chunk diff, the same in
+    /// both states: its chunk neither run wrote since the restore target
+    /// (the old run's space only; the live space never claims it).
+    #[inline]
+    fn clean(&self, _off: usize) -> bool {
+        false
+    }
 }
 
 /// The live space.
@@ -259,8 +266,29 @@ impl Space for Live<'_> {
 /// The old run's space at a checkpoint, through a chunk table.
 pub struct Old<'a> {
     table: Vec<*const u64>,
+    /// The chunks either run wrote since the restore target, by chunk
+    /// (`ChunkDiff::written`): every other chunk is the live one.
+    written: Vec<u64>,
     d: &'a ChunkDiff,
     g: &'a Globals,
+}
+
+impl<'a> Old<'a> {
+    fn new(d: &'a ChunkDiff, g: &'a Globals) -> Old<'a> {
+        let table = d.table(&g.arena);
+        let mut written = vec![0u64; table.len().div_ceil(64) + 1];
+        for c in d.written() {
+            if (c as usize) < table.len() {
+                set(&mut written, c as i32);
+            }
+        }
+        Old {
+            table,
+            written,
+            d,
+            g,
+        }
+    }
 }
 
 impl Space for Old<'_> {
@@ -273,6 +301,12 @@ impl Space for Old<'_> {
             Some(&p) if !p.is_null() => unsafe { *p.add((off & (CHUNK_BYTES - 1)) >> 3) },
             _ => self.d.old_word(&self.g.arena, off),
         }
+    }
+
+    #[inline]
+    fn clean(&self, off: usize) -> bool {
+        let c = off >> CHUNK_SHIFT;
+        c < self.table.len() && self.written[c >> 6] >> (c & 63) & 1 == 0
     }
 }
 
@@ -1223,6 +1257,33 @@ impl<'a, O: Space, N: Space> Iso<'a, O, N> {
             }
             if a == NULL || b == NULL {
                 fail!(self, "a token list is longer in one state");
+            }
+            // (READ-TRACK-2: a token at the same address in both states, in a
+            // chunk neither run wrote since the restore target, is the same
+            // word in both. It is paired with itself as `pair` would pair it,
+            // and the walk goes on to the same successor in both, without
+            // comparing or covering it: only a differing word needs covering,
+            // and none is in its chunk.)
+            if a == b
+                && self.watch != a
+                && Self::in_mem(a)
+                && self.o.sp.clean(self.o.l.mem + a as usize * 8)
+            {
+                if bit(&self.head_o, a) {
+                    if self.fwd.contains_key(&a) {
+                        fail!(self, "token {a}/{b} paired inconsistently");
+                    }
+                    return;
+                }
+                if bit(&self.head_n, a) {
+                    fail!(self, "token {a}/{b} paired inconsistently");
+                }
+                set(&mut self.head_o, a);
+                set(&mut self.head_n, a);
+                self.nodes += 1;
+                a = rh(self.n.mem(a));
+                b = a;
+                continue;
             }
             match self.pair(a, b) {
                 None => fail!(self, "token {a}/{b} paired inconsistently"),
@@ -2642,11 +2703,7 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
         let live = Live {
             bytes: g.arena.bytes(),
         };
-        let old = Old {
-            table: d.table(&g.arena),
-            d,
-            g,
-        };
+        let old = Old::new(d, g);
         let o = St {
             sp: &old,
             l: &l,

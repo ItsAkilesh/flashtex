@@ -343,7 +343,7 @@ impl Globals {
         let (pdf_name, pdf_open) = (out.pdf_name.clone(), out.pdf.is_some());
         if self.host.dl.on() {
             let (_, old_dl) = self.host_vs(op.id)?;
-            if !self.host.dl.tables().starts_like(&c.tables, old_dl.lens()) {
+            if !self.host.dl.numbered_like(&c.tables, old_dl.lens()) {
                 return Err("the source map numbers spans or files otherwise".into());
             }
         }
@@ -774,10 +774,9 @@ impl Globals {
                 _ => false,
             }
         };
-        let live_tables = g.host.dl.tables();
         let side = |a: i32, b: i32| -> bool {
             let (x, y) = (old_dl.at(a), g.host.dl.at(b));
-            x == y && x == 0 || c.tables.place(x) == live_tables.place(y)
+            x == y && x == 0 || c.tables.place(x) == g.host.dl.place(y)
         };
         let host = HostSide {
             glyphs: Some(&glyphs),
@@ -791,24 +790,45 @@ impl Globals {
         };
         let mut never = || false;
         let t1 = Instant::now();
-        let r = Iso::check(
-            g,
-            &d,
-            &layout,
-            free_o.as_deref(),
-            free_n.as_deref(),
-            &bad_mem,
-            None,
-            g.hyph_list.len(),
-            host,
-            &mut never,
-        )
-        .map_err(|e| format!("structures differ: {e}"));
+        // An equal state needs no walk (READ-TRACK-2). With no word left,
+        // every word the walk reads is the same in both states, so it pairs
+        // each node with itself, and all it could still find differs outside
+        // the word space: a native word's glyphs (its handle's array) or a
+        // node's source position (the side table's entry). Where both tables
+        // agree entry for entry, it finds nothing; else it walks.
+        let equal = left.is_empty()
+            && match same_outside(g, c, &old_handles, &old_dl) {
+                Ok(()) => true,
+                Err(e) => {
+                    if on() {
+                        eprintln!("[conv]   no word left, but {e}: the walk");
+                    }
+                    false
+                }
+            };
+        let r = if equal {
+            Ok(0)
+        } else {
+            Iso::check(
+                g,
+                &d,
+                &layout,
+                free_o.as_deref(),
+                free_n.as_deref(),
+                &bad_mem,
+                None,
+                g.hyph_list.len(),
+                host,
+                &mut never,
+            )
+            .map_err(|e| format!("structures differ: {e}"))
+        };
         if on() {
             eprintln!(
-                "[conv]   diff {t_diff:.2} ms ({} chunks, {n_words} words), words {:.2} ms, walk {:.2} ms",
+                "[conv]   diff {t_diff:.2} ms ({} chunks, {n_words} words), words {:.2} ms, {} {:.2} ms",
                 d.differing.len(),
                 (t1 - t0).as_secs_f64() * 1e3 - t_diff,
+                if equal { "equal, no walk" } else { "walk" },
                 t1.elapsed().as_secs_f64() * 1e3
             );
         }
@@ -859,6 +879,42 @@ impl Globals {
         };
         r
     }
+}
+
+/// What the structural comparison reads outside the word space, for a state
+/// whose words are all equal (`Globals::conv_check`): every glyph-info
+/// handle the same array in both runs' tables (`Handles::same_glyphs`), and,
+/// with a source map, every side-table entry the same place
+/// (`DlSnap::side_diffs`, with the live run numbering its spans and files as
+/// the old run had at the checkpoint; an entry that differs is compared as
+/// the walk compares it, by place in each run's tables). `Err`: what may
+/// differ, for the walk to decide.
+fn same_outside(
+    g: &Globals,
+    c: &Old,
+    old_handles: &crate::state::Handles,
+    old_dl: &crate::dlsource::DlSnap,
+) -> Result<(), String> {
+    if !old_handles.same_glyphs(&g.host.handles) {
+        return Err("a glyph-info handle differs".into());
+    }
+    let dl = &g.host.dl;
+    if !dl.on() {
+        return Ok(());
+    }
+    if !dl.numbered_like(&c.tables, old_dl.lens()) {
+        return Err("the source map numbers spans or files otherwise".into());
+    }
+    let diffs = old_dl
+        .side_diffs(dl, 256)
+        .ok_or("over 256 side-table entries differ")?;
+    for p in diffs {
+        let (x, y) = (old_dl.at(p as i32), dl.at(p as i32));
+        if !(x == y && x == 0 || c.tables.place(x) == dl.place(y)) {
+            return Err(format!("the side table's entry {p} differs ({x:#x} vs {y:#x})"));
+        }
+    }
+    Ok(())
 }
 
 /// Arrays whose elements from a pointer on are dead between two commands
