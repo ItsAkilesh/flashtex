@@ -48,6 +48,8 @@ pub mod diag;
 #[cfg(not(feature = "tex82"))]
 pub mod displaylist;
 #[cfg(not(feature = "tex82"))]
+pub mod dormant;
+#[cfg(not(feature = "tex82"))]
 pub mod fmtimage;
 #[cfg(feature = "distribution")]
 pub use flashtex_runtime::formats;

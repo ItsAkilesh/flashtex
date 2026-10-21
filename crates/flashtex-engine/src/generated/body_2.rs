@@ -1662,10 +1662,25 @@ impl Globals {
         {
             self.input_ptr = (self.input_ptr).wrapping_sub(1i32);
             self.cur_input = self.input_stack[crate::ix::U((self.input_ptr) as usize)];
-            if (self.input_ptr < self.ckpt_arm_level) {
+            if (self.input_ptr < self.pop_watch) {
                 {
-                    self.ckpt_arm_level = 0i32;
-                    self.ckpt_request = 2i32;
+                    if (self.input_ptr < self.ckpt_arm_level) {
+                        {
+                            self.ckpt_arm_level = 0i32;
+                            self.ckpt_request = 2i32;
+                        }
+                    }
+                    if (self.input_ptr < self.dorm_level) {
+                        {
+                            self.dorm_level = 0i32;
+                            self.dorm_fired = (self.dorm_fired).wrapping_add(1i32);
+                        }
+                    }
+                    if (self.dorm_level > self.ckpt_arm_level) {
+                        self.pop_watch = self.dorm_level;
+                    } else {
+                        self.pop_watch = self.ckpt_arm_level;
+                    }
                 }
             }
         }
@@ -1772,6 +1787,7 @@ impl Globals {
         }
         self.cur_input.index_field = self.in_open;
         self.full_source_filename_stack[crate::ix::U((self.cur_input.index_field) as usize)] = 0i32;
+        self.flashtex_level_opened();
         { let __ix232 = self.cur_input.index_field; let __v233 = false; self.eof_seen[crate::ix::U(((__ix232) - 1) as usize)] = __v233; }
         { let __ix234 = self.cur_input.index_field; let __v235 = self.cur_boundary; self.grp_stack[crate::ix::U((__ix234) as usize)] = __v235; }
         { let __ix236 = self.cur_input.index_field; let __v237 = self.cond_ptr; self.if_stack[crate::ix::U((__ix236) as usize)] = __v237; }
@@ -1799,10 +1815,25 @@ impl Globals {
         {
             self.input_ptr = (self.input_ptr).wrapping_sub(1i32);
             self.cur_input = self.input_stack[crate::ix::U((self.input_ptr) as usize)];
-            if (self.input_ptr < self.ckpt_arm_level) {
+            if (self.input_ptr < self.pop_watch) {
                 {
-                    self.ckpt_arm_level = 0i32;
-                    self.ckpt_request = 2i32;
+                    if (self.input_ptr < self.ckpt_arm_level) {
+                        {
+                            self.ckpt_arm_level = 0i32;
+                            self.ckpt_request = 2i32;
+                        }
+                    }
+                    if (self.input_ptr < self.dorm_level) {
+                        {
+                            self.dorm_level = 0i32;
+                            self.dorm_fired = (self.dorm_fired).wrapping_add(1i32);
+                        }
+                    }
+                    if (self.dorm_level > self.ckpt_arm_level) {
+                        self.pop_watch = self.dorm_level;
+                    } else {
+                        self.pop_watch = self.ckpt_arm_level;
+                    }
                 }
             }
         }
@@ -3389,6 +3420,9 @@ impl Globals {
                     {
                         self.ckpt_arm_level = self.input_ptr;
                         self.ckpt_arm_cs = null;
+                        if (self.pop_watch < self.ckpt_arm_level) {
+                            self.pop_watch = self.ckpt_arm_level;
+                        }
                         if (self.ckpt_on_arm != 0i32) {
                             self.ckpt_request = self.ckpt_on_arm;
                         }

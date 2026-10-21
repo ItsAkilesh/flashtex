@@ -45,6 +45,8 @@ pub struct OldPage {
     pub id: CheckpointId,
     pub rec: Record,
     pub reads: (usize, usize, usize),
+    /// READ-TRACK (`crate::dormant`): its record of the counts.
+    pub dorm: flashtex_engine::dormant::Dorm,
 }
 
 /// An edit of a user's file: bytes `prefix..old_end` of the old text
@@ -113,6 +115,9 @@ pub struct Old {
     pub claim: Option<(usize, usize)>,
     /// Each test: pages shipped, the answer, milliseconds.
     pub tests: Vec<(usize, Result<usize, String>, f64)>,
+    /// READ-TRACK (`crate::dormant`): the claim's test passed but for a
+    /// dormant line; what the jump puts in, and where it goes on from.
+    pub dormant: Option<crate::dormant::Jump>,
 }
 
 impl Old {
@@ -128,6 +133,15 @@ impl Old {
                 self.pages[j].opens == op.opens && self.pages[j].rec.effects == op.rec.effects
             })
             .unwrap_or(i)
+    }
+
+    /// Where the jump from old page checkpoint `i` goes on from: [`target`](Self::target),
+    /// or before the old run reads a dormant line (`crate::dormant`).
+    pub fn jump_target(&self, i: usize) -> usize {
+        match &self.dormant {
+            Some(d) => self.target(i).min(d.to),
+            None => self.target(i),
+        }
     }
 
     pub fn summary(&self) -> String {
@@ -179,15 +193,24 @@ impl Globals {
         if c.claim.is_none() && worth {
             if let Some(i) = c.pages.iter().position(|p| p.pages == pages) {
                 let t = Instant::now();
-                let r = self.conv_check(&c, i);
+                let mut dormant = None;
+                let r = self.conv_check(&c, i, &mut dormant);
                 let ms = t.elapsed().as_secs_f64() * 1e3;
                 if on() {
                     eprintln!("[conv] page {pages}: {r:?} ({ms:.2} ms)");
+                    if let Some(d) = &dormant {
+                        eprintln!(
+                            "[conv]   a dormant line ({} words): kept to page {}",
+                            d.words.len(),
+                            c.pages[d.to].pages
+                        );
+                    }
                 }
                 let ok = r.is_ok();
                 c.tests.push((pages, r, ms));
                 if ok {
                     c.claim = Some((pages, i));
+                    c.dormant = dormant;
                     if jumps() {
                         let t = Instant::now();
                         match self.conv_jump(&mut c, i) {
@@ -289,8 +312,9 @@ impl Globals {
     fn conv_jump(&mut self, c: &mut Old, i: usize) -> Result<usize, String> {
         let op = &c.pages[i];
         // `L`: the newest old page checkpoint with the convergence point's
-        // output opens and external effects
-        let j = c.target(i);
+        // output opens and external effects (and, past a dormant line, before
+        // the old run reads it: `crate::dormant`)
+        let j = c.jump_target(i);
         if j == i {
             return Err("no later page checkpoint to go on from".into());
         }
@@ -386,10 +410,11 @@ impl Globals {
         let shift = |n: usize, d: i64| (n as i64 + d) as usize;
         let mut carried = vec![];
         for p in &c.pages[i + 1..=j] {
+            let rec = remap(&p.rec)?;
             carried.push(crate::ckpt::PageCk {
                 id: p.id,
                 pages: p.pages,
-                rec: remap(&p.rec)?,
+                rec,
                 out: None,
                 reads: (
                     shift(p.reads.0, reads_delta.0),
@@ -397,8 +422,15 @@ impl Globals {
                     shift(p.reads.2, reads_delta.2),
                 ),
                 opens: shift(p.opens, opens_delta),
+                dorm: p.dorm,
             });
         }
+        let op_dorm = op.dorm;
+        let dormant_words: Vec<(usize, u64)> = c
+            .dormant
+            .as_ref()
+            .map(|d| d.words.clone())
+            .unwrap_or_default();
         let l_rec = carried
             .last()
             .map(|p| p.rec.clone())
@@ -447,6 +479,11 @@ impl Globals {
         self.arena.checkpoint();
         if let Err(e) = self.arena.converge(branch, op_id) {
             fail("converge", e);
+        }
+        // READ-TRACK (`crate::dormant`): the dormant line's new words in every
+        // kept state from the convergence point on, before the restore of `L`
+        if let Err(e) = self.arena.set_from(op_id, &dormant_words) {
+            fail("the dormant line", e);
         }
         for (p, v) in contents {
             if let Err(e) = std::fs::write(&p, v) {
@@ -498,12 +535,23 @@ impl Globals {
             );
         }
         if let Some(r) = self.host.resident.as_mut() {
+            // (the new run's checkpoint at the convergence point is that
+            // point too: the old run's counts there are the later records'
+            // baseline, `crate::dormant`)
+            if let Some(last) = r.pages.last_mut() {
+                last.dorm = op_dorm;
+            }
             r.pages.extend(carried);
         }
         Ok(lp)
     }
 
-    fn conv_check(&mut self, c: &Old, i: usize) -> Result<usize, String> {
+    fn conv_check(
+        &mut self,
+        c: &Old,
+        i: usize,
+        dormant: &mut Option<crate::dormant::Jump>,
+    ) -> Result<usize, String> {
         let op = &c.pages[i];
         let new = &self
             .host
@@ -512,6 +560,14 @@ impl Globals {
             .and_then(|r| r.pages.last())
             .ok_or("no page checkpoint")?
             .rec;
+        // READ-TRACK (`crate::dormant`): a dormant line may differ in its
+        // unread rest (the edited file's reader keeps no copy of the line:
+        // its record must be equal, as for any convergence)
+        let level = if flashtex_engine::dormant::enabled() {
+            crate::dormant::Level::of(self)
+        } else {
+            None
+        };
         // 1. the file globals
         if op.rec.files.len() != new.files.len() {
             return Err("file globals differ".into());
@@ -656,6 +712,22 @@ impl Globals {
             .into_iter()
             .filter(|w| !dead_word(g, w) && !position_only(w))
             .collect();
+        // (the unread rest of a dormant line, set aside)
+        let (aside, left): (Vec<WordDiff>, Vec<WordDiff>) = match level {
+            Some(l) => left.into_iter().partition(|w| l.set_aside(g, &layout, w)),
+            None => (vec![], left),
+        };
+        // (past a dormant line no state is equal, so an `eqtb` entry whose
+        // type or level differs -- the structural comparison compares both
+        // exactly -- ends the test before the walk)
+        if !aside.is_empty() {
+            if let Some(w) = left
+                .iter()
+                .find(|w| w.region == "eqtb" && (w.old ^ w.new) >> 32 != 0)
+            {
+                return Err(format!("a dormant line, and a meaning differs: {w}"));
+            }
+        }
         let (left, (free_o, free_n)) = drop_free_mem(g, &d, &layout, left);
         if let Some(w) = left.iter().find(|w| w.region != "mem" && !iso_covers(g, w)) {
             let n = left
@@ -679,6 +751,17 @@ impl Globals {
             .filter(|w| w.region == "mem")
             .map(|w| w.index)
             .collect();
+        if on() {
+            eprintln!(
+                "[conv]   left for the walk: {} words ({} set aside): {}",
+                left.len(),
+                aside.len(),
+                crate::statediff::summary(&left)
+            );
+            for w in left.iter().take(12) {
+                eprintln!("[conv]     {w}");
+            }
+        }
         let written = d.written();
         let mut written_bits = vec![0u64; g.arena.chunks().div_ceil(64) + 1];
         for &ch in &written {
@@ -704,6 +787,7 @@ impl Globals {
                 written_bits: &written_bits,
                 pointers: &c.eqtb_pointers,
             }),
+            dormant: level.map_or(-1, |l| l.j),
         };
         let mut never = || false;
         let t1 = Instant::now();
@@ -728,6 +812,51 @@ impl Globals {
                 t1.elapsed().as_secs_f64() * 1e3
             );
         }
+        // READ-TRACK: equal but for a dormant line: the old run's pages are
+        // the new run's up to its last page checkpoint before it reads the
+        // line, prints one or opens a level (`dormant::target`)
+        let r = match (r, level) {
+            (Ok(n), Some(l)) if !aside.is_empty() => {
+                let words = flashtex_engine::dormant::jump_words(
+                    aside.iter().map(|w| (w.off, w.new)),
+                    &self.arena,
+                    std::mem::size_of_val(&self.buffer[0]),
+                    l.loc,
+                    self.first,
+                );
+                match crate::dormant::target(&c.pages, i, l.j, crate::dormant::grow(&aside)) {
+                    _ if words.is_none() => Err("a dormant line: no buffer region".into()),
+                    None => Err(format!(
+                        "a dormant line ({} words): the old run uses it before its next page",
+                        aside.len()
+                    )),
+                    // (the jump goes on live from the earlier of the two:
+                    // worth it only where it keeps at least as many pages as
+                    // it typesets again, `flashtex_engine::dormant::worth`)
+                    Some(to)
+                        if !flashtex_engine::dormant::worth(
+                            c.pages[i].pages,
+                            c.pages[c.target(i).min(to)].pages,
+                            c.doc_pages.len(),
+                        ) =>
+                    {
+                        Err(format!(
+                            "a dormant line ({} words): the jump would typeset more pages \
+                             than it keeps",
+                            aside.len()
+                        ))
+                    }
+                    Some(to) => {
+                        *dormant = Some(crate::dormant::Jump {
+                            words: words.unwrap_or_default(),
+                            to,
+                        });
+                        Ok(n)
+                    }
+                }
+            }
+            (r, _) => r,
+        };
         r
     }
 }
@@ -769,6 +898,10 @@ fn live_len(g: &Globals, region: &str) -> Option<usize> {
 /// Whether a differing word is dead between two commands.
 fn dead_word(g: &Globals, w: &WordDiff) -> bool {
     match w.scalar {
+        // READ-TRACK's watch (`crate::dormant`, `changes/checkpoint.ch`): set
+        // by the host at each page checkpoint and counted by `pop_input`,
+        // read only by the host
+        Some("dorm_level" | "pop_watch" | "dorm_fired") => return true,
         Some(
             "max_buf_stack"
             | "max_in_stack"
@@ -1035,7 +1168,7 @@ pub fn truth(
     let verdict = match c.claim {
         None => "no claim".to_string(),
         Some((k, i)) => {
-            let lp = c.pages[c.target(i)].pages;
+            let lp = c.pages[c.jump_target(i)].pages;
             let held = new.len() == old.len()
                 && (k..lp.min(new.len())).all(|m| frame(&new[m]) == frame(&old[m]));
             if from > k && c.jumped.is_none() && c.refused.is_some() {

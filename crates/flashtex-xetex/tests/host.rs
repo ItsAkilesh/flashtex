@@ -1658,6 +1658,112 @@ fn a_converged_run_writes_what_a_run_of_its_own_writes() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// READ-TRACK (`crate::dormant`, docs/design/engine-v2/READ-TRACK.md): a
+/// command with an optional argument, alone on its line, peeks at the next
+/// line and then typesets pages. Keystrokes at the start of that line after
+/// the first change only its unread rest: the run jumps to the old run's
+/// last page before it reads the line (here the `\end{document}` line's, and
+/// one read before more pages), and every compile's PDF, `.aux` and log are
+/// a run of its own's.
+#[test]
+fn a_dormant_line_is_kept_until_it_is_read() {
+    if !texlive() {
+        eprintln!("skipped: no TeX Live");
+        return;
+    }
+    let para = |i: usize, w: &str| {
+        format!(
+            "Paragraph {i} with the word {w}, and enough text to fill a few lines of the \
+             page so that the document ships several pages.\n\n"
+        )
+    };
+    let tail: String = (0..160).map(|i| para(i, "tail")).collect();
+    let more: String = (0..60).map(|i| para(i, "more")).collect();
+    let body: String = (0..40).map(|i| para(i, "body")).collect();
+    for (name, line) in [("end", ""), ("read", "Zword \\more\n")] {
+        let dir = std::env::temp_dir().join(format!(
+            "flashtex-host-dormant-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let doc = format!(
+            "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\
+             \\newcommand\\tail[1][]{{#1{tail}}}\n\\newcommand\\more{{{more}}}\n\
+             \\begin{{document}}\n{body}\\tail\n{line}\\end{{document}}\n"
+        );
+        let at = doc.find("\\tail\n").unwrap() + "\\tail\n".len();
+        let keys: Vec<String> = (1..=3)
+            .map(|k| {
+                let mut t = doc.clone();
+                t.insert_str(at, &"x".repeat(k));
+                t
+            })
+            .collect();
+        let sub = dir.join("run");
+        let (proj, out) = project(&sub, &doc);
+        let err = sub.join("host.err");
+        let o = Path::new(&out);
+        let outputs = || {
+            (
+                std::fs::read(o.join("main.pdf")).unwrap(),
+                std::fs::read_to_string(o.join("main.aux")).unwrap(),
+                std::fs::read_to_string(o.join("main.log")).unwrap(),
+            )
+        };
+        let compile = |c: &mut Client, id: i64, text: &str| {
+            let mut r = request(id, &proj, &out);
+            r.buffers = vec![("main.tex".into(), text.to_string())];
+            c.compile(&r).unwrap();
+            events(c, id).1
+        };
+        let h = start_with(
+            &sub,
+            &[
+                ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+                ("FLASHTEX_UNICODE_CONV_DEBUG", "1"),
+            ],
+            &err,
+        );
+        let mut c = Client::connect(&h.sock).unwrap();
+        compile(&mut c, 1, &doc);
+        compile(&mut c, 2, &doc);
+        let mut got = vec![];
+        for (k, text) in keys.iter().enumerate() {
+            compile(&mut c, 3 + k as i64, text);
+            got.push(outputs());
+        }
+        c.bye().unwrap();
+        drop(h);
+        let log = std::fs::read_to_string(&err).unwrap();
+        assert!(
+            log.contains("a dormant line"),
+            "{name}: no dormant line: {log}"
+        );
+        assert!(log.contains("[conv] jumped"), "{name}: no jump: {log}");
+        assert!(!log.contains("UNSOUND"), "{name}: {log}");
+        for (text, got) in keys.iter().zip(got) {
+            let h = start_with(
+                &sub,
+                &[
+                    ("FLASHTEX_PIN_CLOCK", "1760000000.5"),
+                    ("FLASHTEX_UNICODE_INPROCESS", "0"),
+                ],
+                &sub.join("host2.err"),
+            );
+            let mut c = Client::connect(&h.sock).unwrap();
+            compile(&mut c, 1, text);
+            compile(&mut c, 2, text);
+            let want = outputs();
+            c.bye().unwrap();
+            drop(h);
+            assert!(got.0 == want.0, "{name}: the PDFs differ");
+            assert_eq!(got.1, want.1, "{name}");
+            assert_eq!(got.2, want.2, "{name}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 /// The bundle's fonts by name (#1783) in both kinds of run: in the host's
 /// own process (`crate::resident`'s kept catalog, the app's default) and in
 /// a process of its own. Opt-in: `FLASHTEX_TEST_FONT_BUNDLE=<digest>@<url>`

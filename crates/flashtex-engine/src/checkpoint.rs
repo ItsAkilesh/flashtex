@@ -57,6 +57,8 @@ pub struct ExtRecord {
     /// The line journal's length, the line numbers of unknown file and the
     /// marked token lists (`crate::lineshift`, DESIGN.md §5.3 rule (c)).
     pub lines: crate::lineshift::Rec,
+    /// READ-TRACK's counts and watched level (`crate::dormant`).
+    pub dorm: crate::dormant::Dorm,
 }
 
 crate::codec_struct!(ExtRecord {
@@ -71,7 +73,8 @@ crate::codec_struct!(ExtRecord {
     rs,
     notes,
     opens,
-    lines
+    lines,
+    dorm
 });
 
 /// Where an output position `x` of the old run goes when a convergence
@@ -503,6 +506,8 @@ pub struct Layer {
     pub main_read: std::cell::Cell<Option<crate::midline::MainRead>>,
     pub midlines: Vec<(CheckpointId, crate::midline::MidLine)>,
     pub midline_force: bool,
+    /// READ-TRACK (`crate::dormant`): the run's counts.
+    pub dorm: crate::dormant::Counts,
     /// PREAMBLE-PATCH (`incr::PrePatch`): a run restarted in the preamble
     /// takes a checkpoint at the end of this line of the main file, the
     /// first after the edited ones, where the read-set begins a segment;
@@ -919,6 +924,7 @@ impl Globals {
             notes: crate::diag::len(),
             opens: system::opens_len(),
             lines: crate::lineshift::record(self),
+            dorm: self.dorm_record(),
         })
     }
 
@@ -945,6 +951,8 @@ impl Globals {
         // (`crate::midline`: set again from a mid-line point's record)
         self.layer().main_read.set(None);
         crate::lineshift::restore(self, &rec.lines);
+        // (another run from here on: `crate::dormant`)
+        self.dorm_new_epoch();
         match err {
             Some(e) => Err(format!("cannot restore the files: {e}")),
             None => Ok(()),
@@ -968,6 +976,8 @@ impl Globals {
     /// or after a run, or inside `flashtex_checkpoint_hook`).
     pub fn checkpoint(&mut self) -> Result<CheckpointId, String> {
         let cpu0 = crate::incr::thread_cpu_s();
+        // (READ-TRACK: the watch, armed in the state taken)
+        self.dorm_arm();
         let ext = self.capture_ext()?;
         let t = std::time::Instant::now();
         let cpu = crate::incr::thread_cpu_s();
@@ -1037,6 +1047,31 @@ impl Globals {
     /// The retained checkpoints, oldest first.
     pub fn checkpoints(&self) -> Vec<CheckpointId> {
         self.arena.checkpoint_ids().to_vec()
+    }
+
+    /// `f` on the record of checkpoint `id`, if it has one.
+    pub fn patch_record(&mut self, id: CheckpointId, f: &mut dyn FnMut(&mut ExtRecord)) {
+        for (i, r) in self.layer().records.iter_mut() {
+            if *i == id {
+                f(r);
+            }
+        }
+    }
+
+    /// READ-TRACK (`crate::dormant::apply`): `f` on the record of every
+    /// checkpoint of the live chain after `id`.
+    pub fn patch_records_after(&mut self, id: CheckpointId, f: &mut dyn FnMut(&mut ExtRecord)) {
+        let chain = self.arena.checkpoint_ids().to_vec();
+        let Some(at) = chain.iter().position(|&i| i == id) else {
+            return;
+        };
+        let after: std::collections::HashSet<CheckpointId> =
+            chain[at + 1..].iter().copied().collect();
+        for (i, r) in self.layer().records.iter_mut() {
+            if after.contains(i) {
+                f(r);
+            }
+        }
     }
 
     /// The host record of checkpoint `id`.
@@ -1700,7 +1735,11 @@ impl Globals {
             // replaces) hand their line journals to `id`'s record: the
             // reads and prints of line numbers since the checkpoint before
             // (`crate::lineshift`, as `retain_checkpoints` does).
+            // (READ-TRACK, `crate::dormant`: what follows `id` is the old
+            // run's, so its counts there are the later records' baseline)
+            let dorm = at_id.dorm;
             let mut at_id = now.clone();
+            at_id.dorm = dorm;
             let mut here = vec![];
             for (i, r) in layer.records.iter_mut() {
                 if !keep.contains(i) || *i == id {

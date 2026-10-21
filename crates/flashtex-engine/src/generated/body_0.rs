@@ -2671,6 +2671,7 @@ impl Globals {
     // §71
     pub fn term_input(&mut self) {
         let mut k: i32 = 0; // §71
+        self.flashtex_level_opened();
         crate::system::break_out(&mut self.term_out);
         if (!{ let mut __f0 = ::core::mem::take(&mut self.term_in); let __r = self.input_ln(&mut __f0, true); self.term_in = __f0; __r }) {
             {

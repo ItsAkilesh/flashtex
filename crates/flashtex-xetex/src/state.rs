@@ -260,6 +260,8 @@ pub struct Host {
     /// later answers, so a checkpoint saves both.
     pub brk_iter: Option<crate::native::linebreak::Rules>,
     pub brk_locale_str_num: i32,
+    /// READ-TRACK (`crate::dormant`): the run's counts, never restored.
+    pub dorm: flashtex_engine::dormant::Counts,
     /// The iterator's text, as the boundaries `ubrk_next` returns for it, and
     /// how many it has returned. `do_locale_linebreaks` reads them all
     /// within one command, so a checkpoint does not save them.
@@ -385,6 +387,8 @@ impl Globals {
             .ok_or_else(|| format!("no host state saved with checkpoint {id:?}"))?;
         self.arena.restore_discard(id)?;
         self.fill_scalars();
+        // (another run from here on: `crate::dormant`)
+        self.host.dorm.new_epoch();
         let kept: Vec<_> = self.arena.checkpoint_ids().to_vec();
         self.host.checkpoints.retain(|k, _| kept.contains(k));
         self.host.font_mgr = saved.font_mgr;
@@ -414,6 +418,7 @@ impl Globals {
             .ok_or_else(|| format!("no host state saved with checkpoint {id:?}"))?;
         let b = self.arena.restore_branch(id)?;
         self.fill_scalars();
+        self.host.dorm.new_epoch();
         self.host.font_mgr = saved.font_mgr;
         self.host.full_name_of_file = saved.full_name_of_file;
         self.host.protrusion = saved.protrusion;

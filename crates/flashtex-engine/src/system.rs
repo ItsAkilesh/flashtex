@@ -855,14 +855,43 @@ impl ByteFile {
     }
 }
 
+// The word straight from the reader's buffer when it holds one, which is
+// every word of a format but those at a buffer's end: the same bytes
+// `read_exact` copies, without depending on how the compiler inlines it into
+// the 3,000 calls of `load_fmt_file`, which a change elsewhere in the crate
+// moved (READ-TRACK measured 16-52 M more instructions of a cold compile,
+// up to 5.5 %, with the same code).
+#[inline]
 pub fn get_word(f: &mut WordFile) {
-    let mut b = [0u8; 8];
-    match f.input.as_mut().map(|r| r.read_exact(&mut b)) {
-        Some(Ok(())) => f.buf = memory_word::from_bits(u64::from_le_bytes(b)),
-        _ => {
-            f.at_eof = true;
-            f.buf = memory_word::default();
+    if let Some(r) = f.input.as_mut() {
+        if let Some(w) = r.buffer().get(..8) {
+            let w = u64::from_le_bytes(w.try_into().expect("8 bytes"));
+            r.consume(8);
+            f.buf = memory_word::from_bits(w);
+            return;
         }
+    }
+    get_word_slow(f);
+}
+
+#[inline(never)]
+fn get_word_slow(f: &mut WordFile) {
+    let mut b = [0u8; 8];
+    let ok = match f.input.as_mut() {
+        Some(r) => match r.read_exact(&mut b) {
+            Ok(()) => true,
+            Err(e) => {
+                drop(e);
+                false
+            }
+        },
+        None => false,
+    };
+    if ok {
+        f.buf = memory_word::from_bits(u64::from_le_bytes(b));
+    } else {
+        f.at_eof = true;
+        f.buf = memory_word::default();
     }
 }
 pub fn put_word(f: &mut WordFile) {

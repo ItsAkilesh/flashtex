@@ -1891,6 +1891,7 @@ impl Globals {
                                             } else {
                                                 {
                                                     self.print_nl(65896i32);
+                                                    self.flashtex_level_shown();
                                                     if (self.cur_input.index_field == self.in_open) {
                                                         self.print_int(self.line);
                                                     } else {
@@ -2195,13 +2196,28 @@ impl Globals {
         {
             self.input_ptr = (self.input_ptr).wrapping_sub(1i32);
             self.cur_input = self.input_stack[crate::ix::U((self.input_ptr) as usize)];
-            if (self.input_ptr < self.ckpt_arm_level) {
+            if (self.input_ptr < self.pop_watch) {
                 {
-                    self.ckpt_arm_level = 0i32;
-                    if (self.scanner_status == normal) {
-                        self.ckpt_request = 2i32;
+                    if (self.input_ptr < self.ckpt_arm_level) {
+                        {
+                            self.ckpt_arm_level = 0i32;
+                            if (self.scanner_status == normal) {
+                                self.ckpt_request = 2i32;
+                            } else {
+                                self.ckpt_arm_cs = self.ckpt_arm_again;
+                            }
+                        }
+                    }
+                    if (self.input_ptr < self.dorm_level) {
+                        {
+                            self.dorm_level = 0i32;
+                            self.dorm_fired = (self.dorm_fired).wrapping_add(1i32);
+                        }
+                    }
+                    if (self.dorm_level > self.ckpt_arm_level) {
+                        self.pop_watch = self.dorm_level;
                     } else {
-                        self.ckpt_arm_cs = self.ckpt_arm_again;
+                        self.pop_watch = self.ckpt_arm_level;
                     }
                 }
             }
@@ -2306,6 +2322,7 @@ impl Globals {
         }
         self.cur_input.index_field = self.in_open;
         self.full_source_filename_stack[crate::ix::U((self.cur_input.index_field) as usize)] = 0i32;
+        self.flashtex_level_opened();
         { let __ix205 = self.cur_input.index_field; let __v206 = false; self.eof_seen[crate::ix::U(((__ix205) - 1) as usize)] = __v206; }
         { let __ix207 = self.cur_input.index_field; let __v208 = self.cur_boundary; self.grp_stack[crate::ix::U((__ix207) as usize)] = __v208; }
         { let __ix209 = self.cur_input.index_field; let __v210 = self.cond_ptr; self.if_stack[crate::ix::U((__ix209) as usize)] = __v210; }
@@ -2333,13 +2350,28 @@ impl Globals {
         {
             self.input_ptr = (self.input_ptr).wrapping_sub(1i32);
             self.cur_input = self.input_stack[crate::ix::U((self.input_ptr) as usize)];
-            if (self.input_ptr < self.ckpt_arm_level) {
+            if (self.input_ptr < self.pop_watch) {
                 {
-                    self.ckpt_arm_level = 0i32;
-                    if (self.scanner_status == normal) {
-                        self.ckpt_request = 2i32;
+                    if (self.input_ptr < self.ckpt_arm_level) {
+                        {
+                            self.ckpt_arm_level = 0i32;
+                            if (self.scanner_status == normal) {
+                                self.ckpt_request = 2i32;
+                            } else {
+                                self.ckpt_arm_cs = self.ckpt_arm_again;
+                            }
+                        }
+                    }
+                    if (self.input_ptr < self.dorm_level) {
+                        {
+                            self.dorm_level = 0i32;
+                            self.dorm_fired = (self.dorm_fired).wrapping_add(1i32);
+                        }
+                    }
+                    if (self.dorm_level > self.ckpt_arm_level) {
+                        self.pop_watch = self.dorm_level;
                     } else {
-                        self.ckpt_arm_cs = self.ckpt_arm_again;
+                        self.pop_watch = self.ckpt_arm_level;
                     }
                 }
             }
@@ -3669,6 +3701,9 @@ impl Globals {
                         self.ckpt_arm_level = self.input_ptr;
                         self.ckpt_arm_again = self.ckpt_arm_cs;
                         self.ckpt_arm_cs = 0i32;
+                        if (self.pop_watch < self.ckpt_arm_level) {
+                            self.pop_watch = self.ckpt_arm_level;
+                        }
                     }
                 }
             }
