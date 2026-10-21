@@ -8,7 +8,8 @@ Where and how it was measured:
 - **Machine:** the NixOS PC (x86-64, loaded: other lanes' runs and the CI runners share it).
 - **Builds:** release builds. "main" is main `4972cd46c` (the Unicode host) or `1aa1018ef`
   (the Classic binaries; its engine code is the same). "Branch" is
-  `agent/kabir-claude/read-track-dormant` at `ae61798ba`.
+  `agent/kabir-claude/read-track-dormant` at `ae61798ba` (the Unicode host at `ef2409fff`,
+  whose Unicode code is the same; the later commits format the code and add a test).
 - **TeX Live:** TeX Live 2026 at `~/texlive/2026`.
 - **Counts:** every instruction count is callgrind's (valgrind 3.27.1). M is a million
   instructions.
@@ -156,6 +157,23 @@ identical):
 - **Rejected: no walk past a dormant line.** It made c1's keystroke 2 cost main's, but c2's
   keystroke 2 then re-ran 13 pages instead of 2.
 
-MUTATE_PENDING
+**Which rule each case needs** (`mutate.sh` on the final code: one rule disabled in turn, and
+`a_dormant_line_is_kept_until_it_is_read` run):
 
-**Suites** (PC, release, the branch): GATE_PENDING
+| disabled | the first case that fails |
+|---|---|
+| the return count (`dorm_fired`) | `end`, keystroke 2: the PDF differs |
+| the print count | `show`, keystroke 2: the log differs |
+| the dormant words written into the kept states | `end`, keystroke 2: the PDF differs |
+| the open count | none (READ-TRACK.md §5.2) |
+| the stream record | none (READ-TRACK.md §5.2) |
+
+The `late` case restarts at the kept, corrected checkpoint: an edit of the file the line opens
+gives `restart_pages` = `rerun_from` = 9. The `mid` case (Phase 2) asserts no jump.
+
+**Suites** (PC, release, the branch): `scripts/gate.sh quick` with CI's toolchain (rustup
+stable 1.98.1) and TeX Live 2026: rustfmt, clippy for both crates, web2rust drift, trip and
+etrip pass; both `a_dormant_line_is_kept_until_it_is_read` tests pass. Two tests fail, on main
+too on this PC: `fontmap_cache::a_cached_parse_writes_what_a_parse_writes` (fails on main
+`4972cd46c` the same way) and `host::cancels_are_never_lost` (fails 1 run in 3 on main and on
+the branch).
