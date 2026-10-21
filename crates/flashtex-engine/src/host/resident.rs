@@ -2096,9 +2096,19 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
 }
 
 /// Experiment (lane T7-HEADROOM): a shorter file is cut before the write.
+/// `FLASHTEX_TRUNC_FIRST=1`: always; `ab`: after a compile whose files were
+/// written out (`flush`) only.
 fn trunc_first() -> bool {
-    static M: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *M.get_or_init(|| std::env::var_os("FLASHTEX_TRUNC_FIRST").is_some())
+    static M: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
+    match *M.get_or_init(|| match std::env::var("FLASHTEX_TRUNC_FIRST").as_deref() {
+        Ok("ab") => 2,
+        Ok(_) => 1,
+        Err(_) => 0,
+    }) {
+        1 => true,
+        2 => FLUSHED_PREV.with(|f| f.get()),
+        _ => false,
+    }
 }
 
 thread_local! {
