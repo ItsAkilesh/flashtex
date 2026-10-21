@@ -189,6 +189,11 @@ pub fn marks(g: &Globals) -> i32 {
     m.min(i32::MAX as u32) as i32
 }
 
+/// Whether `marks` reads `mem` (conditionals deeper than their tags).
+pub fn marks_read_mem(g: &Globals) -> bool {
+    g.ls_cond_depth > ls_cond_size(g)
+}
+
 fn ls_cond_size(g: &Globals) -> i32 {
     g.ls_cond_tag.len() as i32 - 1
 }

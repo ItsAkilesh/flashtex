@@ -4004,8 +4004,10 @@ impl Session {
     /// Abandon a paused run: the complete run it was replacing comes back
     /// whole (`Globals::reattach_pending`: its checkpoints, state, output
     /// files and terminal), with the session as that pass found it. Falls
-    /// back to `settle_paused` where there is nothing to go back to.
-    fn abandon_paused(&mut self) -> Result<(), String> {
+    /// back to `settle_paused` where there is nothing to go back to. With
+    /// `lazy`, for a compile that restores next, the word space's part of
+    /// the reattach waits (`Globals::reattach_pending_lazily`).
+    fn abandon_paused(&mut self, lazy: bool) -> Result<(), String> {
         let g = self.g.as_mut().ok_or("no engine")?;
         if g.pending_ids().is_empty()
             || self.before_pass.is_none()
@@ -4028,7 +4030,11 @@ impl Session {
         // run wrote over, `system::put_back_kept`; #1608's deferral of the
         // rest to the next restore is not needed)
         let g = self.g.as_mut().unwrap();
-        g.reattach_pending()?;
+        if lazy {
+            g.reattach_pending_lazily()?;
+        } else {
+            g.reattach_pending()?;
+        }
         system::record_reads_into(None);
         let b = self.before_pass.take().unwrap();
         self.journal = b.journal;
@@ -4107,7 +4113,7 @@ impl Session {
             // it was replacing, and from the format with that file never
             // written out ahead.
             system::set_no_flush(&p);
-            self.abandon_paused()?;
+            self.abandon_paused(false)?;
             paused_how = "abandoned";
             self.force_cold = Some(format!("{p} was read while a checkpoint had it ahead"));
         } else if self.paused.is_some() {
@@ -4147,7 +4153,7 @@ impl Session {
                 // checkpoints are as near the change and whose later pages
                 // can still be converged with
                 None => {
-                    self.abandon_paused()?;
+                    self.abandon_paused(true)?;
                     paused_how = "abandoned";
                 }
             }
@@ -4159,7 +4165,13 @@ impl Session {
             g.layer().stats = Default::default();
         }
         self.pass = 1;
-        let mut rep = self.compile_pass(t0, stop_at)?;
+        let r = self.compile_pass(t0, stop_at);
+        // (a lazy reattach the pass did not restore from: whole again, lane
+        // T7-MARGIN; nothing after this compile sees it)
+        if let Some(g) = self.g.as_mut() {
+            g.arena.materialize();
+        }
+        let mut rep = r?;
         if !paused_how.is_empty() {
             rep.paused_how = paused_how;
             rep.paused_s = paused_s;
