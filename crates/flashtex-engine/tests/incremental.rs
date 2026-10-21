@@ -2207,7 +2207,7 @@ fn page_insertion_records_compare_their_split_fields_only_when_split_up() {
         assert_ne!(field(&r, "converged_at"), "null", "{what}: {r}");
     }
     // a `split_up` record: a sentence before the long footnote moves its
-    // split, and no page from the restart to the split's converges
+    // split, and no page from the restart to the split's last converges
     let sentence = "A sentence added before the long footnote, long enough to take \
                     a line or two of the page away from the footnote's part on it. \
                     Another line of it, to be sure.\n\n";
@@ -2225,7 +2225,11 @@ fn page_insertion_records_compare_their_split_fields_only_when_split_up() {
         assert!(r.contains("\"mode\":\"incremental\""), "{what}: {r}");
         let (from, to) = (page_of("ls"), page_of("le"));
         assert!(from < to, "{what}: the long footnote is not split ({from}, {to})");
-        eprintln!("PAGEINS {what}: split {from}-{to} restart {} converged {} diffs {}", field(&r, "restart_pages"), field(&r, "converged_at"), r.split("\"diffs\":").nth(1).unwrap_or("").chars().take(700).collect::<String>());
+        let restart: usize = field(&r, "restart_pages").parse().unwrap();
+        assert!(restart <= from, "{what}: restarted after the split ({restart}): {r}");
+        if let Ok(c) = field(&r, "converged_at").parse::<usize>() {
+            assert!(c > to, "{what}: converged at page {c}, within the split {from}-{to}: {r}");
+        }
     }
 }
 
