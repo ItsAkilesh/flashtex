@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Held for the app's lifetime: without it App Nap and timer coalescing
     /// quantize the main run loop of a backgrounded window to ~30 ms turns, so
     /// a compile result that arrived in 1 ms waited a whole turn to be applied
-    /// (measured with tools/typing-bench: fixture keystroke->paint p50 80 ms).
+    /// (measured with the typing bench of the time: fixture keystroke->paint p50 80 ms).
     private var liveActivity: NSObjectProtocol?
 
     /// Coming back to the app rechecks the document on disk (external edits

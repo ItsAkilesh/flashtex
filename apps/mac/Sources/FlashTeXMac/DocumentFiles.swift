@@ -886,10 +886,8 @@ extension ShellModel {
             guard keepDiscarded(discarding, reason: reload ? "discarded by a reload from disk" : "discarded when \(url.lastPathComponent) was opened",
                                 before: (reload ? "reloading " : "opening ") + url.lastPathComponent) else { return false }
         }
-        // The engine is chosen before the v3 session hears of the new
-        // project (EngineChoice.swift): a window on the new engine opening a
-        // document the previous engine typesets starts no v3 compile of it.
-        let v3Before = engineV3Enabled
+        // The project's manifest is read before the engine session hears of
+        // the new project (its mode depends on it: UnicodeFonts.swift).
         engineChoicePending = true
         replaceProject(entryText: text, named: url.lastPathComponent)
         documentURL = url
@@ -900,11 +898,10 @@ extension ShellModel {
         manifest.refresh() // ProjectManifest.swift: the flashtex.toml governing this project, before the first compile
         engineHostNeedsUnicode = nil // the new engine's report on the document before this open (UnicodeFonts.swift)
         unicodeFontsScan = nil
-        resolveEngineForOpenedDocument() // this document's engine, with the fallback rules (after the manifest)
+        resolveEngineForOpenedDocument() // the record, the previous-engine notice, the `engine:` line (EngineChoice.swift)
         engineChoicePending = false
-        // Still on the new engine: now it opens the project (stored pages,
-        // compile). Newly on it: `engineV3Enabled`'s didSet started it.
-        if v3Before, engineV3Enabled, let at = engineV3OpenedAt { engineV3.projectChanged(model: self, openedAt: at) }
+        // Now the engine opens the project (stored pages, compile).
+        if engineV3Enabled, let at = engineV3OpenedAt { engineV3.projectChanged(model: self, openedAt: at) }
         return true
     }
 
@@ -1357,11 +1354,11 @@ extension ShellModel {
         switch result {
         case .saved:
             let before = documentURL
-            // Save As / a first save: no v3 open of the new path before its
-            // engine is chosen (cleared by engineDocumentSaved).
+            // Save As / a first save: no engine open of the new path before
+            // its manifest is read (cleared by engineDocumentSaved).
             if before?.standardizedFileURL != url.standardizedFileURL { engineChoicePending = true }
             documentURL = url
-            engineDocumentSaved(from: before) // EngineChoice.swift: Save As / first save keeps the engine choice, re-checks the rules
+            engineDocumentSaved(from: before) // EngineChoice.swift: Save As / first save reads the new project's manifest, records the file
             savedText = text
             noteSaveConfirmation("Saved \(url.lastPathComponent)" + (recreated ? " (recreated; it had been deleted on disk)" : ""), for: url)
             bridgeSourceSaved(url: url, text: text)

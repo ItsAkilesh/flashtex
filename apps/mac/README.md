@@ -986,7 +986,7 @@ explain that nothing is loaded.
 |---|---|
 | ⌘, | Settings window (editor preferences: font, wrapping, tab width, indent, appearance, auto-close brackets & math, completion list; Tab walks the controls top to bottom) |
 | FlashTeX > Check for Updates… | Check for updates: asks GitHub Releases (`flash-tex/flashtex`, `/releases/latest`) for the newest version and shows installed vs available with the release notes; Download opens the release page in the browser, Skip This Version silences the background check for that tag. Nothing is downloaded or installed by the app (#694 slice 1). Settings > Updates > *Check for updates automatically* (off by default) checks once a day after launch and only speaks up when a newer release exists |
-| ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
+| ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; the engine compiles it) |
 | ⌘⌥N | New Project… sheet (folder, name, template: Blank article / Article with sections / Report with chapters / Homework sheet; writes `<folder>/<name>/main.tex` plus its `\input`/`\include` members, opens `main.tex` as the entry document with the include tree in the sidebar; asks before replacing existing template files) |
 | ⌘N | New File… sheet (also the sidebar's + button and the project row's context menu): a rooted `.tex` name, subfolders allowed, never above the project root; "Insert `\input` at the caret" (on by default while the entry document is active) is one undoable edit; the file opens in a tab |
 | File > Move To… | Move file: the active document into another folder of the project (also "Move to…" in a project row's context menu; dragging a row onto another row moves it into that row's folder, onto the tree's empty space to the project root). Every `\input`/`\include`/`\includegraphics`/`\bibliography`/`\addbibresource`/`\lstinputlisting` that resolved to the file is rewritten to the new rooted path — one undoable edit per open document (⌘Z there), closed documents of the include tree on disk; refused for the entry document, with unsaved edits, or onto an existing file |
@@ -994,14 +994,9 @@ explain that nothing is loaded.
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
 | ⌘⌥R | Show in Finder: the active document's file, selected (also "Reveal in Finder" in a sidebar row's context menu; right-click the project tree's empty space for "Reveal Project in Finder") |
 | Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
-| ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
-| File > Reload Fixture | Reload Fixture (developer-only, no shortcut — confirms before replacing a real/unsaved document) |
-| ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |
-| ⌘⇧R | Attach render pipeline (`$FLASHTEX_RENDER`, the app bundle, or `crates/render-pipeline/target/…`): the Latin Modern-metric producer, so the preview shows Computer Modern-style text |
-| ⌘K | Attach worker executable… |
-| ⌘B | Compile now (auto-compile also runs 250 ms after edits) |
-| ⌘. | Stop compile: ends a compile that runs too long under the engine-v3 preview |
-| ⌘⇧E | Export PDF… — the app's one export route: the loaded v2 display list through `flashtex-pdf-exact from-v2` (`$FLASHTEX_PDF_EXACT`, the bundle, or `crates/pdf/target/…`): original GIDs, embedded font programs, typed rules, images; refusals name the item. Progress and Cancel in the status bar; the file is written atomically |
+| ⌘B | Compile now (and restart the engine after it stopped; with auto-compile on, edits also compile as they are typed) |
+| ⌘. | Stop compile: ends a compile that runs too long |
+| ⌘⇧E | Export PDF… — the app's one export route: the PDF pdflatex would write for the editor's text, from the engine's export run. Progress and Cancel in the status bar; the file is written atomically, and a file changed on disk since you chose it is kept |
 | ⌘P | Print… (the same bytes Export PDF… writes; system print panel; page size follows the PDF) |
 | File > Print Source… | Print Source… (editor text with line numbers, monospaced, from a copy so the live editor is untouched) |
 | ⌘⌥P | Pin insertion point at caret (capture destination anchor) |
@@ -1010,7 +1005,6 @@ explain that nothing is loaded.
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
 | ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures; Return shows or resumes a pairing code, Esc cancels it or dismisses a banner, Tab walks Advertise → pairing controls → Forget → Clear; the step indicator, status row and every transition are VoiceOver text) |
-| Edit > Rename Citation… | Rename citation window (reviewed `plan_citation_rename` across the project → one `apply_group`) |
 | ⌘⇧P | Command palette (View; also the toolbar's Commands button): scope tabs for Files, Sections, Labels, Citations and every command in this table; type to filter, Tab cycles scopes, ↑/↓ choose, Return opens or runs, Esc closes |
 | ⌘= | Zoom in preview (View; also the preview header's + button or a pinch): multiply the fit-width zoom by 1.25, up to 4x; wide pages scroll horizontally |
 | ⌘- | Zoom out preview (View; also the header's − button): divide by 1.25, down to 0.25x fit width |
@@ -1022,15 +1016,12 @@ explain that nothing is loaded.
 | ⌘⌥0 | Reset editor font size (View): back to the default 13 pt |
 | ⌘⇧M | Toggle Problems panel (View): the grouped diagnostics list under the editor and preview with a severity filter, jump, explanations and Fix…; the sidebar's Problems rows and the status bar counts open it too |
 | ⌃⌘V | Toggle Vim keybindings (View; also the Settings switch, default off): modal editing in the source editor — a Vim status line at the bottom of the editor pane shows `-- NORMAL --` / `-- INSERT --` / `-- VISUAL --`; see *Vim keybindings* below |
-| Edit > Durable History… | Durable History window (undo/redo on the helper's edit ledger: Refresh, Undo, Redo, Retry/Discard after an uncertain reply, retention gauge, both stacks) |
 | ⌘F | Find… (opens the source editor's find bar; AppKit's built-in incremental search) |
 | ⌘⌥F | Find and Replace… (opens the find bar already showing its Replace row; a replacement is one undoable edit, so ⌘Z undoes it and the preview recompiles) |
-| Edit > Find Next | Find Next (selects the next find-bar match; no key equivalent — ⌘G is Find in Project's Next match, ⇧⌘G is Convert Capture — Return in the find bar's search field does the same) |
+| Edit > Find Next | Find Next (selects the next find-bar match; no key equivalent — ⇧⌘G is Convert Capture — Return in the find bar's search field does the same) |
 | Edit > Find Previous | Find Previous (selects the previous find-bar match; no key equivalent for the same reason — Shift-Return in the find bar's search field does the same) |
 | ⌘E | Use Selection for Find (sets the focused editor's selection as the find bar's search string) |
 | ⌘J | Jump to Selection (scrolls the focused editor's current selection into view and centers it) |
-| ⌘⇧F | Find in Project… window (case-sensitive literal search of the durable project source; Return searches or goes to the selected match, ↑/↓ move the selection, Esc closes; Plan Replacement / Apply for reviewed replacement) |
-| ⌘G | Next match (while the Find in Project window is key: selects the next match, wrapping, and goes there) |
 | ⌘Z | Undo (including an approved capture insertion) |
 | Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, citation keys, document words; never takes the keyboard from the editor) |
 | ↑ / ↓ / Tab / ⇧Tab / Page Up / Page Down / Home / End / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Page Up/Page Down move by a screenful of rows and Home/End go to the first/last row (never wrapping), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
@@ -1040,7 +1031,7 @@ explain that nothing is loaded.
 | ⌥⇧↓ | Duplicate Line (every full line the selection touches, copy below, caret/selection stays on the copy, one undo step; the Overleaf shortcut) |
 | ⌥⇧↑ | Duplicate Line Up (every full line the selection touches, copy above, caret/selection stays on the copy, one undo step) |
 | ⌘⌥↑ / ⌘⌥↓ | Move line up / down (full lines only, no-op at the buffer edges; ⌥⌘[ / ⌥⌘] remain Previous/Next Occurrence) |
-| ⌃⌘K | Delete Line (every full line the selection touches; ⇧⌘K remains Attach Built Compiler) |
+| ⌃⌘K | Delete Line (every full line the selection touches, one undo step) |
 | ⌃J | Join Lines (one space; strips the next line's leading whitespace and a trailing `%` comment marker only when it ends the line) |
 | Editor > Sort Lines Ascending | Sort Lines Ascending (stable, locale-aware compare of the touched lines; no key equivalent) |
 | Editor > Sort Lines Descending | Sort Lines Descending (stable, locale-aware compare of the touched lines; no key equivalent) |
