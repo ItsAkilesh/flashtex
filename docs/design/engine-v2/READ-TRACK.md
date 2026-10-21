@@ -467,3 +467,30 @@ the old run's frame when two things hold:
 - **In-body keystrokes:** plain-100 −1.4 %, full-100 −2.8 %, c1 `{Thr` −2.6 %.
 - **Cold compiles:** +0.03 % at most (code layout).
 - **Pages re-run** are main's in every session.
+
+## 13. READ-TRACK-3: the kept pages' documents (measured)
+
+Lane READ-TRACK-3 took b4's end row from 194.9 M to 151.7 M. The evidence is in
+`docs/evidence/read-track-3-2026-10-21/` (NixOS PC, callgrind, main `8d23cf520`).
+
+**The old documents are taken over.** A resident run's document is `Doc::new`'s, then each
+page built in turn from its inputs: the XDV bytes, the source map's markers, `\mag`, the
+pictures found and the fonts the XDV names. So where this run's document at the convergence
+point is made from the same inputs as the old run's there (`out::same_doc`: each page the same
+one or built from equal `Replay`s, the same forms count, paper, XDV comment and pictures, and no
+error in either), building the old pages again would make the old run's later documents. The
+jump then takes the old run's document at its target over (`out::adopt_doc`), with this run's
+pages up to the convergence point, and sends the old pages with their frames. The carried
+checkpoints keep the old run's documents (`PageCk::out` is now shared). Where the documents
+differ (an edited page before the convergence point, as at EDITPOINT), the pages are built again
+from their XDV as before.
+
+**Two cheaper steps in every compile:**
+- the forwarder reads a page's item opcodes without decoding it (`page::item_ops`), and decodes
+  only a page that uses an item the client did not accept;
+- `Arena::set_from` and `or_from` pack again only the deltas they edit (`Log::edit_chunk`), not
+  every delta of each log; the chunk maps of the convergence test hash with `FastHasher`.
+
+**Measured:** b4 end 194.9 M → 151.7 M; b5 end 339.2 M → 135.8 M; EDITPOINT and Classic rows
+equal or lower; cold compiles within ±0.004 % (Classic) and −0.9 % to +0.04 % (Unicode, the
+forwarder). The pages re-run are main's in every session.
