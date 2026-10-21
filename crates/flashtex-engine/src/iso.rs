@@ -3012,3 +3012,125 @@ pub fn who_points(g: &Globals, slots: &[ScalarSlot], targets: &[i32], max: usize
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const INSERTING: i32 = crate::generated::consts::inserting;
+
+    /// A word space holding only the words a test puts in `mem` (every
+    /// other word 0).
+    #[derive(Default)]
+    struct Words(HashMap<usize, u64>);
+
+    impl Space for Words {
+        fn word(&self, off: usize) -> u64 {
+            self.0.get(&off).copied().unwrap_or(0)
+        }
+    }
+
+    impl Words {
+        fn put(&mut self, p: i32, w: u64) {
+            self.0.insert(p as usize * 8, w);
+        }
+    }
+
+    fn hh(b0: i32, b1: i32, rh: i32) -> u64 {
+        ((b0 as u64) << 48) | ((b1 as u64 & 0xFFFF) << 32) | rh as u32 as u64
+    }
+
+    fn halves(lh: i32, rh: i32) -> u64 {
+        ((lh as u32 as u64) << 32) | rh as u32 as u64
+    }
+
+    /// `mem` at offset 0, nothing else.
+    fn layout() -> Layout {
+        let none = usize::MAX;
+        Layout {
+            mem: 0,
+            eqtb: none,
+            save_stack: none,
+            nest: none,
+            input_stack: none,
+            param_stack: none,
+            cur_mark: none,
+            font_glue: none,
+            hyph_list: none,
+            hyph_word: none,
+            disc_ptr: none,
+            sa_root: none,
+            if_stack: none,
+            pdf_mem: none,
+            obj_tab: none,
+            head_tab: none,
+            pdf_link_stack: none,
+            intr_state: none,
+            intr_data: none,
+            ls_nest_tag: none,
+            ls_grp_tag: none,
+            ls_cond_tag: none,
+            dl_side: (none, 0),
+            scalars: HashMap::new(),
+        }
+    }
+
+    /// A page insertion list of one record at `r` (class 100, height 10pt)
+    /// of `kind`, its `broken_ptr` and `broken_ins` as given.
+    fn page_ins_list(r: i32, kind: i32, broken_ptr: i32, broken_ins: i32) -> Words {
+        let mut w = Words::default();
+        w.put(PAGE_INS_HEAD, hh(0, 0, r));
+        w.put(r, hh(kind, 100, PAGE_INS_HEAD));
+        w.put(r + 1, halves(broken_ins, broken_ptr));
+        w.put(r + 2, halves(NULL, NULL));
+        w.put(r + 3, 10 << 16);
+        w
+    }
+
+    fn compare(o: &Words, n: &Words) -> Result<(), String> {
+        let l = layout();
+        let so = St {
+            sp: o,
+            l: &l,
+            hi_mem_min: HI_MEM_STAT_MIN,
+        };
+        let sn = St {
+            sp: n,
+            l: &l,
+            hi_mem_min: HI_MEM_STAT_MIN,
+        };
+        let mut w = Iso::new(so, sn);
+        w.page_ins();
+        w.finish();
+        w.err.map_or(Ok(()), Err)
+    }
+
+    /// The fields of an `inserting` record hold what `get_node` left
+    /// (tex.web §1008-§1009) and are never read: two runs whose records
+    /// differ there only are the same state (it failed before `506b33c4a`:
+    /// "broken_ptr: ... points at nothing the walk reached").
+    #[test]
+    fn an_inserting_records_stale_broken_fields_are_not_compared() {
+        let o = page_ins_list(1000, INSERTING, 4_677_821, 2_345_678);
+        let n = page_ins_list(1000, INSERTING, 3_122_334, 1_234_567);
+        assert_eq!(compare(&o, &n), Ok(()));
+    }
+
+    /// A `split_up` record's are read where its class is broken (tex.web
+    /// §1021): different ones are different states.
+    #[test]
+    fn a_split_up_records_broken_fields_are_compared() {
+        let o = page_ins_list(1000, SPLIT_UP, 4_677_821, 2_345_678);
+        let n = page_ins_list(1000, SPLIT_UP, 3_122_334, 1_234_567);
+        let e = compare(&o, &n).expect_err("split_up records with different broken fields");
+        assert!(e.contains("broken_"), "{e}");
+        // ... and equal ones (pointing at nothing the walk reaches here) are
+        // still followed: the same address in both is not enough
+        let o = page_ins_list(1000, SPLIT_UP, 4_000, 4_001);
+        let n = page_ins_list(1000, SPLIT_UP, 4_000, 4_001);
+        assert!(compare(&o, &n).is_err());
+        // (and an `inserting` record with null fields, as always)
+        let o = page_ins_list(1000, INSERTING, NULL, NULL);
+        assert_eq!(compare(&o, &o), Ok(()));
+    }
+}
