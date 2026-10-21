@@ -231,7 +231,7 @@ struct ProjectSection: View {
                 icon: style.systemImage,
                 iconColor: style.nsColor,
                 title: doc.path,
-                trailing: doc.durableRevision.map { "r\($0)" },
+                trailing: nil,
                 modified: doc.isDirty,
                 tooltip: tooltip(for: doc, kind: kinds.kind(of: doc.path)),
                 accessibilityLabel: spoken(for: doc, kind: kinds.kind(of: doc.path), active: doc.path == activePath)))
@@ -398,11 +398,9 @@ struct ProjectSection: View {
         if kind == .bibliography { parts.append("bibliography source (declared)") }
         switch doc.origin {
         case .buffer: parts.append("buffer")
-        case .helper: parts.append("via the helper's durable ledger")
         case .disk: parts.append("read from disk")
         case .virtual(let source): parts.append("read-only, from \(source)")
         }
-        if let r = doc.durableRevision { parts.append("durable revision \(r)") }
         if doc.isDirty { parts.append("edited since last save") }
         return parts.joined(separator: " · ")
     }

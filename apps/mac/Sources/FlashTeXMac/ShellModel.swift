@@ -444,6 +444,17 @@ final class ShellModel {
     private struct EditorMarksKey: Equatable {
         var resultRevision: Int; var editorRevision: Int; var path: String
     }
+
+    /// The report for `path` (any open document): what `editorMarkReport`
+    /// memoizes for the active document and what diagnostic navigation reads
+    /// for the others. The host's rows of the last completed compile, rebased
+    /// from the texts that compile read (set at DONE); a failed compile still
+    /// reports its rows, so there is nothing to carry over.
+    func diagnosticReport(for path: String, currentText: String) -> EditorDiagnostics.Report {
+        guard let source = markSource else { return .empty }
+        return EditorDiagnostics.report(for: source.result, resultID: source.id, path: path,
+                                        compiledText: compiledDocuments[path], currentText: currentText)
+    }
     @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, report: EditorDiagnostics.Report)?
     /// Identity of the mark last reached by ⌘⇧]/⌘⇧[, so marks sharing a
     /// start offset are each visited once (Navigation.swift).
