@@ -7,7 +7,13 @@ the M1-class reference Mac can gate (DESIGN.md §1.2).
         [--host flashtex-host-unicode --client dl3-client] [--runs 3]
         [--counter auto|perf|valgrind|time|none] [--json OUT]
 
-Unicode mode has no incremental engine yet (docs/design/xetex/INCREMENTAL.md):
+Note (2026-10-21): this was written before the incremental Unicode engine
+landed. Its host `edits` and `reopen` are full runs, not §1.2's edit and
+reopen rows; those are measured by tools/incr-bench/unicode.py (`--keys`,
+`--reopen`, `FLASHTEX_S0_CACHE`), see docs/evidence/unicode-m3-mac-2026-10-21/.
+Its preamble edit is still the preamble row.
+
+Unicode mode had no incremental engine then (docs/design/xetex/INCREMENTAL.md):
 every compile, a keystroke's included, is a full run of the engine from the
 format, so the §1.2 rows reduce to the cost of that run:
 
