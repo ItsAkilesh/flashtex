@@ -4481,7 +4481,6 @@ impl Session {
             }
         }
         let key_s = t0.elapsed().as_secs_f64();
-        crate::os::phase_mark('K');
         let s0_id = self.s0.as_ref().map(|s| s.id).ok_or("no S0")?;
         let pre_r = pre.as_ref().map(|p| p.0);
         let changes = match pre {
@@ -4497,7 +4496,6 @@ impl Session {
             Err(why) => return self.cold(t0, stop_at, Some(why)),
         };
         let changes_s = t0.elapsed().as_secs_f64() - key_s;
-        crate::os::phase_mark('C');
         // pages an abandoned run shipped are to be shipped again (from a
         // retained restart point of this engine at or after S₀, which has a
         // page count)
@@ -6100,7 +6098,6 @@ impl Session {
             // (the run's own output again, not another program's)
             system::stamp_output(p);
         }
-        crate::os::phase_mark('P');
         if let Some(rs) = self.reloc.get(&r) {
             rs.apply(g);
             if rs.count > 0 && g.rs_on {
@@ -6169,7 +6166,6 @@ impl Session {
             l.aux_path = None;
             l.aux_armed = false;
         }
-        crate::os::phase_mark('L');
         let mut patches = self.defpatch.get(&r).cloned().unwrap_or_default();
         patches.extend(patch.iter().cloned());
         for p in &patches {
@@ -6207,7 +6203,6 @@ impl Session {
         // `first` and all; and the merged shift keeps every name, so that
         // two byte-identical files edited alike both keep their lines'
         // shift.)
-        crate::os::phase_mark('Z');
         let mut pending: Vec<crate::lineshift::Pending> = vec![];
         for p in std::mem::take(&mut self.line_shifts) {
             match pending.iter_mut().find(|q| q.same_edit(&p)) {
@@ -6223,7 +6218,6 @@ impl Session {
             })
             .collect();
         // (the definitions this run makes are in the new numbering)
-        crate::os::phase_mark('H');
         crate::diag::new_run();
         let jr = self.journal.as_ref().ok_or("no journal")?;
         system::record_reads_into(Some(truncate_journal(jr, rec.reads, &self.dirs_checked)));
@@ -6234,7 +6228,6 @@ impl Session {
         let restore_flt = f1
             .zip(crate::os::events())
             .map(|(a, b)| (b.0 - a.0, b.1 - a.1));
-        crate::os::phase_mark('O');
         obs.old_pages = self.pages[base..].to_vec();
         obs.old_lines = obs
             .old_pages
@@ -6246,7 +6239,6 @@ impl Session {
             })
             .collect();
         obs.edits = edits;
-        crate::os::phase_mark('E');
         obs.changed = changed;
         obs.old_journal_files = old_files;
         obs.old_journal_all = jr.files.iter().map(|f| f.path.clone()).collect();

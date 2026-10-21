@@ -263,23 +263,35 @@ pub fn logical_len(path: &str) -> Option<u64> {
 /// logical end becomes `base`, and nothing is read or cut. The tail's old
 /// bytes come from [`kept_tail`] while the restore is pending.
 pub fn keep_tail(path: &str, base: u64) -> Result<(), String> {
-    let old_len = match logical_len(path) {
-        Some(n) => n,
-        None => std::fs::metadata(path)
-            .map(|m| m.len())
-            .map_err(|e| format!("{path}: {e}"))?,
-    };
+    let e = |x: std::io::Error| format!("{path}: {x}");
+    // One open, and the descriptor's `stat` before and after the blank: a
+    // call by path for each step took ten a file, and on the M5 Pro the
+    // restore's output files 0.4-0.8 ms of a beamer keystroke (lane
+    // T7-HEADROOM).
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(e)?;
+    let m = f.metadata().map_err(e)?;
+    let old_len = logical_len(path).unwrap_or(m.len());
     if old_len < base {
         return Err(format!("{path} holds {old_len} bytes, fewer than {base}"));
     }
     // (blanked: the old run's end; the restore checked that the file is
     // the engine's, `checkpoint::changed_outside`)
-    if let Some(why) = outside_change(path) {
+    if let Some(why) = why_changed_as(path, true, Some(stamp_of(&m))) {
         return Err(why);
     }
     let end_at = old_len.saturating_sub(BLANK_END).max(base);
-    let end = blank(path, end_at, old_len).map_err(|e| format!("{path}: {e}"))?;
-    stamp_output(path);
+    let mut end = vec![0u8; (old_len - end_at) as usize];
+    crate::os::read_exact_at(&f, &mut end, end_at).map_err(e)?;
+    crate::os::write_all_at(&f, &vec![b' '; end.len()], end_at).map_err(e)?;
+    // (`stamp_output`, from the descriptor)
+    if let Ok(m) = f.metadata() {
+        set_stamp(path, stamp_of(&m));
+    }
+    FOREIGN.with(|f| f.borrow_mut().remove(&out_key(path)));
     file_trace(|| format!("keep_tail {path} base {base} old_len {old_len} blank {end_at}"));
     LOGICAL.with(|m| {
         m.borrow_mut().insert(
@@ -4205,12 +4217,17 @@ pub fn outside_change(path: &str) -> Option<String> {
 }
 
 fn why_changed(path: &str, foreign_too: bool) -> Option<String> {
+    why_changed_as(path, foreign_too, None)
+}
+
+/// [`why_changed`] with the file's stamp now, when the caller has it.
+fn why_changed_as(path: &str, foreign_too: bool, now: Option<Stamp>) -> Option<String> {
     let k = out_key(path);
     if foreign_too && FOREIGN.with(|f| f.borrow().contains(&k)) {
         return Some(format!("{path} was changed by another program"));
     }
     let st = STAMPS.with(|m| m.borrow().get(&k).copied())?;
-    let now = disk_stamp(path);
+    let now = now.or_else(|| disk_stamp(path));
     if now == Some(st) {
         return None;
     }

@@ -984,7 +984,6 @@ impl Engine {
                 server::send(&out, kind::SOURCES, &src);
             }
         }
-        crate::os::phase_mark('S');
         let old_count = self.live.borrow().pages.len();
         self.live.borrow_mut().target = Some(Target {
             ps,
@@ -1120,7 +1119,6 @@ impl Engine {
                 doc.session.set_defer(None);
             }
         }
-        crate::os::phase_mark('T');
         let t_run = Instant::now();
         let busy_run = crate::busy::enter(crate::busy::Part::Typeset);
         let mut open_error = None;
@@ -1326,10 +1324,6 @@ impl Engine {
                     Json::Arr(apply_steps.iter().map(|&u| Json::Int(u as i64)).collect()),
                 ),
                 ("move_spans".to_string(), m(move_ms)),
-                (
-                    "cut_mode".to_string(),
-                    Json::Int(CUT_MODE.with(|c| c.get()) as i64),
-                ),
                 ("first_page".to_string(), o(t.first_page_ms)),
                 ("first_page_cpu".to_string(), o(t.first_cpu_ms)),
                 ("first_page_dl".to_string(), o(t.first_emit_ms)),
@@ -1591,10 +1585,6 @@ impl Engine {
         }
         let doc = self.doc.as_mut().unwrap();
         doc.compiles += 1;
-        // (the cut experiment's next mode: `cut_mode`)
-        if std::env::var_os("FLASHTEX_CUT_AB").is_some() {
-            CUT_MODE.with(|c| c.set(((doc.compiles / 2) % 3) as u8));
-        }
         doc.tools.deferred = deferred.then(|| (conn.clone(), req.clone(), id));
         crate::system::clear_known_content();
         remember_texts(doc);
@@ -1964,9 +1954,12 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
     // Write `data` to `path`, whose bytes before `from` are already these
     // and whose length is `old` (when known). The length is set only where
     // the write leaves it wrong: a file that grows grows by the write (lane
-    // T7-MARGIN: on the M5 Pro's APFS a letter typed or deleted, which sets
-    // the length, took 0.45-0.8 ms here, a newline in place of a space,
-    // which keeps it, 0.12-0.14 ms; reference run 2026-10-21b).
+    // T7-MARGIN). A file that gets shorter is cut at the 16 KB boundary at
+    // or before its new end, and written from there (or from `from`, if
+    // that comes first): on the M5 Pro's APFS, cutting a file to a length
+    // inside a block blocked for 0.33-0.83 ms (`ftruncate`, every deleted
+    // letter's keystroke), and the restore after it was 0.2 ms slower; to a
+    // 16 KB boundary it took 0.04 ms (lane T7-HEADROOM, Mac run 2).
     let write_from =
         |path: &Path, data: Vec<u8>, from: usize, old: Option<usize>, written: &mut Written| {
             // (each step's time, for the latency accounting: `APPLY_STEPS`)
@@ -1988,23 +1981,12 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                         Some(o) if o <= data.len() => {
                             crate::os::write_all_at(&f, &data[from..], from as u64)
                         }
-                        // (experiment: cut at a 16 KB boundary at or before
-                        // the new end, then write from there; or cut to 0
-                        // and write it all)
-                        Some(_) if cut_mode() > 0 => {
-                            let to = if cut_mode() == 1 {
-                                (data.len() & !0x3fff).min(from)
-                            } else {
-                                0
-                            };
+                        Some(_) => {
+                            let to = data.len() & !(CUT_ALIGN - 1);
                             f.set_len(to as u64)?;
                             lap(2, &mut t);
-                            crate::os::write_all_at(&f, &data[to..], to as u64)
-                        }
-                        Some(_) => {
-                            crate::os::write_all_at(&f, &data[from..], from as u64)?;
-                            lap(1, &mut t);
-                            f.set_len(n)
+                            let at = from.min(to);
+                            crate::os::write_all_at(&f, &data[at..], at as u64)
                         }
                         None => {
                             f.set_len(n)?;
@@ -2012,14 +1994,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                             crate::os::write_all_at(&f, &data[from..], from as u64)
                         }
                     };
-                    lap(
-                        if matches!(old, Some(o) if o > data.len()) && cut_mode() == 0 {
-                            2
-                        } else {
-                            1
-                        },
-                        &mut t,
-                    );
+                    lap(1, &mut t);
                     drop(f);
                     lap(3, &mut t);
                     r
@@ -2115,14 +2090,9 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
     Ok(())
 }
 
-/// Experiment (lane T7-HEADROOM, `FLASHTEX_CUT_AB`): how a file that
-/// gets shorter is cut. 0: written, then cut to its length; 1: cut at the
-/// 16 KB boundary at or before its new end (and the edit), then written
-/// from there; 2: cut to 0, then written whole. The mode cycles by pairs
-/// of compiles.
-fn cut_mode() -> u8 {
-    CUT_MODE.with(|c| c.get())
-}
+/// Where `apply_changes` cuts a file that gets shorter: a multiple of
+/// this (arm64 macOS's page; APFS's blocks are 4 KB).
+const CUT_ALIGN: usize = 16 << 10;
 
 /// An edit `apply_changes` made in this compile: bytes `at..at + del` of
 /// `pre` (the text before it, `Doc::texts`' copy) replaced by `ins`. `pre`
@@ -2139,8 +2109,6 @@ struct Edited {
 thread_local! {
     /// `apply_changes`' edits in this compile, by file (at most one each).
     static EDITED: RefCell<Vec<Edited>> = const { RefCell::new(Vec::new()) };
-    /// [`cut_mode`].
-    static CUT_MODE: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
 }
 
 thread_local! {
@@ -2536,6 +2504,54 @@ mod tests {
             !under_root(&file, &root, None),
             "without the canonical root, as before"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Edits that shrink, grow and keep a file, near and across the cut's
+    /// 16 KB boundaries (`CUT_ALIGN`), leave it holding exactly the edited
+    /// text, and the host's copy (`written`) the same bytes.
+    #[test]
+    fn edits_leave_the_file_as_the_text() {
+        use flashtex_display_list::json::{obj, s as js, Json};
+        let dir = std::env::temp_dir().join(format!("ftx-apply-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut seed = 0x0dd5_eed5_1234_5678u64;
+        let mut rnd = |n: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % n.max(1) as u64) as usize
+        };
+        let a = super::CUT_ALIGN;
+        let mut text: Vec<u8> = (0..2 * a + 5).map(|i| b"ab \n"[i % 4]).collect();
+        std::fs::write(dir.join("m.tex"), &text).unwrap();
+        let mut written = super::Written::new();
+        for k in 0..400 {
+            // around a boundary, or anywhere
+            let len = text.len();
+            let at = match k % 3 {
+                0 => (len & !(a - 1)).saturating_sub(rnd(3)).min(len),
+                1 => len.saturating_sub(rnd(4)),
+                _ => rnd(len + 1),
+            };
+            let del = rnd(len - at + 1).min([0, 1, 2, 9, a + 3][rnd(5)]);
+            let ins: String = (0..[0, 1, 2, 7][rnd(4)]).map(|_| ['x', '\n', 'y'][rnd(3)]).collect();
+            let req = obj([(
+                "edits",
+                Json::Arr(vec![obj([
+                    ("path", js("m.tex")),
+                    ("offset", Json::Int(at as i64)),
+                    ("delete", Json::Int(del as i64)),
+                    ("insert", js(ins.as_str())),
+                ])]),
+            )]);
+            super::apply_changes(&dir, &req, &mut written).unwrap();
+            text.splice(at..at + del, ins.bytes());
+            assert_eq!(std::fs::read(dir.join("m.tex")).unwrap(), text, "edit {k}: at {at} del {del}");
+            let (_, held) = written.get(&dir.join("m.tex")).expect("the host's copy");
+            assert_eq!(held.as_slice(), text.as_slice(), "edit {k}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
