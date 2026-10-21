@@ -130,9 +130,10 @@ pages on letter@start and 3 on letter@middle, in every run).
   runs, `fswatch::tests::changes_are_seen_at_the_next_check` failed while a build ran beside it:
   its served-count assertion depends on no event arriving for `/tmp`. It passed 6 of 6 times on its
   own, and main's tests passed 4 of 4.
-- `scripts/gate.sh quick` (rustup 1.98.1, fresh target directory): GATE_RESULT.
+- `scripts/gate.sh quick` (rustup 1.98.1, fresh target directory) at `25ec0a527`: passed (rustfmt, clippy,
+  tests of the changed crates, trip, etrip). The first run, at `6e395b9cb`, failed on rustfmt alone.
 - `sweeps.yml` with `ref=agent/kabir-claude/t7-full10` at `6e395b9cb`: default (run 39594288291)
-  success; `boxmemo=verify` (run 39594293024) VERIFY_RESULT.
+  success; `boxmemo=verify` (run 39594293024) success. `25ec0a527` changes only formatting and docs.
 
 ## 6. Notes
 
