@@ -3775,6 +3775,8 @@ impl Session {
     /// checkpoints, does not use it.
     pub fn prepare_next(&mut self, stop: &mut dyn FnMut() -> bool) -> bool {
         let _m = crate::memstat::scope(crate::memstat::tag::PREPARE);
+        // (the hosts change the working directory only between compiles)
+        let _cwd = crate::os::cwd_scope();
         if self.paused.is_some() {
             return false;
         }
@@ -4109,6 +4111,8 @@ impl Session {
     /// is followed by further passes (`more_passes`, DESIGN.md §5.5).
     pub fn compile(&mut self, stop_at: Option<usize>) -> Result<Report, String> {
         let _m = crate::memstat::scope(crate::memstat::tag::ENGINE);
+        // (the hosts change the working directory only between compiles)
+        let _cwd = crate::os::cwd_scope();
         let t0 = Instant::now();
         // the disk as it is now for this compile's lookups and checks (its
         // directories outside the document as the watches vouch for them)
@@ -6586,6 +6590,8 @@ impl Session {
     /// end.
     pub fn finish(&mut self) -> Result<Report, String> {
         let _m = crate::memstat::scope(crate::memstat::tag::ENGINE);
+        // (the hosts change the working directory only between compiles)
+        let _cwd = crate::os::cwd_scope();
         let Some(p) = self.paused.take() else {
             return Err("no run is paused".into());
         };

@@ -56,15 +56,18 @@ struct Ident {
 
 impl Ident {
     fn of(path: &str) -> std::io::Result<Ident> {
-        let m = std::fs::metadata(path)?;
-        let s = crate::os::file_stat(&m);
-        Ok(Ident {
+        Ok(Ident::of_metadata(&std::fs::metadata(path)?))
+    }
+
+    fn of_metadata(m: &std::fs::Metadata) -> Ident {
+        let s = crate::os::file_stat(m);
+        Ident {
             size: s.size,
             mtime_ns: s.mtime_ns,
             ctime_ns: s.ctime_ns,
             ino: s.ino,
             dev: s.dev,
-        })
+        }
     }
 
     /// Within `window` ns of now, either side (a time far in the future,
@@ -141,8 +144,9 @@ fn statfs_local(_path: &str) -> bool {
 /// More entries than any document reads; past it the cache starts afresh.
 const MAX_ENTRIES: usize = 1 << 16;
 
-/// Path -> (identity, hash).
-type Kept = HashMap<String, (Ident, [u64; 2])>;
+/// Path -> (identity, hash, and the bytes of a file whose bytes are kept:
+/// `keeps_bytes`).
+type Kept = HashMap<String, (Ident, [u64; 2], Option<std::sync::Arc<[u8]>>)>;
 
 static CACHE: Mutex<Option<Kept>> = Mutex::new(None);
 
@@ -150,18 +154,41 @@ static CACHE: Mutex<Option<Kept>> = Mutex::new(None);
 #[cfg(test)]
 static READS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Whether a file's bytes are kept with its hash: a font metric file
+/// (lane T7-FULL10). Every compile that restarts before a document's first
+/// math loads its 20-30 TFM files again, and each open, read and close was
+/// three of the system calls that made the Mac's first page 2-3 ms slower
+/// than the PC's. They are small (1-20 KB), and the same few dozen per
+/// document.
+fn keeps_bytes(path: &str, size: u64) -> bool {
+    size <= 1 << 20
+        && path
+            .rsplit_once('.')
+            .is_some_and(|(_, e)| e.eq_ignore_ascii_case("tfm"))
+}
+
 /// `persist::hash128_file(path, None)`'s hash, from the cache while the
 /// file's identity is the one it was taken with and is not racy.
 pub fn hash_file(path: &str) -> std::io::Result<[u64; 2]> {
     hash_file_within(path, crate::system::racy_ns())
 }
 
+/// [`hash_file`], with the file's identity taken from `m`, a `stat` of
+/// `path` just made (`system::note_file` takes one for the file's
+/// signature too).
+pub fn hash_file_from(path: &str, m: &std::fs::Metadata) -> std::io::Result<[u64; 2]> {
+    hash_ident(path, crate::system::racy_ns(), Ident::of_metadata(m))
+}
+
 fn hash_file_within(path: &str, window: i128) -> std::io::Result<[u64; 2]> {
-    let before = Ident::of(path)?;
+    hash_ident(path, window, Ident::of(path)?)
+}
+
+fn hash_ident(path: &str, window: i128, before: Ident) -> std::io::Result<[u64; 2]> {
     let keep = cfg!(unix) && !before.racy(window) && local(path, before.dev);
     if keep {
         let c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((id, h)) = c.as_ref().and_then(|m| m.get(path)) {
+        if let Some((id, h, _)) = c.as_ref().and_then(|m| m.get(path)) {
             if *id == before {
                 return Ok(*h);
             }
@@ -169,16 +196,47 @@ fn hash_file_within(path: &str, window: i128) -> std::io::Result<[u64; 2]> {
     }
     #[cfg(test)]
     READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let (h, n) = crate::persist::hash128_file(path, None)?;
+    let (h, n, bytes) = if keep && keeps_bytes(path, before.size) {
+        let d = std::fs::read(path)?;
+        (crate::persist::hash128(&d), d.len() as u64, Some(d.into()))
+    } else {
+        let (h, n) = crate::persist::hash128_file(path, None)?;
+        (h, n, None)
+    };
     if keep && n == before.size && Ident::of(path).ok() == Some(before) {
         let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
         let m = c.get_or_insert_with(HashMap::new);
         if m.len() >= MAX_ENTRIES {
             m.clear();
         }
-        m.insert(path.to_string(), (before, h));
+        m.insert(path.to_string(), (before, h, bytes));
     }
     Ok(h)
+}
+
+/// `path`'s bytes as the cache keeps them (`keeps_bytes`), when its
+/// identity now -- `m`, a `stat` of it just made, or one taken here -- is
+/// the one they were read under and is not racy: what reading the file
+/// would give, as `hash_file`'s answer is its hash. `None`: read the file.
+pub fn kept_bytes(path: &str, m: Option<&std::fs::Metadata>) -> Option<std::sync::Arc<[u8]>> {
+    if !cfg!(unix) || crate::system::logical_len(path).is_some() {
+        return None;
+    }
+    let now = match m {
+        Some(m) => Ident::of_metadata(m),
+        None => Ident::of(path).ok()?,
+    };
+    if !keeps_bytes(path, now.size)
+        || now.racy(crate::system::racy_ns())
+        || !local(path, now.dev)
+    {
+        return None;
+    }
+    let c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    match c.as_ref().and_then(|m| m.get(path)) {
+        Some((id, _, Some(b))) if *id == now => Some(b.clone()),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

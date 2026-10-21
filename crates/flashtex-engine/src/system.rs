@@ -423,10 +423,72 @@ pub fn read_logical(path: &str) -> std::io::Result<Vec<u8>> {
 /// (`persist::hash128_file`); a file this process does not write is hashed
 /// once while it is unchanged (`crate::hashcache`).
 pub fn hash_logical(path: &str) -> std::io::Result<[u64; 2]> {
-    match logical_len(path) {
-        None => crate::hashcache::hash_file(path),
-        len => crate::persist::hash128_file(path, len).map(|(h, _)| h),
+    hash_logical_from(path, None)
+}
+
+/// [`hash_logical`], with `m` a `stat` of `path` just made, if there is one.
+fn hash_logical_from(path: &str, m: Option<&std::fs::Metadata>) -> std::io::Result<[u64; 2]> {
+    match (logical_len(path), m) {
+        (None, Some(m)) => crate::hashcache::hash_file_from(path, m),
+        (None, None) => crate::hashcache::hash_file(path),
+        (len, _) => crate::persist::hash128_file(path, len).map(|(h, _)| h),
     }
+}
+
+thread_local! {
+    /// The `stat` `note_file` made of the file it noted last, for the open
+    /// that follows it (`take_last_stat`).
+    static LAST_STAT: std::cell::RefCell<Option<(String, std::fs::Metadata)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The `stat` `note_file` just made of `path`, if it was the last file it
+/// noted (once).
+fn take_last_stat(path: &str) -> Option<std::fs::Metadata> {
+    LAST_STAT.with(|l| {
+        let mut l = l.borrow_mut();
+        match l.take() {
+            Some((p, m)) if p == path => Some(m),
+            _ => None,
+        }
+    })
+}
+
+/// A binary input file's bytes: on disk, or the ones `hashcache` keeps of
+/// a font metric file (`hashcache::kept_bytes`), which are what reading it
+/// gives while its identity is unchanged.
+enum InFile {
+    Disk(File),
+    Kept(std::io::Cursor<std::sync::Arc<[u8]>>),
+}
+
+impl Read for InFile {
+    fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            InFile::Disk(f) => f.read(b),
+            InFile::Kept(c) => c.read(b),
+        }
+    }
+}
+
+impl std::io::Seek for InFile {
+    fn seek(&mut self, to: std::io::SeekFrom) -> std::io::Result<u64> {
+        match self {
+            InFile::Disk(f) => f.seek(to),
+            InFile::Kept(c) => c.seek(to),
+        }
+    }
+}
+
+/// Open `path` to read its bytes: from `hashcache`'s copy when it keeps
+/// one under the file's identity now (taken from the `stat` `note_file`
+/// just made, else here), else from disk.
+fn open_bytes(path: &str) -> std::io::Result<InFile> {
+    let m = take_last_stat(path);
+    if let Some(b) = crate::hashcache::kept_bytes(path, m.as_ref()) {
+        return Ok(InFile::Kept(std::io::Cursor::new(b)));
+    }
+    File::open(path).map(InFile::Disk)
 }
 
 /// A new engine: no file's logical end is known any more. Each file still
@@ -654,7 +716,7 @@ pub(crate) fn read_tex_line(r: &mut impl BufRead, line: &mut Vec<u8>) -> bool {
 #[derive(Default)]
 pub struct ByteFile {
     pub buf: i32,
-    input: Option<BufReader<File>>,
+    input: Option<BufReader<InFile>>,
     output: Option<BufWriter<Tracked>>,
     at_eof: bool,
     err: i32,
@@ -2464,6 +2526,9 @@ impl Globals {
     /// shows `./story.tex` exactly as pdfTeX's does.
     fn input_path(&mut self, default: Format, must_exist: bool) -> Option<String> {
         FULL_NAME_OF_FILE.with(|f| *f.borrow_mut() = None);
+        // (only a `stat` made by this lookup may stand for the file when
+        // it is opened next: `open_bytes`)
+        LAST_STAT.with(|l| *l.borrow_mut() = None);
         let s = self.raw_file_name();
         // tex.web's device names (§§514, 520: `TeXinputs:`, `TeXfonts:`,
         // `TeXformats:`). Pure tex.web (`tex82`: Knuth's trip test) parses
@@ -2701,7 +2766,7 @@ impl Globals {
         let Some(name) = self.input_path(Format::Tfm, true) else {
             return false;
         };
-        match File::open(&name) {
+        match open_bytes(&name) {
             Ok(h) => {
                 f.input = Some(BufReader::new(h));
                 f.path = Some(name);
@@ -2793,7 +2858,7 @@ impl Globals {
         };
         match File::open(&name) {
             Ok(h) => {
-                f.input = Some(BufReader::new(h));
+                f.input = Some(BufReader::new(InFile::Disk(h)));
                 f.path = Some(name);
                 f.err = 0;
                 get_byte(f);
@@ -4288,7 +4353,7 @@ pub fn is_user_file(path: &str) -> bool {
     if !path.starts_with('/') {
         return true;
     }
-    std::env::current_dir()
+    crate::os::cwd()
         .ok()
         .is_some_and(|d| std::path::Path::new(path).starts_with(d))
 }
@@ -4640,7 +4705,13 @@ pub fn note_file(path: &str) {
             return;
         }
         std::sync::Arc::make_mut(&mut log.seen).insert(path.to_string());
-        let stat = StatSig::of(path).unwrap_or_default();
+        // (one `stat` for the signature, the hash's identity and the open
+        // that follows: `LAST_STAT`)
+        let meta = crate::os::metadata_and_change_time(path);
+        let stat = meta
+            .as_ref()
+            .map(|(m, c)| StatSig::of_metadata(m, *c, racy_ns()))
+            .unwrap_or_default();
         // A file whose bytes are kept is read whole; any other (the format,
         // the font map, TeX Live's files) only hashed, through a buffer.
         let (hash, content) = if log.keep_content && is_user_file(path) {
@@ -4651,8 +4722,12 @@ pub fn note_file(path: &str) {
                 .unwrap_or([0, 0]);
             (hash, data.map(std::sync::Arc::new))
         } else {
-            (hash_logical(path).unwrap_or([0, 0]), None)
+            let m = meta.as_ref().map(|(m, _)| m);
+            (hash_logical_from(path, m).unwrap_or([0, 0]), None)
         };
+        if let Some((m, _)) = meta {
+            LAST_STAT.with(|l| *l.borrow_mut() = Some((path.to_string(), m)));
+        }
         let norm = |p: &str| p.strip_prefix("./").unwrap_or(p).to_string();
         let written_before = log.outputs.iter().any(|o| norm(o) == norm(path));
         log.files_mut().push(FileRead {
@@ -5141,7 +5216,9 @@ impl ByteFile {
         match &s.stream {
             Stream::None => {}
             Stream::In { path, offset } => {
-                f.input = Some(reopen_in(path, *offset)?);
+                f.input = Some(BufReader::new(InFile::Disk(
+                    reopen_in(path, *offset)?.into_inner(),
+                )));
                 f.path = Some(path.clone());
             }
             Stream::Out { path, len, at } => {
