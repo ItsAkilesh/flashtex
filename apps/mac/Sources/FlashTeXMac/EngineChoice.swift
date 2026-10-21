@@ -155,8 +155,9 @@ struct EngineChoice: Equatable, Sendable {
     /// record. **The P5 switch-over (S5) is this one line**: `.new` makes
     /// every document nobody has typeset yet open with the new engine;
     /// documents already typeset keep their engine (`Source.record`) and the
-    /// fallback rules still apply. Not to be flipped outside the P5 gate.
-    static let defaultForNewDocuments: Engine = .previous
+    /// fallback rules still apply. Flipped at S5 (retirement plan §0; the
+    /// Commander lifts the draft once decision 3's gate holds).
+    static let defaultForNewDocuments: Engine = .new
 
     /// Tests only: stands in for `defaultForNewDocuments`.
     @MainActor static var builtInDefaultForTests: Engine?

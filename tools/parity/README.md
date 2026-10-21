@@ -429,8 +429,11 @@ python3 tools/parity/nightly.py ratchet --results "$OUT" --record --local-proof 
 ## Running it
 
 ```sh
-cargo build --release -p flashtex-cli --bin flashtex   # -> target/release/flashtex
-python3 tools/parity/parity.py --tier fixtures                      # P-T2 + L0-L4 for the CLI
+scripts/engine-parity.sh --work W build                # -> W/eng/flashtex-initex, W/fmt/pdflatex.fmt
+export FLASHTEX_ENGINE=W/eng/flashtex-initex FLASHTEX_FORMATS=W/fmt   # the default engine since S5
+python3 tools/parity/parity.py --tier fixtures                      # P-T1 + P-T2 + L0-L4 for the new engine
+cargo build --release -p flashtex-cli --bin flashtex   # the frozen CLI, until S7
+python3 tools/parity/parity.py --tier fixtures --old-engine         # P-T2 + L0-L4 for the CLI
 python3 tools/parity/parity.py --tier fixtures --engine /Library/TeX/texbin/pdftex --raster none   # self-test
 python3 tools/parity/corpus.py fetch                                # once; ~450 MB of e-prints
 python3 tools/parity/parity.py --tier fixtures --tier arxiv --tier templates -j 10

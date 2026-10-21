@@ -224,6 +224,28 @@ class Levels(unittest.TestCase):
                     json.dump({"host": host, "levels": {"a": 1}}, f)
                 self.assertEqual(parity.check_baseline([self._r("a", 3)], p), [])
 
+    def test_the_default_engine_is_the_new_one(self):
+        # S5 (plan §1.8): with no --engine the new engine is measured, and it
+        # wants its formats; --old-engine picks the CLI
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {}, clear=False):
+            for k in ("FLASHTEX_ENGINE", "FLASHTEX_CLI", "FLASHTEX_FORMATS"):
+                os.environ.pop(k, None)
+            eng = os.path.join(d, "flashtex-initex")
+            with open(eng, "w") as f:
+                f.write("#!/bin/sh\necho 'pdfTeX 3.141592653-2.6-1.40.29 (flashtex-initex)'\n")
+            os.chmod(eng, 0o755)
+            missing = os.path.join(d, "none", "flashtex")
+            err = io.StringIO()
+            with mock.patch.object(parity, "DEFAULT_ENGINE", eng), mock.patch.object(parity, "DEFAULT_FLASHTEX", missing), \
+                    contextlib.redirect_stderr(err):
+                self.assertEqual(parity.main(["--tier", "fixtures", "--out", d, "--work", d]), 2)
+                self.assertIn("needs its formats", err.getvalue())
+                self.assertEqual(parity.main(["--tier", "fixtures", "--old-engine", "--out", d, "--work", d]), 2)
+                self.assertIn(f"engine not found at {missing}", err.getvalue())
+                with self.assertRaises(SystemExit):
+                    parity.main(["--old-engine", "--engine", eng])
+
     def test_committed_fixtures_baseline_names_its_host(self):
         with open(os.path.join(parity.REPO, "tools", "parity", "baseline-fixtures.json")) as f:
             b = json.load(f)

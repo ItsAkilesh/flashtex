@@ -373,7 +373,7 @@ jobs:
           case "$tier" in
             all) old_engine=true ;;
             pr)
-              if [ "$apple" = "true" ] && touches "^(crates/($old_engine_crates)/|Cargo\.(toml|lock)$|tools/(parity|visual-oracle|real-world-corpus)/|fixtures/|apps/mac/Fonts/|\.github/actions/parity-fixtures/|\.github/workflows/ci\.yml$)"; then
+              if [ "$apple" = "true" ] && touches "^(crates/($old_engine_crates|flashtex-engine)/|Cargo\.(toml|lock)$|tools/(parity|visual-oracle|real-world-corpus)/|fixtures/|apps/mac/Fonts/|\.github/actions/parity-fixtures/|\.github/workflows/ci\.yml$)"; then
                 old_engine=true
               fi ;;
           esac
@@ -681,9 +681,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: REGRESSION_WORK="$RUNNER_TEMP/pdftex-regression" scripts/pdftex-regression.sh
 
-  # THE OLD ENGINE's parity fixtures tier (the frozen flashtex-cli path, D13).
-  # It stays until P5 retires that path; the new engine's gates are
-  # `engine-parity` below. It needs a Mac: baseline-fixtures.json was recorded on
+  # The parity fixtures tier against baseline-fixtures.json. Since S5 the
+  # engine under test is the new one (the action's `engine` input; `old` is
+  # the frozen flashtex-cli until S7), and plan's filter includes
+  # crates/flashtex-engine. The new engine's P-T gates are `engine-parity`
+  # below. It needs a Mac: baseline-fixtures.json was recorded on
   # macOS, because unicode-accents paints CJK from system fonts
   # (tools/parity/README.md). Two jobs, one body (.github/actions/parity-fixtures):
   #
@@ -704,7 +706,7 @@ jobs:
   # this file). `CI required` fails a run where old_engine is 'true' and
   # neither passed.
   parity-fixtures:
-    name: "old engine: parity fixtures (self-hosted macOS)"
+    name: "parity fixtures (self-hosted macOS)"
     needs: [plan]
     # DESIGN §9.3: a job on `runs-on: [self-hosted, ...]` must never run for a
     # pull_request from a fork. A fork PR runs arbitrary code, and a self-hosted
@@ -723,7 +725,7 @@ jobs:
           jobs: "6"
 
   parity-fixtures-hosted:
-    name: "old engine: parity fixtures (GitHub-hosted macOS)"
+    name: "parity fixtures (GitHub-hosted macOS)"
     needs: [plan]
     if: >-
       needs.plan.outputs.run == 'true' && needs.plan.outputs.selfhosted_mac != 'true' &&

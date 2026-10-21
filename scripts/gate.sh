@@ -483,17 +483,22 @@ gate_tests_touched() {
 # committed fixtures against their committed pdflatex references, through the
 # CLI just built. No TeX needed, ~3 s, and no document may drop below the level
 # recorded in tools/parity/baseline-fixtures.json.
+# Since S5 the engine under test is the new one (flashtex-initex and its
+# formats, scripts/engine-parity.sh build; needs TeX Live 2026 first on PATH).
 gate_parity_fixtures() {
-  cargo build --release --locked --manifest-path crates/flashtex-cli/Cargo.toml --bin flashtex
-  local work out
+  local work out ew
   work="${TMPDIR:-/tmp}/flashtex-gate-parity-work"
   out="${TMPDIR:-/tmp}/flashtex-gate-parity"
+  ew="${TMPDIR:-/tmp}/flashtex-gate-engine"
+  scripts/engine-parity.sh --work "$ew" build
   rm -rf "$work" "$out"
   # ${a[@]+"${a[@]}"}: expanding an EMPTY array under `set -u` is an error on
   # bash 3.2, which is the /bin/bash on macOS runners.
   local jflag=()
   [[ -n "$JOBS" ]] && jflag=(-j "$JOBS")
   python3 tools/parity/parity.py --tier fixtures --raster none ${jflag[@]+"${jflag[@]}"} \
+    --engine "$ew/eng/flashtex-initex" \
+    --engine-env "FLASHTEX_FORMATS=$ew/fmt" --engine-env "FLASHTEX_POOL=$ew/eng/pdftex.pool" \
     --out "$out" --work "$work" \
     --check-baseline tools/parity/baseline-fixtures.json
 }
