@@ -78,9 +78,7 @@ impl Tracked {
         Tracked {
             f,
             path: path.to_string(),
-            // (an output open of a file a restore keeps whole writes over it
-            // in place: `open_kept_whole`)
-            logical: logical_len(path).is_some(),
+            logical: false,
         }
     }
 
@@ -300,84 +298,6 @@ pub fn keep_tail(path: &str, base: u64) -> Result<(), String> {
     Ok(())
 }
 
-/// A restore keeps the old run's whole content of `path`, a file the old run
-/// opened for output after the restore target (so that a run restarted
-/// before it opens it again: a page-0 restart and its PDF). Nothing is read,
-/// cloned or blanked now: the file stays as the old run left it, which is
-/// also what it holds for the new run until that opens it for output again
-/// (a read of it before then reads the old run's bytes, as a run from
-/// scratch would). That open writes over it in place from its start
-/// ([`open_kept_whole`]) instead of truncating it, as a kept tail's stream
-/// writes on past the target's length; the old bytes come from
-/// [`kept_tail`] while the restore is pending. Before this a restart at
-/// page 0 read (Linux) or cloned (APFS's `clonefile`, then an `unlink` at the
-/// next restore) the whole PDF, and the new run truncated it at its first
-/// shipout (lane T7-LETTERSTART).
-pub fn keep_whole(path: &str) -> Result<(), String> {
-    let old_len = match logical_len(path) {
-        Some(n) => n,
-        None => std::fs::metadata(path)
-            .map(|m| m.len())
-            .map_err(|e| format!("{path}: {e}"))?,
-    };
-    if let Some(why) = outside_change(path) {
-        return Err(why);
-    }
-    file_trace(|| format!("keep_whole {path} old_len {old_len}"));
-    LOGICAL.with(|m| {
-        let mut m = m.borrow_mut();
-        let l = m.entry(out_key(path)).or_insert(Logical {
-            len: None,
-            keep: None,
-        });
-        l.keep = Some(Keep {
-            base: 0,
-            old_len,
-            saved: Vec::new(),
-            end: Vec::new(),
-        });
-    });
-    Ok(())
-}
-
-/// An output open of `path` that a pending restore keeps whole
-/// ([`keep_whole`]) and nothing has written since: the file is opened in
-/// place, its logical end 0, its end blanked (as [`keep_tail`] blanks a
-/// tail's), and its stream keeps the old bytes each write covers. `None`:
-/// not such a file (or a guard wants its content before the truncation),
-/// so the open truncates it as before.
-fn open_kept_whole(path: &str) -> Option<File> {
-    let k = out_key(path);
-    let whole = LOGICAL.with(|m| {
-        m.borrow().get(&k).and_then(|l| l.keep.as_ref()).is_some_and(|kp| {
-            kp.base == 0 && kp.saved.is_empty() && kp.end.is_empty() && kp.old_len > 0
-        })
-    });
-    let guarded = GUARD_ALL.with(|g| g.borrow().is_some())
-        || GUARD.with(|g| g.borrow().iter().any(|(p, _)| out_key(p) == k));
-    if !whole || guarded || outside_change(path).is_some() {
-        return None;
-    }
-    let old_len = LOGICAL.with(|m| m.borrow().get(&k)?.keep.as_ref().map(|kp| kp.old_len))?;
-    let f = std::fs::OpenOptions::new()
-        .write(true)
-        .open(path)
-        .ok()?;
-    let end_at = old_len.saturating_sub(BLANK_END);
-    let end = blank(path, end_at, old_len).ok()?;
-    stamp_output(path);
-    file_trace(|| format!("open_kept_whole {path} old_len {old_len} blank {end_at}"));
-    LOGICAL.with(|m| {
-        if let Some(l) = m.borrow_mut().get_mut(&k) {
-            l.len = Some(0);
-            if let Some(kp) = l.keep.as_mut() {
-                kp.end = end;
-            }
-        }
-    });
-    Some(f)
-}
-
 /// The kept tail of `path` from `base + skip` on.
 pub fn kept_tail(path: &str, base: u64, skip: u64) -> Result<Vec<u8>, String> {
     let e = |x: std::io::Error| format!("{path}: {x}");
@@ -410,15 +330,9 @@ pub fn kept_tail(path: &str, base: u64, skip: u64) -> Result<Vec<u8>, String> {
 /// The pending restore no longer keeps the tail of `path` (the file's
 /// stale bytes stay until its stream is closed).
 pub fn drop_kept_tail(path: &str) {
-    let k = out_key(path);
     LOGICAL.with(|m| {
-        let mut m = m.borrow_mut();
-        if let Some(l) = m.get_mut(&k) {
+        if let Some(l) = m.borrow_mut().get_mut(&out_key(path)) {
             l.keep = None;
-            // (a file kept whole that the new run did not open again)
-            if l.len.is_none() {
-                m.remove(&k);
-            }
         }
     });
 }
@@ -2668,11 +2582,8 @@ impl Globals {
             }
         }
         file_trace(|| format!("openout {fname} disk {:?}", disk_len(&fname)));
-        let mut f = open_kept_whole(&fname);
-        if f.is_none() {
-            before_truncate(&fname);
-            f = File::create(&fname).ok();
-        }
+        before_truncate(&fname);
+        let mut f = File::create(&fname).ok();
         if f.is_none() && !absolute {
             if let Some(out) = texmf_var("TEXMFOUTPUT").filter(|v| !v.is_empty()) {
                 fname = format!("{out}/{name}");

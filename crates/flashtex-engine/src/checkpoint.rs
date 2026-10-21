@@ -323,19 +323,6 @@ impl TailBytes {
         ))
     }
 
-    /// The old run's whole content of `path`, which it opened for output
-    /// after the restore target: kept by the file itself until the new run
-    /// opens it again (`system::keep_whole`), or else read or cloned.
-    fn whole(path: &str) -> Result<TailBytes, String> {
-        match system::keep_whole(path) {
-            Ok(()) => Ok(TailBytes::Kept(path.to_string())),
-            Err(why) => {
-                system::file_trace(|| format!("keep_whole {path}: {why}"));
-                TailBytes::take(path, 0)
-            }
-        }
-    }
-
     /// Bytes `skip..` of the tail that starts at `base`.
     fn get(&self, base: u64, skip: u64) -> Result<Vec<u8>, String> {
         match self {
@@ -1191,14 +1178,15 @@ impl Globals {
                 if have(&tails, path) {
                     continue;
                 }
-                let base = if later.contains(&system::out_key(path)) {
-                    0
-                } else {
-                    *len
-                };
+                let reopened = later.contains(&system::out_key(path));
+                let base = if reopened { 0 } else { *len };
                 // (from the target's length on: kept by the file itself,
-                // nothing read or cut now; see `system::Logical`)
-                let bytes = if base > 0 {
+                // nothing read or cut now; see `system::Logical`. So is a
+                // file open but still empty at the target: a page-0 restart's
+                // PDF and hyperref's `.out`, which were read whole (APFS:
+                // cloned, and the clone deleted at the next restore) at every
+                // keystroke; lane T7-LETTERSTART)
+                let bytes = if !reopened {
                     system::keep_tail(path, base)?;
                     TailBytes::Kept(path.clone())
                 } else {
@@ -1217,7 +1205,7 @@ impl Globals {
                     tails.push(Tail {
                         path: path.clone(),
                         base: 0,
-                        bytes: TailBytes::whole(path)?,
+                        bytes: TailBytes::take(path, 0)?,
                     });
                 }
             }
@@ -1228,7 +1216,7 @@ impl Globals {
         closed.extend(system::outputs_since(rec.reads.2));
         for path in closed {
             if !have(&tails, &path) {
-                if let Ok(bytes) = TailBytes::whole(&path) {
+                if let Ok(bytes) = TailBytes::take(&path, 0) {
                     tails.push(Tail {
                         path,
                         base: 0,
@@ -1310,7 +1298,7 @@ impl Globals {
         if let Some(why) = p
             .tails
             .iter()
-            .filter(|t| t.base > 0 || matches!(t.bytes, TailBytes::Kept(_)))
+            .filter(|t| t.base > 0)
             .find_map(|t| system::outside_change(&t.path))
         {
             return Some(why);
@@ -1397,8 +1385,9 @@ impl Globals {
                 }
                 _ => (t.base, vec![]),
             };
-            // (a file kept whole, `base` 0, likewise: the abandoned run
-            // wrote over it in place, or did not open it)
+            // (a tail kept from 0, a file empty at the restore target,
+            // likewise: the abandoned run wrote over it in place, or kept
+            // it all before it truncated it, `system::before_truncate`)
             if (from > 0 || t.base == 0)
                 && matches!(t.bytes, TailBytes::Kept(_))
                 && system::disk_len(&t.path).unwrap_or(0) >= from
