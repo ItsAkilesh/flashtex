@@ -17,6 +17,18 @@ The harnesses are in [`tools/unicode-m3/`](../../../tools/unicode-m3/README.md).
 - **Runs:** [38178866539](https://github.com/flash-tex/flashtex/actions/runs/38178866539)
   for every criterion, and [38185041540](https://github.com/flash-tex/flashtex/actions/runs/38185041540) for P-T1 (with the panic's frames) and the export after the colour fix. Its no-TeX-Live and Core Graphics totals equal the first run's.
 
+## Verdict, 2026-10-21
+
+**Verdict: M3 is MET.** The two rows still open on 10-20, row 3 (the §1.2 edit row at b4's
+last line) and row 5 (no TeX Live, in the product path), are met now. Rows 1, 2, 4, 6 and 7
+stand as re-measured on 10-20 below. Nothing was re-run for this verdict. It cites runs that
+are already on main.
+
+| # | M3 criterion | 2026-10-21 verdict | Evidence (verified unless marked belief) |
+|---|---|---|---|
+| 3 | §1.2 latency on the bench documents | **met** | **Edit row**, measured on the reference Mac (Apple M5 Pro, mains power), by `scripts/t7-reference.sh`'s Unicode leg on main `8b3f9ec62`, which is after #1871 (`cb0aa96a7`): [`t7-reference-2026-10-21d-…/unicode/table.md`](../t7-reference-2026-10-21d-Kabirs-MacBook-Pro/unicode/table.md) (#1874). Edited page p95 against the host's ≤ 11 ms share: b1 6.8 / 7.8, b2 2.1 / 2.7, b3 3.7 / 3.7, **b4 5.2 / 9.1** (EDITPOINT / end), b5 9.2 at EDITPOINT. On main `58d6d773f` ([`…-21e-…/unicode/table.md`](../t7-reference-2026-10-21e-Kabirs-MacBook-Pro/unicode/table.md), #1876), b4's end is 9.7 ms p95. That run was on battery. Its header says NON-REFERENCE because the script prints that, but its "Owner ruling (2026-10-21)" section overrides the label and records it as a reference run, under the owner's standing direction for this Mac. b5's end (26.4 ms p95 on `8b3f9ec62`) is reported only, as in [`unicode-m3-mac-2026-10-21`](../unicode-m3-mac-2026-10-21/README.md). **Preamble row**: met there on the same Mac (main `5439b97ea`): the largest first page is 347.9 ms against ≤ 400 ms. **Reopen row**: reported only, as in Classic T7. The host's share is 20–44 ms to page 1 from the persisted S₀ in both runs above |
+| 5 | No-TeX-Live run of the corpus from the bundle | **met** | `texbundle-tl2026-5` was published on 2026-10-21 (01:20Z). `unicode-m3.yml` run [39642712484](https://github.com/flash-tex/flashtex/actions/runs/39642712484) (`69b0bb0de`, the S5 branch merged as #1849): its macOS leg fetched the lock's release over https (HELLO `texlive=None resolver=bundle 9c4e31ad…`, the digest `flashtex-bundle.lock` pins). **44 of 50** cases compiled with a PDF. The other 6 are the cases xelatex itself errors on. **47 PDFs were byte-identical** to the Linux TeX Live run's, with 0 structural differences against xelatex |
+
 ## Re-measured on main, 2026-10-20
 
 Every row was run again on main `f5ef18a85` (after #1833 FMT-NUM, #1838
