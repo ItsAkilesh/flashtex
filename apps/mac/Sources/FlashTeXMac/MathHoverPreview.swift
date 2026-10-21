@@ -25,8 +25,8 @@ enum MathHoverPreview {
         var dark: Bool
     }
 
-    /// Points of padding added around the formula's box before cropping.
-    static let padding: Double = 4
+    /// `MathPreviewView.cropPadding` (EngineV3MathHover.swift, moved there in S6a).
+    static var padding: Double { MathPreviewView.cropPadding }
 
     /// A crop ready to read out of a page's rasterized bitmap: which page,
     /// and the box (points, page space, top-left origin, y down — same
@@ -95,29 +95,5 @@ enum MathHoverPreview {
             .intersection(CGRect(x: 0, y: 0, width: bitmap.width, height: bitmap.height))
         guard !pixel.isEmpty else { return nil }
         return bitmap.cropping(to: pixel)
-    }
-}
-
-// MARK: - popover
-
-/// Small NSPopover content for the cropped formula bitmap: the image at its
-/// natural pixel size (already at the pane's backing scale), no chrome.
-struct MathPreviewView: View {
-    let image: CGImage
-
-    var body: some View {
-        Image(decorative: image, scale: 1, orientation: .up)
-            .padding(DS.Space.s)
-    }
-}
-
-extension HoverController {
-    /// Shows `image` (a formula crop) anchored to `range`, replacing whatever
-    /// popover is open — the same slot `present(_:in:)` uses, so only one
-    /// hover popover is ever on screen. Call in place of `present(_:in:)`
-    /// when the position is inside an inline formula.
-    func presentMathPreview(_ image: CGImage, range: NSRange, in tv: NSTextView) {
-        presentContent(NSHostingController(rootView: MathPreviewView(image: image)), range: range, in: tv)
-        recordMathPreview(range)
     }
 }

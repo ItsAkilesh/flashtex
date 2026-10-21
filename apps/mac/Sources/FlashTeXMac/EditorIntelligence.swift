@@ -865,7 +865,7 @@ final class HoverController: NSResponder {
 
     /// Records a presented math preview for `presentedMathPreviews` (evidence
     /// for tests); `presentedMathPreviews`'s setter is file-private, so
-    /// `presentMathPreview(_:range:in:)` (MathHoverPreview.swift) goes through this.
+    /// `presentMathPreview(_:range:in:)` (EngineV3MathHover.swift) goes through this.
     func recordMathPreview(_ range: NSRange) {
         presentedMathPreviews.append(range)
         if presentedMathPreviews.count > 32 { presentedMathPreviews.removeFirst(presentedMathPreviews.count - 32) }

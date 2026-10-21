@@ -258,7 +258,7 @@ final class EngineV3PageView: NSView {
     weak var owner: EngineV3PagesView?
     var index = 0
     /// The page's lines and, once a client asked, their elements, for the content `hash`.
-    var axCache: (hash: [UInt8], lines: [V2PageText.Line], elements: [PreviewAXElement]?)?
+    var axCache: (hash: [UInt8], lines: [PreviewPageText.Line], elements: [PreviewAXElement]?)?
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {

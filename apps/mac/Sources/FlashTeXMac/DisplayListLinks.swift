@@ -7,9 +7,8 @@ import FlashTeXProtocol
 /// Pure aside from `openURL` (NSWorkspace); the NSView only asks these helpers.
 enum DisplayListLinks {
     static let capability = RenderingV2.linksCapability
-    /// Schemes `NSWorkspace` may open. `file:` and `javascript:` are rejected
-    /// (the writer does not filter schemes; the preview does).
-    static let allowedURISchemes: Set<String> = ["http", "https", "mailto"]
+    /// The URI policy is the v3 pane's (EngineV3Links.swift, moved there in S6a).
+    static var allowedURISchemes: Set<String> { EngineV3Links.allowedURISchemes }
 
     /// Live frames honour `navigation` only when the producer echoed the
     /// capability (proposal §1). A list opened from disk has no echo: the
@@ -61,12 +60,8 @@ enum DisplayListLinks {
         }
     }
 
-    /// Allowlisted `http`/`https`/`mailto` only. Scheme comparison is
-    /// case-insensitive; a missing scheme is rejected.
-    static func allowedURL(from uri: String) -> URL? {
-        guard let url = URL(string: uri), let scheme = url.scheme?.lowercased(), allowedURISchemes.contains(scheme) else { return nil }
-        return url
-    }
+    /// `EngineV3Links.allowedURL(from:)`: http, https and mailto only.
+    static func allowedURL(from uri: String) -> URL? { EngineV3Links.allowedURL(from: uri) }
 
     enum Action: Equatable {
         case openURI(URL)
@@ -87,8 +82,11 @@ enum DisplayListLinks {
         }
     }
 
-    /// Replaceable so tests never call `NSWorkspace`.
-    static var openURL: (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    /// `EngineV3Links.openURL`, one hook for both panes (tests replace it).
+    static var openURL: (URL) -> Bool {
+        get { EngineV3Links.openURL }
+        set { EngineV3Links.openURL = newValue }
+    }
 
     static func previewTarget(for destination: RenderingV2.Navigation.Destination) -> CaretFollow.Target {
         let x = RenderingV2.points(destination.x)
