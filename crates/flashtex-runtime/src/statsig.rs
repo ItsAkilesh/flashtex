@@ -84,22 +84,28 @@ impl StatSig {
     /// [`racy_ns`] (the tests: 0, nothing is racy).
     pub fn of_within(path: &str, window: i128) -> Option<StatSig> {
         let (m, ctime_ns) = crate::os::metadata_and_change_time(path)?;
+        Some(StatSig::of_metadata(&m, ctime_ns, window))
+    }
+
+    /// [`StatSig::of_within`] from a `stat` already made
+    /// (`os::metadata_and_change_time`'s answer), as of now.
+    pub fn of_metadata(m: &std::fs::Metadata, ctime_ns: i128, window: i128) -> StatSig {
         let mtime_ns = m
             .modified()
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map_or(0, |d| d.as_nanos() as i128);
-        let ino = crate::os::file_id(&m);
+        let ino = crate::os::file_id(m);
         let now_ns = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos() as i128);
-        Some(StatSig {
+        StatSig {
             len: m.len(),
             mtime_ns,
             ctime_ns,
             ino,
             racy: racy_at(now_ns, mtime_ns, ctime_ns, window),
-        })
+        }
     }
 
     /// The same length, times and identity, racy or not (only where a racy

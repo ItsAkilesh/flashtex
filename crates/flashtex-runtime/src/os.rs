@@ -192,6 +192,45 @@ pub fn broken_down(t: i64, utc: bool) -> Tm {
     tm
 }
 
+thread_local! {
+    /// The working directory while a [`CwdScope`] is alive on this thread.
+    static CWD: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The working directory: `std::env::current_dir`, or, inside a
+/// [`CwdScope`] on this thread, the one the scope found when it began
+/// (lane T7-FULL10: a lookup asked for it three times, a `getcwd` each,
+/// and every font a compile loads is a lookup).
+pub fn cwd() -> std::io::Result<std::path::PathBuf> {
+    if let Some(c) = CWD.with(|c| c.borrow().clone()) {
+        return Ok(c);
+    }
+    std::env::current_dir()
+}
+
+/// A stretch of work on this thread during which nothing changes the
+/// working directory (a compile: the hosts change it only between
+/// compiles), so that [`cwd`] asks the system once. Scopes nest; each
+/// takes the directory afresh and puts the outer one back when dropped.
+pub struct CwdScope {
+    outer: Option<std::path::PathBuf>,
+}
+
+pub fn cwd_scope() -> CwdScope {
+    let now = std::env::current_dir().ok();
+    CwdScope {
+        outer: CWD.with(|c| std::mem::replace(&mut *c.borrow_mut(), now)),
+    }
+}
+
+impl Drop for CwdScope {
+    fn drop(&mut self) {
+        let outer = self.outer.take();
+        CWD.with(|c| *c.borrow_mut() = outer);
+    }
+}
+
 /// CPU time of this thread, in seconds (the machine is shared: wall time
 /// includes other processes' load, this does not). On WASI, which has no
 /// per-thread CPU clock, the process's monotonic time since the first call.
@@ -1795,6 +1834,36 @@ mod imp {
 
 #[cfg(test)]
 mod tests {
+    /// Inside a scope the working directory is the one the scope found;
+    /// scopes nest, and each puts the outer state back.
+    #[test]
+    fn a_cwd_scope_answers_and_nests() {
+        let now = std::env::current_dir().unwrap();
+        assert_eq!(super::cwd().unwrap(), now);
+        {
+            let _a = super::cwd_scope();
+            assert_eq!(super::cwd().unwrap(), now);
+            super::CWD.with(|c| *c.borrow_mut() = Some("/elsewhere".into()));
+            {
+                let _b = super::cwd_scope();
+                assert_eq!(super::cwd().unwrap(), now, "an inner scope looks afresh");
+            }
+            assert_eq!(
+                super::cwd().unwrap(),
+                std::path::PathBuf::from("/elsewhere")
+            );
+        }
+        assert!(
+            super::CWD.with(|c| c.borrow().is_none()),
+            "a scope left behind"
+        );
+        // another thread is not in this thread's scope
+        let _a = super::cwd_scope();
+        super::CWD.with(|c| *c.borrow_mut() = Some("/elsewhere".into()));
+        let other = std::thread::spawn(super::cwd).join().unwrap().unwrap();
+        assert_eq!(other, now);
+    }
+
     /// Where the system gives them, the thread's counts grow with its work
     /// and another thread's work does not move them.
     #[test]

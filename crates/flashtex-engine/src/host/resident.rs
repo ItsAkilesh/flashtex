@@ -876,6 +876,7 @@ impl Engine {
         };
         let t_apply = Instant::now();
         let ev_apply = crate::os::events();
+        APPLY_STEPS.with(|a| a.set([0; 5]));
         // (the host's copies stand for files only within the compile that
         // wrote them: `system::KNOWN`)
         crate::system::clear_known_content();
@@ -888,6 +889,7 @@ impl Engine {
         let apply_ev = ev_apply
             .zip(crate::os::events())
             .map(|(a, b)| (b.0 - a.0, b.1 - a.1));
+        let apply_steps = APPLY_STEPS.with(|a| a.get());
         let started = |mode: &str, keep: bool, extra: Vec<(String, Json)>| {
             let mut kv = vec![
                 ("id".to_string(), Json::Int(id)),
@@ -1304,6 +1306,10 @@ impl Engine {
                 (
                     "apply_sys".to_string(),
                     apply_ev.map_or(Json::Null, |e| Json::Int(e.1 as i64)),
+                ),
+                (
+                    "apply_us".to_string(),
+                    Json::Arr(apply_steps.iter().map(|&u| Json::Int(u as i64)).collect()),
                 ),
                 ("move_spans".to_string(), m(move_ms)),
                 ("first_page".to_string(), o(t.first_page_ms)),
@@ -1911,29 +1917,58 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
     // which keeps it, 0.12-0.14 ms; reference run 2026-10-21b).
     let write_from =
         |path: &Path, data: Vec<u8>, from: usize, old: Option<usize>, written: &mut Written| {
+            // (each step's time, for the latency accounting: `APPLY_STEPS`)
+            let mut steps = [0u64; 5];
+            let mut t = Instant::now();
+            let mut lap = |i: usize, t: &mut Instant| {
+                steps[i] += t.elapsed().as_micros() as u64;
+                *t = Instant::now();
+            };
             let r = std::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
                 .truncate(false)
                 .open(path)
                 .and_then(|f| {
+                    lap(0, &mut t);
                     let n = data.len() as u64;
-                    match old {
+                    let r = match old {
                         Some(o) if o <= data.len() => {
                             crate::os::write_all_at(&f, &data[from..], from as u64)
                         }
                         Some(_) => {
                             crate::os::write_all_at(&f, &data[from..], from as u64)?;
+                            lap(1, &mut t);
                             f.set_len(n)
                         }
                         None => {
                             f.set_len(n)?;
+                            lap(2, &mut t);
                             crate::os::write_all_at(&f, &data[from..], from as u64)
                         }
-                    }
+                    };
+                    lap(
+                        if matches!(old, Some(o) if o > data.len()) {
+                            2
+                        } else {
+                            1
+                        },
+                        &mut t,
+                    );
+                    drop(f);
+                    lap(3, &mut t);
+                    r
                 });
             r.map_err(|e| format!("{}: {e}", path.display()))?;
             let held = sig(path).map(|s| (s, Arc::new(data)));
+            lap(4, &mut t);
+            APPLY_STEPS.with(|a| {
+                let mut v = a.get();
+                for (x, y) in v.iter_mut().zip(steps) {
+                    *x += y;
+                }
+                a.set(v);
+            });
             crate::system::note_known_content(path, held.clone());
             if let Some(h) = held {
                 written.insert(path.to_path_buf(), h);
@@ -1991,6 +2026,14 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
         write_from(&path, d, at, Some(old), written)?;
     }
     Ok(())
+}
+
+thread_local! {
+    /// `apply_changes`' file writes, in µs: open, write, set the length,
+    /// close, and the `stat` after (lane T7-FULL10, measurement only: on
+    /// the M5 Pro's APFS the `ftruncate` of a letter deleted took 0.36-0.78
+    /// ms, every other step 0.01-0.07).
+    static APPLY_STEPS: std::cell::Cell<[u64; 5]> = const { std::cell::Cell::new([0; 5]) };
 }
 
 /// The user's files the display list names, as they are now, compared

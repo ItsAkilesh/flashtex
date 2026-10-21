@@ -866,6 +866,11 @@ mod kpse {
     struct Memo {
         entries: HashMap<(String, c_int, u8), MemoEntry>,
         off: Option<bool>,
+        /// The entry the last lookup was answered from (a hit), or made (a
+        /// miss that was remembered): the one whose `deps` the
+        /// `lookup_dirs` right after it may use and keep. Any other lookup
+        /// clears it.
+        last: Option<(String, c_int, u8)>,
     }
 
     struct MemoEntry {
@@ -877,7 +882,18 @@ mod kpse {
         dirs: Vec<(String, crate::statsig::StatSig)>,
         /// `KpathseaResolver::searched` for its format when it was made.
         searched: std::sync::Arc<Vec<String>>,
+        /// `lookup_dirs` for this lookup and its answer, as it was made
+        /// right after the lookup that made or last vouched for the entry
+        /// (lane T7-FULL10: on a memo hit it is what kpathsea's search
+        /// state, which the hit has just found unchanged, gives again,
+        /// and it cost five `stat`/`access` calls a font load). Dropped
+        /// when a directory's signature changed and the entry was kept by
+        /// listing it again.
+        deps: Option<Result<LookupDirs, &'static str>>,
     }
+
+    /// `lookup_dirs` answered from a memo entry (measurement, the tests).
+    static DEPS_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
     /// Lookups the memo answered, and those it did not (measurement).
     static MEMO_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -1214,6 +1230,11 @@ mod kpse {
             (MEMO_HITS.load(Relaxed), MEMO_MISSES.load(Relaxed))
         }
 
+        /// How many `lookup_dirs` a memo entry answered, in this process.
+        pub fn deps_hits() -> u64 {
+            DEPS_HITS.load(std::sync::atomic::Ordering::Relaxed)
+        }
+
         /// How many times `refresh_disk_dirs` made kpathsea forget its
         /// `//` expansions, in this process.
         pub fn disk_forgets() -> u64 {
@@ -1246,6 +1267,7 @@ mod kpse {
         ) -> (Option<PathBuf>, bool) {
             // (the formats whose disk directories `refresh_disk_dirs` watches)
             self.disk.0.insert(f);
+            self.memo.last = None;
             let off = *self.memo.off.get_or_insert_with(|| {
                 std::env::var("FLASHTEX_LOOKUP_MEMO").is_ok_and(|v| v == "off")
             });
@@ -1263,10 +1285,15 @@ mod kpse {
                 if let Some(fresh) = self.still_holds(e, name, f, &searched) {
                     MEMO_HITS.fetch_add(1, Relaxed);
                     let e = self.memo.entries.get_mut(&key).expect("just found");
+                    if !fresh.is_empty() {
+                        e.deps = None;
+                    }
                     for (i, sig) in fresh {
                         e.dirs[i].1 = sig;
                     }
-                    return (e.found.clone(), false);
+                    let found = e.found.clone();
+                    self.memo.last = Some(key);
+                    return (found, false);
                 }
             }
             MEMO_MISSES.fetch_add(1, Relaxed);
@@ -1291,7 +1318,8 @@ mod kpse {
             }
             match entry.ok() {
                 Some(e) => {
-                    self.memo.entries.insert(key, e);
+                    self.memo.entries.insert(key.clone(), e);
+                    self.memo.last = Some(key);
                 }
                 None => {
                     self.memo.entries.remove(&key);
@@ -1310,7 +1338,7 @@ mod kpse {
             f: c_int,
             searched: &std::sync::Arc<Vec<String>>,
         ) -> Option<Vec<(usize, crate::statsig::StatSig)>> {
-            if std::env::current_dir().ok().as_deref() != Some(e.cwd.as_path())
+            if crate::os::cwd().ok().as_deref() != Some(e.cwd.as_path())
                 || self.format_path(f) != e.path
             {
                 return None;
@@ -1374,7 +1402,7 @@ mod kpse {
             if unsafe { flashtex_kpse_db_hazard(self.k, f, n.as_ptr()) } != 0 {
                 return Err("an ls-R entry under the name is not on disk, or has an alias");
             }
-            let cwd = std::env::current_dir().map_err(|_| "no working directory")?;
+            let cwd = crate::os::cwd().map_err(|_| "no working directory")?;
             let path = self.format_path(f);
             let fc = match found {
                 Some(p) => Some(
@@ -1418,6 +1446,7 @@ mod kpse {
                 found: found.map(|p| p.to_path_buf()),
                 dirs: sigs,
                 searched: self.searched(f),
+                deps: None,
             })
         }
 
@@ -1425,6 +1454,105 @@ mod kpse {
         pub fn var_value(&mut self, var: &str) -> Option<String> {
             let v = CString::new(var).ok()?;
             take(unsafe { flashtex_kpse_var_value(self.k, v.as_ptr()) })
+        }
+    }
+
+    impl KpathseaResolver {
+        /// `lookup_dirs` made now, from kpathsea's state.
+        fn lookup_dirs_now(
+            &mut self,
+            name: &str,
+            format: Format,
+            must_exist: Option<bool>,
+            found: Option<&Path>,
+        ) -> Result<LookupDirs, &'static str> {
+            // (kpathsea expands variables, `~` and braces first)
+            if name.is_empty() || name.contains(['$', '~', '{', '}', '!']) {
+                return Err("a name kpathsea expands");
+            }
+            if cfg!(windows) && name.contains(['\\', ':']) {
+                return Err("a Windows name");
+            }
+            let f = *self.formats.get(&format).ok_or("a format kpathsea lacks")?;
+            // SAFETY: the live instance; the shim only reads it.
+            if found.is_none()
+                && must_exist == Some(true)
+                && unsafe { flashtex_kpse_make_enabled(self.k, f) } != 0
+            {
+                return Err("not found where an mktex script may run");
+            }
+            let (rel, base) = match name.rfind('/') {
+                Some(i) => (&name[..i], &name[i + 1..]),
+                None => ("", name),
+            };
+            if base.is_empty() {
+                return Err("a name with no last component");
+            }
+            let c = |s: &str| CString::new(s).map_err(|_| "a NUL in the name");
+            let (n, b) = (c(name)?, c(base)?);
+            // SAFETY: the live instance and NUL-terminated strings; the
+            // shims only read them.
+            if unsafe { flashtex_kpse_has_alias(self.k, n.as_ptr()) } != 0 {
+                return Err("a fontmap alias");
+            }
+            if unsafe { flashtex_kpse_db_hazard(self.k, f, b.as_ptr()) } != 0 {
+                return Err("an ls-R entry under the name is not on disk, or has an alias");
+            }
+            let mut out = LookupDirs {
+                tries: self
+                    .list(unsafe { flashtex_kpse_try_names(self.k, f, b.as_ptr()) })
+                    .unwrap_or_default(),
+                ..LookupDirs::default()
+            };
+            if super::kpse_absolute(name) {
+                // opened as given, never along the path
+                out.add(if rel.is_empty() { "/" } else { rel })?;
+                return Ok(out);
+            }
+            // The directory of the search that holds the answer: `found`'s,
+            // less the name's own directories.
+            let found_at = match found {
+                None => None,
+                Some(p) => {
+                    let s = p.to_string_lossy();
+                    let dir = &s[..s.rfind('/').ok_or("an answer with no directory")?];
+                    let top = if rel.is_empty() {
+                        dir
+                    } else {
+                        dir.strip_suffix(rel)
+                            .and_then(|d| d.strip_suffix('/'))
+                            .ok_or("an answer not under the name's directory")?
+                    };
+                    // (the shim compares the directory, with its slash, and
+                    // looks an `ls-R` element up by the answer's own last
+                    // component: `cmr12.tfm` for the TFM name `cmr12`, which
+                    // kpathsea finds only with its suffix)
+                    let file = &s[s.rfind('/').map_or(0, |i| i + 1)..];
+                    Some(c(&format!("{top}/{file}"))?)
+                }
+            };
+            let dirs = self
+                .list(unsafe {
+                    flashtex_kpse_search_dirs(
+                        self.k,
+                        f,
+                        found_at.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+                    )
+                })
+                .ok_or("the directories it depends on are not known")?;
+            for d in dirs {
+                // kpathsea's directories end in `/`; `./` is the working one
+                let d = match d.trim_end_matches('/') {
+                    "" => "/".to_string(),
+                    t => t.to_string(),
+                };
+                if rel.is_empty() {
+                    out.add(&d)?;
+                } else {
+                    out.add(&format!("{d}/{rel}"))?;
+                }
+            }
+            Ok(out)
         }
     }
 
@@ -1457,6 +1585,7 @@ mod kpse {
         }
         fn refresh_disk_dirs(&mut self) {
             use crate::statsig::StatSig;
+            self.memo.last = None;
             // (signatures taken before anything below lists or walks)
             let now = self.disk_dirs_now();
             let old = std::mem::take(&mut self.disk.1);
@@ -1558,93 +1687,31 @@ mod kpse {
             must_exist: Option<bool>,
             found: Option<&Path>,
         ) -> Result<LookupDirs, &'static str> {
-            // (kpathsea expands variables, `~` and braces first)
-            if name.is_empty() || name.contains(['$', '~', '{', '}', '!']) {
-                return Err("a name kpathsea expands");
-            }
-            if cfg!(windows) && name.contains(['\\', ':']) {
-                return Err("a Windows name");
-            }
-            let f = *self.formats.get(&format).ok_or("a format kpathsea lacks")?;
-            // SAFETY: the live instance; the shim only reads it.
-            if found.is_none()
-                && must_exist == Some(true)
-                && unsafe { flashtex_kpse_make_enabled(self.k, f) } != 0
-            {
-                return Err("not found where an mktex script may run");
-            }
-            let (rel, base) = match name.rfind('/') {
-                Some(i) => (&name[..i], &name[i + 1..]),
-                None => ("", name),
-            };
-            if base.is_empty() {
-                return Err("a name with no last component");
-            }
-            let c = |s: &str| CString::new(s).map_err(|_| "a NUL in the name");
-            let (n, b) = (c(name)?, c(base)?);
-            // SAFETY: the live instance and NUL-terminated strings; the
-            // shims only read them.
-            if unsafe { flashtex_kpse_has_alias(self.k, n.as_ptr()) } != 0 {
-                return Err("a fontmap alias");
-            }
-            if unsafe { flashtex_kpse_db_hazard(self.k, f, b.as_ptr()) } != 0 {
-                return Err("an ls-R entry under the name is not on disk, or has an alias");
-            }
-            let mut out = LookupDirs {
-                tries: self
-                    .list(unsafe { flashtex_kpse_try_names(self.k, f, b.as_ptr()) })
-                    .unwrap_or_default(),
-                ..LookupDirs::default()
-            };
-            if super::kpse_absolute(name) {
-                // opened as given, never along the path
-                out.add(if rel.is_empty() { "/" } else { rel })?;
-                return Ok(out);
-            }
-            // The directory of the search that holds the answer: `found`'s,
-            // less the name's own directories.
-            let found_at = match found {
-                None => None,
-                Some(p) => {
-                    let s = p.to_string_lossy();
-                    let dir = &s[..s.rfind('/').ok_or("an answer with no directory")?];
-                    let top = if rel.is_empty() {
-                        dir
-                    } else {
-                        dir.strip_suffix(rel)
-                            .and_then(|d| d.strip_suffix('/'))
-                            .ok_or("an answer not under the name's directory")?
-                    };
-                    // (the shim compares the directory, with its slash, and
-                    // looks an `ls-R` element up by the answer's own last
-                    // component: `cmr12.tfm` for the TFM name `cmr12`, which
-                    // kpathsea finds only with its suffix)
-                    let file = &s[s.rfind('/').map_or(0, |i| i + 1)..];
-                    Some(c(&format!("{top}/{file}"))?)
-                }
-            };
-            let dirs = self
-                .list(unsafe {
-                    flashtex_kpse_search_dirs(
-                        self.k,
-                        f,
-                        found_at.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
-                    )
-                })
-                .ok_or("the directories it depends on are not known")?;
-            for d in dirs {
-                // kpathsea's directories end in `/`; `./` is the working one
-                let d = match d.trim_end_matches('/') {
-                    "" => "/".to_string(),
-                    t => t.to_string(),
-                };
-                if rel.is_empty() {
-                    out.add(&d)?;
-                } else {
-                    out.add(&format!("{d}/{rel}"))?;
+            // Right after the lookup a memo entry answered or was made for,
+            // with its answer: the entry's (see `MemoEntry::deps`).
+            let last = self.memo.last.take();
+            let key = self.formats.get(&format).map(|&f| {
+                let kind = must_exist.map_or(0, |m| 1 + m as u8);
+                (name.to_string(), f, kind)
+            });
+            let mine = last.is_some() && last == key;
+            if mine {
+                if let Some(e) = key.as_ref().and_then(|k| self.memo.entries.get(k)) {
+                    if let (true, Some(d)) = (e.found.as_deref() == found, &e.deps) {
+                        DEPS_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        return d.clone();
+                    }
                 }
             }
-            Ok(out)
+            let d = self.lookup_dirs_now(name, format, must_exist, found);
+            if mine {
+                if let Some(e) = key.as_ref().and_then(|k| self.memo.entries.get_mut(k)) {
+                    if e.found.as_deref() == found {
+                        e.deps = Some(d.clone());
+                    }
+                }
+            }
+            d
         }
         fn find_all(&mut self, name: &str, format: Format) -> Vec<PathBuf> {
             let (Some(&f), Ok(n)) = (self.formats.get(&format), CString::new(name)) else {
