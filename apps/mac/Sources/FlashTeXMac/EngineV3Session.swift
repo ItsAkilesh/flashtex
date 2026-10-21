@@ -429,8 +429,15 @@ final class EngineV3Session {
         }
         let snapshot = model?.manifest.snapshot
         let warning = snapshot?.warnings.first { $0.key == "project.mode" }.map { "\($0.key): \($0.message)" }
-        return EngineV3Mode.resolve(environment: ProcessInfo.processInfo.environment["FLASHTEX_MODE"],
-                                    manifest: snapshot?.manifest.project.mode, manifestWarning: warning, mainText: text)
+        let r = EngineV3Mode.resolve(environment: ProcessInfo.processInfo.environment["FLASHTEX_MODE"],
+                                     manifest: snapshot?.manifest.project.mode, manifestWarning: warning, mainText: text)
+        // Nothing set the mode, and the document needs Unicode fonts (or the
+        // project sets [fonts]): Unicode mode, decided in memory
+        // (UnicodeFonts.swift; the retirement plan's S6, no previous engine).
+        if r.source == "default", r.warning == nil, model?.unicodeRouting != nil {
+            return EngineV3Mode.Resolution(mode: .unicode, format: EngineV3Mode.unicode.format, source: EngineV3Mode.detectedSource, warning: nil)
+        }
+        return r
     }
 
     /// The first 4 KB of a file, as text (the `% !TEX` lines are there).
