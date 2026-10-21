@@ -264,6 +264,19 @@ thread_local! {
     static PREEMPT_SEEN: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
+thread_local! {
+    /// The last [`Globals::restore`]'s steps, in µs: dropping the pending
+    /// restore, the output tails, the terminal and the scalars' spill, the
+    /// word space's undo, and the host state (lane T7-HEADROOM, measurement
+    /// only).
+    static RESTORE_STEPS: std::cell::Cell<[u64; 5]> = const { std::cell::Cell::new([0; 5]) };
+}
+
+/// [`RESTORE_STEPS`], cleared.
+pub fn take_restore_steps() -> [u64; 5] {
+    RESTORE_STEPS.with(|c| c.replace([0; 5]))
+}
+
 /// Newer work may be waiting for the engine (the host's server thread).
 pub fn hint_preempt() {
     PREEMPT_HINT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -887,7 +900,8 @@ impl Globals {
 
     /// Read the scalar globals back from the scalar region.
     pub fn fill_scalars(&mut self) {
-        let img = self.arena.read(0, SCALAR_BYTES).to_vec();
+        // (the state's: under a lazy reattach, the old run's, `arena::Lazy`)
+        let img = self.arena.read_state(0, SCALAR_BYTES);
         let mut f = Fill { src: &img, pos: 0 };
         self.visit_scalars(&mut f);
         // The one piece of process state outside the word space that the
@@ -1147,6 +1161,18 @@ impl Globals {
     pub fn restore(&mut self, id: CheckpointId) -> Result<(), String> {
         let _m = crate::memstat::scope(crate::memstat::tag::BRANCH);
         let t0 = std::time::Instant::now();
+        // A lazy reattach (`reattach_pending_lazily`) stays lazy only for a
+        // restore to its target, and only while what the host state's
+        // capture reads of the word space is the scalars (filled from the
+        // state): the conditionals' lines `lineshift::marks` reads from
+        // `mem` when they nest deeper than its tags.
+        if self
+            .arena
+            .lazy_target()
+            .is_some_and(|t| t != id || crate::lineshift::marks_read_mem(self))
+        {
+            self.arena.materialize();
+        }
         system::file_trace(|| format!("restore {id}"));
         let rec = self.record_of(id)?;
         if let Some(p) = rewritten_since(&rec) {
@@ -1178,14 +1204,15 @@ impl Globals {
                 if have(&tails, path) {
                     continue;
                 }
-                let base = if later.contains(&system::out_key(path)) {
-                    0
-                } else {
-                    *len
-                };
+                let reopened = later.contains(&system::out_key(path));
+                let base = if reopened { 0 } else { *len };
                 // (from the target's length on: kept by the file itself,
-                // nothing read or cut now; see `system::Logical`)
-                let bytes = if base > 0 {
+                // nothing read or cut now; see `system::Logical`. So is a
+                // file open but still empty at the target: a page-0 restart's
+                // PDF and hyperref's `.out`, which were read whole (APFS:
+                // cloned, and the clone deleted at the next restore) at every
+                // keystroke; lane T7-LETTERSTART)
+                let bytes = if !reopened {
                     system::keep_tail(path, base)?;
                     TailBytes::Kept(path.clone())
                 } else {
@@ -1266,6 +1293,19 @@ impl Globals {
             opens_tail,
         });
         let r = self.restore_ext(&rec);
+        {
+            let us = |d: std::time::Duration| d.as_micros() as u64;
+            let all = t0.elapsed();
+            RESTORE_STEPS.with(|c| {
+                c.set([
+                    us(t_drop),
+                    us(t_tails - t_drop),
+                    us(t_pre - t_tails),
+                    us(t_branch - t_pre),
+                    us(all - t_branch),
+                ])
+            });
+        }
         if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
             let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
             eprintln!(
@@ -1335,6 +1375,19 @@ impl Globals {
     /// here and handed them to the next restore, because a restore no
     /// longer reads a tail it can keep in the file.
     pub fn reattach_pending(&mut self) -> Result<(), String> {
+        self.reattach_pending_with(false)
+    }
+
+    /// `reattach_pending` for a compile that restores next (an abandoned
+    /// run: `incr::Session::compile`): the word space's part waits
+    /// (`arena::Lazy`), so that a restore to the same target copies nothing
+    /// in or out. The caller makes it whole (`Arena::materialize`) if it
+    /// does not restore after all.
+    pub fn reattach_pending_lazily(&mut self) -> Result<(), String> {
+        self.reattach_pending_with(true)
+    }
+
+    fn reattach_pending_with(&mut self, lazy: bool) -> Result<(), String> {
         if let Some(why) = self.reattach_blocked() {
             return Err(format!("reattach: {why}"));
         }
@@ -1354,7 +1407,11 @@ impl Globals {
             opens_tail,
         } = p;
         self.spill_scalars();
-        self.arena.reattach(branch)?;
+        if lazy {
+            self.arena.reattach_lazy(branch)?;
+        } else {
+            self.arena.reattach(branch)?;
+        }
         let t_branch = t0.elapsed();
         self.fill_scalars();
         let keep: std::collections::HashSet<CheckpointId> =
@@ -1384,7 +1441,10 @@ impl Globals {
                 }
                 _ => (t.base, vec![]),
             };
-            if from > 0
+            // (a tail kept from 0, a file empty at the restore target,
+            // likewise: the abandoned run wrote over it in place, or kept
+            // it all before it truncated it, `system::before_truncate`)
+            if (from > 0 || t.base == 0)
                 && matches!(t.bytes, TailBytes::Kept(_))
                 && system::disk_len(&t.path).unwrap_or(0) >= from
                 && system::put_back_kept(&t.path, t.base)?

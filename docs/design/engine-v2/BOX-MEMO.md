@@ -684,3 +684,64 @@ whole engine state after each replay with the normal path's) beamer-30: 6,133 re
 differences, and the PDFs with BOX-MEMO off, on and verify byte-identical. The host's verify mode
 compares the normal path's operation log with the entry's, not the replay, so §12.5 is checked by
 the command line's full verifier and the sweeps' PDF comparisons.
+
+## 13. Revision 4: a call's objects counted by `sys_obj_ptr`, K2 compared in blocks (lane T7-LETTERSTART, 2026-10-21)
+
+The 2026-10-21 reference run (PR #1863) still missed beamer-30 letter@start: p50 9.7, p95 11.5 ms.
+Its raw records show compute, not waiting: queue p50 0.02 ms, off-CPU 0.3 ms; 130 M instructions
+to the page on the M5 against 108 M on letter@middle, and a second key at 258 M. Evidence:
+`docs/evidence/t7-letterstart-2026-10-21/`.
+
+### 13.1 A call's objects are counted by `sys_obj_ptr`
+
+The first block frame's footline (`\beamer@typesetheadorfoot`, 22 M instructions a key in the
+macro profile against 0.6 M on letter@middle's slide) was refused for good: its recording ended
+with "Objects", though the only object it made was its navigation link's, which a replay makes
+again (§11.3). The end of a recording counted the call's objects as `obj_ptr`'s rise. But
+pdftex.web takes an object stream's number from `sys_obj_ptr` and leaves `obj_ptr` one behind
+("object stream is not accessible to user", `pdf_os_prepare_obj`), until the next object made sets
+`obj_ptr := sys_obj_ptr`. The shipout before that frame began an object stream, so the call's one
+link moved `obj_ptr` by two, and the call looked as if it had made an object of its own. Every key
+on the slide then ran the footline for real, and its inner calls were offered only from the second
+key on, which is why that key recorded 87 of them (`\XC@col@rlet` and kin) and took twice as long.
+
+A recording's frame now holds both counters. It commits when the objects made are exactly its
+links' (`sys_obj_ptr` moved by their number, in order from its value at the start), and
+`obj_ptr` ends where the normal path leaves it: unchanged with no object, equal to `sys_obj_ptr`
+otherwise, which is also where a replay's `pdf_new_objnum` calls leave it, lag or none. Test:
+`tests/boxmemo.rs` `links_recorded_after_an_object_stream_began` (refused before the change,
+three hits after it, the PDF and log byte-identical with BOX-MEMO off, on and verify).
+
+### 13.2 K2's runs of equivalents and integers compared 16 words at a time
+
+`bm_k2_is` compared each word of K2's runs of `eqtb` (a few thousand at every offer) through an
+iterator with an exit at each word: 6 % of the slide's typesetting. Both kinds compare a word's low
+half; `low_halves_eq` XORs 16 words into one value before it tests, the same answer
+(`low_halves_compare_as_the_word_by_word_loop` compares it with the loop).
+
+### 13.3 What remains
+
+The second key after the first edit on the first block frame still records a few calls
+(`\pgf@parsefunc`, 4 of them, about 50 M instructions): the shading declarations around them make
+a PDF object and are refused, and a call is never offered inside another call's recording (§1),
+so the inner calls are first offered at the key after the refusal. Recording inner calls while an
+outer one records would need a stack of recordings; not done.
+
+## 14. Revision 5: `\pgf@parsefunc` recorded anywhere (lane T7-MARGIN, 2026-10-21)
+
+§13.3's second key: on beamer-30's first block frame the key after the first edit still recorded
+the block's four `\pgf@parsefunc` calls (about 50 M instructions, the row's slowest key and so its
+p95 on the 2026-10-21b reference run). In the window they could not be recorded earlier: the
+shading declarations around them are refused (their `\immediate\pdfxform`), and a call is never
+offered inside another call's recording.
+
+`\pgf@parsefunc` is now one of `RECORD_ANYWHERE` (§12.2), so the host records it wherever it is
+offered outside a recording, the open's cold run included: there each function is recorded where
+it is first parsed, and every later key that parses it again, the second on a frame included, hits.
+A cold run's calls of the same function hit too (Madrid declares the same four shadings at every
+block). The intrinsics have no `\pgf@parsefunc`, so `owns` changes nothing for them.
+
+Measured (NixOS PC, T7 beamer-30, two rounds of 19 keys, instructions to the edited page): letter@start
+key 1 143 M → 93 M (the steady keys 92 M); the open's preamble row (a run from the format) 24.5 G →
+24.1 G instructions for the whole compile, 5.29 G → 5.24 G to its first page, wall unchanged.
+Evidence: `docs/evidence/t7-margin-2026-10-21/`.

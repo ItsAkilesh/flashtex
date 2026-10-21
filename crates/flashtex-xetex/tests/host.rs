@@ -1680,14 +1680,29 @@ fn a_dormant_line_is_kept_until_it_is_read() {
     let tail: String = (0..160).map(|i| para(i, "tail")).collect();
     let more: String = (0..60).map(|i| para(i, "more")).collect();
     let body: String = (0..40).map(|i| para(i, "body")).collect();
-    for (name, line) in [("end", ""), ("read", "Zword \\more\n")] {
+    // (`hyper`: the kept pages make links, destinations and outline entries,
+    // which the document taken over at the jump must hold, READ-TRACK-3)
+    let parts: String = (0..8)
+        .map(|i| {
+            format!(
+                "\\section{{Part {i}}}\\label{{part{i}}}See part~\\ref{{part{}}}.\n\n{}",
+                (i + 3) % 8,
+                (0..20).map(|j| para(j, "part")).collect::<String>()
+            )
+        })
+        .collect();
+    for (name, line, pre, tail) in [
+        ("end", "", "", tail.as_str()),
+        ("read", "Zword \\more\n", "", tail.as_str()),
+        ("hyper", "", "\\usepackage{hyperref}\n", parts.as_str()),
+    ] {
         let dir = std::env::temp_dir().join(format!(
             "flashtex-host-dormant-{name}-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
         let doc = format!(
-            "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n\
+            "\\documentclass{{article}}\n\\usepackage{{fontspec}}\n{pre}\
              \\newcommand\\tail[1][]{{#1{tail}}}\n\\newcommand\\more{{{more}}}\n\
              \\begin{{document}}\n{body}\\tail\n{line}\\end{{document}}\n"
         );
@@ -1740,6 +1755,10 @@ fn a_dormant_line_is_kept_until_it_is_read() {
             "{name}: no dormant line: {log}"
         );
         assert!(log.contains("[conv] jumped"), "{name}: no jump: {log}");
+        assert!(
+            log.contains("pages taken over"),
+            "{name}: the old documents were not taken over: {log}"
+        );
         assert!(!log.contains("UNSOUND"), "{name}: {log}");
         for (text, got) in keys.iter().zip(got) {
             let h = start_with(

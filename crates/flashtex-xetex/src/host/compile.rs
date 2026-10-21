@@ -14,7 +14,7 @@
 use super::proc::Children;
 use super::spare::{self, Inputs, Key, Spares, Started};
 use flashtex_display_list::json::{obj, s as js, Json};
-use flashtex_display_list::page::{flags, Item, Page, StreamKind};
+use flashtex_display_list::page::{flags, item_ops, op, Item, Page, StreamKind};
 use flashtex_display_list::resource::Font;
 use flashtex_display_list::{frame, kind};
 use std::collections::{HashMap, HashSet};
@@ -707,6 +707,25 @@ fn adapt(
     fonts: &HashMap<u16, [u8; 32]>,
     images: &HashMap<u32, [u8; 32]>,
 ) -> Option<Vec<u8>> {
+    // (most pages use none of those items: their opcodes are read without
+    // decoding the page, READ-TRACK-3)
+    let mut refused = 0u64;
+    if !accept.color_spaces {
+        for o in [
+            op::FILL_ALPHA,
+            op::STROKE_ALPHA,
+            op::FILL_COLOR_CS,
+            op::STROKE_COLOR_CS,
+        ] {
+            refused |= 1 << o;
+        }
+    }
+    if !accept.line_state {
+        refused |= 1 << op::LINE_STATE;
+    }
+    if refused == 0 || item_ops(body).is_ok_and(|ops| ops & refused == 0) {
+        return None;
+    }
     let mut p = Page::decode(sk, body).ok()?;
     let refuse = |i: &Item| match i {
         Item::FillAlpha(_)

@@ -63,17 +63,31 @@ fn the_memo_answers_as_kpathsea_does() {
         past_the_window();
     };
     // The memo's answer and kpathsea's (memo off, same instance), equal;
-    // and whether the memo answered.
+    // and whether the memo answered. Likewise what the answer depends on
+    // (`lookup_dirs`, which a memo entry keeps: lane T7-FULL10), in any
+    // order (kpathsea reorders a subtree's directories as it finds files).
+    let deps = |r: &mut KpathseaResolver, name: &str, a: &Option<PathBuf>| {
+        r.lookup_dirs(name, Format::Tex, Some(false), a.as_deref())
+            .map(|mut d| {
+                d.listed.sort();
+                d.above.sort();
+                d
+            })
+    };
     let look = |r: &mut KpathseaResolver, name: &str, what: &str| -> (Option<PathBuf>, bool) {
         let (h0, _) = KpathseaResolver::memo_counts();
         let a = r.find_ex(name, Format::Tex, false).0;
         let hit = KpathseaResolver::memo_counts().0 > h0;
+        let da = deps(r, name, &a);
         r.set_memo(false);
         let b = r.find_ex(name, Format::Tex, false).0;
+        let db = deps(r, name, &b);
         r.set_memo(true);
         assert_eq!(a, b, "{what}: the memo's answer is not kpathsea's");
+        assert_eq!(da, db, "{what}: the memo's dependencies are not kpathsea's");
         (a, hit)
     };
+    let deps_hits0 = KpathseaResolver::deps_hits();
     let found_in = |p: &Option<PathBuf>, d: &Path| {
         // (the directory the name is in: a link is not followed)
         p.as_ref()
@@ -198,5 +212,9 @@ fn the_memo_answers_as_kpathsea_does() {
         let (_, hit2) = look(&mut r, n, n);
         assert!(!hit && !hit2, "{n} answered from the memo");
     }
+    assert!(
+        KpathseaResolver::deps_hits() > deps_hits0,
+        "no memo hit answered its dependencies"
+    );
     let _ = std::fs::remove_dir_all(&base);
 }

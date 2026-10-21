@@ -374,6 +374,29 @@ fn k2_plan() -> &'static [(i32, i32, K2Kind)] {
     })
 }
 
+/// Whether each word's low half (`hh().rh()`, `int()`) is the value at
+/// its place in `want`: the comparison of K2's runs of equivalents and
+/// integers, a few thousand words at every offer (beamer-30's slide: 6 %
+/// of the edited page's typesetting compared one by one), made 16 words at
+/// a time with no exit inside a block (lane T7-LETTERSTART).
+fn low_halves_eq(words: &[crate::generated::types::memory_word], want: &[i32]) -> bool {
+    if words.len() != want.len() {
+        return false;
+    }
+    let (wb, wt) = words.as_chunks::<16>();
+    let (vb, vt) = want.as_chunks::<16>();
+    for (a, b) in wb.iter().zip(vb) {
+        let mut d = 0u32;
+        for k in 0..16 {
+            d |= (a[k].0 as u32) ^ (b[k] as u32);
+        }
+        if d != 0 {
+            return false;
+        }
+    }
+    wt.iter().zip(vt).all(|(x, &y)| x.0 as u32 == y as u32)
+}
+
 /// [`Globals::bm_k2_hash`] of a K2 kept as values.
 fn k2_hash_of(k2: &[i32]) -> u64 {
     let mut h: u64 = 0x243f_6a88_85a3_08d3;
@@ -505,7 +528,10 @@ struct Frame {
     fonts: (i32, i32),
     font_glue: Vec<i32>,
     marks: Vec<i32>,
-    obj_ptr: i32,
+    /// `obj_ptr` and `sys_obj_ptr` (pdftex.web: an object stream's number
+    /// is taken from `sys_obj_ptr` with `obj_ptr` left behind it, "not
+    /// accessible to user", until the next object makes them equal again).
+    obj_ptr: (i32, i32),
     interaction: i32,
     arm: (i32, i32),
     outputs: (i32, i32, u64, usize, usize),
@@ -643,8 +669,12 @@ pub fn mode() -> Mode {
 /// takes from the intrinsics wherever it is on (`owns`): hyperref's
 /// `\pdfstringdefPreHook` (§12.2). Its calls hit on every later page, a
 /// cold pass's included, and its entries survive the restores that take
-/// the intrinsics' recordings away.
-pub const RECORD_ANYWHERE: &[&str] = &["pdfstringdefPreHook"];
+/// the intrinsics' recordings away. And pgf's `\pgf@parsefunc` (§14): a
+/// shading declaration around it is refused (its `\pdfxform`), and a call
+/// is never offered inside another's recording, so in the window it was
+/// first recorded at the second key on a frame; recorded where the open's
+/// cold run first parses each function, it hits from the first.
+pub const RECORD_ANYWHERE: &[&str] = &["pdfstringdefPreHook", "pgf@parsefunc"];
 
 fn record_anywhere() -> &'static [Vec<u8>] {
     static R: std::sync::OnceLock<Vec<Vec<u8>>> = std::sync::OnceLock::new();
@@ -1355,12 +1385,9 @@ impl Globals {
         for &(a, b, kind) in k2_plan() {
             let words = &self.eqtb[(a - 1) as usize..(b - 1) as usize];
             match kind {
-                K2Kind::Equiv => match take(words.len()) {
-                    Some(w) if words.iter().map(|x| x.hh().rh()).eq(w.iter().copied()) => {}
-                    _ => return false,
-                },
-                K2Kind::Int => match take(words.len()) {
-                    Some(w) if words.iter().map(|x| x.int()).eq(w.iter().copied()) => {}
+                // (`rh` and `int` are both a word's low half)
+                K2Kind::Equiv | K2Kind::Int => match take(words.len()) {
+                    Some(w) if low_halves_eq(words, w) => {}
                     _ => return false,
                 },
                 K2Kind::Glue => {
@@ -1983,7 +2010,7 @@ impl Globals {
             fonts: (self.font_ptr, self.fmem_ptr),
             font_glue,
             marks,
-            obj_ptr: self.obj_ptr,
+            obj_ptr: (self.obj_ptr, self.sys_obj_ptr),
             interaction: self.interaction,
             arm: (self.ckpt_arm_cs, self.ckpt_arm_level),
             outputs: (
@@ -3418,12 +3445,16 @@ impl Globals {
             Some("Marks")
         } else if !self
             .bm_with_rec(|r| {
-                // only the links' objects, made one after the other
-                r.new_objs.len() as i32 == end.obj_ptr - start.obj_ptr
-                    && r.new_objs
-                        .iter()
-                        .zip(start.obj_ptr + 1..)
-                        .all(|(&o, n)| o == n)
+                // only the links' objects, made one after the other: counted
+                // by `sys_obj_ptr`, which every object moves. `obj_ptr` is
+                // behind it after an object stream's number was taken (a
+                // shipout's `pdf_os_prepare_obj`, before the call), and the
+                // call's first object makes them equal again, as the replay's
+                // `pdf_new_objnum` does; with none, it stays where it was.
+                let ((p0, s0), (p1, s1)) = (start.obj_ptr, end.obj_ptr);
+                r.new_objs.len() as i32 == s1 - s0
+                    && r.new_objs.iter().zip(s0 + 1..).all(|(&o, n)| o == n)
+                    && p1 == if r.new_objs.is_empty() { p0 } else { s1 }
                     && (self.pdf_last_link == r.last_link
                         || r.new_objs.contains(&self.pdf_last_link))
             })
@@ -4075,6 +4106,33 @@ mod tests {
             t: 0,
             v: Val::Word(w),
             kind,
+        }
+    }
+
+    #[test]
+    fn low_halves_compare_as_the_word_by_word_loop() {
+        use crate::generated::types::memory_word;
+        // each length around the blocks of 16, each place changed, in the
+        // low half (a difference) and in the high half (none)
+        for n in [0usize, 1, 15, 16, 17, 31, 32, 33, 100] {
+            let words: Vec<memory_word> = (0..n)
+                .map(|i| memory_word(((i as u64 * 7919) << 32) | (i as u64 * 31 + 5)))
+                .collect();
+            let want: Vec<i32> = words.iter().map(|w| w.int()).collect();
+            assert!(low_halves_eq(&words, &want));
+            assert!(!low_halves_eq(&words, &want[..n.saturating_sub(1)]) || n == 0);
+            for k in 0..n {
+                let mut w2 = want.clone();
+                w2[k] ^= 1 << (k % 32);
+                assert!(!low_halves_eq(&words, &w2), "{n} {k}");
+                let mut words2 = words.clone();
+                words2[k].0 ^= 1 << 40;
+                assert!(low_halves_eq(&words2, &want), "{n} {k}");
+                assert_eq!(
+                    low_halves_eq(&words, &w2),
+                    words.iter().map(|x| x.hh().rh()).eq(w2.iter().copied())
+                );
+            }
         }
     }
 

@@ -516,8 +516,8 @@ fn env_on(name: &str) -> bool {
 /// makes them again.
 fn truncate_journal(j: &ReadLog, n: (usize, usize, usize)) -> ReadLog {
     let mut out = ReadLog::keeping_content();
-    out.files = j.files[..n.0.min(j.files.len())].to_vec();
-    out.lookups = j.lookups[..n.1.min(j.lookups.len())].to_vec();
+    out.files = j.files[..n.0.min(j.files.len())].to_vec().into();
+    out.lookups = j.lookups[..n.1.min(j.lookups.len())].to_vec().into();
     out.outputs = j.outputs[..n.2.min(j.outputs.len())].to_vec();
     out.barriers = j.barriers.clone();
     out.dirs = j
@@ -1325,6 +1325,7 @@ impl Engine {
                                     opens: c.opens,
                                     id: c.id,
                                     rec: c.rec.clone(),
+                                    out: c.out.clone(),
                                     reads: c.reads,
                                     dorm: c.dorm,
                                 })
@@ -1725,7 +1726,7 @@ impl Engine {
             }
             // the user's files this run read for the first time
             if let Some(j) = &self.journal {
-                for f in &j.files {
+                for f in j.files.iter() {
                     if let Some(c) = &f.content {
                         self.texts
                             .entry(f.path.clone())

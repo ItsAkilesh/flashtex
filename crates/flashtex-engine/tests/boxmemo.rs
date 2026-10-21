@@ -240,6 +240,30 @@ fn links_replay_with_their_objects() {
 }
 
 #[test]
+fn links_recorded_after_an_object_stream_began() {
+    // With object streams, a shipout takes the stream's number from
+    // `sys_obj_ptr` and leaves `obj_ptr` one behind (pdftex.web: "object
+    // stream is not accessible to user"); the next object made puts them
+    // level again. A call recorded there (beamer-30's first block frame,
+    // whose footline links follow the shipout that began a stream) makes
+    // its links' objects from `sys_obj_ptr` on, and is recorded; counted
+    // by `obj_ptr` it seemed to make one more and was refused for good.
+    let s = check(
+        "links-os",
+        &[
+            PDF_PRELUDE,
+            "\\pdfminorversion=5 \\pdfobjcompresslevel=2 \\shipout\\hbox{\\vrule width 1pt height 1pt}\n\
+             \\def\\measure#1{\\begingroup\\pdfstartlink user{/S /URI /URI (#1)}\\vrule width 2pt height 1pt\\pdfendlink\
+             \\kern1pt\\pdfstartlink attr{/Border[0 0 0]} goto page 1 {/Fit}\\vrule width 3pt height 1pt\\pdfendlink\\endgroup}\n\
+             \\def\\one{\\setbox1\\hbox{\\measure{a}}\\message{[\\the\\pdflastlink]}\\shipout\\box1 }\n\
+             \\one\\one\\one\\one\\end\n",
+        ]
+        .concat(),
+    );
+    assert!(stat(&s, "hits") >= 3, "{s}");
+}
+
+#[test]
 fn form_references_are_part_of_the_key() {
     // \pdfrefxform of an existing form (a pgf shading's): the node copies
     // the form's dimensions, so the form joins the key; another form is
