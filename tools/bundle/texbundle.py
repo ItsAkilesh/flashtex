@@ -37,7 +37,10 @@ the oracle's pdflatex over the gate's documents (tl2026/gate.json) in the
 pinned tree and keeps each PDF's SHA-256; `gate` compiles the same
 documents with the engine, TeX Live hidden, from the bundle alone, and
 compares. A difference fails unless tl2026/gaps.json lists the document
-with the reason (a known gap whose lane has not landed).
+with the reason (a known gap whose lane has not landed). A document added
+to the gate set after the bundle was cut takes its reference from
+tl2026/oracle-refs-extra.json (made for that bundle digest, in the same
+pinned tree), never replacing one of the bundle's.
 """
 
 import argparse
@@ -861,9 +864,43 @@ def no_texlive_wrap(work):
     return ("/usr/bin/sandbox-exec", "-f", prof)
 
 
+def merge_extra_refs(refs, extra, digest):
+    """The release's references plus tl2026/oracle-refs-extra.json's.
+
+    A release's oracle-refs.json covers the gate set of the commit that cut
+    it; a document added to the gate set later (a new parity fixture) has no
+    reference there, and the published gate would fail on it until the next
+    bundle. Its reference, made by `refs` in the same pinned tree (a dry run
+    of bundle-publish.yml), goes in the extra file, which names the bundle
+    digest it was made for: for another bundle it is ignored (that bundle's
+    own references cover the gate set). An extra reference never replaces
+    the release's: where both have the document they must agree, or the gate
+    stops. Returns (refs, notes, conflicts)."""
+    if not extra or extra.get("bundle_digest") != digest:
+        return refs, [], []
+    merged, notes, conflicts = dict(refs), [], []
+    for did, ref in sorted(extra["documents"].items()):
+        have = refs.get(did)
+        if have is None:
+            merged[did] = ref
+        elif have.get("sha256") == ref.get("sha256"):
+            notes.append(did)
+        else:
+            conflicts.append(did)
+    return merged, notes, conflicts
+
+
 def cmd_gate(a):
     with open(a.refs) as f:
         refs = json.load(f)["documents"]
+    extra = None
+    if a.extra_refs and os.path.isfile(a.extra_refs):
+        with open(a.extra_refs) as f:
+            extra = json.load(f)
+    refs, in_release, conflicts = merge_extra_refs(refs, extra, a.digest)
+    if conflicts:
+        die(f"tools/bundle/tl2026/oracle-refs-extra.json disagrees with the bundle's own references for "
+            f"{', '.join(conflicts)}: remake it (texbundle.py refs in the pinned tree)")
     with open(a.gaps) as f:
         gaps = json.load(f)["gaps"]
     docs = gate_documents(a.spec)
@@ -931,6 +968,9 @@ def cmd_gate(a):
         lines.append(f"| {did} | {v} | {g} | {r['pages']}/{o.get('pages', '')} | {r.get('why', '')[:90]} |")
     if fixed:
         lines += ["", "Listed as known gaps but now identical (remove them from gaps.json): " + ", ".join(fixed)]
+    if in_release:
+        lines += ["", "In the bundle's own references too (remove them from oracle-refs-extra.json): "
+                  + ", ".join(in_release)]
     report = "\n".join(lines) + "\n"
     with open(os.path.join(a.out, "report.md"), "w") as f:
         f.write(report)
@@ -999,6 +1039,8 @@ def main():
     s.add_argument("--refs", required=True)
     s.add_argument("--spec", default=os.path.join(DATA, "gate.json"))
     s.add_argument("--gaps", default=os.path.join(DATA, "gaps.json"))
+    s.add_argument("--extra-refs", default=os.path.join(DATA, "oracle-refs-extra.json"),
+                   help="references of documents added to the gate set after the bundle's (merge_extra_refs)")
     s.add_argument("--out", required=True)
     s.add_argument("-j", "--jobs", type=int, default=3)
     a = ap.parse_args()

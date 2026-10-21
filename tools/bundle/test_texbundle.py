@@ -4,6 +4,7 @@ lock reader, and fetch_image.py's refusals of members that would leave the
 tree. `python3 tools/bundle/test_texbundle.py`"""
 
 import io
+import json
 import os
 import subprocess
 import sys
@@ -165,6 +166,41 @@ class Extraction(unittest.TestCase):
             rc, _, d = self.run_layer(members)
             self.assertNotEqual(rc, 0, what)
             self.assertFalse(os.path.exists(os.path.join(d, "evil")), what)
+
+
+class ExtraRefs(unittest.TestCase):
+    """The gate's references for documents added after the bundle was cut."""
+
+    REL = {"a": {"sha256": "1"}, "b": {"sha256": "2"}}
+
+    def test_added_document_takes_the_extra_reference(self):
+        extra = {"bundle_digest": "D", "documents": {"c": {"sha256": "3"}}}
+        refs, notes, conflicts = texbundle.merge_extra_refs(self.REL, extra, "D")
+        self.assertEqual(refs["c"], {"sha256": "3"})
+        self.assertEqual((notes, conflicts), ([], []))
+
+    def test_another_bundle_ignores_it(self):
+        extra = {"bundle_digest": "OTHER", "documents": {"c": {"sha256": "3"}}}
+        refs, _, _ = texbundle.merge_extra_refs(self.REL, extra, "D")
+        self.assertNotIn("c", refs)
+
+    def test_never_replaces_the_bundles_own(self):
+        extra = {"bundle_digest": "D", "documents": {"a": {"sha256": "1"}, "b": {"sha256": "9"}}}
+        refs, notes, conflicts = texbundle.merge_extra_refs(self.REL, extra, "D")
+        self.assertEqual(refs["b"], {"sha256": "2"})
+        self.assertEqual((notes, conflicts), (["a"], ["b"]))
+
+    def test_shipped_extra_names_the_lock_and_gate_documents(self):
+        path = os.path.join(texbundle.DATA, "oracle-refs-extra.json")
+        if not os.path.isfile(path):
+            return
+        with open(path) as f:
+            extra = json.load(f)
+        with open(os.path.join(texbundle.DATA, "flashtex-bundle.lock")) as f:
+            lock = f.read()
+        self.assertIn(extra["bundle_digest"], lock)
+        for did, ref in extra["documents"].items():
+            self.assertRegex(ref["sha256"], r"^[0-9a-f]{64}$", did)
 
 
 class Packages(unittest.TestCase):
