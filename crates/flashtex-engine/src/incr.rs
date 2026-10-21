@@ -5988,6 +5988,7 @@ impl Session {
         obs.old_matrix_uses_end = Some(crate::pdftex::matrix_uses());
         obs.old_effects_end = system::external_effects_len();
         obs.changed_lookup_last = self.changed_lookup_last;
+        crate::os::phase_mark('f');
         let t1 = Instant::now();
         let i1 = crate::os::thread_counts();
         let f1 = crate::os::events();
@@ -6041,6 +6042,7 @@ impl Session {
         } else {
             g.restore(r)
         };
+        crate::os::phase_mark('r');
         if let Err(e) = restored {
             // An output the restore needs is gone: a run that failed
             // removes its PDF (pdfTeX's "no output PDF file produced"),
@@ -6183,6 +6185,7 @@ impl Session {
         system::record_reads_into(Some(truncate_journal(jr, rec.reads, &self.dirs_checked)));
         let restore_s = t1.elapsed().as_secs_f64();
         drop(busy_restore);
+        crate::os::phase_mark('k');
         let restore_instr = i1.zip(crate::os::thread_counts()).map(|(a, b)| b.0 - a.0);
         let restore_flt = f1
             .zip(crate::os::events())

@@ -264,6 +264,19 @@ thread_local! {
     static PREEMPT_SEEN: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
+thread_local! {
+    /// The last [`Globals::restore`]'s steps, in µs: dropping the pending
+    /// restore, the output tails, the terminal and the scalars' spill, the
+    /// word space's undo, and the host state (lane T7-HEADROOM, measurement
+    /// only).
+    static RESTORE_STEPS: std::cell::Cell<[u64; 5]> = const { std::cell::Cell::new([0; 5]) };
+}
+
+/// [`RESTORE_STEPS`], cleared.
+pub fn take_restore_steps() -> [u64; 5] {
+    RESTORE_STEPS.with(|c| c.replace([0; 5]))
+}
+
 /// Newer work may be waiting for the engine (the host's server thread).
 pub fn hint_preempt() {
     PREEMPT_HINT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1280,6 +1293,19 @@ impl Globals {
             opens_tail,
         });
         let r = self.restore_ext(&rec);
+        {
+            let us = |d: std::time::Duration| d.as_micros() as u64;
+            let all = t0.elapsed();
+            RESTORE_STEPS.with(|c| {
+                c.set([
+                    us(t_drop),
+                    us(t_tails - t_drop),
+                    us(t_pre - t_tails),
+                    us(t_branch - t_pre),
+                    us(all - t_branch),
+                ])
+            });
+        }
         if std::env::var_os("FLASHTEX_INCR_DEBUG").is_some() {
             let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
             eprintln!(

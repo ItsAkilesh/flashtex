@@ -211,6 +211,10 @@ struct Target {
     /// (`os::events`).
     flt0: Option<(u64, u64)>,
     first_flt: Option<(u64, u64)>,
+    /// The phases to the first page (`os::phase_marks`) and the restore's
+    /// steps (`checkpoint::take_restore_steps`), taken then.
+    first_marks: Vec<crate::os::PhaseMark>,
+    first_restore_us: [u64; 5],
 }
 
 impl Target {
@@ -468,6 +472,9 @@ impl Live {
                 t.first_send_ms = Some(t.send_ns as f64 * 1e-6);
                 t.first_pmu = crate::os::thread_counts();
                 t.first_flt = crate::os::events();
+                crate::os::phase_mark('d');
+                t.first_marks = crate::os::phase_marks();
+                t.first_restore_us = crate::checkpoint::take_restore_steps();
                 // (`FLASHTEX_PERF_MARKS`: `d`, the first page delivered)
                 crate::os::perf_mark_as('d');
                 let count = t.old_count.max(i + 1);
@@ -877,6 +884,8 @@ impl Engine {
         let t_apply = Instant::now();
         let ev_apply = crate::os::events();
         APPLY_STEPS.with(|a| a.set([0; 5]));
+        LAST_WRITTEN.with(|w| w.borrow_mut().clear());
+        let flush_at_apply = super::flush::state();
         // (the host's copies stand for files only within the compile that
         // wrote them: `system::KNOWN`)
         crate::system::clear_known_content();
@@ -885,6 +894,7 @@ impl Engine {
             return self.resume_deferred(&conn);
         }
         let apply_ms = t_apply.elapsed().as_secs_f64() * 1e3;
+        crate::os::phase_mark('p');
         // (its page faults and, on macOS, system calls: `os::events`)
         let apply_ev = ev_apply
             .zip(crate::os::events())
@@ -944,6 +954,7 @@ impl Engine {
         let t_moved = Instant::now();
         move_spans(doc, &self.written);
         let move_ms = t_moved.elapsed().as_secs_f64() * 1e3;
+        crate::os::phase_mark('m');
         let mut ps = self.peers.remove(&conn.id).unwrap_or_else(PeerState::new);
         let keep = incremental && ps.doc_gen == doc.gen;
         if !keep {
@@ -1001,6 +1012,8 @@ impl Engine {
             first_pmu: None,
             flt0,
             first_flt: None,
+            first_marks: vec![],
+            first_restore_us: [0; 5],
         });
         let stop_at = req
             .int_field("viewport")
@@ -1312,6 +1325,19 @@ impl Engine {
                     Json::Arr(apply_steps.iter().map(|&u| Json::Int(u as i64)).collect()),
                 ),
                 ("move_spans".to_string(), m(move_ms)),
+                (
+                    "flush".to_string(),
+                    if super::flush::mode() == 0 {
+                        Json::Null
+                    } else {
+                        let (i, d, us) = flush_at_apply;
+                        Json::Arr(vec![
+                            Json::Bool(FLUSHED_PREV.with(|f| f.get())),
+                            Json::Int((i - d) as i64),
+                            Json::Int(us as i64),
+                        ])
+                    },
+                ),
                 ("first_page".to_string(), o(t.first_page_ms)),
                 ("first_page_cpu".to_string(), o(t.first_cpu_ms)),
                 ("first_page_dl".to_string(), o(t.first_emit_ms)),
@@ -1373,6 +1399,36 @@ impl Engine {
                 let (kept, rewound) = doc.session.old_cache_counts();
                 st.push(("old_kept".to_string(), Json::Int(kept as i64)));
                 st.push(("old_rewound".to_string(), Json::Int(rewound as i64)));
+            }
+            // The phases to the first page: wall, user and (macOS) system
+            // time in µs from the mark before (`os::phase_marks`; `a` the
+            // compile's start, `p` the edits applied, `m` the spans moved,
+            // `f` the restart point found, `r` the checkpoint restored, `k`
+            // the restore done, `b` the engine resumed, `e` the edited
+            // page's shipout, `d` the first page delivered), and the
+            // restore's steps (`checkpoint::take_restore_steps`)
+            if !t.first_marks.is_empty() {
+                let m = &t.first_marks;
+                let v = m
+                    .windows(2)
+                    .map(|w| {
+                        let (a, b) = (w[0], w[1]);
+                        Json::Arr(vec![
+                            js(b.mark.to_string()),
+                            Json::Int(((b.ns.saturating_sub(a.ns)) / 1000) as i64),
+                            Json::Int(b.user_us.saturating_sub(a.user_us) as i64),
+                            match (a.sys_us, b.sys_us) {
+                                (Some(x), Some(y)) => Json::Int(y.saturating_sub(x) as i64),
+                                _ => Json::Null,
+                            },
+                        ])
+                    })
+                    .collect();
+                st.push(("marks".to_string(), Json::Arr(v)));
+                st.push((
+                    "restore_us".to_string(),
+                    Json::Arr(t.first_restore_us.iter().map(|&u| Json::Int(u as i64)).collect()),
+                ));
             }
             // Page faults and system calls (macOS; `_sys`): the whole
             // compile, to the first page, the restore and what an abandoned
@@ -1543,6 +1599,11 @@ impl Engine {
         }
         let doc = self.doc.as_mut().unwrap();
         doc.compiles += 1;
+        {
+            let srcs = LAST_WRITTEN.with(|w| std::mem::take(&mut *w.borrow_mut()));
+            let out_dir = doc.job.root.join(&doc.job.out_dir);
+            FLUSHED_PREV.with(|f| f.set(super::flush::after_compile(doc.compiles, srcs, &out_dir)));
+        }
         doc.tools.deferred = deferred.then(|| (conn.clone(), req.clone(), id));
         crate::system::clear_known_content();
         remember_texts(doc);
@@ -1936,6 +1997,11 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                         Some(o) if o <= data.len() => {
                             crate::os::write_all_at(&f, &data[from..], from as u64)
                         }
+                        Some(_) if trunc_first() => {
+                            f.set_len(n)?;
+                            lap(2, &mut t);
+                            crate::os::write_all_at(&f, &data[from..], from as u64)
+                        }
                         Some(_) => {
                             crate::os::write_all_at(&f, &data[from..], from as u64)?;
                             lap(1, &mut t);
@@ -1948,7 +2014,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                         }
                     };
                     lap(
-                        if matches!(old, Some(o) if o > data.len()) {
+                        if matches!(old, Some(o) if o > data.len()) && !trunc_first() {
                             2
                         } else {
                             1
@@ -1970,6 +2036,7 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
                 a.set(v);
             });
             crate::system::note_known_content(path, held.clone());
+            LAST_WRITTEN.with(|w| w.borrow_mut().push(path.to_path_buf()));
             if let Some(h) = held {
                 written.insert(path.to_path_buf(), h);
             }
@@ -2026,6 +2093,19 @@ fn apply_changes(root: &Path, req: &Json, written: &mut Written) -> Result<(), S
         write_from(&path, d, at, Some(old), written)?;
     }
     Ok(())
+}
+
+/// Experiment (lane T7-HEADROOM): a shorter file is cut before the write.
+fn trunc_first() -> bool {
+    static M: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *M.get_or_init(|| std::env::var_os("FLASHTEX_TRUNC_FIRST").is_some())
+}
+
+thread_local! {
+    /// The files `apply_changes` wrote in this compile.
+    static LAST_WRITTEN: RefCell<Vec<PathBuf>> = const { RefCell::new(Vec::new()) };
+    /// Whether the last compile had its files written out (`flush`).
+    static FLUSHED_PREV: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 thread_local! {

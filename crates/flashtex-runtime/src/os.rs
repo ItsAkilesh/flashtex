@@ -313,6 +313,82 @@ pub fn thread_counts() -> Option<(u64, u64)> {
     }
 }
 
+/// This thread's user and system CPU time so far, in µs. macOS:
+/// `thread_info`'s `THREAD_BASIC_INFO`; elsewhere the thread's CPU time as
+/// the user time, the system time unknown (`None`). Measurement only.
+pub fn thread_user_sys_us() -> (u64, Option<u64>) {
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            fn pthread_self() -> usize;
+            fn pthread_mach_thread_np(t: usize) -> u32;
+            fn thread_info(thread: u32, flavor: u32, info: *mut i32, count: *mut u32) -> i32;
+        }
+        // `thread_basic_info`: user_time and system_time (seconds and µs
+        // each), then six more integers
+        let mut v = [0i32; 10];
+        let mut n = 10u32;
+        // SAFETY: the kernel writes at most `n` integers into `v`; flavor 3
+        // is THREAD_BASIC_INFO; `pthread_mach_thread_np` adds no reference.
+        let r = unsafe { thread_info(pthread_mach_thread_np(pthread_self()), 3, v.as_mut_ptr(), &mut n) };
+        if r == 0 {
+            let us = |s: i32, u: i32| s as u64 * 1_000_000 + u as u64;
+            return (us(v[0], v[1]), Some(us(v[2], v[3])));
+        }
+        ((thread_cpu_s() * 1e6) as u64, None)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        ((thread_cpu_s() * 1e6) as u64, None)
+    }
+}
+
+thread_local! {
+    /// [`phase_mark`]'s marks since the last `a` (a compile's start).
+    static PHASES: std::cell::RefCell<Vec<PhaseMark>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A [`phase_mark`]: its letter, when (monotonic, ns), and the thread's
+/// user and system CPU time then (µs; [`thread_user_sys_us`]).
+#[derive(Clone, Copy, Debug)]
+pub struct PhaseMark {
+    pub mark: char,
+    pub ns: u64,
+    pub user_us: u64,
+    pub sys_us: Option<u64>,
+}
+
+/// Note a point of a compile on this thread (every [`perf_mark_as`]; the
+/// host's `a` starts the list again): the latency accounting's split of
+/// the wall time into user, system and off-CPU time by phase (lane
+/// T7-HEADROOM). Measurement only, a few µs a compile.
+pub fn phase_mark(mark: char) {
+    #[cfg(unix)]
+    let ns = imp::monotonic_ns();
+    #[cfg(not(unix))]
+    let ns = 0u64;
+    let (user_us, sys_us) = thread_user_sys_us();
+    PHASES.with(|p| {
+        let mut p = p.borrow_mut();
+        if mark == 'a' {
+            p.clear();
+        }
+        if p.len() < 64 {
+            p.push(PhaseMark {
+                mark,
+                ns,
+                user_us,
+                sys_us,
+            });
+        }
+    });
+}
+
+/// The marks since the compile's start (`a`), oldest first.
+pub fn phase_marks() -> Vec<PhaseMark> {
+    PHASES.with(|p| p.borrow().clone())
+}
+
 /// Profiling one interval (measurement only): with `FLASHTEX_PERF_MARKS` set
 /// to a file, the host appends `b NS` when an edit's engine resumes after the
 /// restore and `e NS` at the edited page's shipout (NS: CLOCK_MONOTONIC), so
@@ -326,6 +402,7 @@ pub fn perf_mark(on: bool) {
 /// start, so that `a`..`b` is what comes before the typesetting).
 pub fn perf_mark_as(mark: char) {
     use std::io::Write;
+    phase_mark(mark);
     static MARKS: std::sync::OnceLock<Option<std::sync::Mutex<std::fs::File>>> =
         std::sync::OnceLock::new();
     let marks = MARKS.get_or_init(|| {

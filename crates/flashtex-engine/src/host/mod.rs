@@ -33,6 +33,7 @@
 pub mod crash;
 pub mod diag;
 pub mod external;
+mod flush;
 mod resident;
 pub mod s0write;
 pub mod server;
