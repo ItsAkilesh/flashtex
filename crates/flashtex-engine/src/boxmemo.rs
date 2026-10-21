@@ -383,9 +383,9 @@ fn low_halves_eq(words: &[crate::generated::types::memory_word], want: &[i32]) -
     if words.len() != want.len() {
         return false;
     }
-    let (wb, wt) = words.split_at(words.len() / 16 * 16);
-    let (vb, vt) = want.split_at(wb.len());
-    for (a, b) in wb.chunks_exact(16).zip(vb.chunks_exact(16)) {
+    let (wb, wt) = words.as_chunks::<16>();
+    let (vb, vt) = want.as_chunks::<16>();
+    for (a, b) in wb.iter().zip(vb) {
         let mut d = 0u32;
         for k in 0..16 {
             d |= (a[k].0 as u32) ^ (b[k] as u32);
