@@ -1418,7 +1418,7 @@ impl Engine {
                 st.push((
                     "io_us".to_string(),
                     Json::Arr(
-                        t.first_io[..6]
+                        t.first_io
                             .iter()
                             .map(|&(n, ns)| {
                                 Json::Arr(vec![Json::Int(n as i64), Json::Int((ns / 1000) as i64)])

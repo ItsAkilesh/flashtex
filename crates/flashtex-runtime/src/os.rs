@@ -402,7 +402,8 @@ thread_local! {
 /// The kinds of [`io_time`]: an output file's write (`Tracked`), an input
 /// file's lookup (`input_path`), opening a TFM file, opening a text
 /// file, the watches' drain (`fswatch::sync`), a read's journal entry
-/// (`note_file`).
+/// (`note_file`), the lookup memo's check of an answer (`still_holds`), a
+/// directory listed to check one (`tried_names_clear`).
 pub mod io {
     pub const WRITE: usize = 0;
     pub const LOOKUP: usize = 1;
@@ -410,6 +411,8 @@ pub mod io {
     pub const TEXT: usize = 3;
     pub const DRAIN: usize = 4;
     pub const NOTE: usize = 5;
+    pub const HOLDS: usize = 6;
+    pub const LISTING: usize = 7;
 }
 
 /// `f`, its wall time counted under `kind` ([`io`]): where a compile's
