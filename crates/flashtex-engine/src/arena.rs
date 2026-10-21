@@ -1738,7 +1738,6 @@ impl Core {
                 std::process::abort();
             }
         }
-        Ok(())
     }
 
     /// `FLASHTEX_VERIFY_PREPARED`, where `restore_branch` uses `p` (the
