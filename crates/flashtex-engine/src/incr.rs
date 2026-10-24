@@ -5804,6 +5804,15 @@ impl Session {
                 Some((e.path.clone(), f.content.clone()?))
             })
             .collect();
+        // (the last whole read of a changed file before the page's `p1`: a
+        // window that ends before it cannot leave a restart point after it)
+        let upto = page
+            .map_or(j.files.len(), |p| p.p0.reads.0 + p.old_files.len())
+            .min(j.files.len());
+        let last_whole = j.files[r0.reads.0.min(upto)..upto]
+            .iter()
+            .rposition(|f| f.closed_at == Some(u64::MAX) && changed.contains(&f.path))
+            .map(|i| r0.reads.0 + i)?;
         let mut nth = 0;
         for k in i0 + 1..end {
             let a = ids[k];
@@ -5814,6 +5823,9 @@ impl Session {
             let ra = g.record_of(a).ok()?;
             if bad_lookup.is_some_and(|b| b < ra.reads.1) {
                 return None;
+            }
+            if ra.reads.0 <= last_whole {
+                continue;
             }
             let mut windows = prior.to_vec();
             windows.push((r0.reads.0, ra.reads.0));
