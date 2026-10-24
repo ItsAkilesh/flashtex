@@ -6042,10 +6042,11 @@ fn a_link_broken_across_lines_does_not_stop_convergence() {
         runs[0].iter().any(|r| field(r, "dead_cells") != "0"),
         "no convergence needed the dead-cell rule: the document no longer tests it"
     );
-    // without the rule the same edits typeset to the end (the test's
-    // premise: the leak is what stopped them)
+    // without the rule the edits typeset to the end (the test's premise:
+    // the leak is what stopped them; the revert may converge, its run
+    // allocating as the settled one did)
     assert!(
-        runs[1].iter().all(|r| field(r, "converged_at") == "null"),
+        runs[1][..2].iter().all(|r| field(r, "converged_at") == "null"),
         "{:#?}",
         runs[1]
     );
