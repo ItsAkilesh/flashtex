@@ -104,7 +104,7 @@ pub fn dead_cells_enabled() -> bool {
 /// the walk's own node model: a reached node's pointer fields are followed.
 /// `FLASHTEX_DEAD_CELLS_VERIFY` checks the rule against live runs.
 fn garbage<S: Space>(
-    g: &Globals,
+    regions: &[crate::arena::RegionInfo],
     s: &St<'_, S>,
     cov: &[u64],
     free: &[u64],
@@ -141,7 +141,7 @@ fn garbage<S: Space>(
             }
         }
     };
-    for r in &g.arena.regions {
+    for r in regions {
         if r.name == "mem" || walked_region(r.name) || plain_data(r.name) {
             continue;
         }
@@ -3061,13 +3061,13 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
             if !(ok_o && ok_n) && dead_rule {
                 if !ok_o {
                     let d = dead_o.get_or_insert_with(|| {
-                        free_o.map(|f| garbage(g, &w.o, &w.cov_o, f, slots, None))
+                        free_o.map(|f| garbage(&g.arena.regions, &w.o, &w.cov_o, f, slots, None))
                     });
                     ok_o = d.as_ref().is_some_and(|d| bit(d, p));
                 }
                 if !ok_n {
                     let d = dead_n.get_or_insert_with(|| {
-                        free_n.map(|f| garbage(g, &w.n, &w.cov_n, f, slots, None))
+                        free_n.map(|f| garbage(&g.arena.regions, &w.n, &w.cov_n, f, slots, None))
                     });
                     ok_n = d.as_ref().is_some_and(|d| bit(d, p));
                 }
@@ -3079,11 +3079,11 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
                 if dead_rule && std::env::var_os("FLASHTEX_DEAD_CELLS_WHY").is_some() {
                     if let (false, Some(f)) = (ok_o, free_o) {
                         eprint!("[dead-cells] old: ");
-                        garbage(g, &w.o, &w.cov_o, f, slots, Some(p));
+                        garbage(&g.arena.regions, &w.o, &w.cov_o, f, slots, Some(p));
                     }
                     if let (false, Some(f)) = (ok_n, free_n) {
                         eprint!("[dead-cells] new: ");
-                        garbage(g, &w.n, &w.cov_n, f, slots, Some(p));
+                        garbage(&g.arena.regions, &w.n, &w.cov_n, f, slots, Some(p));
                     }
                 }
                 return Err(format!(
@@ -3510,5 +3510,99 @@ mod tests {
         // (and an `inserting` record with null fields, as always)
         let o = page_ins_list(1000, INSERTING, NULL, NULL);
         assert_eq!(compare(&o, &o), Ok(()));
+    }
+
+    // INFDESC-883's dead cells (`garbage`). The space: `mem` cells 0..=LO_MAX
+    // and HI_MIN..=MEM_END, the scalars that bound them after mem, and a
+    // `hlist_stack` region (halfwords the walk does not interpret) after
+    // those.
+    const LO_MAX: i32 = 5000;
+    const HI_MIN: i32 = 9000;
+    const MEM_END: i32 = 9999;
+    const SCALARS: usize = (MEM_TOP as usize + 1) * 8;
+    const STACK: usize = SCALARS + 64;
+
+    fn dead_space() -> (Words, Layout, Vec<crate::arena::RegionInfo>) {
+        let mut l = layout();
+        let mut w = Words::default();
+        for (k, (name, v)) in [("lo_mem_max", LO_MAX), ("hi_mem_min", HI_MIN), ("mem_end", MEM_END)]
+            .into_iter()
+            .enumerate()
+        {
+            l.scalars.insert(name, (SCALARS + k * 8, 4));
+            w.0.insert(SCALARS + k * 8, v as u32 as u64);
+        }
+        let regions = vec![
+            crate::arena::RegionInfo {
+                name: "mem",
+                off: 0,
+                bytes: SCALARS,
+                elem: 8,
+            },
+            crate::arena::RegionInfo {
+                name: "hlist_stack",
+                off: STACK,
+                bytes: 64,
+                elem: 4,
+            },
+        ];
+        (w, l, regions)
+    }
+
+    /// What `garbage` finds dead in `w`, where the walk reached `reached`
+    /// and every other cell but `alloc` is free.
+    fn dead_of(w: &Words, l: &Layout, regions: &[crate::arena::RegionInfo], alloc: &[i32]) -> Vec<u64> {
+        let words = (MEM_TOP as usize + 64) / 64 + 1;
+        let (cov, mut free) = (vec![0u64; words], vec![0u64; words]);
+        for p in (MEM_BOT..=LO_MAX).chain(HI_MIN..=MEM_END) {
+            if !alloc.contains(&p) {
+                set(&mut free, p);
+            }
+        }
+        let s = St {
+            sp: w,
+            l,
+            hi_mem_min: HI_MIN,
+        };
+        garbage(regions, &s, &cov, &free, &[], None)
+    }
+
+    /// A line's end TeX leaked (pdfTeX does, for a link broken across lines:
+    /// pdflatex's `\tracingstats=2` shows the words never given back): a
+    /// `\rightskip` glue node and the character before it, which nothing
+    /// points at. Its cells are dead, so a convergence test may ignore
+    /// their words (before INFDESC-883 every later test failed on them).
+    #[test]
+    fn a_leaked_line_end_is_dead() {
+        let (mut w, l, regions) = dead_space();
+        // a character node (hi mem) linked to the glue node at 3000
+        w.put(9500, halves(0x0001_0041, 3000));
+        // glue node, subtype right_skip_code + 1, link null; glue_ptr zero_glue
+        w.put(3000, hh(10, 9, NULL));
+        w.put(3001, halves(NULL, 0));
+        let dead = dead_of(&w, &l, &regions, &[9500, 3000, 3001]);
+        for p in [9500, 3000, 3001] {
+            assert!(bit(&dead, p), "cell {p} is dead");
+        }
+    }
+
+    /// A cell that a word the walk does not interpret points at (a root the
+    /// walk would lack) is live, as is what it points at in turn: its
+    /// difference must still fail the convergence test.
+    #[test]
+    fn a_cell_a_word_outside_the_walk_points_at_is_live() {
+        let (mut w, l, regions) = dead_space();
+        w.put(9500, halves(0x0001_0041, 3000));
+        w.put(3000, hh(10, 9, NULL));
+        w.put(3001, halves(NULL, 0));
+        // an unrelated leaked node
+        w.put(4000, hh(10, 9, NULL));
+        // the hidden root: hlist_stack[1] = 9500
+        w.0.insert(STACK, (9500u64) << 32);
+        let dead = dead_of(&w, &l, &regions, &[9500, 3000, 3001, 4000]);
+        for p in [9500, 3000, 3001] {
+            assert!(!bit(&dead, p), "cell {p} is live (hlist_stack -> 9500 -> 3000)");
+        }
+        assert!(bit(&dead, 4000), "the unrelated node is still dead");
     }
 }

@@ -1880,6 +1880,11 @@ fn live_len(g: &Globals, region: &str) -> Option<usize> {
         // §962 (`\patterns`: `hyf[0]`, `hyf[k]` set as each digit or letter
         // is scanned): the hyphen positions of the word being hyphenated
         "hyf" => 0,
+        // §54, §64, §67, §102, §452, pdftex.web's `pdf_print_int` and
+        // `pdf_print_octal`: the digits of a number being printed or
+        // scanned, set in the same call before `print_the_digs` or
+        // `round_decimals` reads them
+        "dig" => 0,
         // changes/lineshift.ch: the files of the open semantic levels',
         // groups' and conditionals' lines, set as each begins
         "ls_nest_tag" => g.nest_ptr + 1,
