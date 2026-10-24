@@ -356,9 +356,13 @@ impl Globals {
             .unwrap_or(0);
         // (the incremental journal: the time read, and the file)
         if std::env::var_os("FLASHTEX_DEBUG_WHOLE_READ").is_some() {
-            eprintln!("[whole-read] \\pdffilemoddate {path} at line {} (shipped {})", self.line, self.total_pages);
+            eprintln!(
+                "[whole-read] \\pdffilemoddate {path} at line {} (shipped {})",
+                self.line, self.total_pages
+            );
         }
         crate::system::note_stamp(&path, t);
+        self.note_whole_read_point(&path);
         let s = make_pdf_time(t, force_source_date());
         if self.pool_ptr as usize + s.len() >= crate::generated::consts::pool_size as usize {
             self.pool_ptr = crate::generated::consts::pool_size;
@@ -377,9 +381,13 @@ impl Globals {
         };
         // (the incremental journal: the size is the content's)
         if std::env::var_os("FLASHTEX_DEBUG_WHOLE_READ").is_some() {
-            eprintln!("[whole-read] \\pdffilesize {path} at line {} (shipped {})", self.line, self.total_pages);
+            eprintln!(
+                "[whole-read] \\pdffilesize {path} at line {} (shipped {})",
+                self.line, self.total_pages
+            );
         }
         crate::system::note_size_read(&path);
+        self.note_whole_read_point(&path);
         let b = meta.len().to_string().into_bytes();
         if self.pool_ptr as usize + b.len() >= crate::generated::consts::pool_size as usize {
             self.pool_ptr = crate::generated::consts::pool_size;
@@ -405,6 +413,7 @@ impl Globals {
             return;
         };
         crate::system::note_whole_read(&path);
+        self.note_whole_read_point(&path);
         if offset < 0 {
             return;
         }
@@ -427,6 +436,7 @@ impl Globals {
                 return;
             };
             crate::system::note_whole_read(&path);
+            self.note_whole_read_point(&path);
             md5::digest(&data)
         } else {
             md5::digest(&self.str_bytes(s))
