@@ -100,7 +100,14 @@ pub fn dead_cells_enabled() -> bool {
 /// an address makes the cells live, so the rule errs only on the side of
 /// failing a test. The remaining trust is the walk's own node model: a
 /// reached node's pointer fields are followed.
-fn garbage<S: Space>(g: &Globals, s: &St<'_, S>, cov: &[u64], free: &[u64], slots: &[ScalarSlot]) -> Vec<u64> {
+fn garbage<S: Space>(
+    g: &Globals,
+    s: &St<'_, S>,
+    cov: &[u64],
+    free: &[u64],
+    slots: &[ScalarSlot],
+    why_p: Option<i32>,
+) -> Vec<u64> {
     let words = (MEM_TOP as usize + 64) / 64 + 1;
     let mut unr = vec![0u64; words];
     let (lo_max, hi_min, end) = (s.sc("lo_mem_max"), s.sc("hi_mem_min"), s.sc("mem_end"));
@@ -119,8 +126,7 @@ fn garbage<S: Space>(g: &Globals, s: &St<'_, S>, cov: &[u64], free: &[u64], slot
     // the unreached cells words outside the walk point at
     let mut live = vec![0u64; words];
     let mut todo: Vec<i32> = vec![];
-    // (FLASHTEX_DEAD_CELLS_WHY=P: why cell P is live)
-    let why_p: Option<i32> = std::env::var("FLASHTEX_DEAD_CELLS_WHY").ok().and_then(|v| v.parse().ok());
+    // (`why_p`: say why that cell is live)
     let mut parent: HashMap<i32, (i32, String)> = HashMap::new();
     let mark = |p: i32, from: i32, what: &dyn Fn() -> String, live: &mut Vec<u64>, todo: &mut Vec<i32>, parent: &mut HashMap<i32, (i32, String)>| {
         if !bit(live, p) {
@@ -208,11 +214,11 @@ fn garbage<S: Space>(g: &Globals, s: &St<'_, S>, cov: &[u64], free: &[u64], slot
             let n = chain.len();
             let short: Vec<&String> = chain.iter().take(4).chain(chain.iter().skip(n.saturating_sub(6))).collect();
             eprintln!(
-                "[dead-cells] cell {q}: {} ({n} steps): {short:?}",
+                "cell {q}: {} ({n} steps): {short:?}",
                 if bit(&live, q) { "live" } else { "dead" }
             );
         } else {
-            eprintln!("[dead-cells] cell {q}: not unreached in this state");
+            eprintln!("cell {q}: not unreached in this state");
         }
     }
     for (u, l) in unr.iter_mut().zip(&live) {
@@ -2995,13 +3001,13 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
             if !(ok_o && ok_n) && dead_rule {
                 if !ok_o {
                     let d = dead_o.get_or_insert_with(|| {
-                        free_o.map(|f| garbage(g, &w.o, &w.cov_o, f, slots))
+                        free_o.map(|f| garbage(g, &w.o, &w.cov_o, f, slots, None))
                     });
                     ok_o = d.as_ref().is_some_and(|d| bit(d, p));
                 }
                 if !ok_n {
                     let d = dead_n.get_or_insert_with(|| {
-                        free_n.map(|f| garbage(g, &w.n, &w.cov_n, f, slots))
+                        free_n.map(|f| garbage(g, &w.n, &w.cov_n, f, slots, None))
                     });
                     ok_n = d.as_ref().is_some_and(|d| bit(d, p));
                 }
@@ -3010,6 +3016,16 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
                 }
             }
             if !(ok_o && ok_n) {
+                if dead_rule && std::env::var_os("FLASHTEX_DEAD_CELLS_WHY").is_some() {
+                    if let (false, Some(f)) = (ok_o, free_o) {
+                        eprint!("[dead-cells] old: ");
+                        garbage(g, &w.o, &w.cov_o, f, slots, Some(p));
+                    }
+                    if let (false, Some(f)) = (ok_n, free_n) {
+                        eprint!("[dead-cells] new: ");
+                        garbage(g, &w.n, &w.cov_n, f, slots, Some(p));
+                    }
+                }
                 return Err(format!(
                     "mem[{p}] differs outside what the walk compared ({})",
                     if ok_o { "new" } else { "old" }
