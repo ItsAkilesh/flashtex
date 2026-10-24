@@ -1738,6 +1738,24 @@ fn same_words(
                 t.elapsed().as_secs_f64() * 1e3
             );
         }
+        if debug {
+            if let Err(e) = &r {
+                if let Some(p) = e
+                    .strip_prefix("mem[")
+                    .and_then(|s| s.split(']').next())
+                    .and_then(|s| s.parse::<usize>().ok())
+                {
+                    let lo = p.saturating_sub(4);
+                    let ws: Vec<String> = (lo..p + 8)
+                        .map(|q| format!("{q}:{:#018x}", g.mem[q].to_bits()))
+                        .collect();
+                    eprintln!("[incr]   live mem near {p}: {}", ws.join(" "));
+                    let ts: Vec<i32> = (lo as i32..=p as i32).collect();
+                    let refs = crate::iso::who_points(g, &layout, &ts, 30);
+                    eprintln!("[incr]   live refs to {lo}..={p}: {}", refs.join(" "));
+                }
+            }
+        }
         return r.map_err(|e| {
             if e == crate::iso::STOPPED {
                 PREEMPTED.to_string()
