@@ -95,7 +95,7 @@ pub fn dead_cells_enabled() -> bool {
 /// unreached cells after it up to the largest node's size (`NODE_SPAN`: a
 /// node's later words hold pointers too), and so is everything a live
 /// unreached cell's words point at, to a fixed point. The words scanned are
-/// every array and scalar the walk does not interpret (`walked_region`)
+/// every array the walk does not interpret (`walked_region`)
 /// that may hold a pointer by pdftex.web's types and uses (`plain_data`
 /// lists those that cannot: strings, font, hyphenation and line-breaking
 /// tables, buffers, `eqtb`'s integers and dimensions, object numbers); a
@@ -142,7 +142,11 @@ fn garbage<S: Space>(
         }
     };
     for r in regions {
-        if r.name == "mem" || walked_region(r.name) || plain_data(r.name) {
+        // (the scalars: the walk's roots are pdftex.web's pointer globals,
+        // `ROOT_SCALARS`, and those it holds dead, `DEAD_SCALARS`; the
+        // others hold integers, and a counter equal to a cell's address,
+        // `max_param_stack` = 79, made every cell after it live)
+        if r.name == "mem" || r.name == "(scalars)" || walked_region(r.name) || plain_data(r.name) {
             continue;
         }
         let mut k = 0;
@@ -150,15 +154,6 @@ fn garbage<S: Space>(
             let off = r.off + k;
             let rel = k;
             k += 4;
-            match r.name {
-                "(scalars)" => {
-                    let name = slots.iter().rev().find(|x| x.off <= rel).map_or("", |x| x.name);
-                    if scalar_covered(name) {
-                        continue;
-                    }
-                }
-                _ => {}
-            }
             let w = s.sp.word(off & !7);
             let v = (w >> ((off & 7) * 8)) as u32 as i32;
             if is_unr(v) {
