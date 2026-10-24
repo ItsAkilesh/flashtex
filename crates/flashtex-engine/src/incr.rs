@@ -5638,6 +5638,34 @@ impl Session {
                 }
             }
         }
+        if debug && std::env::var_os("FLASHTEX_INCR_DEBUG_RESTART").is_some() {
+            // the checkpoints after the restart point, and why each is not it
+            for &id in ids.iter().skip(a + 1).take(24) {
+                let r = g.record_of(id);
+                let offs: Vec<String> = r
+                    .as_ref()
+                    .map(|r| {
+                        r.files
+                            .iter()
+                            .filter_map(|f| match &f.stream {
+                                Stream::In { path, offset } if changed.contains(path) => {
+                                    Some(format!("{path}@{offset}"))
+                                }
+                                _ => None,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                eprintln!(
+                    "[incr]   after it: {id} page {:?} good {} restorable {} reads {:?} {offs:?} (edits at {:?})",
+                    self.ck_pages.get(&id),
+                    good(g, id),
+                    g.restorable(id),
+                    r.as_ref().map(|r| r.reads).ok(),
+                    edits.iter().map(|e| (e.prefix, e.old_end())).collect::<Vec<_>>()
+                );
+            }
+        }
         if debug {
             eprintln!(
                 "[incr] restart point: {} of {} checkpoints, {} walked back, {:.3} ms",
