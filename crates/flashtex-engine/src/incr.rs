@@ -5639,6 +5639,16 @@ impl Session {
             }
         }
         if debug && std::env::var_os("FLASHTEX_INCR_DEBUG_RESTART").is_some() {
+            for p in changed {
+                let v: Vec<String> = j
+                    .files
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, f)| f.path == *p)
+                    .map(|(i, f)| format!("#{i} closed_at {:?}", f.closed_at))
+                    .collect();
+                eprintln!("[incr]   journal reads of {p}: {v:?}");
+            }
             // the checkpoints after the restart point, and why each is not it
             for &id in ids.iter().skip(a + 1).take(24) {
                 let r = g.record_of(id);
