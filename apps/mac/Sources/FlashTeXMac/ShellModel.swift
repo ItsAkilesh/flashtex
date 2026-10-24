@@ -344,7 +344,12 @@ final class ShellModel {
     /// Text each document had when the engine's last completed compile read
     /// it (EngineV3Session, at DONE), so diagnostics' byte offsets can be
     /// rebased (or refused) after edits.
-    private(set) var compiledDocuments: [String: String] = [:]
+    private(set) var compiledDocuments: [String: String] = [:] {
+        // The Problems rows take the texts with the list (`publishProblemsList`),
+        // and here when the set of documents changes (texts set after the rows,
+        // a document opened): not at each reply while typing.
+        didSet { if Set(problemsTexts.keys) != Set(compiledDocuments.keys) { problemsTexts = compiledDocuments } }
+    }
 
     /// The engine's diagnostics of its last completed compile.
     var displayedDiagnostics: [RuntimeV1.Diagnostic] { engineV3Diagnostics }
