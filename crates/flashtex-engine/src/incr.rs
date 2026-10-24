@@ -332,6 +332,9 @@ pub struct Report {
     pub checkpoints: usize,
     /// What differed at the convergence tests (debug).
     pub diffs: Vec<String>,
+    /// The differing mem words the convergence accepted only because they
+    /// lie in dead cells (`crate::iso::garbage`; 0: none).
+    pub dead_cells: usize,
     /// Each page this compile shipped, with the wall and thread CPU time
     /// since its start (the first pass only: later passes are the
     /// background's, DESIGN.md §5.5).
@@ -391,7 +394,7 @@ pub struct Report {
 impl Report {
     pub fn json(&self) -> String {
         format!(
-            "{{\"mode\":\"{}\",\"cold_reason\":{},\"status\":{},\"paused\":{},\"restart_pages\":{},\"cursor\":{},\"restart_mid_page\":{},\"restart_preamble\":{},\"restart_midline\":{},\"revalidated\":{},\"arm_revalidated\":{},\"preamble_patched\":{},\"restart_gap\":{},\"converged_at\":{},\"rerun_from\":{},\"dormant\":{},\"rerun_pages\":{},\"pages\":{},\"find_s\":{:.6},\"key_s\":{:.6},\"changes_s\":{:.6},\"restore_s\":{:.6},\"page_s\":{:.6},\"total_s\":{:.6},\"tests\":{},\"test_s\":{:.6},\"log_bytes\":{},\"checkpoints\":{},\"diffs\":{:?},\"page_times\":[{}],\"edited\":{},\"passes\":{},\"pass_modes\":{:?},\"pass_s\":[{}],\"oscillation\":{},\"ck_stats\":{},\"l5\":{:?},\"rs_events\":{},\"preempted\":{},\"deferred\":{}}}",
+            "{{\"mode\":\"{}\",\"cold_reason\":{},\"status\":{},\"paused\":{},\"restart_pages\":{},\"cursor\":{},\"restart_mid_page\":{},\"restart_preamble\":{},\"restart_midline\":{},\"revalidated\":{},\"arm_revalidated\":{},\"preamble_patched\":{},\"restart_gap\":{},\"converged_at\":{},\"rerun_from\":{},\"dormant\":{},\"rerun_pages\":{},\"pages\":{},\"find_s\":{:.6},\"key_s\":{:.6},\"changes_s\":{:.6},\"restore_s\":{:.6},\"page_s\":{:.6},\"total_s\":{:.6},\"tests\":{},\"test_s\":{:.6},\"log_bytes\":{},\"checkpoints\":{},\"diffs\":{:?},\"page_times\":[{}],\"edited\":{},\"passes\":{},\"pass_modes\":{:?},\"pass_s\":[{}],\"oscillation\":{},\"ck_stats\":{},\"l5\":{:?},\"rs_events\":{},\"preempted\":{},\"deferred\":{},\"dead_cells\":{}}}",
             self.mode,
             self.cold_reason
                 .as_ref()
@@ -459,8 +462,18 @@ impl Report {
             self.rs_events,
             self.preempted,
             self.deferred,
+            self.dead_cells,
         )
     }
+}
+
+/// `FLASHTEX_DEAD_CELLS_VERIFY`: a convergence the dead-cell rule allowed
+/// (`crate::iso::garbage`) does not jump; the run goes on live to its end,
+/// and every later page's PDF bytes must equal the old run's (what the jump
+/// would have kept), else the host panics: a missing root of the walk.
+fn dead_verify_mode() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("FLASHTEX_DEAD_CELLS_VERIFY").is_some())
 }
 
 /// What the observer of a run knows and collects.
@@ -507,6 +520,13 @@ struct Obs {
     test_s: f64,
     debug: bool,
     diffs: Vec<String>,
+    /// The differing mem words the convergence accepted in dead cells.
+    dead_cells: usize,
+    /// `FLASHTEX_DEAD_CELLS_VERIFY`: the page of the convergence the
+    /// dead-cell rule allowed (the run goes on live), its cell count, and
+    /// the first later page whose bytes differ from the old run's.
+    dead_verify: Option<(usize, usize)>,
+    dead_verify_bad: Option<String>,
     /// The `obj_offset` words of the objects the new run wrote, at the
     /// convergence point (byte offset in the space, word).
     positions: Vec<(usize, u64)>,
@@ -888,6 +908,9 @@ impl Obs {
 
     fn test(&mut self, g: &mut Globals, new: &ExtRecord, old: CheckpointId) -> Result<(), String> {
         let _m = crate::memstat::scope(crate::memstat::tag::TEST);
+        if self.dead_verify.is_some() {
+            return Err("dead-cell verify: the run goes on live to its end".into());
+        }
         // L5: a checkpoint that holds the meanings an earlier `.aux` gave
         // (its later restores patch them) is not the old run's state as the
         // old run's later pages saw it
@@ -1237,6 +1260,17 @@ impl Obs {
             (r, _) => r,
         };
         if r.is_ok() {
+            let n = crate::iso::last_dead_cells();
+            if n > 0 && dead_verify_mode() {
+                self.dormant = None;
+                self.dead_verify = Some((self.pages_so_far(), n));
+                self.iso_s += t.elapsed().as_secs_f64();
+                return Err(format!(
+                    "dead-cell verify: converged at page {} with {n} words in dead cells; going on live",
+                    self.pages_so_far()
+                ));
+            }
+            self.dead_cells = n;
             self.char_or = char_or;
             self.rerun_from = rerun_from;
         }
@@ -1738,6 +1772,24 @@ fn same_words(
                 t.elapsed().as_secs_f64() * 1e3
             );
         }
+        if debug {
+            if let Err(e) = &r {
+                if let Some(p) = e
+                    .strip_prefix("mem[")
+                    .and_then(|s| s.split(']').next())
+                    .and_then(|s| s.parse::<usize>().ok())
+                {
+                    let lo = p.saturating_sub(4);
+                    let ws: Vec<String> = (lo..p + 8)
+                        .map(|q| format!("{q}:{:#018x}", g.mem[q].to_bits()))
+                        .collect();
+                    eprintln!("[incr]   live mem near {p}: {}", ws.join(" "));
+                    let ts: Vec<i32> = (lo as i32..=p as i32).collect();
+                    let refs = crate::iso::who_points(g, &layout, &ts, 30);
+                    eprintln!("[incr]   live refs to {lo}..={p}: {}", refs.join(" "));
+                }
+            }
+        }
         return r.map_err(|e| {
             if e == crate::iso::STOPPED {
                 PREEMPTED.to_string()
@@ -1823,6 +1875,16 @@ fn live_len(g: &Globals, region: &str) -> Option<usize> {
         // letters before lowercasing), filled by each `hyphenate`,
         // `\hyphenation` or `\patterns` before it reads them
         "hc" | "hu" => 0,
+        // pdftex.web §923 (`hyphenate`: `for j:=0 to hn do hyf[j]:=0` before
+        // the exceptions and patterns set and `reconstitute` reads it) and
+        // §962 (`\patterns`: `hyf[0]`, `hyf[k]` set as each digit or letter
+        // is scanned): the hyphen positions of the word being hyphenated
+        "hyf" => 0,
+        // §54, §64, §67, §102, §452, pdftex.web's `pdf_print_int` and
+        // `pdf_print_octal`: the digits of a number being printed or
+        // scanned, set in the same call before `print_the_digs` or
+        // `round_decimals` reads them
+        "dig" => 0,
         // changes/lineshift.ch: the files of the open semantic levels',
         // groups' and conditionals' lines, set as each begins
         "ls_nest_tag" => g.nest_ptr + 1,
@@ -2635,6 +2697,11 @@ fn iso_covers(g: &Globals, w: &crate::statediff::WordDiff) -> bool {
 /// allocated cells nothing reaches (a missing root or node field in
 /// `crate::iso`) to stderr.
 fn check_mem(g: &mut Globals, page: usize) {
+    if let Ok(v) = std::env::var("FLASHTEX_CHECKMEM_PAGES") {
+        if !v.split(',').any(|p| p.parse() == Ok(page)) {
+            return;
+        }
+    }
     g.spill_scalars();
     let layout = crate::statediff::scalar_layout(g);
     let g: &Globals = g;
@@ -3042,6 +3109,15 @@ impl Observer for Obs {
         let cpu = thread_cpu_s() - self.cpu0;
         self.page_times.push((j, self.page_s, cpu));
         let unchanged = self.old_frames.get(j - 1) == Some(&frame);
+        if let Some((from, _)) = self.dead_verify {
+            if j > from && !unchanged && self.dead_verify_bad.is_none() {
+                self.dead_verify_bad = Some(format!(
+                    "page {j}: its PDF bytes differ from the old run's ({} of {})",
+                    frame_len,
+                    self.old_frames.len()
+                ));
+            }
+        }
         if g.layer().segment_hold
             && (self.edited.is_some() || !unchanged || self.new_pages.len() >= PROTECT_PAGES)
         {
@@ -5811,6 +5887,9 @@ impl Session {
             test_s: 0.0,
             debug: self.opts.debug,
             diffs: vec![],
+            dead_cells: 0,
+            dead_verify: None,
+            dead_verify_bad: None,
             positions: vec![],
             pdf_len_r: 0,
             relabel: self.opts.relabel,
@@ -6780,6 +6859,27 @@ impl Session {
                     obs.preempted = true;
                 }
             }
+        }
+        if let Some((from, n)) = obs.dead_verify {
+            let pages = obs.base + obs.new_pages.len();
+            let bad = obs.dead_verify_bad.clone().or_else(|| {
+                (status != STOPPED && pages != obs.old_frames.len())
+                    .then(|| format!("{pages} pages, the old run {}", obs.old_frames.len()))
+            });
+            match bad {
+                Some(why) => panic!(
+                    "dead-cell verify FAILED: the convergence at page {from} ({n} words in dead cells) \
+                     would have kept pages that differ from a live run: {why} (a root the walk lacks)"
+                ),
+                None if status != STOPPED => eprintln!(
+                    "[dead-cells] verified: the convergence at page {from} ({n} words in dead cells) \
+                     equals the live run to its end ({pages} pages)"
+                ),
+                None => {}
+            }
+        }
+        if obs.converged.is_some() {
+            rep.dead_cells = obs.dead_cells;
         }
         rep.diffs.extend(obs.diffs.iter().cloned());
         rep.page_s = if rep.page_s > 0.0 {
