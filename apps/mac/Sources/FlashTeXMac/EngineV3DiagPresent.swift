@@ -157,6 +157,19 @@ enum EngineV3DiagPresent {
         Array(Set(matches(#"\\label\s*\{([^{}\s]+)\}"#, in: texts, group: 1).compactMap { text(of: $0, in: texts) })).sorted()
     }
 
+    /// Every `\label{key}` of the texts by key, each site the whole command,
+    /// in the order `matches` gives: for a key without `}`, the sites
+    /// `matches(#"\\label\s*\{"# + key + #"\}"#, in: texts)` finds, from one
+    /// search of the texts for all keys.
+    static func labelSites(in texts: [String: String]) -> [String: [Site]] {
+        var out: [String: [Site]] = [:]
+        for s in matches(#"\\label\s*\{[^}]*\}"#, in: texts) {
+            guard let whole = text(of: s, in: texts), let open = whole.firstIndex(of: "{") else { continue }
+            out[String(whole[whole.index(after: open) ..< whole.index(before: whole.endIndex)]), default: []].append(s)
+        }
+        return out
+    }
+
     /// The citation keys of the texts: `\bibitem{…}` and `.bib` entries.
     static func citeKeys(in texts: [String: String]) -> [String] {
         let items = matches(#"\\bibitem\s*(?:\[[^\]]*\])?\s*\{([^{}\s]+)\}"#, in: texts, group: 1)

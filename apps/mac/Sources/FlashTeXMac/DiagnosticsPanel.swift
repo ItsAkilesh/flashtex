@@ -135,13 +135,16 @@ extension EditorDiagnostics {
     /// glyph colour or the dimmed trailing text. A grouped row speaks its
     /// count and current occurrence instead of the plain location; a row
     /// without a source speaks no location (its hint says so).
+    /// `index`/`total`: the row's place in the whole list when `diagnostics`
+    /// holds only the group's own (`DiagnosticRow`).
     static func rowAccessibility(_ group: Group, occurrence k: Int, in diagnostics: [RuntimeV1.Diagnostic],
+                                 index: Int? = nil, total: Int? = nil,
                                  status: RuntimeV1.Status, explanation: String? = nil,
                                  texts: [String: String] = [:]) -> DiagnosticRowAccessibility {
         let d = diagnostics[group.first]
         let info = groupInfo(group, occurrence: k, in: diagnostics, texts: texts)
         let location = d.source == nil ? nil : occurrenceLocation(0, of: group, in: diagnostics, texts: texts)
-        return DiagnosticRowAccessibility(d, index: group.first, total: diagnostics.count, status: status,
+        return DiagnosticRowAccessibility(d, index: index ?? group.first, total: total ?? diagnostics.count, status: status,
                                          explanation: explanation, group: info, location: location, gap: isGap(d))
     }
 }
@@ -453,7 +456,11 @@ struct DiagnosticsListView: View {
                     .font(DS.Fonts.secondary).foregroundStyle(DS.Colors.severityWarning).padding(.horizontal, DS.Space.m).padding(.bottom, DS.Space.xs)
             }
             List(groups, selection: $panel.selection) { g in
-                row(g, in: diags, status: status)
+                // A row holds its own group's diagnostics, not the list's:
+                // SwiftUI compares each row's inputs when the list changes,
+                // and a row holding the whole list made that rows × diagnostics
+                // (EDITOR-FREEZE: seconds per compile with thousands of rows).
+                DiagnosticRow(group: g, occurrences: g.occurrences.map { diags[$0] }, total: diags.count, status: status, panel: panel)
                     .listRowSeparator(.hidden)
             }
             // Small and bounded, so `List` stays (brief §2) with the density
@@ -475,6 +482,27 @@ struct DiagnosticsListView: View {
         }
         .focusedSceneValue(\.diagnosticsPanel, panel)
     }
+}
+
+/// One row of `DiagnosticsListView`: a group of diagnostics.
+struct DiagnosticRow: View {
+    @Environment(ShellModel.self) private var model
+    /// The group, indices into the list's diagnostics (selection, navigation, quick fixes).
+    let group: EditorDiagnostics.Group
+    /// The group's diagnostics, in its order.
+    let occurrences: [RuntimeV1.Diagnostic]
+    /// How many diagnostics the list has (VoiceOver: "3 of 40").
+    let total: Int
+    let status: RuntimeV1.Status
+    let panel: DiagnosticsPanelState
+
+    /// `group` over `occurrences` (indices 0 ..< count): what the label helpers read.
+    private var local: EditorDiagnostics.Group {
+        EditorDiagnostics.Group(severity: group.severity, message: group.message, code: group.code,
+                                recovery: group.recovery, occurrences: Array(occurrences.indices))
+    }
+
+    var body: some View { row(group, local: local, status: status) }
 
     /// "3 of 12: main.tex line 41" for a group, "main.tex line 3" for one
     /// diagnostic when the compiled text is known (an author never thinks in
@@ -490,16 +518,21 @@ struct DiagnosticsListView: View {
     }
 
     @ViewBuilder
-    private func row(_ g: EditorDiagnostics.Group, in diags: [RuntimeV1.Diagnostic], status: RuntimeV1.Status) -> some View {
+    private func row(_ g: EditorDiagnostics.Group, local lg: EditorDiagnostics.Group, status: RuntimeV1.Status) -> some View {
+        let diags = occurrences // indexed by `lg`
         let k = panel.currentOccurrence(of: g)
         let i = g.first
-        let d = diags[i]
+        let d = diags[0]
         let selected = panel.selection == g.id
-        let group = EditorDiagnostics.groupInfo(g, occurrence: k, in: diags, texts: model.compiledDocuments)
+        let group = EditorDiagnostics.groupInfo(lg, occurrence: k, in: diags, texts: model.compiledDocuments)
         let gap = EditorDiagnostics.isGap(d) // FlashTeX gap, not an authoring error: grey puzzle piece
-        let helpFix = EditorDiagnostics.canApplyHelpReplacement(
-            d, path: model.activePath, currentText: model.activeText,
-            compiledRevision: model.fixCompiledRevision, editorRevision: model.editorRevision)
+        // Whether Fix… can apply depends on the editor's text, which changes
+        // with every key. Only a row whose diagnostic has a mechanical edit
+        // for the active file reads it, in its own view
+        // (`DiagnosticHelpFixSlot`): a row read here would make each key
+        // re-diff every row of the list (EDITOR-FREEZE: thousands of groups
+        // of a 1,152-page book held the main thread for whole seconds per key).
+        let fixable = EditorDiagnostics.mechanicalEdit(for: d)?.path == model.activePath
         let secondaryHelp = EditorDiagnostics.secondaryLabelHelp(d)
         VStack(alignment: .leading, spacing: DS.Space.xxs) {
             // The IntelliJ row (F1): severity glyph, the human-readable
@@ -513,12 +546,10 @@ struct DiagnosticsListView: View {
                 Spacer(minLength: DS.Space.m)
                 // Row actions are JetBrains inline links, not bezelled push
                 // buttons (owner on #653: no glass/bezel controls).
-                if helpFix {
-                    InlineActionButton(title: "Fix…") { model.previewQuickFix(diagnosticIndex: i) }
-                        .help(d.help?.message ?? "Preview a suggested fix")
-                } else if let fix = MissingIncludeFix.quickFix(for: d, projectRoot: model.project.projectRoot) { // ProjectScaffold.swift
-                    InlineActionButton(title: "Create \(fix.path)") { Task { _ = await model.project.createMissingInclude(fix.argument, from: fix.from); model.navigationNote = model.project.status } }
-                        .help("Create the empty file \(fix.path) under the project root and open it as included from \(fix.from)")
+                if fixable {
+                    DiagnosticHelpFixSlot(diagnostic: d, index: i)
+                } else {
+                    MissingIncludeFixButton(diagnostic: d)
                 }
                 // The compiler's missing-package diagnostic (`packages X are
                 // recognised but not implemented`, `no project file found:
@@ -554,10 +585,10 @@ struct DiagnosticsListView: View {
                 if g.count > 1 {
                     Menu("\(g.count) places") {
                         ForEach(0..<g.count, id: \.self) { j in
-                            Button(EditorDiagnostics.occurrenceLabel(j, of: g, in: diags, texts: model.compiledDocuments)) {
+                            Button(EditorDiagnostics.occurrenceLabel(j, of: lg, in: diags, texts: model.compiledDocuments)) {
                                 model.goToOccurrence(j, of: g, panel: panel)
                             }
-                            .disabled(EditorDiagnostics.occurrence(j, of: g, in: diags) == nil)
+                            .disabled(EditorDiagnostics.occurrence(j, of: lg, in: diags) == nil)
                         }
                     }
                     .menuStyle(.borderlessButton).fixedSize()
@@ -583,11 +614,7 @@ struct DiagnosticsListView: View {
                     if let line = EditorDiagnostics.recoveryLine(recovery: d.recovery, status: status) {
                         Text("↳ \(line)").font(DS.Fonts.secondary).foregroundStyle(d.recovery == nil ? DS.Colors.textTertiary : DS.Colors.textSecondary)
                     }
-                    if let source = model.markSource,
-                       let id = EditorDiagnostics.identity(resultID: source.id, index: i, in: source.result),
-                       model.editorMarkReport.staleIdentities.contains(id) {
-                        Text("underline withheld: span edited since the compile").font(DS.Fonts.secondary).foregroundStyle(DS.Colors.severityWarning)
-                    }
+                    WithheldUnderlineNote(index: i) // reads the editor's marks, which follow every key
                 }
                 .padding(.leading, DS.Space.xxl)
             }
@@ -601,11 +628,61 @@ struct DiagnosticsListView: View {
         .controlSize(.small) // 30 TeX diagnostics must fit a 260 pt panel: small trailing controls, tight rows
         .tag(g.id)
         .modifier(SecondaryLabelHelp(text: secondaryHelp))
-        .accessibleDiagnostic(EditorDiagnostics.rowAccessibility(g, occurrence: k, in: diags, status: status,
+        .accessibleDiagnostic(EditorDiagnostics.rowAccessibility(lg, occurrence: k, in: diags, index: i, total: total, status: status,
                                                                  explanation: nil,
                                                                  texts: model.compiledDocuments)) {
             model.goToOccurrence(k, of: g, panel: panel)
         } // FlashTeXAccessibility: one spoken element, "Go to source" as the default action
+    }
+}
+
+/// A row's Fix… link, shown while the diagnostic's mechanical edit still
+/// applies to the editor's text (`canApplyHelpReplacement`), else the row's
+/// "Create file" link if it has one. Its own view: the editor's text and
+/// revision it reads change with every key, and only this view (not the
+/// list) is then evaluated again.
+struct DiagnosticHelpFixSlot: View {
+    @Environment(ShellModel.self) private var model
+    let diagnostic: RuntimeV1.Diagnostic
+    let index: Int
+
+    var body: some View {
+        if EditorDiagnostics.canApplyHelpReplacement(diagnostic, path: model.activePath, currentText: model.activeText,
+                                                     compiledRevision: model.fixCompiledRevision, editorRevision: model.editorRevision) {
+            InlineActionButton(title: "Fix…") { model.previewQuickFix(diagnosticIndex: index) }
+                .help(diagnostic.help?.message ?? "Preview a suggested fix")
+        } else {
+            MissingIncludeFixButton(diagnostic: diagnostic)
+        }
+    }
+}
+
+/// "Create chapter.tex" for an `\include` of a missing file (ProjectScaffold.swift).
+struct MissingIncludeFixButton: View {
+    @Environment(ShellModel.self) private var model
+    let diagnostic: RuntimeV1.Diagnostic
+
+    var body: some View {
+        if let fix = MissingIncludeFix.quickFix(for: diagnostic, projectRoot: model.project.projectRoot) {
+            InlineActionButton(title: "Create \(fix.path)") { Task { _ = await model.project.createMissingInclude(fix.argument, from: fix.from); model.navigationNote = model.project.status } }
+                .help("Create the empty file \(fix.path) under the project root and open it as included from \(fix.from)")
+        }
+    }
+}
+
+/// The selected row's note that its underline is withheld (its span was
+/// edited since the compile). Its own view, as `DiagnosticHelpFixSlot`: the
+/// editor's marks follow every key.
+struct WithheldUnderlineNote: View {
+    @Environment(ShellModel.self) private var model
+    let index: Int
+
+    var body: some View {
+        if let source = model.markSource,
+           let id = EditorDiagnostics.identity(resultID: source.id, index: index, in: source.result),
+           model.editorMarkReport.staleIdentities.contains(id) {
+            Text("underline withheld: span edited since the compile").font(DS.Fonts.secondary).foregroundStyle(DS.Colors.severityWarning)
+        }
     }
 }
 
