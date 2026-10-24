@@ -335,6 +335,9 @@ pub struct Report {
     /// The differing mem words the convergence accepted only because they
     /// lie in dead cells (`crate::iso::garbage`; 0: none).
     pub dead_cells: usize,
+    /// Where a READ-REVALIDATE comparison that held was made: `"page"`, or
+    /// `"whole-read"` (`Point::WholeRead`, INFDESC-883).
+    pub revalidated_at: Option<&'static str>,
     /// Each page this compile shipped, with the wall and thread CPU time
     /// since its start (the first pass only: later passes are the
     /// background's, DESIGN.md §5.5).
@@ -394,7 +397,7 @@ pub struct Report {
 impl Report {
     pub fn json(&self) -> String {
         format!(
-            "{{\"mode\":\"{}\",\"cold_reason\":{},\"status\":{},\"paused\":{},\"restart_pages\":{},\"cursor\":{},\"restart_mid_page\":{},\"restart_preamble\":{},\"restart_midline\":{},\"revalidated\":{},\"arm_revalidated\":{},\"preamble_patched\":{},\"restart_gap\":{},\"converged_at\":{},\"rerun_from\":{},\"dormant\":{},\"rerun_pages\":{},\"pages\":{},\"find_s\":{:.6},\"key_s\":{:.6},\"changes_s\":{:.6},\"restore_s\":{:.6},\"page_s\":{:.6},\"total_s\":{:.6},\"tests\":{},\"test_s\":{:.6},\"log_bytes\":{},\"checkpoints\":{},\"diffs\":{:?},\"page_times\":[{}],\"edited\":{},\"passes\":{},\"pass_modes\":{:?},\"pass_s\":[{}],\"oscillation\":{},\"ck_stats\":{},\"l5\":{:?},\"rs_events\":{},\"preempted\":{},\"deferred\":{},\"dead_cells\":{}}}",
+            "{{\"mode\":\"{}\",\"cold_reason\":{},\"status\":{},\"paused\":{},\"restart_pages\":{},\"cursor\":{},\"restart_mid_page\":{},\"restart_preamble\":{},\"restart_midline\":{},\"revalidated\":{},\"arm_revalidated\":{},\"preamble_patched\":{},\"restart_gap\":{},\"converged_at\":{},\"rerun_from\":{},\"dormant\":{},\"rerun_pages\":{},\"pages\":{},\"find_s\":{:.6},\"key_s\":{:.6},\"changes_s\":{:.6},\"restore_s\":{:.6},\"page_s\":{:.6},\"total_s\":{:.6},\"tests\":{},\"test_s\":{:.6},\"log_bytes\":{},\"checkpoints\":{},\"diffs\":{:?},\"page_times\":[{}],\"edited\":{},\"passes\":{},\"pass_modes\":{:?},\"pass_s\":[{}],\"oscillation\":{},\"ck_stats\":{},\"l5\":{:?},\"rs_events\":{},\"preempted\":{},\"deferred\":{},\"dead_cells\":{},\"revalidated_at\":{}}}",
             self.mode,
             self.cold_reason
                 .as_ref()
@@ -463,6 +466,9 @@ impl Report {
             self.preempted,
             self.deferred,
             self.dead_cells,
+            self.revalidated_at
+                .map(|s| format!("{s:?}"))
+                .unwrap_or_else(|| "null".into()),
         )
     }
 }
@@ -580,8 +586,10 @@ struct Obs {
     /// at a page, and its outcome (`Ok`: the restart point it allows).
     probe: Option<Box<crate::revalidate::Probe>>,
     probe_result: Option<Result<CheckpointId, String>>,
-    /// `Point::WholeRead` checkpoints this run took (`Probe::at`).
+    /// `Point::WholeRead` checkpoints this run took (`Probe::at`), and
+    /// where the revalidation held (`Report::revalidated_at`).
     whole_reads: usize,
+    probe_held_at: Option<&'static str>,
     /// PREAMBLE-PATCH: the comparison a preamble restart makes at the end
     /// of the `.aux` read (`pre_patch_test`), and its outcome.
     pre_patch: Option<Box<PrePatch>>,
@@ -3085,6 +3093,7 @@ impl Observer for Obs {
                         }
                         if r.is_ok() {
                             self.probe_result = Some(r);
+                            self.probe_held_at = Some("whole-read");
                             return Action::Stop;
                         }
                         // (the page's comparison, as without the whole read)
@@ -3185,6 +3194,7 @@ impl Observer for Obs {
                 let ok = r.is_ok();
                 self.probe_result = Some(r);
                 if ok {
+                    self.probe_held_at = Some("page");
                     return Action::Stop;
                 }
             }
@@ -6139,6 +6149,7 @@ impl Session {
             probe: None,
             probe_result: None,
             whole_reads: 0,
+            probe_held_at: None,
             pre_patch: None,
             pre_patch_result: None,
             budget: self.opts.budget,
@@ -6694,6 +6705,7 @@ impl Session {
                 .and_then(|o| o.into_any().downcast::<Obs>().ok())
             {
                 let outcome = o.probe_result.take();
+                let held_at = o.probe_held_at;
                 // (a run stopped before its page: no revalidation later)
                 o.probe = None;
                 match (status == STOPPED, outcome) {
@@ -6761,6 +6773,7 @@ impl Session {
                         );
                         return rep.map(|mut rep| {
                             rep.revalidated = Some(true);
+                            rep.revalidated_at = held_at;
                             rep
                         });
                     }

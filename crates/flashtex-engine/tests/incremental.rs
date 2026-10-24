@@ -6083,9 +6083,7 @@ fn a_whole_read_of_the_edited_file_revalidates_at_the_read() {
         common::no_texlive();
         return;
     };
-    let main = (0..60)
-        .map(|i| para(i, "before"))
-        .collect::<String>();
+    let main = (0..60).map(|i| para(i, "before")).collect::<String>();
     let main = format!(
         "\\documentclass{{article}}\n\\begin{{document}}\n{main}\\input{{chap}}\n\\end{{document}}\n"
     );
@@ -6098,7 +6096,11 @@ fn a_whole_read_of_the_edited_file_revalidates_at_the_read() {
     let cases = [
         ("whole-a", "", ""),
         ("whole-b", "Size \\pdffilesize{chap.tex}.", ""),
-        ("whole-c", "\\edef\\chapsize{\\pdffilesize{chap.tex}}", "Size \\chapsize."),
+        (
+            "whole-c",
+            "\\edef\\chapsize{\\pdffilesize{chap.tex}}",
+            "Size \\chapsize.",
+        ),
     ];
     for (name, head, tail) in cases {
         let dir = e.dir.join(name);
@@ -6126,16 +6128,16 @@ fn a_whole_read_of_the_edited_file_revalidates_at_the_read() {
                 &[("chap.tex", &chap(head, tail, word))],
                 &format!("{name} edit {k}"),
             );
-            revalidated.push(field(&r, "revalidated").to_string());
+            revalidated.push(field(&r, "revalidated_at").to_string());
         }
         if name == "whole-a" {
             assert!(
-                revalidated.iter().any(|r| r == "true"),
+                revalidated.iter().any(|r| r == "\"whole-read\""),
                 "{name}: no compile restarted after the size read: {revalidated:?}"
             );
         } else {
             assert!(
-                revalidated.iter().all(|r| r != "true"),
+                revalidated.iter().all(|r| r == "null"),
                 "{name}: a compile restarted after a size read the output depends on: {revalidated:?}"
             );
         }
