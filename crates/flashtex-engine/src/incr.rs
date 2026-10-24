@@ -1875,6 +1875,11 @@ fn live_len(g: &Globals, region: &str) -> Option<usize> {
         // letters before lowercasing), filled by each `hyphenate`,
         // `\hyphenation` or `\patterns` before it reads them
         "hc" | "hu" => 0,
+        // pdftex.web §923 (`hyphenate`: `for j:=0 to hn do hyf[j]:=0` before
+        // the exceptions and patterns set and `reconstitute` reads it) and
+        // §962 (`\patterns`: `hyf[0]`, `hyf[k]` set as each digit or letter
+        // is scanned): the hyphen positions of the word being hyphenated
+        "hyf" => 0,
         // changes/lineshift.ch: the files of the open semantic levels',
         // groups' and conditionals' lines, set as each begins
         "ls_nest_tag" => g.nest_ptr + 1,

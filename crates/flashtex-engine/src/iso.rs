@@ -91,15 +91,18 @@ pub fn dead_cells_enabled() -> bool {
 /// The walk's root model is complete (`Iso::roots`); this guards against a
 /// root it lacks anyway. A cell is dead only if no word outside what the
 /// walk interprets points into it, directly or through other unreached
-/// cells: every unreached cell such a word points at (it may be any cell of
-/// a node) is live, as is the rest of its run of unreached cells from
-/// there, and so is everything a live unreached cell's words point at, to a
-/// fixed point. The words scanned are every array and scalar the walk does
-/// not interpret (`walked_region`) and is not plain data (the string pool,
-/// font and hyphenation tables, buffers); a stray integer that equals such
-/// an address makes the cells live, so the rule errs only on the side of
-/// failing a test. The remaining trust is the walk's own node model: a
-/// reached node's pointer fields are followed.
+/// cells: every unreached cell such a word points at is live, as are the
+/// unreached cells after it up to the largest node's size (`NODE_SPAN`: a
+/// node's later words hold pointers too), and so is everything a live
+/// unreached cell's words point at, to a fixed point. The words scanned are
+/// every array and scalar the walk does not interpret (`walked_region`)
+/// that may hold a pointer by pdftex.web's types and uses (`plain_data`
+/// lists those that cannot: strings, font, hyphenation and line-breaking
+/// tables, buffers, `eqtb`'s integers and dimensions, object numbers); a
+/// stray integer equal to such an address makes the cells live, so the
+/// rule errs only on the side of failing a test. The remaining trust is
+/// the walk's own node model: a reached node's pointer fields are followed.
+/// `FLASHTEX_DEAD_CELLS_VERIFY` checks the rule against live runs.
 fn garbage<S: Space>(
     g: &Globals,
     s: &St<'_, S>,
@@ -125,21 +128,19 @@ fn garbage<S: Space>(
     let is_unr = |p: i32| in_range(p) && (MEM_BOT..=MEM_TOP).contains(&p) && bit(&unr, p);
     // the unreached cells words outside the walk point at
     let mut live = vec![0u64; words];
-    let mut todo: Vec<i32> = vec![];
+    // (cell, how many cells after it are still the node's)
+    let mut todo: Vec<(i32, i32)> = vec![];
     // (`why_p`: say why that cell is live)
     let mut parent: HashMap<i32, (i32, String)> = HashMap::new();
-    let mark = |p: i32, from: i32, what: &dyn Fn() -> String, live: &mut Vec<u64>, todo: &mut Vec<i32>, parent: &mut HashMap<i32, (i32, String)>| {
+    let mark = |p: i32, span: i32, from: i32, what: &dyn Fn() -> String, live: &mut Vec<u64>, todo: &mut Vec<(i32, i32)>, parent: &mut HashMap<i32, (i32, String)>| {
         if !bit(live, p) {
             set(live, p);
-            todo.push(p);
+            todo.push((p, span));
             if why_p.is_some() {
                 parent.insert(p, (from, what()));
             }
         }
     };
-    let eqtb_hi = crate::readset::EQTB_SIZE + 1..=crate::readset::EQTB_SIZE + g.hash_high;
-    let obj_size = std::mem::size_of::<crate::generated::types::obj_entry>();
-    let obj_aux = std::mem::offset_of!(crate::generated::types::obj_entry, int4);
     for r in &g.arena.regions {
         if r.name == "mem" || walked_region(r.name) || plain_data(r.name) {
             continue;
@@ -156,16 +157,6 @@ fn garbage<S: Space>(
                         continue;
                     }
                 }
-                // regions 1 to 4 and the `hash_extra` control sequences,
-                // walked by eq_type
-                "eqtb" => {
-                    let p = (rel / 8) as i32 + 1;
-                    if p < INT_BASE || eqtb_hi.contains(&p) {
-                        continue;
-                    }
-                }
-                // obj_aux, compared with the structures
-                "obj_tab" if rel % obj_size == obj_aux => continue,
                 _ => {}
             }
             let w = s.sp.word(off & !7);
@@ -178,24 +169,24 @@ fn garbage<S: Space>(
                         format!("{}[{}]+{}", r.name, rel / r.elem.max(1), rel % r.elem.max(1))
                     }
                 };
-                mark(v, -1, &what, &mut live, &mut todo, &mut parent);
+                mark(v, NODE_SPAN, -1, &what, &mut live, &mut todo, &mut parent);
             }
         }
     }
-    // to a fixed point: the rest of a live cell's run, and what its words
+    // to a fixed point: the rest of a live cell's node, and what its words
     // point at (both halves; a one-word node's info half is a token or a
     // character, not a pointer)
-    while let Some(p) = todo.pop() {
-        if p < MEM_TOP && is_unr(p + 1) {
-            mark(p + 1, p, &|| "next".into(), &mut live, &mut todo, &mut parent);
+    while let Some((p, span)) = todo.pop() {
+        if span > 1 && p < hi_min && p < MEM_TOP && is_unr(p + 1) {
+            mark(p + 1, span - 1, p, &|| "next".into(), &mut live, &mut todo, &mut parent);
         }
         let w = s.mem(p);
         let (rh, lh) = (w as u32 as i32, (w >> 32) as u32 as i32);
         if is_unr(rh) {
-            mark(rh, p, &|| "rh".into(), &mut live, &mut todo, &mut parent);
+            mark(rh, NODE_SPAN, p, &|| "rh".into(), &mut live, &mut todo, &mut parent);
         }
         if p < hi_min && is_unr(lh) {
-            mark(lh, p, &|| "lh".into(), &mut live, &mut todo, &mut parent);
+            mark(lh, NODE_SPAN, p, &|| "lh".into(), &mut live, &mut todo, &mut parent);
         }
     }
     if let Some(q) = why_p {
@@ -227,6 +218,11 @@ fn garbage<S: Space>(
     unr
 }
 
+/// The most words a node takes (pdfTeX's largest, a `\pdfstartlink` or
+/// `\pdfannot` whatsit, with SyncTeX's two): a pointer into an unreached
+/// node makes that many cells from it live.
+const NODE_SPAN: i32 = 16;
+
 /// The regions `Iso` interprets (`incr::iso_covers`): a pointer there is
 /// followed by the walk.
 fn walked_region(name: &str) -> bool {
@@ -248,12 +244,76 @@ fn walked_region(name: &str) -> bool {
     )
 }
 
-/// Regions of plain data (characters, font and hyphenation tables): no
-/// pointer into `mem` is kept there.
+/// Regions that hold no pointer into `mem` (pdftex.web's types and uses):
+/// characters and strings, font, hyphenation and line-breaking tables,
+/// buffers, file and line bookkeeping, object numbers and offsets (the one
+/// `obj_tab` word that holds a pointer, `obj_aux`, is walked), and `eqtb`
+/// (regions 1 to 4 and the `hash_extra` control sequences are walked by
+/// eq_type; regions 5 and 6 hold integers and dimensions).
 fn plain_data(name: &str) -> bool {
-    matches!(
+    name.starts_with("pdf_font_")
+        || name.starts_with("trie")
+        || name.starts_with("font_")
+        || name.starts_with("vf_")
+        || name.starts_with("ls_")
+        || matches!(
         name,
-        "xord"
+        "eqtb"
+            | "xeq_level"
+            | "obj_tab"
+            | "head_tab"
+            | "dest_names"
+            | "pdf_char_used"
+            | "pdf_os_objnum"
+            | "pdf_os_objoff"
+            | "char_base"
+            | "width_base"
+            | "height_base"
+            | "depth_base"
+            | "italic_base"
+            | "lig_kern_base"
+            | "kern_base"
+            | "exten_base"
+            | "param_base"
+            | "bchar_label"
+            | "hyphen_char"
+            | "skew_char"
+            | "hyph_word"
+            | "hc"
+            | "hu"
+            | "hyf"
+            | "dig"
+            | "ten_pow"
+            | "two_to_the"
+            | "randoms"
+            | "spec_log"
+            | "read_open"
+            | "write_open"
+            | "eof_seen"
+            | "line_stack"
+            | "grp_stack"
+            | "help_line"
+            | "full_source_filename_stack"
+            | "op_start"
+            | "active_width"
+            | "cur_active_width"
+            | "background"
+            | "break_width"
+            | "prev_active_width"
+            | "minimal_demerits"
+            | "best_place"
+            | "best_pl_line"
+            | "best_pl_glue"
+            | "best_pl_short"
+            | "disc_width"
+            | "fill_width"
+            | "page_so_far"
+            | "total_stretch"
+            | "total_shrink"
+            | "pstack"
+            | "rs_seen"
+            | "bm_cand"
+            | "xord"
             | "xchr"
             | "xprn"
             | "str_pool"
