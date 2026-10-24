@@ -6001,7 +6001,7 @@ fn a_link_broken_across_lines_does_not_stop_convergence() {
         )
     };
     let doc = |word: &str| {
-        let body: String = (0..120)
+        let body: String = (0..200)
             .map(|i| para(i, if i == 3 { word } else { "nothing" }))
             .collect();
         format!(
@@ -6032,7 +6032,8 @@ fn a_link_broken_across_lines_does_not_stop_convergence() {
         runs.push(reports);
     }
     let pages: usize = field(&runs[0][0], "pages").parse().unwrap();
-    assert!(pages >= 10, "the document is {pages} pages");
+    assert!(pages >= 12, "the document is {pages} pages");
+    eprintln!("with the rule: {:#?}\nwithout: {:#?}", runs[0], runs[1]);
     for r in &runs[0] {
         let rerun: usize = field(r, "rerun_pages").parse().unwrap();
         assert!(field(r, "converged_at") != "null", "the edit did not converge: {r}");
