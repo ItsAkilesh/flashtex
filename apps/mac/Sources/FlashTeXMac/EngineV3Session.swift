@@ -2159,7 +2159,14 @@ final class EngineV3Session {
         // TeX's errors it recovered from (EngineV3ErrorPolicy): warnings under best effort.
         let kept = EngineV3ErrorPolicy.keptErrors(diags.map(Self.policyItem), mode: mode)
         let recovered = Set(diags.indices.filter { diags[$0].severity == "error" && !kept.contains($0) })
-        func rel(_ file: String) -> String { Self.relativeToCopy(file, roots: roots) }
+        // Each file once (a `realpath` per row and trace frame was a fifth of a long book's DONE).
+        var relative: [String: String] = [:]
+        func rel(_ file: String) -> String {
+            if let r = relative[file] { return r }
+            let r = Self.relativeToCopy(file, roots: roots)
+            relative[file] = r
+            return r
+        }
         // Rows that say the same thing as another fold into it (EngineV3DiagPresent.folds).
         let folds = EngineV3DiagPresent.folds(diags, kept: kept)
         let stopped = Set(folds.filter { EngineV3DiagPresent.isStop(diags[$0.key].code) && !EngineV3DiagPresent.isStop(diags[$0.value].code) }.map(\.value))
@@ -2245,7 +2252,8 @@ final class EngineV3Session {
             if stopped.contains(i), let stop = EngineV3Explain.explanation(code: "tex/emergency-stop", message: "") {
                 row.notes = (row.notes ?? []) + [stop]
             }
-            let named = EngineV3Fixes.undefinedName(trace: d.trace.map { ($0.kind, $0.before) })
+            // (read only for TeX's undefined control sequence: `packageHint` and `fix` below)
+            let named = d.code == EngineV3Fixes.undefinedCode ? EngineV3Fixes.undefinedName(trace: d.trace.map { ($0.kind, $0.before) }) : nil
             // A plain-language explanation and, where mechanical, a fix (EngineV3Explain.swift).
             if d.code == "latex/multiply-defined-label", labelSites == nil, let texts { labelSites = EngineV3DiagPresent.labelSites(in: texts) }
             var explained = EngineV3Explain.apply(row, code: d.code, message: d.message, texts: texts, undefinedName: named,

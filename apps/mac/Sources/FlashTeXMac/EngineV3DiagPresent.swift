@@ -23,14 +23,31 @@ enum EngineV3DiagPresent {
             break
         }
         // "Package hyperref Warning: x" / "Class beamer Error: x" -> "hyperref: x"
-        if let r = s.range(of: #"^(Package|Class) [^ ]+ (Warning|Error): "#, options: .regularExpression) {
+        // (Each regular expression only where its text can match: a long
+        // book's thousands of rows made these most of a compile's reply, EDITOR-FREEZE.)
+        if s.hasPrefix("Package ") || s.hasPrefix("Class "),
+           let r = s.range(of: #"^(Package|Class) [^ ]+ (Warning|Error): "#, options: .regularExpression) {
             let name = s[r].split(separator: " ")[1]
             s = "\(name): " + s[r.upperBound...]
         }
-        s = s.replacingOccurrences(of: #"\s*on input line \d+"#, with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        if s.contains("on input line") {
+            s = s.replacingOccurrences(of: #"\s*on input line \d+"#, with: "", options: .regularExpression)
+        }
+        if Self.mayCollapseSpace(s) { s = s.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression) }
         while let last = s.last, last == "." || last == " ", !s.hasSuffix("..."), !s.hasSuffix("\\right.") { s.removeLast() }
         return s.isEmpty ? message : s
+    }
+
+    /// Whether `\s+` → " " could change `s`: a white space other than a lone
+    /// " " (Unicode's White_Space, a superset of the expression's `\s`).
+    static func mayCollapseSpace(_ s: String) -> Bool {
+        var previous = false
+        for u in s.unicodeScalars {
+            let space = u.properties.isWhitespace
+            if space, u != " " || previous { return true }
+            previous = space
+        }
+        return false
     }
 
     /// "Overfull \hbox" for `tex/overfull-hbox` (and the other three), else nil.

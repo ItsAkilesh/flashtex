@@ -214,8 +214,12 @@ extension ShellModel {
     /// Jumps to occurrence `k` of `group` and makes it the group's current
     /// occurrence (spoken as "k+1 of n" on the row) and the caret's current
     /// diagnostic for ⌘⇧] / ⌘⇧[. The footer names the occurrence.
-    func goToOccurrence(_ k: Int, of group: EditorDiagnostics.Group, panel: DiagnosticsPanelState) {
+    func goToOccurrence(_ k: Int, of listed: EditorDiagnostics.Group, panel: DiagnosticsPanelState) {
         let diags = displayedDiagnostics
+        // The panel's list may be up to `problemsListInterval` older than the
+        // diagnostics: its group's indices are found again by the group's identity.
+        let group = problemsList == diags ? listed
+            : EditorDiagnostics.groups(of: diags, documentOrder: documents.map(\.path)).first { $0.id == listed.id } ?? listed
         guard group.occurrences.indices.contains(k) else { return }
         panel.selection = group.id
         panel.occurrence[group.id] = k
@@ -443,12 +447,16 @@ struct DiagnosticsListView: View {
         // Change-only / throttled reads (ShellModel mirrors, ShellChrome): `documents`,
         // `result` and `editorMarkReport` change on every keystroke or reply and
         // re-evaluated this List (an AppKit table) with each of them.
-        let groups = EditorDiagnostics.groups(of: diags, documentOrder: model.chrome.listing.map(\.path))
+        let all = EditorDiagnostics.groups(of: diags, documentOrder: model.chrome.listing.map(\.path))
             .filter { severityFilter == nil || $0.severity == severityFilter }
+        // The first `rowLimit` groups (errors sort first). A list of thousands
+        // of rows cost the main thread ~100 ms at each compile's reply, longer
+        // than the time between keys (EDITOR-FREEZE, a 1,152-page book).
+        let groups = all.count > Self.rowLimit ? Array(all.prefix(Self.rowLimit)) : all
         let status = model.resultStatus ?? .ok
         VStack(alignment: .leading, spacing: 0) {
             if showsHeader {
-                Text("Diagnostics (\(diags.count)\(groups.count < diags.count ? " in \(groups.count) groups" : "")) — the preview above is still shown; errors are not hidden")
+                Text("Diagnostics (\(diags.count)\(all.count < diags.count ? " in \(all.count) groups" : "")) — the preview above is still shown; errors are not hidden")
                     .font(DS.Fonts.header).padding(.horizontal, DS.Space.m).padding(.vertical, DS.Space.xs)
             }
             if let carriedLine = model.chrome.carriedLine {
@@ -478,10 +486,22 @@ struct DiagnosticsListView: View {
             .frame(minHeight: DS.Layout.diagnosticsListMinHeight, maxHeight: maxHeight)
             .onKeyPress(.return) { model.goToSelectedOccurrence(panel: panel); return .handled }
             .onKeyPress(.escape) { model.returnKeyboardToEditor(); return .handled }
-            .copyable([model.diagnosticsCopyText(panel: panel)])
+            // The text is made when ⌘C is pressed: made here, it read the
+            // editor's documents and every compile's diagnostics, so each key
+            // and each reply re-evaluated this list (EDITOR-FREEZE).
+            .onCopyCommand { [NSItemProvider(object: model.diagnosticsCopyText(panel: panel) as NSString)] }
+            if all.count > groups.count {
+                Text("Showing the first \(groups.count) of \(all.count) problems, errors first. ⌘⌥C copies them all.")
+                    .font(DS.Fonts.secondary).foregroundStyle(DS.Colors.textSecondary)
+                    .padding(.horizontal, DS.Space.m).padding(.vertical, DS.Space.xxs)
+                    .accessibilityIdentifier("diagnostics.list.limit")
+            }
         }
         .focusedSceneValue(\.diagnosticsPanel, panel)
     }
+
+    /// The most rows the list shows.
+    static let rowLimit = 200
 }
 
 /// One row of `DiagnosticsListView`: a group of diagnostics.
@@ -511,7 +531,7 @@ struct DiagnosticRow: View {
                           group: DiagnosticRowAccessibility.GroupInfo?) -> String {
         if g.count > 1 { return "\(k + 1) of \(g.count): \(group?.location ?? "no source")" }
         guard let src = d.source else { return "no source mapping" }
-        if let text = model.compiledDocuments[src.path], let line = EditorDiagnostics.lineNumber(ofByte: src.startByte, in: text) {
+        if let text = model.problemsTexts[src.path], let line = EditorDiagnostics.lineNumber(ofByte: src.startByte, in: text) {
             return "\(src.path) line \(line)"
         }
         return "\(src.path) bytes \(src.startByte)..<\(src.endByte)"
@@ -524,7 +544,7 @@ struct DiagnosticRow: View {
         let i = g.first
         let d = diags[0]
         let selected = panel.selection == g.id
-        let group = EditorDiagnostics.groupInfo(lg, occurrence: k, in: diags, texts: model.compiledDocuments)
+        let group = EditorDiagnostics.groupInfo(lg, occurrence: k, in: diags, texts: model.problemsTexts)
         let gap = EditorDiagnostics.isGap(d) // FlashTeX gap, not an authoring error: grey puzzle piece
         // Whether Fix… can apply depends on the editor's text, which changes
         // with every key. Only a row whose diagnostic has a mechanical edit
@@ -585,7 +605,7 @@ struct DiagnosticRow: View {
                 if g.count > 1 {
                     Menu("\(g.count) places") {
                         ForEach(0..<g.count, id: \.self) { j in
-                            Button(EditorDiagnostics.occurrenceLabel(j, of: lg, in: diags, texts: model.compiledDocuments)) {
+                            Button(EditorDiagnostics.occurrenceLabel(j, of: lg, in: diags, texts: model.problemsTexts)) {
                                 model.goToOccurrence(j, of: g, panel: panel)
                             }
                             .disabled(EditorDiagnostics.occurrence(j, of: lg, in: diags) == nil)
@@ -630,7 +650,7 @@ struct DiagnosticRow: View {
         .modifier(SecondaryLabelHelp(text: secondaryHelp))
         .accessibleDiagnostic(EditorDiagnostics.rowAccessibility(lg, occurrence: k, in: diags, index: i, total: total, status: status,
                                                                  explanation: nil,
-                                                                 texts: model.compiledDocuments)) {
+                                                                 texts: model.problemsTexts)) {
             model.goToOccurrence(k, of: g, panel: panel)
         } // FlashTeXAccessibility: one spoken element, "Go to source" as the default action
     }
@@ -649,7 +669,12 @@ struct DiagnosticHelpFixSlot: View {
     var body: some View {
         if EditorDiagnostics.canApplyHelpReplacement(diagnostic, path: model.activePath, currentText: model.activeText,
                                                      compiledRevision: model.fixCompiledRevision, editorRevision: model.editorRevision) {
-            InlineActionButton(title: "Fix…") { model.previewQuickFix(diagnosticIndex: index) }
+            InlineActionButton(title: "Fix…") {
+                // `index` is the panel list's, which may trail the diagnostics (`ShellModel.problemsList`).
+                let diags = model.displayedDiagnostics
+                let i = diags.indices.contains(index) && diags[index] == diagnostic ? index : diags.firstIndex(of: diagnostic)
+                if let i { model.previewQuickFix(diagnosticIndex: i) } else { model.navigationNote = "The list is updating: try Fix… again." }
+            }
                 .help(diagnostic.help?.message ?? "Preview a suggested fix")
         } else {
             MissingIncludeFixButton(diagnostic: diagnostic)
