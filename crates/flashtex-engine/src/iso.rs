@@ -98,7 +98,8 @@ pub fn dead_cells_enabled() -> bool {
 /// every array the walk does not interpret (`walked_region`)
 /// that may hold a pointer by pdftex.web's types and uses (`plain_data`
 /// lists those that cannot: strings, font, hyphenation and line-breaking
-/// tables, buffers, `eqtb`'s integers and dimensions, object numbers); a
+/// tables, buffers, `eqtb`'s integers and dimensions, object numbers, the
+/// intrinsics' bookkeeping, stacks used within one command); a
 /// stray integer equal to such an address makes the cells live, so the
 /// rule errs only on the side of failing a test. The remaining trust is
 /// the walk's own node model: a reached node's pointer fields are followed.
@@ -308,6 +309,18 @@ fn plain_data(name: &str) -> bool {
             | "pstack"
             | "rs_seen"
             | "bm_cand"
+            // the intrinsics' bookkeeping (`Iso::intrinsics`: no pointers
+            // there but the recording's `tail`, scratch that `cur_list`
+            // holds too)
+            | "intr_state"
+            | "intr_watch"
+            | "intr_cand"
+            | "intr_seen"
+            // pointers only within one command: `find_protchar_left` and
+            // `_right` fill `hlist_stack` from level 0, a virtual font's
+            // character `vf_stack`
+            | "hlist_stack"
+            | "vf_stack"
             | "xord"
             | "xchr"
             | "xprn"
@@ -3509,7 +3522,7 @@ mod tests {
 
     // INFDESC-883's dead cells (`garbage`). The space: `mem` cells 0..=LO_MAX
     // and HI_MIN..=MEM_END, the scalars that bound them after mem, and a
-    // `hlist_stack` region (halfwords the walk does not interpret) after
+    // `pdf_mem` region (words the walk does not interpret here) after
     // those.
     const LO_MAX: i32 = 5000;
     const HI_MIN: i32 = 9000;
@@ -3535,7 +3548,7 @@ mod tests {
                 elem: 8,
             },
             crate::arena::RegionInfo {
-                name: "hlist_stack",
+                name: "pdf_mem",
                 off: STACK,
                 bytes: 64,
                 elem: 4,
@@ -3592,11 +3605,11 @@ mod tests {
         w.put(3001, halves(NULL, 0));
         // an unrelated leaked node
         w.put(4000, hh(10, 9, NULL));
-        // the hidden root: hlist_stack[1] = 9500
+        // the hidden root: pdf_mem[1] = 9500
         w.0.insert(STACK, (9500u64) << 32);
         let dead = dead_of(&w, &l, &regions, &[9500, 3000, 3001, 4000]);
         for p in [9500, 3000, 3001] {
-            assert!(!bit(&dead, p), "cell {p} is live (hlist_stack -> 9500 -> 3000)");
+            assert!(!bit(&dead, p), "cell {p} is live (pdf_mem -> 9500 -> 3000)");
         }
         assert!(bit(&dead, 4000), "the unrelated node is still dead");
     }
