@@ -6027,7 +6027,13 @@ fn a_link_broken_across_lines_does_not_stop_convergence() {
         let mut reports = vec![];
         for (k, word) in ["alphb", "alphc", "alpha"].into_iter().enumerate() {
             let what = format!("{name} edit {k}");
-            reports.push(compile_and_check(&e, &mut h, &dir, &[("doc.tex", &doc(word))], &what));
+            reports.push(compile_and_check(
+                &e,
+                &mut h,
+                &dir,
+                &[("doc.tex", &doc(word))],
+                &what,
+            ));
         }
         runs.push(reports);
     }
@@ -6035,8 +6041,14 @@ fn a_link_broken_across_lines_does_not_stop_convergence() {
     assert!(pages >= 12, "the document is {pages} pages");
     for r in &runs[0] {
         let rerun: usize = field(r, "rerun_pages").parse().unwrap();
-        assert!(field(r, "converged_at") != "null", "the edit did not converge: {r}");
-        assert!(rerun * 2 < pages, "the edit re-typeset {rerun} of {pages} pages: {r}");
+        assert!(
+            field(r, "converged_at") != "null",
+            "the edit did not converge: {r}"
+        );
+        assert!(
+            rerun * 2 < pages,
+            "the edit re-typeset {rerun} of {pages} pages: {r}"
+        );
     }
     assert!(
         runs[0].iter().any(|r| field(r, "dead_cells") != "0"),
@@ -6046,7 +6058,9 @@ fn a_link_broken_across_lines_does_not_stop_convergence() {
     // the leak is what stopped them; the revert may converge, its run
     // allocating as the settled one did)
     assert!(
-        runs[1][..2].iter().all(|r| field(r, "converged_at") == "null"),
+        runs[1][..2]
+            .iter()
+            .all(|r| field(r, "converged_at") == "null"),
         "{:#?}",
         runs[1]
     );

@@ -2714,42 +2714,6 @@ fn check_mem(g: &mut Globals, page: usize) {
         match crate::iso::Iso::classify_unreached(g, &layout, &free, g.hyph_list.len(), 12) {
             Err(e) => eprintln!("[checkmem] page {page}: walk failed: {e}"),
             Ok((nodes, missed, n_missed, n_leaked)) => {
-                if n_missed > 0
-                    && std::env::var("FLASHTEX_CHECKMEM_CHAIN").ok().and_then(|v| v.parse().ok())
-                        == Some(page)
-                {
-                    for &p0 in missed.iter().rev().take(3) {
-                        let mut cur = p0;
-                        let mut seen = std::collections::HashSet::new();
-                        let mut path = vec![];
-                        for _ in 0..4000 {
-                            let ts: Vec<i32> = (cur.saturating_sub(7).max(1)..=cur).collect();
-                            let refs = crate::iso::who_points(g, &layout, &ts, 40);
-                            let next = refs.iter().find_map(|r| {
-                                let (v, at) = r.split_once('@')?;
-                                let rest = at.strip_prefix("mem[")?;
-                                let idx: i32 = rest.split(']').next()?.parse().ok()?;
-                                let v: i32 = v.parse().ok()?;
-                                (!(cur - 7..=cur + 7).contains(&idx) && !seen.contains(&idx))
-                                    .then_some((idx, v))
-                            });
-                            match next {
-                                Some((idx, v)) => {
-                                    seen.insert(idx);
-                                    path.push(format!("{v}<-mem[{idx}]"));
-                                    cur = idx;
-                                }
-                                None => {
-                                    path.push(format!("END refs {:?}", refs));
-                                    break;
-                                }
-                            }
-                        }
-                        let n = path.len();
-                        let tail: Vec<&String> = path.iter().skip(n.saturating_sub(12)).collect();
-                        eprintln!("[checkmem]   chain from {p0} ({n} steps): ... {tail:?}");
-                    }
-                }
                 if n_missed > 0 {
                     let words: Vec<String> = missed
                         .iter()
@@ -6899,9 +6863,8 @@ impl Session {
         if let Some((from, n)) = obs.dead_verify {
             let pages = obs.base + obs.new_pages.len();
             let bad = obs.dead_verify_bad.clone().or_else(|| {
-                (status != STOPPED && pages != obs.old_frames.len()).then(|| {
-                    format!("{pages} pages, the old run {}", obs.old_frames.len())
-                })
+                (status != STOPPED && pages != obs.old_frames.len())
+                    .then(|| format!("{pages} pages, the old run {}", obs.old_frames.len()))
             });
             match bad {
                 Some(why) => panic!(

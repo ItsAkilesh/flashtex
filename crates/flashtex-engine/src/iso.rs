@@ -133,7 +133,13 @@ fn garbage<S: Space>(
     let mut todo: Vec<(i32, i32)> = vec![];
     // (`why_p`: say why that cell is live)
     let mut parent: HashMap<i32, (i32, String)> = HashMap::new();
-    let mark = |p: i32, span: i32, from: i32, what: &dyn Fn() -> String, live: &mut Vec<u64>, todo: &mut Vec<(i32, i32)>, parent: &mut HashMap<i32, (i32, String)>| {
+    let mark = |p: i32,
+                span: i32,
+                from: i32,
+                what: &dyn Fn() -> String,
+                live: &mut Vec<u64>,
+                todo: &mut Vec<(i32, i32)>,
+                parent: &mut HashMap<i32, (i32, String)>| {
         if !bit(live, p) {
             set(live, p);
             todo.push((p, span));
@@ -160,9 +166,18 @@ fn garbage<S: Space>(
             if is_unr(v) {
                 let what = || {
                     if r.name == "(scalars)" {
-                        slots.iter().rev().find(|x| x.off <= rel).map_or(String::new(), |x| x.name.to_string())
+                        slots
+                            .iter()
+                            .rev()
+                            .find(|x| x.off <= rel)
+                            .map_or(String::new(), |x| x.name.to_string())
                     } else {
-                        format!("{}[{}]+{}", r.name, rel / r.elem.max(1), rel % r.elem.max(1))
+                        format!(
+                            "{}[{}]+{}",
+                            r.name,
+                            rel / r.elem.max(1),
+                            rel % r.elem.max(1)
+                        )
                     }
                 };
                 mark(v, NODE_SPAN, -1, &what, &mut live, &mut todo, &mut parent);
@@ -174,15 +189,39 @@ fn garbage<S: Space>(
     // character, not a pointer)
     while let Some((p, span)) = todo.pop() {
         if span > 1 && p < hi_min && p < MEM_TOP && is_unr(p + 1) {
-            mark(p + 1, span - 1, p, &|| "next".into(), &mut live, &mut todo, &mut parent);
+            mark(
+                p + 1,
+                span - 1,
+                p,
+                &|| "next".into(),
+                &mut live,
+                &mut todo,
+                &mut parent,
+            );
         }
         let w = s.mem(p);
         let (rh, lh) = (w as u32 as i32, (w >> 32) as u32 as i32);
         if is_unr(rh) {
-            mark(rh, NODE_SPAN, p, &|| "rh".into(), &mut live, &mut todo, &mut parent);
+            mark(
+                rh,
+                NODE_SPAN,
+                p,
+                &|| "rh".into(),
+                &mut live,
+                &mut todo,
+                &mut parent,
+            );
         }
         if p < hi_min && is_unr(lh) {
-            mark(lh, NODE_SPAN, p, &|| "lh".into(), &mut live, &mut todo, &mut parent);
+            mark(
+                lh,
+                NODE_SPAN,
+                p,
+                &|| "lh".into(),
+                &mut live,
+                &mut todo,
+                &mut parent,
+            );
         }
     }
     if let Some(q) = why_p {
@@ -199,7 +238,11 @@ fn garbage<S: Space>(
                 c = *from;
             }
             let n = chain.len();
-            let short: Vec<&String> = chain.iter().take(4).chain(chain.iter().skip(n.saturating_sub(6))).collect();
+            let short: Vec<&String> = chain
+                .iter()
+                .take(4)
+                .chain(chain.iter().skip(n.saturating_sub(6)))
+                .collect();
             eprintln!(
                 "cell {q}: {} ({n} steps): {short:?}",
                 if bit(&live, q) { "live" } else { "dead" }
@@ -253,8 +296,8 @@ fn plain_data(name: &str) -> bool {
         || name.starts_with("vf_")
         || name.starts_with("ls_")
         || matches!(
-        name,
-        "eqtb"
+            name,
+            "eqtb"
             | "xeq_level"
             | "obj_tab"
             | "head_tab"
@@ -341,7 +384,7 @@ fn plain_data(name: &str) -> bool {
             | "dvi_buf"
             | "hash"
             | "prim"
-    )
+        )
 }
 
 /// Run `f` with input level `j`'s `limit`, and the stale `limit`s of the
@@ -3055,8 +3098,9 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
         // nothing outside the walk points at (`garbage`), computed once per
         // side when a differing word needs it.
         let dead_rule = dead_cells_enabled() && !ALIGN_BY_WORDS.with(|c| c.get());
-        let (mut dead_o, mut dead_n): (Option<Option<Vec<u64>>>, Option<Option<Vec<u64>>>) =
-            (None, None);
+        // (outer: computed yet; inner: the free lists could be read)
+        type Dead = Option<Option<Vec<u64>>>;
+        let (mut dead_o, mut dead_n): (Dead, Dead) = (None, None);
         let mut n_dead = 0usize;
         for &p in bad_mem {
             let p = p as i32;
@@ -3225,7 +3269,12 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
                             .find(|s| s.off <= rel)
                             .map_or(String::new(), |s| s.name.to_string())
                     } else {
-                        format!("{}[{}]+{}", r.name, rel / r.elem.max(1), rel % r.elem.max(1))
+                        format!(
+                            "{}[{}]+{}",
+                            r.name,
+                            rel / r.elem.max(1),
+                            rel % r.elem.max(1)
+                        )
                     };
                     first_ref.entry(v).or_insert(what);
                 }
@@ -3240,8 +3289,9 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
                 if let Some(w) = first_ref.get(&p) {
                     if shown < 40 {
                         shown += 1;
-                        let ws: Vec<String> =
-                            (p..p + 4).map(|q| format!("{:#018x}", g.mem[q as usize].to_bits())).collect();
+                        let ws: Vec<String> = (p..p + 4)
+                            .map(|q| format!("{:#018x}", g.mem[q as usize].to_bits()))
+                            .collect();
                         eprintln!(
                             "[checkmem]   missed {p}{} <- {w}: {}",
                             if start { " (run start)" } else { "" },
@@ -3533,9 +3583,13 @@ mod tests {
     fn dead_space() -> (Words, Layout, Vec<crate::arena::RegionInfo>) {
         let mut l = layout();
         let mut w = Words::default();
-        for (k, (name, v)) in [("lo_mem_max", LO_MAX), ("hi_mem_min", HI_MIN), ("mem_end", MEM_END)]
-            .into_iter()
-            .enumerate()
+        for (k, (name, v)) in [
+            ("lo_mem_max", LO_MAX),
+            ("hi_mem_min", HI_MIN),
+            ("mem_end", MEM_END),
+        ]
+        .into_iter()
+        .enumerate()
         {
             l.scalars.insert(name, (SCALARS + k * 8, 4));
             w.0.insert(SCALARS + k * 8, v as u32 as u64);
@@ -3559,7 +3613,12 @@ mod tests {
 
     /// What `garbage` finds dead in `w`, where the walk reached `reached`
     /// and every other cell but `alloc` is free.
-    fn dead_of(w: &Words, l: &Layout, regions: &[crate::arena::RegionInfo], alloc: &[i32]) -> Vec<u64> {
+    fn dead_of(
+        w: &Words,
+        l: &Layout,
+        regions: &[crate::arena::RegionInfo],
+        alloc: &[i32],
+    ) -> Vec<u64> {
         let words = (MEM_TOP as usize + 64) / 64 + 1;
         let (cov, mut free) = (vec![0u64; words], vec![0u64; words]);
         for p in (MEM_BOT..=LO_MAX).chain(HI_MIN..=MEM_END) {
