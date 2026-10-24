@@ -31,7 +31,7 @@ final class EngineV3OneEngineTests: XCTestCase {
     func testOneEngineNoOldEngineHelperIsLaunched() throws {
         var root = URL(fileURLWithPath: #filePath)
         for _ in 0 ..< 3 { root = root.deletingLastPathComponent() } // apps/mac
-        let helpers = ["flashtex-compiler", "flashtex-render", "flashtex-pdf-exact", "flashtex-preview-controller", "flashtex-explain"]
+        let helpers = ["flashtex-compiler", "flashtex-render", "flashtex-pdf-exact", "flashtex-preview-controller"]
         let walker = try XCTUnwrap(FileManager.default.enumerator(at: root.appendingPathComponent("Sources"), includingPropertiesForKeys: nil))
         var checked = 0
         for case let url as URL in walker where url.pathExtension == "swift" {

@@ -467,7 +467,7 @@ public enum FocusOrder {
     /// Non-focusable status text around the panes, in view order, so the help
     /// can say what VoiceOver reads when it walks the whole window.
     public static let statusLines: [String] = [
-        "Toolbar (the title bar): Compile (⌘B) and the command palette (⌘⇧P) leading; then the preview controls — chapter focus, dark pages, Fit Width (⌘9), Fit Page (⌘⇧9), Zoom Out (⌘-), Zoom In (⌘=) — Export PDF (⌘⇧E) and the Captures inspector toggle. Every tooltip names the menu shortcut.",
+        "Toolbar: in the title bar, Compile (⌘B) and the command palette (⌘⇧P) leading; then the preview controls — chapter focus, dark pages, Fit Width (⌘9), Fit Page (⌘⇧9), Zoom Out (⌘-), Zoom In (⌘=) — Export PDF (⌘⇧E) and the Captures inspector toggle. Every tooltip names the menu shortcut.",
         "Preview HUD (over the pages): a quiet compile spinner and the engine's state line (preparing the format, stale pages, a failure) when they apply; the page indicator on pointer-over and briefly after scrolling. The engine's route is in the HUD tooltip.",
         "Status bar (bottom): the breadcrumb, then the last navigation note, the stale-diagnostics note, or the preview-click hint; the word count, the keystroke-to-page latency, the Classic/Unicode mode, the editor revision (with View > Show Preview Debug Status), error and warning counts (a button that shows the Problems panel); capture notes and the export progress on the right.",
     ]
