@@ -241,7 +241,7 @@ def usepackage_line(package, doc_text):
 
 
 PROBE_MACROS = r"""\makeatletter
-\newwrite\ft@out \immediate\openout\ft@out=ftprobe.out\relax
+\newwrite\ft@out \immediate\openout\ft@out=ftprobe.ftw\relax
 \def\ft@w#1{\begingroup\newlinechar=-1 \immediate\write\ft@out{#1}\endgroup}
 \def\ft@pre#1{\ifcsname #1\endcsname\ft@w{p #1}\fi}
 \def\ft@preenv#1{\ifcsname #1\endcsname\ifcsname end#1\endcsname\ft@w{q #1}\fi\fi}
@@ -274,7 +274,8 @@ def probe_document(load_line, pre, post, spec=()):
 
 
 def parse_probe_output(text):
-    """ftprobe.out -> (pre names, pre envs, {name: {d,s,b,c,a}}, envs)."""
+    """ftprobe.ftw -> (pre names, pre envs, {name: {d,s,b,c,a}}, envs). (Not .out:
+    hyperref writes its bookmarks to \\jobname.out.)"""
     pre, pre_env, defs, envs = set(), set(), {}, set()
     for line in text.splitlines():
         if len(line) < 3 or line[1] != " ":
@@ -363,7 +364,7 @@ class Oracle:
         """pdflatex -recorder on tex; (ok, log, fls, probe output)."""
         with open(os.path.join(workdir, "ftprobe.tex"), "w", encoding="utf-8") as fh:
             fh.write(tex)
-        for ext in (".out", ".fls", ".log", ".aux"):
+        for ext in (".ftw", ".out", ".fls", ".log", ".aux"):
             p = os.path.join(workdir, "ftprobe" + ext)
             if os.path.exists(p):
                 os.remove(p)
@@ -377,7 +378,7 @@ class Oracle:
                 return ""
             with open(p, encoding="utf-8", errors="replace") as fh:
                 return fh.read()
-        return proc.returncode == 0, rd(".log"), rd(".fls"), rd(".out")
+        return proc.returncode == 0, rd(".log"), rd(".fls"), rd(".ftw")
 
 
 def probe_one(oracle, workdir, load_line, base_files, kernel_extra=()):
