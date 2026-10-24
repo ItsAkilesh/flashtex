@@ -146,7 +146,6 @@ private struct DocumentTab: View {
         case .included(let from): s += " — included from \(from)"
         case .opened: s += " — opened by path"
         }
-        if let r = doc.durableRevision { s += " · durable r\(r)" }
         if doc.isDirty { s += " · edited" }
         return s
     }
@@ -220,7 +219,6 @@ struct ProjectMenu: View {
                 }
                 .help("Session only: " + ProjectDocuments.detachScopeNote)
             }
-            DocumentKindsMenuSection() // DocumentKinds.swift: declare/undeclare bibliography sources
         } label: {
             Label("Project", systemImage: "doc.on.doc")
         }

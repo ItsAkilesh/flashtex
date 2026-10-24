@@ -235,7 +235,7 @@ extension ShellModel {
     }
 
     private func noteOccurrence(_ k: Int, of group: EditorDiagnostics.Group, in diags: [RuntimeV1.Diagnostic], index: Int) {
-        if let result, let id = EditorDiagnostics.identity(resultID: resultID, index: index, in: result) {
+        if let source = markSource, let id = EditorDiagnostics.identity(resultID: source.id, index: index, in: source.result) {
             currentDiagnosticID = id.key
         }
         let label = EditorDiagnostics.occurrenceLabel(k, of: group, in: diags, texts: compiledDocuments)
@@ -327,9 +327,9 @@ extension ShellModel {
     /// `DiagnosticsAnnouncer`; a throttled change is spoken once the
     /// interval ends. `nowNs` is injectable so tests drive the clock.
     func noteCompileCompletedForVoiceOver(nowNs: UInt64 = MonotonicClock.nowNs()) {
-        // Under engine v3 there is no old-engine result: the call comes from
-        // the host's DONE (EngineV3Session), after its rows are published.
-        guard result != nil || engineV3Enabled else { resetDiagnosticsAnnouncer(); return }
+        // The call comes from the host's DONE (EngineV3Session), after its
+        // rows are published.
+        guard engineV3Enabled else { resetDiagnosticsAnnouncer(); return }
         let summary = EditorDiagnostics.spokenSummary(displayedDiagnostics)
         if let message = diagnosticsAnnouncer.note(summary: summary, nowNs: nowNs) { announceDiagnostics(message) }
         armDiagnosticsFlushIfNeeded(nowNs: nowNs)
@@ -516,10 +516,6 @@ struct DiagnosticsListView: View {
                 if helpFix {
                     InlineActionButton(title: "Fix…") { model.previewQuickFix(diagnosticIndex: i) }
                         .help(d.help?.message ?? "Preview a suggested fix")
-                } else if let x = model.explanations.explanation(resultID: model.resultID, index: i),
-                   x.suggestions.contains(where: { !$0.edits.isEmpty }) {
-                    InlineActionButton(title: "Fix…") { model.previewQuickFix(diagnosticIndex: i) }
-                        .help(x.suggestions.first { !$0.edits.isEmpty }?.text ?? "Preview a suggested fix")
                 } else if let fix = MissingIncludeFix.quickFix(for: d, projectRoot: model.project.projectRoot) { // ProjectScaffold.swift
                     InlineActionButton(title: "Create \(fix.path)") { Task { _ = await model.project.createMissingInclude(fix.argument, from: fix.from); model.navigationNote = model.project.status } }
                         .help("Create the empty file \(fix.path) under the project root and open it as included from \(fix.from)")
@@ -587,11 +583,8 @@ struct DiagnosticsListView: View {
                     if let line = EditorDiagnostics.recoveryLine(recovery: d.recovery, status: status) {
                         Text("↳ \(line)").font(DS.Fonts.secondary).foregroundStyle(d.recovery == nil ? DS.Colors.textTertiary : DS.Colors.textSecondary)
                     }
-                    if let explain = model.explanations.explanation(resultID: model.resultID, index: i)?.line {
-                        Text("↳ \(explain)").font(DS.Fonts.secondary).foregroundStyle(DS.Colors.textSecondary)
-                    }
-                    if let result = model.result,
-                       let id = EditorDiagnostics.identity(resultID: model.resultID, index: i, in: result),
+                    if let source = model.markSource,
+                       let id = EditorDiagnostics.identity(resultID: source.id, index: i, in: source.result),
                        model.editorMarkReport.staleIdentities.contains(id) {
                         Text("underline withheld: span edited since the compile").font(DS.Fonts.secondary).foregroundStyle(DS.Colors.severityWarning)
                     }
@@ -609,7 +602,7 @@ struct DiagnosticsListView: View {
         .tag(g.id)
         .modifier(SecondaryLabelHelp(text: secondaryHelp))
         .accessibleDiagnostic(EditorDiagnostics.rowAccessibility(g, occurrence: k, in: diags, status: status,
-                                                                 explanation: model.explanations.explanation(resultID: model.resultID, index: i)?.line,
+                                                                 explanation: nil,
                                                                  texts: model.compiledDocuments)) {
             model.goToOccurrence(k, of: g, panel: panel)
         } // FlashTeXAccessibility: one spoken element, "Go to source" as the default action
