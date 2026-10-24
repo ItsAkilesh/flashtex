@@ -119,10 +119,16 @@ fn garbage<S: Space>(g: &Globals, s: &St<'_, S>, cov: &[u64], free: &[u64], slot
     // the unreached cells words outside the walk point at
     let mut live = vec![0u64; words];
     let mut todo: Vec<i32> = vec![];
-    let mark = |p: i32, live: &mut Vec<u64>, todo: &mut Vec<i32>| {
+    // (FLASHTEX_DEAD_CELLS_WHY=P: why cell P is live)
+    let why_p: Option<i32> = std::env::var("FLASHTEX_DEAD_CELLS_WHY").ok().and_then(|v| v.parse().ok());
+    let mut parent: HashMap<i32, (i32, String)> = HashMap::new();
+    let mark = |p: i32, from: i32, what: &dyn Fn() -> String, live: &mut Vec<u64>, todo: &mut Vec<i32>, parent: &mut HashMap<i32, (i32, String)>| {
         if !bit(live, p) {
             set(live, p);
             todo.push(p);
+            if why_p.is_some() {
+                parent.insert(p, (from, what()));
+            }
         }
     };
     let eqtb_hi = crate::readset::EQTB_SIZE + 1..=crate::readset::EQTB_SIZE + g.hash_high;
@@ -159,7 +165,14 @@ fn garbage<S: Space>(g: &Globals, s: &St<'_, S>, cov: &[u64], free: &[u64], slot
             let w = s.sp.word(off & !7);
             let v = (w >> ((off & 7) * 8)) as u32 as i32;
             if is_unr(v) {
-                mark(v, &mut live, &mut todo);
+                let what = || {
+                    if r.name == "(scalars)" {
+                        slots.iter().rev().find(|x| x.off <= rel).map_or(String::new(), |x| x.name.to_string())
+                    } else {
+                        format!("{}[{}]+{}", r.name, rel / r.elem.max(1), rel % r.elem.max(1))
+                    }
+                };
+                mark(v, -1, &what, &mut live, &mut todo, &mut parent);
             }
         }
     }
@@ -168,15 +181,38 @@ fn garbage<S: Space>(g: &Globals, s: &St<'_, S>, cov: &[u64], free: &[u64], slot
     // character, not a pointer)
     while let Some(p) = todo.pop() {
         if p < MEM_TOP && is_unr(p + 1) {
-            mark(p + 1, &mut live, &mut todo);
+            mark(p + 1, p, &|| "next".into(), &mut live, &mut todo, &mut parent);
         }
         let w = s.mem(p);
         let (rh, lh) = (w as u32 as i32, (w >> 32) as u32 as i32);
         if is_unr(rh) {
-            mark(rh, &mut live, &mut todo);
+            mark(rh, p, &|| "rh".into(), &mut live, &mut todo, &mut parent);
         }
         if p < hi_min && is_unr(lh) {
-            mark(lh, &mut live, &mut todo);
+            mark(lh, p, &|| "lh".into(), &mut live, &mut todo, &mut parent);
+        }
+    }
+    if let Some(q) = why_p {
+        if bit(&unr, q) {
+            let mut chain = vec![];
+            let mut c = q;
+            let mut steps = 0;
+            while let Some((from, what)) = parent.get(&c) {
+                chain.push(format!("{c}<-{what}"));
+                steps += 1;
+                if *from < 0 || steps > 100_000 {
+                    break;
+                }
+                c = *from;
+            }
+            let n = chain.len();
+            let short: Vec<&String> = chain.iter().take(4).chain(chain.iter().skip(n.saturating_sub(6))).collect();
+            eprintln!(
+                "[dead-cells] cell {q}: {} ({n} steps): {short:?}",
+                if bit(&live, q) { "live" } else { "dead" }
+            );
+        } else {
+            eprintln!("[dead-cells] cell {q}: not unreached in this state");
         }
     }
     for (u, l) in unr.iter_mut().zip(&live) {
