@@ -76,8 +76,11 @@ merged_prs() {
     done
 }
 
+# (GitHub refuses a label description over 100 characters, and the error is
+# silenced here because the label usually exists: a longer one meant the label
+# was never made, and every report since 2026-10-05 failed at `--label`.)
 gh label create "$label" --repo "$repo" --color B60205 \
-  --description "a post-merge job failed on main; the PR's owner fixes forward within 2 h or the Commander reverts (docs/ci-cd.md)" \
+  --description "a post-merge job failed on main: fix forward within 2 h or the Commander reverts (docs/ci-cd.md)" \
   >/dev/null 2>&1 || true
 open="$(gh issue list --repo "$repo" --label "$label" --state open --json number --jq '.[0].number // empty')"
 
