@@ -2834,6 +2834,8 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
         }
         let bytes = g.arena.bytes();
         let mut pointed_from_outside = vec![0u64; target.len()];
+        let refs_dbg = std::env::var_os("FLASHTEX_CHECKMEM_REFS").is_some();
+        let mut first_ref: HashMap<i32, String> = HashMap::new();
         let data_region = |name: &str| {
             matches!(
                 name,
@@ -2894,6 +2896,38 @@ impl<'a> Iso<'a, Old<'a>, Live<'a>> {
                     continue;
                 }
                 set(&mut pointed_from_outside, v);
+                if refs_dbg && first_ref.len() < 1 << 16 {
+                    let what = if r.name == "(scalars)" {
+                        slots
+                            .iter()
+                            .rev()
+                            .find(|s| s.off <= rel)
+                            .map_or(String::new(), |s| s.name.to_string())
+                    } else {
+                        format!("{}[{}]+{}", r.name, rel / r.elem.max(1), rel % r.elem.max(1))
+                    };
+                    first_ref.entry(v).or_insert(what);
+                }
+            }
+        }
+        if refs_dbg {
+            let mut shown = 0;
+            let mut prev = MEM_BOT - 2;
+            for &p in &cells {
+                let start = !(p > MEM_BOT && p - 1 == prev);
+                prev = p;
+                if let Some(w) = first_ref.get(&p) {
+                    if shown < 40 {
+                        shown += 1;
+                        let ws: Vec<String> =
+                            (p..p + 4).map(|q| format!("{:#018x}", g.mem[q as usize].to_bits())).collect();
+                        eprintln!(
+                            "[checkmem]   missed {p}{} <- {w}: {}",
+                            if start { " (run start)" } else { "" },
+                            ws.join(" ")
+                        );
+                    }
+                }
             }
         }
         // A node is referenced at its first cell; an unreached cell counts as

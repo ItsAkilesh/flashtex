@@ -2653,6 +2653,11 @@ fn iso_covers(g: &Globals, w: &crate::statediff::WordDiff) -> bool {
 /// allocated cells nothing reaches (a missing root or node field in
 /// `crate::iso`) to stderr.
 fn check_mem(g: &mut Globals, page: usize) {
+    if let Ok(v) = std::env::var("FLASHTEX_CHECKMEM_PAGES") {
+        if !v.split(',').any(|p| p.parse() == Ok(page)) {
+            return;
+        }
+    }
     g.spill_scalars();
     let layout = crate::statediff::scalar_layout(g);
     let g: &Globals = g;
