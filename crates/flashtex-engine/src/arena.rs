@@ -2347,16 +2347,20 @@ impl Arena {
         }
         let per = page / CHUNK_BYTES;
         // whole pages of the space only
-        let lo = (c.base as usize).next_multiple_of(page);
-        let hi = (c.base as usize + c.bytes) / page * page;
+        let base = c.base.addr();
+        let lo = base.next_multiple_of(page);
+        let hi = (base + c.bytes) / page * page;
         if hi <= lo {
             return 0;
         }
-        let first_chunk = (lo - c.base as usize) / CHUNK_BYTES;
+        // address `a` of the space as a pointer, from the mapping's own
+        // pointer, not an integer (strict provenance, as `chunk_ptr`)
+        let at = |a: usize| -> *mut u8 { c.base.wrapping_add(a - base) };
+        let first_chunk = (lo - base) / CHUNK_BYTES;
         let npages = (hi - lo) / page;
         // Only resident pages are read: reading one given back earlier (or
         // never written) would bring a page in again.
-        let Some(res) = crate::memstat::resident_pages(lo as *const u8, hi - lo) else {
+        let Some(res) = crate::memstat::resident_pages(at(lo) as *const u8, hi - lo) else {
             return 0;
         };
         let zero = |pg: usize| -> bool {
@@ -2365,7 +2369,8 @@ impl Arena {
                 return false;
             }
             // SAFETY: a whole page inside the mapping.
-            let w = unsafe { std::slice::from_raw_parts((lo + pg * page) as *const u64, page / 8) };
+            let w =
+                unsafe { std::slice::from_raw_parts(at(lo + pg * page) as *const u64, page / 8) };
             w.iter().all(|&x| x == 0)
         };
         let mut given = 0;
@@ -2379,7 +2384,7 @@ impl Arena {
             while pg < npages && zero(pg) {
                 pg += 1;
             }
-            let (p, len) = ((lo + start * page) as *mut u8, (pg - start) * page);
+            let (p, len) = (at(lo + start * page), (pg - start) * page);
             // SAFETY: whole pages of the space's own mapping, all zero; the
             // caller holds `&mut self`, so nothing else reads or writes the
             // space meanwhile.
