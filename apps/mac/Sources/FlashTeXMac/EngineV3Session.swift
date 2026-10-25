@@ -1678,6 +1678,7 @@ final class EngineV3Session {
 
     /// TeX's rows of the last compile, then the tools' (Problems panel).
     private func publishProblems(model: ShellModel) {
+        problemsOwed = false
         let rows = texProblems + Self.problems(toolDiagnostics, model: model, projectRoot: project?.root)
         if model.engineV3Diagnostics != rows { model.engineV3Diagnostics = rows }
     }
@@ -1703,7 +1704,7 @@ final class EngineV3Session {
             case "ok", "warnings": toolNote = nil
             default: toolNote = "\(name)\(file): \(status)\(j["message"]?.string.map { " (" + $0 + ")" } ?? "")"
             }
-            if let model { publishProblems(model: model) }
+            problemsOwed = true // published once per drain (`flushEvents`)
         case "skip":
             toolNote = "\(name)\(file) not run: \(j["reason"]?.string ?? "skipped")"
             if EngineV3Biber.isConsentRequest(j["reason"]?.string ?? ""), let p = EngineV3Biber.currentPin(), !EngineV3Biber.consented(p) {
@@ -1714,7 +1715,7 @@ final class EngineV3Session {
             lastSettledID = max(lastSettledID, id)
             if toolNote?.hasPrefix("Running ") == true { toolNote = nil }
             if j["limit"]?.bool == true { toolNote = "Bibliography and index: stopped after \(j["rounds"]?.int ?? 5) rounds." }
-            if let model { publishProblems(model: model) }
+            problemsOwed = true // published once per drain (`flushEvents`)
             maybeSendExport()
         default: break
         }
@@ -1735,8 +1736,14 @@ final class EngineV3Session {
     /// page that arrived in it (a page past the laid-out ones used to lay out
     /// all of them: O(pages²) over a cold compile).
     func flushEvents() {
+        // The tools' rows changed in this drain: the Problems list (thousands
+        // of rows in a long book) follows once, not once per TOOL frame.
+        if problemsOwed, let model { publishProblems(model: model) }
         view?.flushLayout()
     }
+
+    /// A tool's rows changed since the Problems list was last published.
+    @ObservationIgnored private var problemsOwed = false
 
     /// Hands host events to the main thread as the reader thread does (tests:
     /// `EditorInstantTests` feeds a synthetic compile through it).
@@ -2181,13 +2188,32 @@ final class EngineV3Session {
         // TeX's errors it recovered from (EngineV3ErrorPolicy): warnings under best effort.
         let kept = EngineV3ErrorPolicy.keptErrors(diags.map(Self.policyItem), mode: mode)
         let recovered = Set(diags.indices.filter { diags[$0].severity == "error" && !kept.contains($0) })
-        func rel(_ file: String) -> String { Self.relativeToCopy(file, roots: roots) }
+        // Each file once (a `realpath` per row and trace frame was a fifth of a long book's DONE).
+        var relative: [String: String] = [:]
+        func rel(_ file: String) -> String {
+            if let r = relative[file] { return r }
+            let r = Self.relativeToCopy(file, roots: roots)
+            relative[file] = r
+            return r
+        }
         // Rows that say the same thing as another fold into it (EngineV3DiagPresent.folds).
         let folds = EngineV3DiagPresent.folds(diags, kept: kept)
         let stopped = Set(folds.filter { EngineV3DiagPresent.isStop(diags[$0.key].code) && !EngineV3DiagPresent.isStop(diags[$0.value].code) }.map(\.value))
         let projectTexts: [String: String] = texts ?? Dictionary(model.documents.map { ($0.path, $0.text) }, uniquingKeysWith: { a, _ in a })
         func text(_ file: String) -> String? { texts?[file] ?? model.documents.first(where: { $0.path == file })?.text }
         var lines = EngineV3LineIndexes()
+        // Made once for all the rows (EDITOR-FREEZE: a long book's thousands
+        // of rows each searched every text at each DONE, seconds on main): a
+        // macro's project definition, by name and place, and the labels by key.
+        var definitions: [String: (site: EngineV3DiagPresent.Site, body: Range<Int>?)?] = [:]
+        func definition(_ name: String, near: (path: String, line: Int)?) -> (site: EngineV3DiagPresent.Site, body: Range<Int>?)? {
+            let key = near.map { "\(name)\u{0}\($0.path)\u{0}\($0.line)" } ?? name
+            if let hit = definitions[key] { return hit }
+            let found = EngineV3DiagPresent.definition(of: name, in: projectTexts, near: near)
+            definitions[key] = .some(found)
+            return found
+        }
+        var labelSites: [String: [EngineV3DiagPresent.Site]]?
         return diags.enumerated().compactMap { i, d in
             guard d.severity != "info" else { return nil } // \show, tight/loose boxes: not problems
             guard folds[i] == nil else { return nil }
@@ -2228,8 +2254,7 @@ final class EngineV3Session {
                 // The definition in the project's text: where the engine says it was made (#1593),
                 // else (the engine names no site) the project's one definition of it.
                 let near = f.def.flatMap { l in l.file.map { (path: rel($0), line: l.line ?? Int.max) } }
-                let found = near.flatMap { EngineV3DiagPresent.definition(of: name, in: projectTexts, near: $0) }
-                    ?? (def == nil ? EngineV3DiagPresent.definition(of: name, in: projectTexts) : nil)
+                let found = near.flatMap { definition(name, near: $0) } ?? (def == nil ? definition(name, near: nil) : nil)
                 if let found {
                     def = found.site.label
                     labels.append(.init(source: found.site.source, text: "\(name) is defined at \(found.site.label)", primary: false))
@@ -2256,9 +2281,12 @@ final class EngineV3Session {
             if stopped.contains(i), let stop = EngineV3Explain.explanation(code: "tex/emergency-stop", message: "") {
                 row.notes = (row.notes ?? []) + [stop]
             }
-            let named = EngineV3Fixes.undefinedName(trace: d.trace.map { ($0.kind, $0.before) })
+            // (read only for TeX's undefined control sequence: `packageHint` and `fix` below)
+            let named = d.code == EngineV3Fixes.undefinedCode ? EngineV3Fixes.undefinedName(trace: d.trace.map { ($0.kind, $0.before) }) : nil
             // A plain-language explanation and, where mechanical, a fix (EngineV3Explain.swift).
-            var explained = EngineV3Explain.apply(row, code: d.code, message: d.message, texts: texts, undefinedName: named)
+            if d.code == "latex/multiply-defined-label", labelSites == nil, let texts { labelSites = EngineV3DiagPresent.labelSites(in: texts) }
+            var explained = EngineV3Explain.apply(row, code: d.code, message: d.message, texts: texts, undefinedName: named,
+                                                  labelSites: labelSites)
             if let defFix, explained.help?.replacement == nil {
                 if let tex = explained.help?.message, !tex.isEmpty { explained.notes = (explained.notes ?? []) + [tex] }
                 explained.help = defFix
