@@ -5747,7 +5747,14 @@ impl Session {
         let t = Instant::now();
         let page = self.page_revalidation(p0, edits, changed, bad_lookup, prior);
         let t1 = t.elapsed().as_secs_f64() * 1e3;
-        let r = match self.whole_read_revalidation(p0, edits, changed, bad_lookup, prior, page.as_ref()) {
+        let r = match self.whole_read_revalidation(
+            p0,
+            edits,
+            changed,
+            bad_lookup,
+            prior,
+            page.as_ref(),
+        ) {
             Some(mut a) => {
                 a.fallback = page.map(Box::new);
                 Some(a)
@@ -6574,6 +6581,20 @@ impl Session {
                 (!v.is_empty()).then(|| (c, v.clone()))
             })
             .collect();
+        // (and a whole read's, which is no page's: `Probe::at`; without it the
+        // comparison there took the old run's line numbers as they were
+        // before an earlier edit moved them)
+        let at_p1 = probe.as_ref().filter(|p| p.at.is_some()).map(|p| p.p1);
+        if let Some(c) = at_p1 {
+            if let Some(v) = self
+                .reloc
+                .get(&c)
+                .map(|r| &r.lines)
+                .filter(|v| !v.is_empty())
+            {
+                obs.old_lines.insert(c, v.clone());
+            }
+        }
         obs.edits = edits;
         obs.changed = changed;
         obs.old_journal_files = old_files;
