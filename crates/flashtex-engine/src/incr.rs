@@ -5744,14 +5744,23 @@ impl Session {
         bad_lookup: Option<usize>,
         prior: &[(usize, usize)],
     ) -> Option<crate::revalidate::Probe> {
+        let t = Instant::now();
         let page = self.page_revalidation(p0, edits, changed, bad_lookup, prior);
-        match self.whole_read_revalidation(p0, edits, changed, bad_lookup, prior, page.as_ref()) {
+        let t1 = t.elapsed().as_secs_f64() * 1e3;
+        let r = match self.whole_read_revalidation(p0, edits, changed, bad_lookup, prior, page.as_ref()) {
             Some(mut a) => {
                 a.fallback = page.map(Box::new);
                 Some(a)
             }
             None => page,
+        };
+        if self.opts.debug {
+            eprintln!(
+                "[incr] revalidation planned: page {t1:.3} ms, whole read {:.3} ms",
+                t.elapsed().as_secs_f64() * 1e3 - t1
+            );
         }
+        r
     }
 
     /// INFDESC-883: a READ-REVALIDATE window that ends at the old run's
