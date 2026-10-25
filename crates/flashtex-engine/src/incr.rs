@@ -5793,10 +5793,14 @@ impl Session {
         static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         let on =
             *ON.get_or_init(|| std::env::var("FLASHTEX_REVALIDATE_WHOLE").as_deref() != Ok("off"));
+        // (an edit that moves lines: not yet -- the comparison at a whole
+        // read kept a log line's old number in `a_file_under_two_names_shifts_once`
+        // and `twin_files_edited_alike_both_shift`; the page's is right)
         if !on
             || !crate::revalidate::enabled()
             || edits.is_empty()
             || prior.len() >= crate::revalidate::MAX_CHAIN
+            || !self.line_shifts.is_empty()
         {
             return None;
         }
