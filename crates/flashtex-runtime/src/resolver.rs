@@ -1000,7 +1000,7 @@ mod kpse {
         /// no ls-R. Every search path is set to that directory, so lookups keep
         /// kpathsea's suffix rules (`\input foo` finds `foo.tex`) exactly.
         pub fn for_bundle(dir: &Path, progname: &str, engine: &str) -> KpathseaResolver {
-            let d = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+            let d = crate::os::canonicalize_plain(dir).unwrap_or_else(|_| dir.to_path_buf());
             let d = d.to_string_lossy().into_owned();
             Self::for_bundle_paths(&d, &format!(".:{d}"), &d, &[], progname, engine)
         }
@@ -1021,7 +1021,7 @@ mod kpse {
         /// machine without TeX Live has none. Without a texmf.cnf, every
         /// search path is `.` and each tree's database (`!!tree//`).
         pub fn for_bundle_tree(root: &Path, progname: &str, engine: &str) -> KpathseaResolver {
-            let d = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+            let d = crate::os::canonicalize_plain(root).unwrap_or_else(|_| root.to_path_buf());
             let d = d.to_string_lossy().into_owned();
             let cnf = format!("{d}/texmf-dist/web2c");
             let _ = std::fs::create_dir_all(&cnf);

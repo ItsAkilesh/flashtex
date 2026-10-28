@@ -437,7 +437,7 @@ impl Bundle {
         fs::create_dir_all(&files_dir).map_err(|e| format!("{}: {e}", files_dir.display()))?;
         // kpathsea returns paths under the canonical directory
         // (`for_bundle_tree` canonicalises it), and `entry_of` compares with it.
-        let files_dir = fs::canonicalize(&files_dir).unwrap_or(files_dir);
+        let files_dir = crate::os::canonicalize_plain(&files_dir).unwrap_or(files_dir);
         let mut by_name: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         for (i, e) in index.files.iter().enumerate() {
             if ttb::META_FILES.contains(&e.path.as_str()) || e.sha256.is_none() {

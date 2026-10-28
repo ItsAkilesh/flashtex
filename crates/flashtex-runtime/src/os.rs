@@ -198,6 +198,27 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
+/// `std::fs::canonicalize`, but on Windows without the verbatim prefix
+/// (backslash, backslash, question mark, backslash) it adds to a drive path.
+/// kpathsea (C code) does not parse verbatim paths, so a tree root it is
+/// handed must be the plain `C:\...` form. A verbatim `UNC` path keeps its
+/// prefix: stripping it would change its meaning.
+pub fn canonicalize_plain(path: &Path) -> std::io::Result<std::path::PathBuf> {
+    let canonical = std::fs::canonicalize(path)?;
+    #[cfg(windows)]
+    {
+        const VERBATIM_PREFIX: &str = r"\\?\";
+        const VERBATIM_UNC: &str = r"UNC\";
+        let text = canonical.to_string_lossy();
+        if let Some(rest) = text.strip_prefix(VERBATIM_PREFIX) {
+            if !rest.starts_with(VERBATIM_UNC) {
+                return Ok(std::path::PathBuf::from(rest));
+            }
+        }
+    }
+    Ok(canonical)
+}
+
 /// The working directory: `std::env::current_dir`, or, inside a
 /// [`CwdScope`] on this thread, the one the scope found when it began
 /// (lane T7-FULL10: a lookup asked for it three times, a `getcwd` each,
