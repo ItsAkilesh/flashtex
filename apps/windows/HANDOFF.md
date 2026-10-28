@@ -32,6 +32,41 @@ user: never commit/push without being explicitly asked. All work described here
 is uncommitted working-tree state under `apps/windows/` (new directory, not
 tracked yet) plus modified files under `crates/` (see below).
 
+## 2026-10-28: merged upstream main; migrating to the new engine (READ FIRST)
+
+Upstream `flash-tex/flashtex:main` (~4k commits since 2026-09-17) is merged into
+this branch. **Never push to or open PRs against `origin`; only `fork`.**
+- Upstream replaced the old compiler/render-pipeline with a pdfTeX-exact engine
+  host, `flashtex-host` (+ `flashtex-host-unicode`), speaking display-list-v3
+  (`docs/protocol/display-list-v3.md`) on a socket. The Mac app no longer
+  bundles compiler/render/pdf/pdf-exact/preview-controller/explain; upstream
+  stage S7 deletes them. The existing Windows pipeline still builds and runs
+  until then but is a dead end.
+- Retired upstream (gone from our tree too): conversion-jobs, rendering-core,
+  project-bundle, assistant-context, render-pipeline/vendor.
+- `crates/project-files` helper has both our `remove`/`rename`/`list` and
+  upstream's `manifest`/`set_fonts`/`set_mode`/`resolve_packages`/`set_packages`.
+- Done: `src/FlashTeX.EngineHost` (frames, HELLO/COMPILE/DIAGNOSTIC/DONE client,
+  host launcher), 17 tests. Real-host test is opt-in: set `FLASHTEX_HOST_EXE`
+  plus the bundle env below, then `dotnet test tests/FlashTeX.EngineHost.Tests`.
+- Build the host (MinGW from WinLibs is on PATH; needs the gnu Rust target):
+  `CC_x86_64_pc_windows_gnu=gcc CXX_x86_64_pc_windows_gnu=g++ AR_x86_64_pc_windows_gnu=ar
+  cargo build --release -p flashtex-engine --bin flashtex-host --target x86_64-pc-windows-gnu`
+- No TeX Live here: the host uses the lazily fetched bundle. Env:
+  `FLASHTEX_BUNDLE_LOCK=<repo>\tools\bundle\tl2026\flashtex-bundle.lock`,
+  `FLASHTEX_BUNDLE_ALLOW_FETCH=<digest>@<url>` (from the lock),
+  `FLASHTEX_BUNDLE_CACHE_DIR`, `FLASHTEX_FORMAT_CACHE_DIR`.
+  Socket paths must stay under 107 bytes (AF_UNIX).
+- Fixed on the fork only: `os::canonicalize_plain` in flashtex-runtime (kpathsea
+  cannot read `\\?\` paths, so bundle trees never loaded on Windows).
+- Known upstream Windows test failures, not ours: two `resolve_packages` tests in
+  `project-files/tests/helper_bin.rs` (`file://C:\..` inside a TOML basic string).
+- Next: (1) route ShellModel compiles through EngineHostClient instead of
+  WorkerClient/PreviewControllerClient; (2) render `DONE.pdf` with
+  Windows.Data.Pdf as the first preview, native v3 page drawing later;
+  (3) new diagnostics + source mapping; (4) bundle-consent prompt;
+  (5) new project-files ops; (6) Unicode mode via flashtex-host-unicode.
+
 ## How to build and run right now
 
 ```
