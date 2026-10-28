@@ -2,6 +2,7 @@ import AppKit
 import HostedWindows
 import XCTest
 @testable import FlashTeXMac
+@testable import FlashTeXEditorCore
 
 /// Snippet tab stops, context-aware completion sources and the editor
 /// niceties added by mac-intellisense-2 (Completion.swift,
@@ -49,9 +50,10 @@ final class SnippetTests: XCTestCase {
         let s = Completion.suggestions(in: "\\sbs", caretUTF16: 4, result: nil)
         XCTAssertEqual(labels(s).first, "\\subsection{...}")
         XCTAssertTrue(s.allSatisfy { Completion.matchRank($0.insertText.dropFirst().description, prefix: "sbs") == 2 })
-        let se = Completion.suggestions(in: "x \\se", caretUTF16: 5, result: nil)
+        let se = Completion.suggestions(in: "x \\se", caretUTF16: 5, result: nil, projectClass: "article")
         // Computed from the live vocabulary (not a hand-copied snapshot) so this
-        // tracks the compiler's inventory as it grows.
+        // tracks the compiler's inventory as it grows; an article project, as
+        // the helper assumes (beamer's `\setbeamer…` entries are gated out).
         XCTAssertEqual(labels(se), CompletionTestVocabulary.labels(forPrefix: "se"), "prefix matches only, in table order")
         // The rule itself, isolated from the compiler's vocabulary through a
         // synthetic `supported:` list injected via the seam on
@@ -83,13 +85,16 @@ final class SnippetTests: XCTestCase {
         let pkg2 = Completion.suggestions(in: "\\usepackage{amsmath,hyp", caretUTF16: 23, result: nil)
         XCTAssertEqual(labels(pkg2).first, "hyperref")
         XCTAssertEqual(Completion.completionRange(in: "\\usepackage{amsmath,hyp", caretUTF16: 23), NSRange(location: 20, length: 3))
-        // `\input{`/`\include{`/`\includegraphics{`: project files, matched on path or basename.
-        let files = ["chapters/one.tex", "chapters/two.tex", "figures/plot.pdf", "main.tex"]
+        // `\input{`/`\include{`: project documents; `\includegraphics{`: the
+        // project root's image files — each matched on path or basename.
+        let files = ["chapters/one.tex", "chapters/two.tex", "main.tex"]
         let inp = Completion.suggestions(in: "\\input{ch", caretUTF16: 9, metadata: nil, projectFiles: files)
         XCTAssertEqual(labels(inp), ["chapters/one.tex", "chapters/two.tex"])
         XCTAssertEqual(inp.first?.detail, "project document")
-        let gfx = Completion.suggestions(in: "\\includegraphics{plot", caretUTF16: 21, metadata: nil, projectFiles: files)
+        let gfx = Completion.suggestions(in: "\\includegraphics{plot", caretUTF16: 21, metadata: nil, projectFiles: files,
+                                         graphicsFiles: ["figures/plot.pdf", "figures/other.png"])
         XCTAssertEqual(labels(gfx), ["figures/plot.pdf"])
+        XCTAssertEqual(gfx.first?.detail, "graphics file")
         XCTAssertEqual(labels(Completion.suggestions(in: "\\include{", caretUTF16: 9, metadata: nil, projectFiles: files)), files)
         XCTAssertTrue(Completion.suggestions(in: "\\input{zz", caretUTF16: 9, metadata: nil, projectFiles: files).isEmpty)
         XCTAssertTrue(Completion.suggestions(in: "\\input{ch", caretUTF16: 9, result: nil).isEmpty, "no project: nothing")
@@ -176,6 +181,11 @@ final class SnippetTests: XCTestCase {
         window.makeFirstResponder(tv)
         defer { window.orderOut(nil) }
         tv.allowsUndo = true
+        // A bare view has no project, so nothing would gate class-scoped
+        // commands and beamer's `\frametitle` would lead `\fra` by table
+        // order. Give it what the hosted editor passes — the root document's
+        // class (`ProjectDocuments.entryDocumentClass`): this is an article.
+        tv.projectDocumentClass = { "article" }
 
         func accept(after typing: String, from seed: String) async throws {
             tv.string = seed
@@ -226,8 +236,9 @@ final class SnippetTests: XCTestCase {
 
         // Environment template: itemize with its first \item, Tab to the end.
         try await accept(after: "\\begin{item", from: "")
-        XCTAssertEqual(tv.string, "\\begin{itemize}\n\\item \n\\end{itemize}")
-        XCTAssertEqual(tv.selectedRange().location, 22)
+        let unit = EditorPreferences.shared.indentString // the body sits one unit in (EnvironmentEditingRules)
+        XCTAssertEqual(tv.string, "\\begin{itemize}\n\(unit)\\item \n\\end{itemize}")
+        XCTAssertEqual(tv.selectedRange().location, 22 + unit.utf16.count)
         key(tv, "\t", code: 48)
         XCTAssertEqual(tv.selectedRange().location, (tv.string as NSString).length)
         XCTAssertFalse(tv.isSnippetActive)

@@ -13,9 +13,10 @@ use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
 use crate::parser::{
-    Block, FillLeader, FontSizeLevel, Inline, LetterPart, ListLeftMargin, MathRow, ParagraphStyle,
-    TextFamily, TextStyle, CMR_EX_PER_EM, TEXT_DESCENDER_DEPTH_EM, TEXT_DESCENDER_GLYPHS,
-    UnderlineGeom,
+    Block, ContentsList, FancyHdr, FillLeader, FontSizeLevel, Inline, LetterPart, ListLeftMargin,
+    ListLength, MathRow,
+    PageStyleName, ParagraphStyle, TextFamily, TextStyle, CMR_EX_PER_EM, TEXT_DESCENDER_DEPTH_EM,
+    TEXT_DESCENDER_GLYPHS, UnderlineGeom,
 };
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
@@ -31,6 +32,17 @@ mod footnotes;
 pub const PAGE_WIDTH_PT: f64 = 612.0;
 pub const PAGE_HEIGHT_PT: f64 = 792.0;
 pub const MARGIN_PT: f64 = 72.0;
+/// fancyhdr chrome in this layout's fixed frame, measured against the
+/// pdflatex oracle (article, TeX Live 2026): the header baseline sits above
+/// the first body baseline the way the oracle's 96.3pt-from-top header sits
+/// above its 134.8pt body start, and the footer a `\footskip`-like 30pt
+/// below the text bottom. Frame approximations, not the class tables.
+const FANCY_HEAD_BASELINE_PT: f64 = 60.0;
+/// Head rule just under the header baseline (oracle: ~3.8pt below it).
+const FANCY_HEAD_RULE_GAP_PT: f64 = 3.8;
+const FANCY_FOOT_BASELINE_PT: f64 = 750.0;
+/// Foot rule above the footer baseline.
+const FANCY_FOOT_RULE_GAP_PT: f64 = 6.0;
 pub const BODY_SIZE_PT: f64 = 12.0;
 pub const LINE_SPACING: f64 = 1.2;
 pub const PARAGRAPH_GAP_PT: f64 = 6.0;
@@ -110,6 +122,13 @@ pub struct LayoutConstraints {
     pub measure_pt: f64,
     /// `\setlength{\parskip}{..}`; `None` keeps `PARAGRAPH_GAP_PT`.
     pub parskip_pt: Option<f64>,
+    /// True when the document class is one of the AMS classes (`amsart`,
+    /// `amsbook`, `amsproc`): `\tiny`..`\Huge` resolve against the AMS
+    /// `\@typesizes` tables (see `ams_size_declaration_pt`) rather than the
+    /// standard `size10/11/12.clo` tables. Set from the parsed
+    /// `\documentclass` by `Parsed::preamble_constraints`; callers laying
+    /// out bare blocks keep the default (`false`, standard classes).
+    pub ams_sizes: bool,
 }
 
 impl Default for LayoutConstraints {
@@ -118,6 +137,7 @@ impl Default for LayoutConstraints {
             font_size_pt: BODY_SIZE_PT,
             measure_pt: PAGE_WIDTH_PT - 2.0 * MARGIN_PT,
             parskip_pt: None,
+            ams_sizes: false,
         }
     }
 }
@@ -441,6 +461,34 @@ fn leader_items(fill: &LineFill, start: f64, width: f64, baseline: f64) -> Vec<T
     }
 }
 
+/// A full-measure fancyhdr rule item (`rule.is_some()` marks it; its text
+/// is empty, so word sequences skip it).
+fn push_fancy_rule(
+    out: &mut Vec<TextItem>,
+    rule_pt: f64,
+    top_pt: f64,
+    width_pt: f64,
+    size: f64,
+    span: Span,
+) {
+    if rule_pt <= 0.0 {
+        return;
+    }
+    out.push(TextItem {
+        text: String::new(),
+        x_pt: round2(MARGIN_PT),
+        baseline_y_pt: round2(top_pt),
+        font_size_pt: size,
+        span,
+        font: Font::TimesRoman,
+        rule: Some(RuleGeometry {
+            y_pt: round2(top_pt),
+            width_pt: round2(width_pt),
+            height_pt: rule_pt,
+        }),
+    });
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextItem {
     pub text: String,
@@ -550,6 +598,8 @@ pub struct FlowState {
     content_end: f64,
     /// See `LayoutCursor::closed_line_skip`.
     closed_line_skip: Option<f64>,
+    /// See `LayoutCursor::closed_after_alltt`.
+    closed_after_alltt: bool,
     /// See `LayoutCursor::eject_after_line`.
     eject_after_line: bool,
 }
@@ -564,6 +614,7 @@ impl FlowState {
             && self.trailing_line_items == other.trailing_line_items
             && self.content_end.to_bits() == other.content_end.to_bits()
             && self.closed_line_skip.map(f64::to_bits) == other.closed_line_skip.map(f64::to_bits)
+            && self.closed_after_alltt == other.closed_after_alltt
             && self.eject_after_line == other.eject_after_line
     }
 }
@@ -639,6 +690,18 @@ impl TabbingUndo {
     }
 }
 
+/// Scratch hbox state for [`LayoutCursor::measure_phantom`]: the same `x` /
+/// `content_end` pair `place` keeps (the pen, and the pen without the
+/// eagerly reserved trailing inter-word space), plus the running ascent and
+/// descent maxima (`ensure_extents` folded by hand, since no line is open).
+#[derive(Default)]
+struct PhantomBox {
+    x: f64,
+    content_end: f64,
+    ascent: f64,
+    descent: f64,
+}
+
 /// Resumable layout cursor shared by clean and incremental compilation.
 pub struct LayoutCursor {
     pages: Vec<Page>,
@@ -675,6 +738,29 @@ pub struct LayoutCursor {
     /// reset to 1 by every `\pagenumbering` marker, stepped by every page
     /// shipped after it (latex.ltx's `\c@page`).
     page_value: u32,
+    /// fancyhdr's running-head fields and rule widths, installed from
+    /// [`crate::parser::Parsed::fancy`]; read back when a `fancy` page ships.
+    fancy: FancyHdr,
+    /// The fields in force at the position being set: [`Self::fancy`]'s at
+    /// the start, then each `Inline::FancyFields` marker's.
+    fancy_fields: FancyHdr,
+    /// The fields each shipped page closed under, in `pages` order, like
+    /// `page_chrome`.
+    page_fancy: Vec<FancyHdr>,
+    /// The `\pagestyle` in force at the position being set (`Plain` until a
+    /// marker says otherwise). Only `Fancy` draws anything here.
+    chrome: PageStyleName,
+    /// A `\thispagestyle` waiting for its page to ship: (page index, style).
+    thispage: Option<(usize, PageStyleName)>,
+    /// The style each shipped page closed under, in `pages` order; the last
+    /// page is recorded when chrome is stamped.
+    page_chrome: Vec<PageStyleName>,
+    /// The displayed page number each shipped page closed under, in `pages`
+    /// order: `(\pagenumbering style, \c@page)`, so a `\thepage` inside a
+    /// field resolves on its own page. The style is the one in force at end
+    /// of layout -- across a mid-document `\pagenumbering` switch it may lag
+    /// by one numbering change, a documented approximation.
+    page_counts: Vec<(crate::xref::NumberStyle, u32)>,
     cleveref: crate::xref::CleverefConfig,
     /// Contents entries from the previous pass, typeset by
     /// `Block::TableOfContents`.
@@ -700,10 +786,18 @@ pub struct LayoutCursor {
     /// and its own `\addvspace`-style gap only adds what exceeds this skip.
     /// Cleared by `newline`.
     closed_line_skip: Option<f64>,
+    /// The pending `closed_line_skip` was laid down by a `Block::Alltt`
+    /// (`\@endparenv`'s `\@topsepadd`): the next block's exit gap uses the
+    /// alltt entry's `\parskip` convention (`unwrap_or(0.0)`) instead of the
+    /// ordinary paragraph gap. Set and consumed together with
+    /// `closed_line_skip`, so it needs no handling of its own elsewhere.
+    closed_after_alltt: bool,
     /// A forced `Inline::PagePenalty` (`\pagebreak` inside a paragraph,
     /// `\vadjust{\penalty-\@M}`) was set on the current line: the page ends
     /// after that line, when the next one starts.
     eject_after_line: bool,
+    /// `alltt` source lines are unbreakable, like `verbatim` lines.
+    no_wrap: bool,
 }
 
 impl LayoutCursor {
@@ -756,6 +850,13 @@ impl LayoutCursor {
             collected_labels: BTreeMap::new(),
             page_style: crate::xref::NumberStyle::Arabic,
             page_value: 1,
+            fancy: FancyHdr::default(),
+            fancy_fields: FancyHdr::default(),
+            page_fancy: Vec::new(),
+            chrome: PageStyleName::Plain,
+            thispage: None,
+            page_chrome: Vec::new(),
+            page_counts: Vec::new(),
             cleveref,
             resolved_toc: Vec::new(),
             collected_toc: Vec::new(),
@@ -766,7 +867,9 @@ impl LayoutCursor {
             list_margin_pt: 0.0,
             footnotes: footnotes::FootnoteState::default(),
             closed_line_skip: None,
+            closed_after_alltt: false,
             eject_after_line: false,
+            no_wrap: false,
         }
     }
 
@@ -860,9 +963,37 @@ impl LayoutCursor {
         }
     }
 
+    /// `size_declaration_pt` for this document's own class: the AMS
+    /// `\@typesizes` rung when the parsed `\documentclass` was an AMS class
+    /// (`constraints.ams_sizes`), the standard class table otherwise.
+    fn declaration_pt(&self, level: FontSizeLevel) -> f64 {
+        size_declaration_pt_for_class(
+            level,
+            self.constraints.font_size_pt,
+            self.constraints.ams_sizes,
+        )
+    }
+
+    /// One text run's point size for its own `TextStyle`: the AMS `\Tiny`
+    /// rung (GH-824) when the style sits on rung 0 of an AMS class's
+    /// ladder, the class's declaration table otherwise, and the ambient
+    /// size when no declaration is in effect. The rung-0 read is gated on
+    /// `constraints.ams_sizes` as well as the style bit, so the bit — only
+    /// ever set for AMS classes — can never change a non-AMS size.
+    fn run_size_pt(&self, style: TextStyle, ambient_pt: f64) -> f64 {
+        match style.size {
+            Some(_) if style.ams_tiny && self.constraints.ams_sizes => {
+                ams_size_declaration_pt(0, self.constraints.font_size_pt).0
+            }
+            Some(level) => self.declaration_pt(level),
+            None => ambient_pt,
+        }
+    }
+
     fn newline(&mut self, size: f64) {
         self.line_spaces.clear();
         self.closed_line_skip = None;
+        self.closed_after_alltt = false;
         self.resolve_hfill();
         self.align_current_line();
         self.footnotes
@@ -998,11 +1129,19 @@ impl LayoutCursor {
             self.x = self.content_end;
         }
         let (w, span) = shaped_width(&text, size, font, span, &mut self.diagnostics);
-        if self.x > self.left_edge() && self.x + w > self.right_edge() {
+        if !self.no_wrap && self.x > self.left_edge() && self.x + w > self.right_edge() {
             self.wrap_line(size);
         }
         self.note_space();
         self.ensure_extents(size, size * (LINE_SPACING - 1.0));
+        // An empty run only carries the glue in front of it (the first of
+        // two spaces around a command that set nothing, or the space
+        // before a `\ `): it takes its space and sets no item.
+        if text.is_empty() {
+            self.content_end = self.x;
+            self.x += word_space(size, font);
+            return;
+        }
         let item = TextItem {
             text,
             x_pt: round2(self.x),
@@ -1041,7 +1180,7 @@ impl LayoutCursor {
         let metrics = Core14LogoMetrics { font, size };
         let built = tb::layout_logo(logo, &metrics);
         let width = tb::sp_to_pt(built.width);
-        if self.x > self.left_edge() && self.x + width > self.right_edge() {
+        if !self.no_wrap && self.x > self.left_edge() && self.x + width > self.right_edge() {
             self.wrap_line(size);
         }
         self.note_space();
@@ -1109,7 +1248,7 @@ impl LayoutCursor {
         };
         let b = rule.resolve(&cx);
         let width = tb::sp_to_pt(b.width);
-        if self.x > self.left_edge() && self.x + width > self.right_edge() {
+        if !self.no_wrap && self.x > self.left_edge() && self.x + width > self.right_edge() {
             self.wrap_line(size);
         }
         self.note_space();
@@ -1139,6 +1278,465 @@ impl LayoutCursor {
         self.x += width + word_space(size, font);
     }
 
+    /// Natural (width, ascent, descent, trailing space) of `inlines` set as
+    /// one unbreakable hbox at `size` in `font`: what `emit` would advance
+    /// and ensure if the content were typeset visibly, with no item reaching
+    /// the page. Each arm mirrors its `emit` counterpart's width and extents
+    /// arithmetic (including its diagnostics), so a `\phantom` reserves
+    /// exactly the argument's real typeset extent in this layout's own
+    /// metrics. The trailing space is the scratch pen past its content end
+    /// (the last piece's inter-word reservation, as `place` leaves it), so
+    /// the caller advances exactly as if the content had been spliced.
+    ///
+    /// Deliberate approximations (all outside an hbox's natural geometry,
+    /// all documented): infinite glue (`\hfill`, `\hskip..plus..fil`)
+    /// measures its natural width 0 without queueing a fill mark; `\\` and
+    /// penalties inside the box are ignored (a real hbox never breaks);
+    /// display rows measure 0; a footnote contributes its mark only, its
+    /// page-bottom text is not laid out; references use the same fallback
+    /// text `emit` uses when unresolved.
+    fn measure_phantom(
+        &mut self,
+        inlines: &[Inline],
+        size: f64,
+        font: Font,
+    ) -> (f64, f64, f64, f64) {
+        let mut m = PhantomBox::default();
+        self.measure_into(&mut m, inlines, size, font);
+        (m.content_end, m.ascent, m.descent, m.x - m.content_end)
+    }
+
+    /// One arm of [`LayoutCursor::measure_phantom`]: fold `inline` into the
+    /// scratch hbox `m`, mirroring the matching `emit` arm.
+    fn measure_into(&mut self, m: &mut PhantomBox, inlines: &[Inline], size: f64, font: Font) {
+        for inline in inlines {
+            match inline {
+                Inline::Text {
+                    text,
+                    span,
+                    style,
+                    space_before,
+                    ..
+                } => {
+                    let text_size = style.size.map_or(size, |level| {
+                        size_declaration_pt(level, self.constraints.font_size_pt)
+                    });
+                    if !space_before {
+                        m.x = m.content_end;
+                    }
+                    let text_font = style_font(*style);
+                    let (w, _) =
+                        shaped_width(text, text_size, text_font, *span, &mut self.diagnostics);
+                    m.ascent = m.ascent.max(text_size);
+                    m.descent = m.descent.max(text_size * (LINE_SPACING - 1.0));
+                    m.content_end = m.x + w;
+                    m.x += w + word_space(text_size, text_font);
+                }
+                Inline::LineBreak { .. } => {}
+                Inline::Penalty { .. } | Inline::PagePenalty { .. } => {}
+                Inline::Discretionary {
+                    nobreak, span, style, ..
+                } => {
+                    if !nobreak.is_empty() {
+                        let text_size = style.size.map_or(size, |level| {
+                            size_declaration_pt(level, self.constraints.font_size_pt)
+                        });
+                        let text_font = style_font(*style);
+                        let (w, _) = shaped_width(
+                            nobreak,
+                            text_size,
+                            text_font,
+                            *span,
+                            &mut self.diagnostics,
+                        );
+                        m.ascent = m.ascent.max(text_size);
+                        m.descent = m.descent.max(text_size * (LINE_SPACING - 1.0));
+                        m.content_end = m.x + w;
+                        m.x += w + word_space(text_size, text_font);
+                    }
+                }
+                Inline::TextGlue { em, .. } => {
+                    m.x += em * size;
+                }
+                Inline::Math {
+                    list,
+                    space_before,
+                    ..
+                } => {
+                    if !space_before {
+                        m.x = m.content_end;
+                    }
+                    let b = math::layout(list, size, &mut self.diagnostics);
+                    m.ascent = m.ascent.max(b.ascent);
+                    m.descent = m.descent.max(b.descent);
+                    m.content_end = m.x + b.width;
+                    m.x += b.width + word_space(size, Font::TimesRoman);
+                }
+                // A display has no natural hbox width; `box_inlines` already
+                // drops display blocks, so only an inline-held row table can
+                // arrive here, and it measures nothing.
+                Inline::MathRows { .. } => {}
+                // Zero-width markers: no extent inside a phantom's hbox.
+                Inline::Label { .. }
+                | Inline::PageNumbering { .. }
+                | Inline::PageStyle { .. }
+                | Inline::Mark { .. }
+                | Inline::FancyFields { .. }
+                | Inline::OverlayBegin { .. }
+                | Inline::OverlayEnd { .. }
+                | Inline::Onslide { .. } => {}
+                Inline::ThePage { span, space_before } => {
+                    let text = self.page_style.format(self.page_value);
+                    if !space_before {
+                        m.x = m.content_end;
+                    }
+                    let (w, _) =
+                        shaped_width(&text, size, font, *span, &mut self.diagnostics);
+                    m.ascent = m.ascent.max(size);
+                    m.descent = m.descent.max(size * (LINE_SPACING - 1.0));
+                    m.content_end = m.x + w;
+                    m.x += w + word_space(size, font);
+                }
+                Inline::Reference {
+                    key,
+                    page,
+                    equation,
+                    span,
+                    space_before,
+                    ..
+                } => {
+                    let text = match self.resolved_labels.get(key) {
+                        Some(value) => {
+                            let text = if *page {
+                                value.page_text.clone()
+                            } else {
+                                value.number.clone()
+                            };
+                            if *equation {
+                                format!("({text})")
+                            } else {
+                                text
+                            }
+                        }
+                        None if *equation => "(??)".to_string(),
+                        None => "??".to_string(),
+                    };
+                    // An undefined key typesets bold, like `emit`.
+                    let text_font = if self.resolved_labels.contains_key(key) {
+                        font
+                    } else {
+                        Font::TimesBold
+                    };
+                    if !space_before {
+                        m.x = m.content_end;
+                    }
+                    let (w, _) =
+                        shaped_width(&text, size, text_font, *span, &mut self.diagnostics);
+                    m.ascent = m.ascent.max(size);
+                    m.descent = m.descent.max(size * (LINE_SPACING - 1.0));
+                    m.content_end = m.x + w;
+                    m.x += w + word_space(size, text_font);
+                }
+                Inline::CleverReference {
+                    keys,
+                    page,
+                    range,
+                    label_only,
+                    capitalise,
+                    span,
+                    space_before,
+                    ..
+                } => {
+                    let (text, unresolved) = clever_reference_text(
+                        keys,
+                        &self.resolved_labels,
+                        &self.cleveref,
+                        *page,
+                        *range,
+                        *label_only,
+                        *capitalise,
+                    );
+                    let text_font = if unresolved { Font::TimesBold } else { font };
+                    if !space_before {
+                        m.x = m.content_end;
+                    }
+                    let (w, _) =
+                        shaped_width(&text, size, text_font, *span, &mut self.diagnostics);
+                    m.ascent = m.ascent.max(size);
+                    m.descent = m.descent.max(size * (LINE_SPACING - 1.0));
+                    m.content_end = m.x + w;
+                    m.x += w + word_space(size, text_font);
+                }
+                Inline::HFill { .. } => {}
+                Inline::HSpace {
+                    pt,
+                    space_before_pt,
+                    space_after_pt,
+                    ..
+                } => {
+                    m.x = m.content_end + space_before_pt + pt + space_after_pt;
+                    m.content_end = m.x;
+                }
+                Inline::TabStop { .. } | Inline::TabJump { .. } => {}
+                Inline::Footnote {
+                    number,
+                    span,
+                    mark,
+                    space_before,
+                    ..
+                } => {
+                    // The running-text mark only; the page-bottom note text
+                    // has no inline geometry (see the method docs).
+                    if *mark {
+                        let body = self.constraints.font_size_pt;
+                        let mark_size = footnotes::script_mark_size(body);
+                        if !space_before {
+                            m.x = m.content_end;
+                        }
+                        let (w, _) = shaped_width(
+                            number,
+                            mark_size,
+                            Font::TimesRoman,
+                            *span,
+                            &mut self.diagnostics,
+                        );
+                        m.ascent = m.ascent.max(
+                            mark_size + footnotes::superscript_raise(body),
+                        );
+                        m.descent = m.descent.max(mark_size * (LINE_SPACING - 1.0));
+                        m.content_end = m.x + w;
+                        m.x += w + word_space(mark_size, Font::TimesRoman);
+                    }
+                }
+                Inline::Marginpar { .. } => {}
+                Inline::Tabular(table) => {
+                    let body = self.constraints.font_size_pt;
+                    let table_size = table.style.size.map_or(size, |level| {
+                        size_declaration_pt(level, body)
+                    });
+                    if !table.space_before {
+                        m.x = m.content_end;
+                    }
+                    let b = crate::tabular::layout(self, table, table_size);
+                    m.ascent = m.ascent.max(b.ascent);
+                    m.descent = m.descent.max(b.descent);
+                    m.content_end = m.x + b.width;
+                    m.x += b.width + word_space(size, Font::TimesRoman);
+                }
+                Inline::Verbatim {
+                    text,
+                    span,
+                    space_before,
+                    ..
+                } => {
+                    if !space_before {
+                        m.x = m.content_end;
+                    }
+                    let (w, _) = shaped_width(
+                        text,
+                        size,
+                        Font::Courier,
+                        *span,
+                        &mut self.diagnostics,
+                    );
+                    m.ascent = m.ascent.max(size);
+                    m.descent = m.descent.max(size * (LINE_SPACING - 1.0));
+                    m.content_end = m.x + w;
+                    m.x += w + word_space(size, Font::Courier);
+                }
+                // Transparent wrappers (`emit` splices them): thread the same
+                // scratch box, so widths and extents fold in exactly as if
+                // the content stood alone.
+                Inline::ColorBox(b) => self.measure_into(m, &b.content, size, font),
+                Inline::HBox(b) => self.measure_into(m, &b.content, size, font),
+                // The body's blocks are laid out where they stand.
+                Inline::Minipage(_) => {}
+                Inline::Transform(b) => {
+                    self.diagnostics.push(
+                        Diagnostic::warning(
+                            "graphics transforms are not applied by this layout",
+                            Some(b.span),
+                            Some("set the content untransformed".into()),
+                        )
+                        .with_code(crate::diagnostics::DiagnosticCode::UnsupportedFeature),
+                    );
+                    self.measure_into(m, &b.content, size, font);
+                }
+                Inline::Logo {
+                    logo,
+                    span,
+                    style,
+                    space_before,
+                } => {
+                    use crate::text_builtins::{self as tb, LogoFont};
+                    let text_size = style.size.map_or(size, |level| {
+                        size_declaration_pt(level, self.constraints.font_size_pt)
+                    });
+                    if !space_before {
+                        m.x = m.content_end;
+                    }
+                    let metrics = Core14LogoMetrics {
+                        font: style_font(*style),
+                        size: text_size,
+                    };
+                    let built = tb::layout_logo(*logo, &metrics);
+                    let width = tb::sp_to_pt(built.width);
+                    let ascent = built
+                        .glyphs
+                        .iter()
+                        .map(|g| {
+                            tb::sp_to_pt(g.raise) + metrics.cap_pt(metrics.size_of(g.font))
+                        })
+                        .fold(text_size, f64::max);
+                    let descent = built
+                        .glyphs
+                        .iter()
+                        .map(|g| -tb::sp_to_pt(g.raise))
+                        .fold(text_size * (LINE_SPACING - 1.0), f64::max);
+                    for glyph in &built.glyphs {
+                        let glyph_font = if glyph.font == LogoFont::MathItalic {
+                            Font::Symbol
+                        } else {
+                            metrics.font
+                        };
+                        let glyph_size = metrics.size_of(glyph.font);
+                        let text = glyph.ch.to_string();
+                        let _ = shaped_width(
+                            &text,
+                            glyph_size,
+                            glyph_font,
+                            *span,
+                            &mut self.diagnostics,
+                        );
+                    }
+                    m.ascent = m.ascent.max(ascent);
+                    m.descent = m.descent.max(descent);
+                    m.content_end = m.x + width;
+                    m.x += width + word_space(text_size, metrics.font);
+                }
+                Inline::Kern { amount, style, .. } => {
+                    use crate::text_builtins::{self as tb};
+                    let text_size = style.size.map_or(size, |level| {
+                        size_declaration_pt(level, self.constraints.font_size_pt)
+                    });
+                    let cx = crate::text_builtins::DimenContext {
+                        quad: crate::text_builtins::pt_to_sp(text_size),
+                        ..Default::default()
+                    };
+                    let pt = tb::sp_to_pt(amount.resolve(&cx));
+                    m.x = m.content_end + pt;
+                    m.content_end = m.x;
+                }
+                Inline::Rule {
+                    rule,
+                    space_before,
+                    ..
+                } => {
+                    use crate::text_builtins::{self as tb};
+                    if !space_before {
+                        m.x = m.content_end;
+                    }
+                    // The same context `place_rule` resolves in: the arm's
+                    // size and font, not the rule's own style.
+                    let cx = tb::DimenContext {
+                        quad: tb::pt_to_sp(size),
+                        x_height: tb::pt_to_sp(x_height_pt(font, size)),
+                        text_width: tb::pt_to_sp(self.constraints.measure_pt),
+                        line_width: tb::pt_to_sp(self.right_edge() - self.left_edge()),
+                        column_width: tb::pt_to_sp(self.constraints.measure_pt),
+                    };
+                    let b = rule.resolve(&cx);
+                    let width = tb::sp_to_pt(b.width);
+                    m.ascent = m.ascent.max(tb::sp_to_pt(b.height));
+                    m.descent = m.descent.max(tb::sp_to_pt(b.depth));
+                    m.content_end = m.x + width;
+                    m.x += width + word_space(size, font);
+                }
+                Inline::Underline(u) => {
+                    let (width, height, depth, trailing) =
+                        self.measure_phantom(&u.content, size, font);
+                    if !u.space_before {
+                        m.x = m.content_end;
+                    }
+                    // The content's own box depth, as `emit` rebuilds it:
+                    // what the content added beyond the nominal line, or the
+                    // descender depth below it.
+                    let box_depth = match u.geom {
+                        UnderlineGeom::Underbar => 0.0,
+                        _ => (depth - size * (LINE_SPACING - 1.0))
+                            .max(0.0)
+                            .max(content_descender_depth(&u.content, size)),
+                    };
+                    let descender = 0.25 * size;
+                    let ex = CMR_EX_PER_EM * size;
+                    let (_, extra_depth) = u.geom.rule_top_and_depth(
+                        u.thickness_pt,
+                        box_depth,
+                        descender,
+                        ex,
+                    );
+                    // The rule never raises the line above the content (see
+                    // `emit`); only its extra depth can grow it.
+                    m.ascent = m.ascent.max(height);
+                    m.descent = m.descent.max(depth.max(extra_depth.max(0.0)));
+                    m.content_end = m.x + width;
+                    m.x += width + trailing;
+                }
+                Inline::TextScript(t) => {
+                    let local = t.style.size.map_or(size, |level| {
+                        size_declaration_pt(level, self.constraints.font_size_pt)
+                    });
+                    let mark_size = footnotes::script_mark_size(local);
+                    let (width, height, depth, trailing) =
+                        self.measure_phantom(&t.content, mark_size, font);
+                    if !t.space_before {
+                        m.x = m.content_end;
+                    }
+                    // The script-size box shifted like `emit` shifts the
+                    // placed items: up for a superscript, down past `sub1`
+                    // for a tall subscript box.
+                    let shift = if t.superscript {
+                        footnotes::superscript_raise(local)
+                    } else {
+                        -footnotes::subscript_drop(local, height)
+                    };
+                    m.ascent = m.ascent.max((height + shift).max(0.0));
+                    m.descent = m.descent.max((depth - shift).max(0.0));
+                    m.content_end = m.x + width;
+                    m.x += width + trailing;
+                }
+                Inline::Phantom(p) => {
+                    let (mut width, mut ascent, mut descent, trailing) =
+                        self.measure_phantom(&p.content, size, font);
+                    if !p.horizontal {
+                        width = 0.0;
+                    }
+                    if !p.vertical {
+                        ascent = 0.0;
+                        descent = 0.0;
+                    }
+                    if !p.space_before {
+                        m.x = m.content_end;
+                    }
+                    m.ascent = m.ascent.max(ascent);
+                    m.descent = m.descent.max(descent);
+                    m.content_end = m.x + width;
+                    m.x += width + trailing;
+                }
+                Inline::Graphic(g) => {
+                    self.diagnostics.push(
+                        Diagnostic::warning(
+                            "\\includegraphics: this layout does not load or draw images",
+                            Some(g.span),
+                            Some("left no space for the image".into()),
+                        )
+                        .with_code(crate::diagnostics::DiagnosticCode::UnsupportedFeature),
+                    );
+                }
+            }
+        }
+    }
+
     /// Explicit horizontal glue (`\quad`/`\qquad` in text mode): no glyph is
     /// placed, so there is nothing to draw, only `x` to advance. Mirrors TeX's
     /// discardable glue at a line break: if the glue would overflow the
@@ -1146,7 +1744,7 @@ impl LayoutCursor {
     /// carried onto the new line.
     fn text_glue(&mut self, em: f64, size: f64) {
         let width = em * size;
-        if self.x > self.left_edge() && self.x + width > self.right_edge() {
+        if !self.no_wrap && self.x > self.left_edge() && self.x + width > self.right_edge() {
             self.wrap_line(size);
             return;
         }
@@ -1173,7 +1771,7 @@ impl LayoutCursor {
         if !space_before {
             self.x = self.content_end;
         }
-        if self.x > self.left_edge() && self.x + b.width > self.right_edge() {
+        if !self.no_wrap && self.x > self.left_edge() && self.x + b.width > self.right_edge() {
             self.wrap_line(size);
         }
         self.note_space();
@@ -1249,14 +1847,20 @@ impl LayoutCursor {
     }
 
     /// Draws an `\item` label (bullet/number) right-aligned so it ends
-    /// `\labelsep` before the item's hanging-indent margin, on the item's
+    /// `label_sep` before the item's hanging-indent margin, on the item's
     /// first baseline — mirroring `\makelabel`'s right-justified label box.
     /// Deliberately unclamped: a label wider than the available `labelwidth`
     /// is not wrapped or pushed into the item text, it just extends further
     /// left, exactly like real LaTeX's overfull label box.
-    fn place_list_label(&mut self, text: &str, span: Span, margin_pt: f64, size: f64) {
+    fn place_list_label(
+        &mut self,
+        text: &str,
+        span: Span,
+        margin_pt: f64,
+        size: f64,
+        label_sep: f64,
+    ) {
         let width = glyph_width(text, size, Font::TimesRoman);
-        let label_sep = LIST_LABELSEP_EM * size;
         let x_pt = round2(MARGIN_PT + margin_pt - label_sep - width);
         let item = TextItem {
             text: text.to_string(),
@@ -1315,6 +1919,8 @@ impl LayoutCursor {
                     span,
                     style,
                     space_before,
+                    glue_before,
+                    boundary_before,
                 } if !section => Inline::Text {
                     text,
                     span,
@@ -1323,6 +1929,8 @@ impl LayoutCursor {
                         ..style
                     },
                     space_before,
+                    boundary_before,
+                    glue_before,
                 },
                 other => other,
             })
@@ -1489,7 +2097,13 @@ impl LayoutCursor {
     /// Apply the inter-block spacing and return the state used as a cache key.
     pub fn prepare_block(&mut self, block: &Block) -> FlowState {
         let body_size = self.constraints.font_size_pt;
-        if matches!(block, Block::Paragraph(inlines) if inlines.iter().all(|inline| matches!(inline, Inline::Label { .. })))
+        // A paragraph of only whatsits (`\label`, and the zero-width
+        // `\pagestyle` / `\thispagestyle` markers, which collect no text)
+        // lays out nothing and takes no spacing: without this a marker-only
+        // paragraph (a lone `\pagestyle{empty}` line, or a preamble marker
+        // flushed by `\maketitle`) would consume `first_block` and shift
+        // every later page break.
+        if matches!(block, Block::Paragraph(inlines) if inlines.iter().all(|inline| matches!(inline, Inline::Label { .. } | Inline::PageStyle { .. } | Inline::Mark { .. } | Inline::FancyFields { .. })))
         {
             return self.state();
         }
@@ -1509,6 +2123,9 @@ impl LayoutCursor {
             .closed_line_skip
             .take()
             .filter(|_| self.state().trailing_line_items == 0);
+        // Consumed together with `closed`: only the guarded arms below ever
+        // observe it, and `newline` clears both, so no stale flag survives.
+        let closed_after_alltt = std::mem::take(&mut self.closed_after_alltt);
         let parskip = self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT);
         // Lists reset `\parskip` to `\parsep`, so a document's custom
         // `\parskip` never reaches its items. Without one, the fixed
@@ -1526,6 +2143,9 @@ impl LayoutCursor {
                 if closed.is_some() =>
             {
                 let gap = match block {
+                    Block::Paragraph(_) | Block::Tabbing { .. } if closed_after_alltt => {
+                        self.constraints.parskip_pt.unwrap_or(0.0)
+                    }
                     Block::Paragraph(_) | Block::Tabbing { .. } => parskip,
                     // A `\\` that ended a centred paragraph is `\@centercr`,
                     // which cancels the next paragraph's `\parskip`.
@@ -1576,9 +2196,12 @@ impl LayoutCursor {
                     self.vertical_gap(heading_before_skip(*level, body_size) + parskip);
                 }
             }
-            // Opens with `\section*{\contentsname}`.
-            Block::TableOfContents { .. } => {
-                if !self.first_block {
+            // Opens with `\section*{\contentsname}`. This v1 layout sets
+            // no float or listing list (it has no captions to collect), so
+            // `\listoffigures` and friends stay the blank they were before
+            // the parser modelled them (PLAN1 site 39).
+            Block::TableOfContents { list, .. } => {
+                if *list == ContentsList::Toc && !self.first_block {
                     self.newline(heading_size(1, body_size));
                     self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
                 }
@@ -1627,6 +2250,36 @@ impl LayoutCursor {
                     self.force_page_break();
                 }
             }
+            // A beamer slide: one page per frame, like `\newpage` (the
+            // frame geometry itself is the render pipeline's; this cursor
+            // sets the frametitle as a level-1 heading at the page top).
+            Block::BeamerFrameBegin { .. } => {
+                if !self.first_block {
+                    self.force_page_break();
+                }
+            }
+            Block::BeamerFrameEnd { .. } | Block::BeamerSection { .. } => {}
+            Block::BeamerTitlePage { .. } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                }
+                self.vertical_gap(2.0 * body_size);
+            }
+            // beamer blocks, columns and captions (Tier 3): this cursor
+            // sets the block title as a heading line and the caption like
+            // a figure caption; the columns flow one after the other.
+            Block::BeamerBlockBegin { .. } | Block::BeamerCaption { .. } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(PARAGRAPH_GAP_PT);
+                }
+            }
+            Block::BeamerBlockEnd { .. }
+            | Block::BeamerColumnsBegin { .. }
+            | Block::BeamerColumn { .. }
+            | Block::BeamerColumnsEnd { .. }
+            | Block::MinipageBegin { .. }
+            | Block::MinipageEnd { .. } => {}
             Block::Verbatim { .. } => {
                 if !self.first_block {
                     self.newline(body_size);
@@ -1634,6 +2287,22 @@ impl LayoutCursor {
                         self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT)
                             + VERBATIM_TOPSEP_PT,
                     );
+                }
+            }
+            Block::Alltt { vmode, .. } => {
+                let topsep = alltt_topsep_pt(body_size);
+                let opening = topsep
+                    + if *vmode {
+                        alltt_partopsep_pt(body_size)
+                    } else {
+                        0.0
+                    }
+                    + self.constraints.parskip_pt.unwrap_or(0.0);
+                if let Some(skip) = closed {
+                    self.vertical_gap((opening - skip).max(0.0));
+                } else if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(opening);
                 }
             }
             Block::TitleBlock { .. } => {
@@ -1658,7 +2327,7 @@ impl LayoutCursor {
             // rarer multi-`\vfill` case.
             // Returned before the inter-block spacing, above.
             Block::Penalty { .. } => {}
-            Block::VFill => {
+            Block::VFill { .. } => {
                 if !self.first_block && self.state().trailing_line_items > 0 {
                     self.newline(body_size);
                 }
@@ -1831,7 +2500,7 @@ impl LayoutCursor {
                     self.closed_line_skip = Some(0.0);
                 }
             }
-            Block::Styled { style, content, .. } => {
+            Block::Styled { style, content, lists, .. } => {
                 self.style = Some(*style);
                 self.justify = *style == ParagraphStyle::Quote;
                 // `left_edge()` depends on `self.style` (the `quote` indent),
@@ -1840,7 +2509,23 @@ impl LayoutCursor {
                 // Otherwise this block's first item, if glued to what
                 // precedes it in the source (`space_before: false`), would
                 // rewind past the indent to the stale, unindented position.
-                self.x = self.left_edge();
+                // `quotation` (article.cls `\listparindent 1.5em`, copied to
+                // `\parindent` by `\list`) indents every paragraph's first
+                // line; `quote` sets no `\listparindent`, so its paragraphs
+                // start at the margin as before. Wrapped lines restart at
+                // `left_edge()` (`newline`), so only this first line moves.
+                let first_line_indent = match style {
+                    ParagraphStyle::Quote => lists
+                        .iter()
+                        .rev()
+                        .find_map(|frame| match frame.listparindent() {
+                            Some(ListLength::Pt(pt)) => Some(pt),
+                            _ => None,
+                        })
+                        .unwrap_or(0.0),
+                    _ => 0.0,
+                };
+                self.x = self.left_edge() + first_line_indent;
                 self.content_end = self.x;
                 emit(self, content, body_size, Font::TimesRoman);
                 self.resolve_hfill();
@@ -1862,6 +2547,7 @@ impl LayoutCursor {
                 extra_gap_after_pt,
                 leftmargin,
                 widest_label,
+                labelsep_pt,
                 ..
             } => {
                 self.list_margin_pt = match widest_label {
@@ -1879,7 +2565,8 @@ impl LayoutCursor {
                 };
                 self.justify = true;
                 if let Some((text, span)) = label.as_ref().filter(|(text, _)| !text.is_empty()) {
-                    self.place_list_label(text, *span, self.list_margin_pt, body_size);
+                    let label_sep = labelsep_pt.unwrap_or(LIST_LABELSEP_EM * body_size);
+                    self.place_list_label(text, *span, self.list_margin_pt, body_size, label_sep);
                 }
                 // Same reasoning as `Block::Styled`: `left_edge()` now
                 // reflects the new hanging indent, so `content_end` must
@@ -1906,6 +2593,7 @@ impl LayoutCursor {
                 number,
                 number_span,
                 content,
+                style: _,
             } => {
                 if self.collect_toc && !number.is_empty() {
                     self.collected_toc.push(TocEntry {
@@ -1949,17 +2637,23 @@ impl LayoutCursor {
                 emit(self, content, body_size, Font::TimesRoman);
                 self.newline(body_size);
             }
-            Block::VSpace { .. } | Block::PageBreak | Block::VFill | Block::Penalty { .. } => {}
-            Block::TableOfContents { span } => {
+            Block::VSpace { .. } | Block::PageBreak | Block::VFill { .. } | Block::Penalty { .. } => {}
+            // `\listoffigures`/`\listoftables`/`\lstlistoflistings` set
+            // nothing here: this layout collects headings, not captions.
+            Block::TableOfContents { list, .. } if *list != ContentsList::Toc => {}
+            Block::TableOfContents { span, .. } => {
                 self.render_block(&Block::Heading {
                     level: 1,
                     number: String::new(),
                     number_span: *span,
+                    style: TextStyle::BOLD,
                     content: vec![Inline::Text {
                         text: "Contents".to_string(),
                         span: *span,
                         style: TextStyle::BOLD,
                         space_before: true,
+                        boundary_before: false,
+                        glue_before: None,
                     }],
                 });
                 let entries = std::mem::take(&mut self.resolved_toc);
@@ -2003,7 +2697,17 @@ impl LayoutCursor {
 
                 self.x = self.left_edge();
                 self.content_end = self.x;
-                emit(self, authors, author_size, Font::TimesRoman);
+                // One `\and` group per line, which is what the flat author
+                // run's separating `Inline::LineBreak` did before the groups
+                // became `Vec<Vec<Inline>>` (PLAN1 site 38). Placing them
+                // side by side in `tabular` columns is still not modelled
+                // (the parser warns), here or in the render pipeline.
+                for (i, group) in authors.iter().enumerate() {
+                    if i > 0 {
+                        self.newline(author_size);
+                    }
+                    emit(self, group, author_size, Font::TimesRoman);
+                }
                 self.newline(if date.is_some() {
                     author_size
                 } else {
@@ -2019,6 +2723,76 @@ impl LayoutCursor {
                 }
                 self.vertical_gap(1.5 * body_size);
 
+                self.style = None;
+            }
+            Block::BeamerFrameBegin { title, subtitle, .. } => {
+                // The frametitle at `\Large` as a heading line; the exact
+                // beamer box is the render pipeline's.
+                if !title.is_empty() {
+                    let size = heading_size(1, body_size);
+                    emit(self, title, size, Font::TimesRoman);
+                    self.newline(size);
+                }
+                if !subtitle.is_empty() {
+                    let size = heading_size(2, body_size);
+                    emit(self, subtitle, size, Font::TimesRoman);
+                    self.newline(size);
+                }
+            }
+            Block::BeamerFrameEnd { .. } | Block::BeamerSection { .. } => {}
+            Block::BeamerBlockBegin { title, .. } => {
+                if !title.is_empty() {
+                    let size = heading_size(2, body_size);
+                    emit(self, title, size, Font::TimesRoman);
+                    self.newline(size);
+                }
+            }
+            Block::BeamerCaption { kind, content, span } => {
+                let mut caption = vec![Inline::Text {
+                    text: format!("{}:", kind.name()),
+                    span: *span,
+                    style: TextStyle::default(),
+                    space_before: true,
+                    boundary_before: false,
+                    glue_before: None,
+                }];
+                caption.extend(content.iter().cloned());
+                self.render_block(&Block::FigureCaption { content: caption });
+                return;
+            }
+            Block::BeamerBlockEnd { .. }
+            | Block::BeamerColumnsBegin { .. }
+            | Block::BeamerColumn { .. }
+            | Block::BeamerColumnsEnd { .. }
+            | Block::MinipageBegin { .. }
+            | Block::MinipageEnd { .. } => {}
+            Block::BeamerTitlePage {
+                title,
+                subtitle,
+                authors,
+                institute,
+                date,
+                ..
+            } => {
+                let title_size = size_declaration_pt(FontSizeLevel::Large2, body_size);
+                let small = size_declaration_pt(FontSizeLevel::ScriptSize, body_size);
+                self.style = Some(ParagraphStyle::Center);
+                for (part, size) in [
+                    (title, title_size),
+                    (subtitle, body_size),
+                    (authors, body_size),
+                    (institute, small),
+                    (date, body_size),
+                ] {
+                    if part.is_empty() {
+                        continue;
+                    }
+                    self.x = self.left_edge();
+                    self.content_end = self.x;
+                    emit(self, part, size, Font::TimesRoman);
+                    self.newline(size);
+                    self.vertical_gap(body_size);
+                }
                 self.style = None;
             }
             Block::Rule { span } => {
@@ -2058,6 +2832,61 @@ impl LayoutCursor {
                         self.newline(body_size);
                     }
                 }
+            }
+            Block::Alltt {
+                lines,
+                vmode,
+                style,
+                level,
+                leftmargin,
+                widest_label,
+                ..
+            } => {
+                // `alltt.sty` sets `\leftskip\@totalleftmargin`: apply the
+                // enclosing quote indent (like `Block::Styled`) and list
+                // margin (like `Block::ListItem`) captured at parse time, so
+                // the body sits at the enclosing list's margin. Any enclosing
+                // centering is deliberately not applied: alltt cancels it.
+                self.style = *style;
+                self.list_margin_pt = match level {
+                    Some(depth) => match widest_label {
+                        Some(text) => {
+                            glyph_width(&bib::label_bracket(text), body_size, Font::TimesRoman)
+                                + LIST_LABELSEP_EM * body_size
+                        }
+                        None => {
+                            let override_pt = list_leftmargin_override_pt(leftmargin, body_size);
+                            list_margin_pt(*depth, body_size, override_pt)
+                        }
+                    },
+                    None => 0.0,
+                };
+                self.x = self.left_edge();
+                self.content_end = self.x;
+                self.no_wrap = true;
+                for (index, line) in lines.iter().enumerate() {
+                    emit(self, line, body_size, Font::Courier);
+                    if index + 1 < lines.len() {
+                        self.newline(body_size);
+                    }
+                }
+                self.no_wrap = false;
+                self.style = None;
+                self.list_margin_pt = 0.0;
+                self.newline(body_size);
+                // `\@endparenv`'s closing skip is `\@topsepadd`: `topsep`,
+                // plus `partopsep` when entered in vertical mode (mirroring
+                // the entry arm in `prepare_block`). Reported as a
+                // closed-line skip so the next block starts on this baseline.
+                let closing = alltt_topsep_pt(body_size)
+                    + if *vmode {
+                        alltt_partopsep_pt(body_size)
+                    } else {
+                        0.0
+                    };
+                self.vertical_gap(closing);
+                self.closed_line_skip = Some(closing);
+                self.closed_after_alltt = true;
             }
         }
         // A block is the incremental cache unit. Resolve its final line before
@@ -2195,6 +3024,7 @@ impl LayoutCursor {
             trailing_line_items: self.pages[page_index].items.len() - self.line_start,
             content_end: self.content_end,
             closed_line_skip: self.closed_line_skip,
+            closed_after_alltt: self.closed_after_alltt,
             eject_after_line: self.eject_after_line,
         }
     }
@@ -2208,6 +3038,7 @@ impl LayoutCursor {
     ) {
         while self.pages.len() <= end.page_index {
             let number = self.pages.len() as u32 + 1;
+            self.ship_page_style();
             self.pages.push(Page {
                 number,
                 width_pt: PAGE_WIDTH_PT,
@@ -2228,6 +3059,7 @@ impl LayoutCursor {
         self.x = end.x;
         self.content_end = end.content_end;
         self.closed_line_skip = end.closed_line_skip;
+        self.closed_after_alltt = end.closed_after_alltt;
         self.eject_after_line = end.eject_after_line;
         self.y = end.y;
         self.line_ascent = end.line_ascent;
@@ -2253,7 +3085,254 @@ impl LayoutCursor {
         // last chance here. Idempotent when nothing is pending.
         self.resolve_hfill();
         self.finish_footnotes();
+        self.stamp_fancy_chrome();
         self.pages
+    }
+
+    /// Install fancyhdr state from the parsed document (see
+    /// [`crate::parser::Parsed::fancy`]).
+    pub(crate) fn set_fancy(&mut self, fancy: &FancyHdr) {
+        self.fancy = fancy.clone();
+        self.fancy_fields = fancy.clone();
+    }
+
+    /// Record the style and displayed number the closing page ships under:
+    /// a `\thispagestyle` for exactly that page wins over the ambient
+    /// `\pagestyle`, and is consumed doing so.
+    fn ship_page_style(&mut self) {
+        let closed = self.pages.len() - 1;
+        let style = match self.thispage {
+            Some((page, style)) if page == closed => {
+                self.thispage = None;
+                style
+            }
+            _ => self.chrome,
+        };
+        self.page_chrome.push(style);
+        self.page_counts.push((self.page_style, self.page_value));
+        self.page_fancy.push(self.fancy_fields.clone());
+    }
+
+    /// Stamp fancyhdr running heads and rules onto every page that shipped
+    /// under `\pagestyle{fancy}` (latex.ltx `\@outputpage`'s head/foot
+    /// lines, in this layout's fixed frame). Header lines go AHEAD of the
+    /// page's body items and footer lines AFTER them, so content-stream
+    /// order matches pdflatex (`pdftotext` reads header, body, footer). A
+    /// page under any other style is untouched; with all six fields empty
+    /// only the default head rule draws, exactly as the oracle does.
+    fn stamp_fancy_chrome(&mut self) {
+        self.ship_page_style();
+        if !self.page_chrome.contains(&PageStyleName::Fancy) {
+            return;
+        }
+        let size = self.constraints.font_size_pt;
+        let measure = self.constraints.measure_pt;
+        for index in 0..self.pages.len() {
+            if self.page_chrome.get(index) != Some(&PageStyleName::Fancy) {
+                continue;
+            }
+            let (number_style, number) = self
+                .page_counts
+                .get(index)
+                .copied()
+                .unwrap_or((self.page_style, index as u32 + 1));
+            // The fields this page shipped under; the rule widths stay the
+            // document's.
+            // This layout keeps no marks: `\leftmark`/`\rightmark` set
+            // nothing here (the render pipeline sets the page's marks).
+            if let Some(fields) = self.page_fancy.get(index) {
+                // `\thepage`'s placeholder is this layout's own `ThePage`
+                // again; the other counters and the marks set nothing here.
+                let page = format!("{0}the:page{0}", crate::parser::FANCY_COUNTER);
+                let unmarked = |field: &Vec<Inline>| -> Vec<Inline> {
+                    field
+                        .iter()
+                        .filter_map(|inline| match inline {
+                            Inline::Text { text, span, space_before, .. } if *text == page => {
+                                Some(Inline::ThePage { span: *span, space_before: *space_before })
+                            }
+                            Inline::Text { text, .. }
+                                if text.chars().all(|c| c == crate::parser::FANCY_LEFT_MARK || c == crate::parser::FANCY_RIGHT_MARK)
+                                    || text.contains(crate::parser::FANCY_COUNTER) =>
+                            {
+                                None
+                            }
+                            other => Some(other.clone()),
+                        })
+                        .collect()
+                };
+                self.fancy.head = [unmarked(&fields.head[0]), unmarked(&fields.head[1]), unmarked(&fields.head[2])];
+                self.fancy.foot = [unmarked(&fields.foot[0]), unmarked(&fields.foot[1]), unmarked(&fields.foot[2])];
+            }
+            let head = self.fancy_line_items(true, size, measure, number_style, number);
+            let foot = self.fancy_line_items(false, size, measure, number_style, number);
+            let page = &mut self.pages[index];
+            let mut stitched = Vec::with_capacity(head.len() + page.items.len() + foot.len());
+            stitched.extend(head.into_iter());
+            stitched.extend(page.items.drain(..));
+            stitched.extend(foot.into_iter());
+            page.items = stitched;
+        }
+    }
+
+    /// Typeset one side's fancyhdr chrome for a page: the three fields'
+    /// lines slotted left/centre/right at the head/foot baseline, with the
+    /// side's rule (the head rule after its text, like the oracle's stream;
+    /// the foot rule before its text). Empty fields contribute nothing; a
+    /// zero-width rule draws nothing. `\thepage` in a field resolves to
+    /// (`number_style`, `number`): the stamped page's own number.
+    ///
+    /// Multi-line fields stack downward line by line, and `\footnote` /
+    /// `\label` inside a field have no backend here (the mark stays, the
+    /// note and the label are dropped): single-line text fields are the
+    /// implemented core.
+    fn fancy_line_items(
+        &mut self,
+        head: bool,
+        size: f64,
+        measure: f64,
+        number_style: crate::xref::NumberStyle,
+        number: u32,
+    ) -> Vec<TextItem> {
+        let rule_pt = if head {
+            self.fancy.headrule_pt
+        } else {
+            self.fancy.footrule_pt
+        };
+        let baseline = if head {
+            FANCY_HEAD_BASELINE_PT
+        } else {
+            FANCY_FOOT_BASELINE_PT
+        };
+        let pitch = size * LINE_SPACING;
+        // Lay out first (the scratch borrows nothing afterwards), then emit
+        // in stream order.
+        let mut laid: Vec<(usize, Vec<Vec<TextItem>>)> = Vec::new();
+        for slot in 0..3 {
+            let field = if head {
+                self.fancy.head[slot].clone()
+            } else {
+                self.fancy.foot[slot].clone()
+            };
+            if field.is_empty() {
+                continue;
+            }
+            laid.push((slot, self.fancy_field_lines(&field, size, number_style, number)));
+        }
+        let span = laid
+            .iter()
+            .flat_map(|(_, lines)| lines.iter())
+            .flat_map(|line| line.iter())
+            .map(|item| item.span)
+            .next()
+            .unwrap_or(Span::new(0, 0));
+        let mut out = Vec::new();
+        // The foot rule streams before the footer text.
+        if !head {
+            push_fancy_rule(
+                &mut out,
+                rule_pt,
+                baseline - FANCY_FOOT_RULE_GAP_PT - rule_pt,
+                measure,
+                size,
+                span,
+            );
+        }
+        for (slot, lines) in laid {
+            for (line_no, line) in lines.into_iter().enumerate() {
+                let width = line
+                    .iter()
+                    .map(|item| {
+                        item.x_pt
+                            + if let Some(rule) = item.rule {
+                                rule.width_pt
+                            } else if item.text.is_empty() {
+                                0.0
+                            } else {
+                                text_width(&item.text, item.font_size_pt, item.font)
+                            }
+                    })
+                    .fold(0.0_f64, f64::max);
+                let dx = match slot {
+                    0 => MARGIN_PT,
+                    1 => MARGIN_PT + (measure - width) / 2.0,
+                    _ => MARGIN_PT + measure - width,
+                };
+                let y = baseline + line_no as f64 * pitch;
+                out.extend(line.into_iter().map(|mut item| {
+                    item.x_pt = round2(dx + item.x_pt);
+                    item.baseline_y_pt = round2(y + item.baseline_y_pt);
+                    if let Some(rule) = item.rule.as_mut() {
+                        rule.y_pt = round2(y + rule.y_pt);
+                    }
+                    item
+                }));
+            }
+        }
+        // The head rule streams after the header text.
+        if head {
+            push_fancy_rule(
+                &mut out,
+                rule_pt,
+                baseline + FANCY_HEAD_RULE_GAP_PT - rule_pt,
+                measure,
+                size,
+                span,
+            );
+        }
+        out
+    }
+
+    /// Lay out one field's content in a scratch cursor at the body size and
+    /// split the items into lines by baseline, each rebased to start at
+    /// x = 0 (the caller slots it left/centre/right). `\thepage` and
+    /// `\pageref` resolve to (`number_style`, `number`): the stamped
+    /// page's own number, like `\pageref`'s late binding.
+    fn fancy_field_lines(
+        &mut self,
+        field: &[Inline],
+        size: f64,
+        number_style: crate::xref::NumberStyle,
+        number: u32,
+    ) -> Vec<Vec<TextItem>> {
+        let mut scratch =
+            LayoutCursor::with_labels(self.constraints, self.resolved_labels.clone(), false);
+        scratch.page_style = number_style;
+        scratch.page_value = number;
+        scratch.x = MARGIN_PT;
+        scratch.content_end = MARGIN_PT;
+        scratch.y = MARGIN_PT + size;
+        scratch.line_ascent = size;
+        scratch.line_descent = size * (LINE_SPACING - 1.0);
+        emit(&mut scratch, field, size, Font::TimesRoman);
+        scratch.resolve_hfill();
+        self.diagnostics.append(&mut scratch.diagnostics);
+        let mut items: Vec<TextItem> =
+            scratch.pages.into_iter().flat_map(|page| page.items).collect();
+        items.sort_by(|a, b| a.baseline_y_pt.total_cmp(&b.baseline_y_pt));
+        let mut lines: Vec<Vec<TextItem>> = Vec::new();
+        for item in items {
+            match lines.last_mut() {
+                Some(line) if (line[0].baseline_y_pt - item.baseline_y_pt).abs() < 0.005 => {
+                    line.push(item)
+                }
+                _ => lines.push(vec![item]),
+            }
+        }
+        // Rebase to the first line: the caller positions lines from the
+        // head/foot baseline down, so items must be line-relative.
+        let origin = lines.first().map_or(0.0, |line| line[0].baseline_y_pt);
+        for line in &mut lines {
+            let left = line.iter().map(|item| item.x_pt).fold(f64::INFINITY, f64::min);
+            for item in line.iter_mut() {
+                item.x_pt = round2(item.x_pt - left);
+                item.baseline_y_pt = round2(item.baseline_y_pt - origin);
+                if let Some(rule) = item.rule.as_mut() {
+                    rule.y_pt = round2(rule.y_pt - origin);
+                }
+            }
+        }
+        lines
     }
 
     pub fn into_pages_and_diagnostics(mut self) -> (Vec<Page>, Vec<Diagnostic>) {
@@ -2265,6 +3344,7 @@ impl LayoutCursor {
     fn into_result(mut self) -> (Vec<Page>, CrossReferences, Vec<Diagnostic>) {
         self.resolve_hfill();
         self.finish_footnotes();
+        self.stamp_fancy_chrome();
         (
             self.pages,
             (self.collected_labels, self.collected_toc),
@@ -2285,6 +3365,22 @@ fn list_parsep_pt(body_size: f64) -> f64 {
     }
 }
 
+/// `size1x.clo`'s article `\topsep` and `\partopsep` values used by
+/// `alltt`'s underlying `\trivlist`.
+fn alltt_topsep_pt(body_size: f64) -> f64 {
+    if body_size <= 10.5 {
+        8.0
+    } else if body_size <= 11.5 {
+        9.0
+    } else {
+        10.0
+    }
+}
+
+fn alltt_partopsep_pt(body_size: f64) -> f64 {
+    if body_size <= 10.5 { 2.0 } else { 3.0 }
+}
+
 /// One `ex` of the body font (cmr10's x-height is 0.4306em), the unit
 /// `article.cls`'s `\@startsection` skips are written in.
 fn body_ex(body_size: f64) -> f64 {
@@ -2292,13 +3388,61 @@ fn body_ex(body_size: f64) -> f64 {
 }
 
 /// `\@startsection` before-skip: 3.5ex for `\section`, 3.25ex below it.
-fn heading_before_skip(level: u8, body_size: f64) -> f64 {
+/// `pub(crate)` for titlesec's `\addvspace` excess in `parser::title_format`.
+pub(crate) fn heading_before_skip(level: u8, body_size: f64) -> f64 {
     body_ex(body_size) * if level == 1 { 3.5 } else { 3.25 }
 }
 
 /// `\@startsection` after-skip: 2.3ex for `\section`, 1.5ex below it.
 fn heading_after_skip(level: u8, body_size: f64) -> f64 {
     body_ex(body_size) * if level == 1 { 2.3 } else { 1.5 }
+}
+
+/// The x-height of the class's `\normalsize` roman font — the unit
+/// `article.cls` writes its `\@startsection` skips in — for the three
+/// `\documentclass` size options: cmr10, cmr10.95 and cmr12 `\fontdimen5`.
+/// `None` is the standard classes' default, 10pt:
+/// [`crate::parser::Parsed::class_size_pt`] only records an *explicit*
+/// option, and [`BODY_SIZE_PT`] (12pt) is the v1 layout's own nominal size,
+/// not this document's body size.
+///
+/// These are the render pipeline's three values
+/// (`flashtex_document_style::fonts::size_params(..).normal.x_height`), and
+/// they have to stay the pipeline's, to the last digit:
+/// [`class_heading_skips_at_ex`] is what a class-defined heading's skips are
+/// expressed as a *difference* from, and the pipeline adds that difference
+/// back to its own value — so any disagreement is a constant error on every
+/// such heading, at every skip. Two of the three are pdflatex's `\showthe`
+/// to five decimals; 10.95pt's is the pipeline's 4.71457 rather than
+/// pdflatex's 4.71468, 1.1e-4pt out, because agreeing with the pipeline is
+/// what keeps the difference zero.
+pub(crate) fn class_body_ex_pt(class_size_pt: Option<f64>) -> f64 {
+    match class_size_pt {
+        Some(size) if size > 11.5 => 5.16667,
+        Some(size) if size > 10.5 => 4.71457,
+        _ => 4.30554,
+    }
+}
+
+/// The before/after skips the render pipeline gives a
+/// [`crate::parser::Block::Heading`] of `level` on its own (article.cls's
+/// `\@startsection` table, the natural parts): 3.5ex/2.3ex for `\section`,
+/// 3.25ex/1.5ex for the two levels below, and 3.25ex before with no
+/// vertical after-skip for the run-in `\paragraph`/`\subparagraph` levels.
+/// A class-defined `\@startsection` (`parser::P::startsection_marker`)
+/// expresses its own skips as the difference from these, the way a
+/// `\vspace` next to a heading would.
+///
+/// `body_ex_pt` is the body font's own `ex` ([`class_body_ex_pt`]), not an
+/// approximation of it from a point size.
+pub(crate) fn class_heading_skips_at_ex(level: u8, body_ex_pt: f64) -> (f64, f64) {
+    let before = body_ex_pt * if level == 1 { 3.5 } else { 3.25 };
+    let after = if level >= 4 {
+        0.0
+    } else {
+        body_ex_pt * if level == 1 { 2.3 } else { 1.5 }
+    };
+    (before, after)
 }
 
 fn heading_size(level: u8, body_size: f64) -> f64 {
@@ -2325,6 +3469,10 @@ fn heading_size(level: u8, body_size: f64) -> f64 {
 /// compiler's own body size is a literal 11pt rather than real LaTeX's
 /// 10.95pt normalsize (`class_size_pt`'s documented approximation).
 pub(crate) fn size_declaration_pt(level: FontSizeLevel, body_size_pt: f64) -> f64 {
+    // `\fontsize` selects its size outright.
+    if let FontSizeLevel::Explicit(size) = level {
+        return size.font_pt();
+    }
     // tiny, scriptsize, footnotesize, small, large, Large, LARGE, huge, Huge
     // (normalsize is handled by the caller before reaching here).
     const SIZE_10PT: [f64; 9] = [5.0, 7.0, 8.0, 9.0, 12.0, 14.4, 17.28, 20.74, 24.88];
@@ -2347,8 +3495,144 @@ pub(crate) fn size_declaration_pt(level: FontSizeLevel, body_size_pt: f64) -> f6
         FontSizeLevel::Large3 => 6,
         FontSizeLevel::Huge1 => 7,
         FontSizeLevel::Huge2 => 8,
+        FontSizeLevel::Explicit(_) => unreachable!("returned above"),
     };
     table[index]
+}
+
+/// The AMS classes' (`amsart`, `amsbook`, `amsproc`) own size ladder: eleven
+/// rungs — `\Tiny`, `\tiny`, `\SMALL`, `\Small`, `\small`, `\normalsize`,
+/// `\large`, `\Large`, `\LARGE`, `\huge`, `\Huge` — against the standard
+/// classes' nine (`FontSizeLevel`). The user-visible command names are the
+/// standard ones (the class aliases `\scriptsize` to `\SMALL` and
+/// `\footnotesize` to `\Small`).
+///
+/// Rung 0 (`\Tiny`) has no `FontSizeLevel` of its own (GH-824): the
+/// pure-level mapping in `ams_rung_level` folds it onto `Tiny` (rung 1,
+/// `\tiny`), while the rung-exact state travels alongside the level as
+/// `parser::TextStyle::ams_tiny` (set by `FontSizeLevel::stepped_ams`,
+/// read by `LayoutCursor::run_size_pt`). A new `FontSizeLevel` variant was
+/// considered and rejected: `render-pipeline`'s `declared_size` matches the
+/// enum exhaustively, so a variant would break a crate this change may not
+/// touch, while the sidecar bit keeps every downstream `FontSizeLevel`
+/// consumer untouched.
+pub(crate) const AMS_RUNG_COUNT: usize = 11;
+
+/// `(font size pt, baselineskip pt)` for one AMS ladder rung, from the real
+/// `\@typesizes` tables in the `amscls` sources (TeX Live 2026; the three
+/// classes share byte-identical ladder logic). `rung` is 0-based
+/// (`\Tiny` = 0 .. `\Huge` = 10); out-of-range rungs clamp to the nearest
+/// end, matching `\larger`/`\smaller`'s own clamping. The table is picked by
+/// the document's point-size option (8/9/10/11/12pt; the standard classes
+/// only offer 10/11/12), selected on the same `body_size_pt` boundaries as
+/// `size_declaration_pt`.
+pub(crate) fn ams_size_declaration_pt(rung: usize, body_size_pt: f64) -> (f64, f64) {
+    // Rungs: Tiny, tiny, SMALL, Small, small, normalsize, large, Large,
+    // LARGE, huge, Huge.
+    // Font sizes verified against a real pdflatex `\f@size` dump (TeX Live
+    // 2026, amsart/amsbook/amsproc identical) -- NOT the `\@xipt`-family
+    // macro names' literal digits. Those macros are NFSS design-size
+    // substitutions, not exact points: `\@xipt` renders at 10.95pt (the
+    // nearest real Computer Modern design size to "11"), `\@xivpt` at
+    // 14.4pt, `\@xviipt` at 17.28pt, `\@xxpt` at 20.74pt and `\@xxvpt` at
+    // 24.88pt. `\@xiipt` (12pt) is already an exact design size, so it
+    // needs no substitution. Baselineskip values are unaffected (plain
+    // dimens, not run through NFSS).
+    const SIZE_8PT: [(f64, f64); AMS_RUNG_COUNT] = [
+        (5.0, 6.0), (5.0, 6.0), (5.0, 6.0), (6.0, 7.0), (7.0, 8.0), (8.0, 10.0),
+        (9.0, 11.0), (10.0, 12.0), (10.95, 13.0), (12.0, 14.0), (14.4, 17.0),
+    ];
+    const SIZE_9PT: [(f64, f64); AMS_RUNG_COUNT] = [
+        (5.0, 6.0), (5.0, 6.0), (6.0, 7.0), (7.0, 8.0), (8.0, 10.0), (9.0, 11.0),
+        (10.0, 12.0), (10.95, 13.0), (12.0, 14.0), (14.4, 17.0), (17.28, 20.0),
+    ];
+    const SIZE_10PT: [(f64, f64); AMS_RUNG_COUNT] = [
+        (5.0, 6.0), (6.0, 7.0), (7.0, 8.0), (8.0, 10.0), (9.0, 11.0), (10.0, 12.0),
+        (10.95, 13.0), (12.0, 14.0), (14.4, 17.0), (17.28, 20.0), (20.74, 24.0),
+    ];
+    const SIZE_11PT: [(f64, f64); AMS_RUNG_COUNT] = [
+        (6.0, 7.0), (7.0, 8.0), (8.0, 10.0), (9.0, 11.0), (10.0, 12.0), (10.95, 13.0),
+        (12.0, 14.0), (14.4, 17.0), (17.28, 20.0), (20.74, 24.0), (24.88, 30.0),
+    ];
+    const SIZE_12PT: [(f64, f64); AMS_RUNG_COUNT] = [
+        (7.0, 8.0), (8.0, 10.0), (9.0, 11.0), (10.0, 12.0), (10.95, 13.0), (12.0, 14.0),
+        (14.4, 17.0), (17.28, 20.0), (20.74, 24.0), (24.88, 30.0), (24.88, 30.0),
+    ];
+    let table = if body_size_pt <= 8.5 {
+        SIZE_8PT
+    } else if body_size_pt <= 9.5 {
+        SIZE_9PT
+    } else if body_size_pt <= 10.5 {
+        SIZE_10PT
+    } else if body_size_pt <= 11.5 {
+        SIZE_11PT
+    } else {
+        SIZE_12PT
+    };
+    table[rung.min(AMS_RUNG_COUNT - 1)]
+}
+
+/// The AMS ladder rung a declaration selects (`None` is `\normalsize`,
+/// rung 5). `\scriptsize`/`\footnotesize` sit on the `\SMALL`/`\Small`
+/// rungs, exactly as the class's own aliases do.
+pub(crate) fn ams_rung(level: Option<FontSizeLevel>) -> usize {
+    match level.and_then(|l| l.named(BODY_SIZE_PT)) {
+        Some(FontSizeLevel::Tiny) => 1,
+        Some(FontSizeLevel::ScriptSize) => 2,
+        Some(FontSizeLevel::FootnoteSize) => 3,
+        Some(FontSizeLevel::Small) => 4,
+        None => 5,
+        Some(FontSizeLevel::Large1) => 6,
+        Some(FontSizeLevel::Large2) => 7,
+        Some(FontSizeLevel::Large3) => 8,
+        Some(FontSizeLevel::Huge1) => 9,
+        Some(FontSizeLevel::Huge2) => 10,
+        // `named` never returns an explicit size.
+        Some(FontSizeLevel::Explicit(_)) => 5,
+    }
+}
+
+/// The declaration a rung selects. Rung 0 (`\Tiny`) has no `FontSizeLevel`,
+/// so it folds onto `Tiny` here; the rung-exact `\Tiny` state (GH-824) is
+/// carried separately as `parser::TextStyle::ams_tiny` (see
+/// `FontSizeLevel::stepped_ams` and `LayoutCursor::run_size_pt`), which is
+/// what actually reaches the `\Tiny` size at layout time.
+pub(crate) fn ams_rung_level(rung: usize) -> Option<FontSizeLevel> {
+    match rung {
+        0 | 1 => Some(FontSizeLevel::Tiny),
+        2 => Some(FontSizeLevel::ScriptSize),
+        3 => Some(FontSizeLevel::FootnoteSize),
+        4 => Some(FontSizeLevel::Small),
+        5 => None,
+        6 => Some(FontSizeLevel::Large1),
+        7 => Some(FontSizeLevel::Large2),
+        8 => Some(FontSizeLevel::Large3),
+        9 => Some(FontSizeLevel::Huge1),
+        _ => Some(FontSizeLevel::Huge2),
+    }
+}
+
+/// Absolute font size for one `\tiny`..`\Huge` declaration under `ams`
+/// (an AMS class) or the standard classes: the AMS `\@typesizes` rung for
+/// the level when `ams` is set, else `size_declaration_pt` unchanged.
+/// `\normalsize` never reaches here at all -- callers resolve it straight
+/// to the body size (the pre-existing, documented 11pt approximation:
+/// `\normalsize` stays 11.0 there, not the real 10.95 pdflatex uses, same
+/// as the standard classes) -- so `ams_size_declaration_pt`'s own rung 5
+/// entry (10.95 at 11pt) is dead for this specific declaration; it is only
+/// ever read via `\larger`/`\smaller` stepping onto rung 5 from elsewhere.
+pub(crate) fn size_declaration_pt_for_class(
+    level: FontSizeLevel,
+    body_size_pt: f64,
+    ams: bool,
+) -> f64 {
+    if let FontSizeLevel::Explicit(size) = level {
+        size.font_pt()
+    } else if ams {
+        ams_size_declaration_pt(ams_rung(Some(level)), body_size_pt).0
+    } else {
+        size_declaration_pt(level, body_size_pt)
+    }
 }
 
 /// Height above and depth below the baseline of `font` at `size`, from the
@@ -2447,9 +3731,21 @@ pub fn layout_converged_with_options(
     constraints: LayoutConstraints,
     cleveref: &crate::xref::CleverefConfig,
 ) -> (Vec<Page>, Vec<Diagnostic>) {
+    layout_converged_with_fancy(blocks, constraints, cleveref, &FancyHdr::default())
+}
+
+/// `layout_converged_with_options` with fancyhdr's fields installed, so pages
+/// shipping under `\pagestyle{fancy}` get their running heads (see
+/// [`crate::parser::Parsed::fancy`]).
+pub fn layout_converged_with_fancy(
+    blocks: &[Block],
+    constraints: LayoutConstraints,
+    cleveref: &crate::xref::CleverefConfig,
+    fancy: &FancyHdr,
+) -> (Vec<Page>, Vec<Diagnostic>) {
     let collect_toc = blocks
         .iter()
-        .any(|block| matches!(block, Block::TableOfContents { .. }));
+        .any(|block| matches!(block, Block::TableOfContents { list: ContentsList::Toc, .. }));
     let mut state: CrossReferences = (BTreeMap::new(), Vec::new());
     let mut history: Vec<CrossReferences> = Vec::new();
     let mut last_pages = Vec::new();
@@ -2465,6 +3761,7 @@ pub fn layout_converged_with_options(
         );
         cursor.resolved_toc = state.1.clone();
         cursor.collect_toc = collect_toc;
+        cursor.set_fancy(fancy);
         for block in blocks {
             cursor.prepare_block(block);
             cursor.render_block(block);
@@ -2538,9 +3835,37 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
                 date,
             } => {
                 visit_inline_references(title, visitor);
-                visit_inline_references(authors, visitor);
+                for group in authors {
+                    visit_inline_references(group, visitor);
+                }
                 if let Some(date) = date {
                     visit_inline_references(date, visitor);
+                }
+            }
+            Block::BeamerFrameBegin { title, subtitle, .. } => {
+                visit_inline_references(title, visitor);
+                visit_inline_references(subtitle, visitor);
+            }
+            Block::BeamerFrameEnd { .. } | Block::BeamerSection { .. } => {}
+            Block::BeamerBlockBegin { title: content, .. } | Block::BeamerCaption { content, .. } => {
+                visit_inline_references(content, visitor)
+            }
+            Block::BeamerBlockEnd { .. }
+            | Block::BeamerColumnsBegin { .. }
+            | Block::BeamerColumn { .. }
+            | Block::BeamerColumnsEnd { .. }
+            | Block::MinipageBegin { .. }
+            | Block::MinipageEnd { .. } => {}
+            Block::BeamerTitlePage {
+                title,
+                subtitle,
+                authors,
+                institute,
+                date,
+                ..
+            } => {
+                for part in [title, subtitle, authors, institute, date] {
+                    visit_inline_references(part, visitor);
                 }
             }
             Block::LetterBlock { lines, .. } => {
@@ -2553,12 +3878,17 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
                     visit_inline_references(&line.content, visitor);
                 }
             }
+            Block::Alltt { lines, .. } => {
+                for line in lines {
+                    visit_inline_references(line, visitor);
+                }
+            }
             Block::VSpace { .. }
             | Block::Rule { .. }
             | Block::PageBreak
             | Block::Verbatim { .. }
             | Block::TableOfContents { .. }
-            | Block::VFill
+            | Block::VFill { .. }
             | Block::Penalty { .. } => {}
         }
     }
@@ -2584,6 +3914,7 @@ fn visit_inline_references(inlines: &[Inline], visitor: &mut impl FnMut(&str, Sp
                 }
             }
             Inline::Transform(b) => visit_inline_references(&b.content, visitor),
+            Inline::HBox(b) => visit_inline_references(&b.content, visitor),
             Inline::Underline(u) => visit_inline_references(&u.content, visitor),
             Inline::TextScript(t) => visit_inline_references(&t.content, visitor),
             _ => {}
@@ -2835,6 +4166,7 @@ fn content_descender_depth(inlines: &[Inline], size: f64) -> f64 {
             Inline::ColorBox(b) => has_descender(&b.content),
             Inline::Underline(u) => has_descender(&u.content),
             Inline::Transform(b) => has_descender(&b.content),
+            Inline::HBox(b) => has_descender(&b.content),
             _ => false,
         })
     }
@@ -2853,13 +4185,12 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 span,
                 style,
                 space_before,
+                ..
             } => {
                 // A `\tiny`..`\Huge` declaration is always relative to the
                 // document's own body size, not to `size` (which can already
                 // be a heading's or a math script's own scaled context).
-                let text_size = style.size.map_or(size, |level| {
-                    size_declaration_pt(level, c.constraints.font_size_pt)
-                });
+                let text_size = c.run_size_pt(*style, size);
                 c.place(
                     text.clone(),
                     text_size,
@@ -2893,6 +4224,10 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                     c.place(nobreak.clone(), size, *span, style_font(*style), false);
                 }
             }
+            // beamer overlay markers: this layout sets every slide's
+            // material once, as shown (the per-slide view is the render
+            // pipeline's).
+            Inline::OverlayBegin { .. } | Inline::OverlayEnd { .. } | Inline::Onslide { .. } => {}
             Inline::TextGlue { em, .. } => c.text_glue(*em, size),
             Inline::Math {
                 list,
@@ -2952,12 +4287,30 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 c.page_style = *style;
                 c.page_value = 1;
             }
+            // `\markboth`/`\markright`: a `\mark` whatsit. This v1 layout
+            // draws no running head from the marks, so the marker sets
+            // nothing, exactly as the arguments' body text did not before
+            // the parser consumed it (PLAN1 site 17).
+            Inline::Mark { .. } => {}
+            // fancyhdr's fields from here on: the page being built ships
+            // with the last ones read before it closes.
+            Inline::FancyFields { fields, .. } => c.fancy_fields = (**fields).clone(),
+            Inline::PageStyle { style, this_page, .. } => {
+                // A zero-width marker: `\pagestyle` switches the style from
+                // here on, `\thispagestyle` only for the page being built.
+                if *this_page {
+                    c.thispage = Some((c.pages.len() - 1, *style));
+                } else {
+                    c.chrome = *style;
+                }
+            }
             Inline::Reference {
                 key,
                 page,
                 equation,
                 span,
                 space_before,
+                ..
             } => match c.resolved_labels.get(key) {
                 Some(value) => {
                     let text = if *page {
@@ -3009,7 +4362,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                     *space_before,
                 );
             }
-            Inline::HFill { leader, span } => c.mark_hfill(*leader, size, font, *span),
+            Inline::HFill { leader, span, .. } => c.mark_hfill(*leader, size, font, *span),
             Inline::HSpace {
                 pt,
                 space_before_pt,
@@ -3042,9 +4395,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
             // margin): skip it rather than leaking it into the prose.
             Inline::Marginpar { .. } => {}
             Inline::Tabular(table) => {
-                let table_size = table.style.size.map_or(size, |level| {
-                    size_declaration_pt(level, c.constraints.font_size_pt)
-                });
+                let table_size = c.run_size_pt(table.style, size);
                 let b = crate::tabular::layout(c, table, table_size);
                 c.place_math(b, size, table.space_before);
             }
@@ -3052,9 +4403,16 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 text,
                 span,
                 space_before,
+                ..
             } => c.place(text.clone(), size, *span, Font::Courier, *space_before),
             // The Core 14 layout has no box model: the content is set inline.
             Inline::ColorBox(b) => emit(c, &b.content, size, font),
+            // This layout splices boxes (compare `ColorBox`); the render
+            // pipeline sets an `\hbox` as one unbreakable box.
+            Inline::HBox(b) => emit(c, &b.content, size, font),
+            // This layout sets a minipage's body blocks where they stand
+            // (the render pipeline boxes them); the box itself is empty.
+            Inline::Minipage(_) => {}
             // This Core 14 layout reads no image files and has no transformed
             // boxes; the rendering pipeline sets both (`crate::graphics`).
             Inline::Graphic(g) => c.diagnostics.push(
@@ -3082,15 +4440,11 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 style,
                 space_before,
             } => {
-                let text_size = style.size.map_or(size, |level| {
-                    size_declaration_pt(level, c.constraints.font_size_pt)
-                });
+                let text_size = c.run_size_pt(*style, size);
                 c.place_logo(*logo, text_size, *span, style_font(*style), *space_before)
             }
             Inline::Kern { amount, style, .. } => {
-                let text_size = style.size.map_or(size, |level| {
-                    size_declaration_pt(level, c.constraints.font_size_pt)
-                });
+                let text_size = c.run_size_pt(*style, size);
                 let cx = crate::text_builtins::DimenContext {
                     quad: crate::text_builtins::pt_to_sp(text_size),
                     ..Default::default()
@@ -3103,9 +4457,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 style,
                 space_before,
             } => {
-                let text_size = style.size.map_or(size, |level| {
-                    size_declaration_pt(level, c.constraints.font_size_pt)
-                });
+                let text_size = c.run_size_pt(*style, size);
                 c.place_rule(rule, text_size, *span, style_font(*style), *space_before)
             }
             Inline::Underline(u) => {
@@ -3182,9 +4534,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 // Shifts use the same local size: `sup2` (text style) for
                 // superscripts, `max(sub1, h − ⅘·x-height)` for subscripts,
                 // like this layout's own footnote marks.
-                let local = t.style.size.map_or(size, |level| {
-                    size_declaration_pt(level, c.constraints.font_size_pt)
-                });
+                let local = c.run_size_pt(t.style, size);
                 let mark_size = footnotes::script_mark_size(local);
                 let start_page = c.pages.len();
                 let start_item = c.pages.last().map_or(0, |page| page.items.len());
@@ -3218,6 +4568,35 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                         item.baseline_y_pt = round2(item.baseline_y_pt - shift);
                     }
                 }
+            }
+            Inline::Phantom(p) => {
+                // Text-mode `\phantom`/`\hphantom`/`\vphantom`: an hbox that
+                // paints nothing. The content is measured, never emitted, so
+                // no glyph reaches the page; the advance and the line extents
+                // are exactly what the visible content would take (compare
+                // `place_rule`, whose unpainted strut arm this mirrors).
+                if !p.space_before {
+                    c.x = c.content_end;
+                }
+                let (mut width, mut ascent, mut descent, trailing) =
+                    c.measure_phantom(&p.content, size, font);
+                if !p.horizontal {
+                    width = 0.0;
+                }
+                if !p.vertical {
+                    ascent = 0.0;
+                    descent = 0.0;
+                }
+                if c.x > c.left_edge() && c.x + width > c.right_edge() {
+                    c.wrap_line(size);
+                }
+                c.note_space();
+                c.ensure_extents(ascent, descent);
+                c.content_end = c.x + width;
+                // The content's own trailing reservation, exactly as if the
+                // content had been spliced (`\mbox`): for plain text this is
+                // one inter-word space, which the next spaced item keeps.
+                c.x += width + trailing;
             }
         }
     }
@@ -3299,6 +4678,12 @@ mod tests {
 
     #[test]
     fn unknown_command_and_unclosed_shift_recover_without_losing_content() {
+        // Issue #846 changed the recovery contract: pdflatex answers
+        // "Undefined control sequence" and typesets nothing for a
+        // command it cannot resolve, so the literal `\unknown` name no
+        // longer reaches the page. "Without losing content" now means
+        // the surrounding `x+` still renders and both diagnostics (the
+        // unknown command and the unclosed `$`) are still reported.
         let source = "$x+\\unknown";
         let (parsed, pages) = laid_out(source);
         let messages: Vec<_> = parsed
@@ -3310,9 +4695,13 @@ mod tests {
         assert!(messages
             .iter()
             .any(|m| m.contains("missing its closing '$'")));
+        assert!(!pages.iter().flat_map(|p| &p.items).any(|i| i.text.contains("unknown")));
         assert!(pages
             .iter()
-            .any(|p| p.items.iter().any(|i| i.text == "\\unknown")));
+            .any(|p| p.items.iter().any(|i| i.text == "x")));
+        assert!(pages
+            .iter()
+            .any(|p| p.items.iter().any(|i| i.text == "+")));
     }
 
     #[test]
@@ -3383,6 +4772,7 @@ mod tests {
                 font_size_pt: 11.0,
                 measure_pt: LayoutConstraints::default().measure_pt,
                 parskip_pt: None,
+                ams_sizes: false,
             },
         );
         let body = pages
@@ -3397,6 +4787,83 @@ mod tests {
             .unwrap();
         assert_eq!(body.font, Font::TimesRoman);
         assert_eq!(heading.font, Font::TimesBold);
+    }
+
+    #[test]
+    fn ams_typesizes_tables_match_the_class_source() {
+        // The `\@typesizes` rows, transcribed from the `amscls` sources:
+        // (body pt, [(font pt, baselineskip pt) × 11 rungs]). The 8pt and
+        // 10pt rows are checked exhaustively; the rest are spot-checked at
+        // `\tiny` (rung 1), `\normalsize` (5), `\Large` (7) and `\Huge`
+        // (10), with the end-to-end suite covering every option as well.
+        // Font sizes from a real pdflatex `\f@size` dump (TeX Live 2026,
+        // amsart[8pt]/[10pt]), not the `\@xipt`-family macro names' literal
+        // digits -- those are NFSS design-size substitutions (see
+        // `ams_size_declaration_pt`'s own doc comment).
+        let full: [(f64, [(f64, f64); AMS_RUNG_COUNT]); 2] = [
+            (
+                8.0,
+                [
+                    (5.0, 6.0), (5.0, 6.0), (5.0, 6.0), (6.0, 7.0), (7.0, 8.0), (8.0, 10.0),
+                    (9.0, 11.0), (10.0, 12.0), (10.95, 13.0), (12.0, 14.0), (14.4, 17.0),
+                ],
+            ),
+            (
+                10.0,
+                [
+                    (5.0, 6.0), (6.0, 7.0), (7.0, 8.0), (8.0, 10.0), (9.0, 11.0), (10.0, 12.0),
+                    (10.95, 13.0), (12.0, 14.0), (14.4, 17.0), (17.28, 20.0), (20.74, 24.0),
+                ],
+            ),
+        ];
+        for (body, rungs) in full {
+            for (rung, expected) in rungs.iter().enumerate() {
+                assert_eq!(
+                    ams_size_declaration_pt(rung, body),
+                    *expected,
+                    "body {body} rung {rung}"
+                );
+            }
+        }
+        let spots: [(f64, [(usize, (f64, f64)); 4]); 3] = [
+            (9.0, [(1, (5.0, 6.0)), (5, (9.0, 11.0)), (7, (10.95, 13.0)), (10, (17.28, 20.0))]),
+            (11.0, [(1, (7.0, 8.0)), (5, (10.95, 13.0)), (7, (14.4, 17.0)), (10, (24.88, 30.0))]),
+            (12.0, [(1, (8.0, 10.0)), (5, (12.0, 14.0)), (7, (17.28, 20.0)), (10, (24.88, 30.0))]),
+        ];
+        for (body, rungs) in spots {
+            for (rung, expected) in rungs {
+                assert_eq!(ams_size_declaration_pt(rung, body), expected, "body {body} rung {rung}");
+            }
+            // Out-of-range rungs clamp to the ends, like `\larger`/`\smaller`.
+            assert_eq!(ams_size_declaration_pt(99, body), rungs[3].1);
+        }
+        // The class-aware font lookup agrees with the table rungs, and the
+        // standard path is byte-identical to `size_declaration_pt`.
+        let levels = [
+            FontSizeLevel::Tiny,
+            FontSizeLevel::ScriptSize,
+            FontSizeLevel::FootnoteSize,
+            FontSizeLevel::Small,
+            FontSizeLevel::Large1,
+            FontSizeLevel::Large2,
+            FontSizeLevel::Large3,
+            FontSizeLevel::Huge1,
+            FontSizeLevel::Huge2,
+        ];
+        for body in [8.0, 9.0, 10.0, 11.0, 12.0] {
+            for level in levels {
+                assert_eq!(
+                    size_declaration_pt_for_class(level, body, true),
+                    ams_size_declaration_pt(ams_rung(Some(level)), body).0,
+                    "body {body} {level:?}"
+                );
+                assert_eq!(
+                    size_declaration_pt_for_class(level, body, false),
+                    size_declaration_pt(level, body),
+                    "body {body} {level:?}"
+                );
+            }
+        }
     }
 
     #[test]

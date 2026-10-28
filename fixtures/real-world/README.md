@@ -40,12 +40,61 @@ out of them live in [`fixtures/divergence-probes/`](../divergence-probes/README.
 | `hyperref-toc` | documentation: `hyperref` + `\hypersetup`, `\tableofcontents`, `\listoffigures`, `\listoftables`, `\addcontentsline`, `\pageref` — **substituted `ectt` metrics** | 4 / 1 | 3 |
 | `natbib-review` | literature review: `natbib` `\citep`/`\citet`/`\citeauthor`/`\citeyearpar`, `\newblock` bibliography, long cited prose | 3 / 0 | 3 |
 
+## 2026-09-18 additions — beamer slide decks
+
+Owner: lane `beamer/corpus` (mac-claude-a). Written for this corpus as the
+conformance set for full `\documentclass{beamer}` support (issue #841, PRs
+#855 and #887). Each deck is at most eight frames; the expected page count
+is the reference's, which is what the overlay rule and frame breaking must
+reproduce. References were generated with MacTeX 2026 (TeX Live 2026) and
+say so in `reference_engine`. The first audit is under
+`docs/evidence/beamer-audit-2026-09-18T172738Z/`.
+
+| fixture | what it exercises | pdfLaTeX pages / overfull |
+|---|---|---|
+| `beamer-default` | default theme, navigation symbols **on**: `\title`/`\subtitle`/`\author`/`\institute`/`\date` + `\titlepage` frame, six `\frametitle` frames with prose, `itemize`, `enumerate`, `\section` between frames (must not print) | 7 / 0 |
+| `beamer-madrid` | the same content with `\usetheme{Madrid}`: short `\title[..]`/`\author[..]`/`\institute[..]`, filled frametitle bar, three-box infolines footline with frame/total counter, 1em text margins | 7 / 0 |
+| `beamer-overlays` | `\pause` in a list, `\item<2->`/`<3->`, `\only<1>{}\only<2>{}`, `\uncover<2->{}`, `\alert<2>{}`, `\onslide<2->`/`<3->`: frames of 3, 3, 2, 2, 3 and 1 slides | 14 / 0 |
+| `beamer-blocks-columns` | `block`/`alertblock`/`exampleblock`, `columns[T]` with two `\column{.5\textwidth}`, `\includegraphics[width=.6\textwidth]` (`figure.png`, copied from `tests/grok-corpus/images/clean-quadratic-formula.png`), `table` + `booktabs` `tabular` + `\caption` in a frame, `\footnote` in a frame, `columns` inside a `block` | 6 / 0 |
+| `beamer-fragile` | `[fragile]` with `verbatim` and `lstlisting`, `[allowframebreaks]` with a twenty-item list that breaks onto a second page (`A long list I`/`II`), the `\frame{...}` command form, `[plain]`, `\note{...}` (must not print) | 8 / 0 |
+
 `listings-manual` and `hyperref-toc` (and `siunitx-tables`) contain `\texttt`
 or `verbatim`. The bundled `texmf/fonts/tfm/jknappen/ec` ships no `ectt*.tfm`,
 so the renderer falls back to `ec-lmr*` metrics and the harness reports
 `ec_metrics_unavailable` as a FONT-ENV FAILURE: **their word positions are not
 a measurement of line breaking** until those metrics are bundled. The other
 nine run with zero font-FAILURE diagnostics.
+
+## 2026-09-26 addition — the owner's 21-242 proof-practice worksheet
+
+Owner: `mac-claude-a` (21-242 proof practice, slices A and B). A 55-page
+problem worksheet the owner supplied with its pdfLaTeX PDF (TeX Live
+2023/Debian, pdfTeX 1.40.25), kept byte-immutable as
+`21-242-raw-proof-practice-reference.pdf`; `reference-mactex2026.pdf` is the
+MacTeX 2026 regeneration, whose 5651 words sit within 0.011bp of the owner's.
+
+| fixture | what it exercises |
+|---|---|
+| `proof-practice-21242` | `article` 11pt, `geometry` (`margin=.78in,headheight=15pt`), T1 `lmodern`, `microtype`, `xcolor` named colours, `hyperref` + nine `\pdfbookmark`s, `booktabs`, `mathtools`; fancyhdr head and foot whose right head field names `\topicshort` before `\newcommand` defines it and is `\renewcommand`ed on every page (fields expand at shipout); a `\ruled` macro drawing seven grey `\rule{\linewidth}` lines with TeX-level `\parskip=`/`\baselineskip=`, `\count255`, `\loop...\repeat`, `\advance` in a group; 108 `minipage[t][3.48in][t]{\linewidth}` problem boxes with `\vfill` |
+
+## 2026-10-02 addition — operator names in beamer's sans math
+
+Owner: `mac-claude-a` (lane BEAMER-SANS-OPERATORS, owner bug report
+2026-10-02). One-frame decks with the same body: a `block` with
+`\ker(\operatorname{rref}(A))` and a `\DeclareMathOperator`'d `\rref`,
+`\operatorname{tr}`, `\int_0^1 f(x)\,\mathrm{d}x`, `\sin`, `\log`, and a
+display with `\lim_{n\to\infty}`, `\sin^2 x + \cos^2 x` and
+`\mathrm{d}x \wedge \mathrm{d}y`. A `block` rather than beamer's `theorem`,
+which the current renderer does not define, so the scoreboard measures the
+math (all three at L3 in `tools/parity/baseline-fixtures.json`).
+`crates/render-pipeline/tests/beamer_sans_operators.rs` gates the glyph
+faces and the operator bodies' italic correction.
+
+| fixture | what it exercises |
+|---|---|
+| `beamer-sans-operators` | default font theme: `beamerbasefont.sty` sets the `operators` symbol font to `OT1/cmss`, so every operator name is CMSS10 while `\mathrm{d}` stays CMR10 (`\SetMathAlphabet{\mathrm}{normal}{..}{\rmdefault}`) |
+| `beamer-sans-operators-professional` | the same with `\usefonttheme{professionalfonts}`: no math replacements, operator names in the kernel's CMR10 |
+| `beamer-sans-operators-serif` | the same with `\usefonttheme{serif}`: roman text and roman operator names |
 
 Every `reference.pdf` was generated by the harness with MacTeX 2026
 (`pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)`, `SOURCE_DATE_EPOCH=0
@@ -54,6 +103,18 @@ records the pass count it took, the SHA-256, page
 count and argv. The twelve fixtures added on 2026-09-14 were generated with
 TeX Live 2025 instead and say so in their sidecar's `reference_engine`.
 pdflatex is an oracle only and never runs in the product.
+
+## 2026-10-07 additions — framed boxes with TikZ frames and tikz-cd
+
+Owner: lane P6-INFDESC-PAGE (kabir-claude). Written for this corpus so that the soundness sweeps
+exercise BOX-MEMO (`docs/design/engine-v2/BOX-MEMO.md`): every framed environment measures its frame
+with framed.sty's `\fb@sizeofframe`, which edits then replay. References: TeX Live 2026 pdflatex on
+the NixOS PC, to convergence (oracle only); the engine's PDF is byte-identical to them.
+
+| fixture | what it exercises | pdfLaTeX pages / overfull |
+|---|---|---|
+| `framed-tikz-theorems` | ntheorem `[framed]` with TikZ frames as in *An Infinite Descent into Pure Mathematics* (`\newframedtheorem`, `\theoremframecommand` drawing a `tikzpicture` node and a rule), theorem/lemma/definition/proof boxes, a proof split across a page break, `itemize` and `align*` inside boxes, a5paper | 3 / 0 |
+| `tikzcd-shaded-notes` | tikz-cd diagrams in `center`, display math and inside framed.sty's `shaded` and `leftbar`, a `\MakeFramed` environment framed by `\fcolorbox`, a shaded box split across pages | 2 / 0 |
 
 ## Adding a fixture
 

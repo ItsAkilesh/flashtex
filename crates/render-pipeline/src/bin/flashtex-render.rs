@@ -49,6 +49,10 @@ struct Outputs {
     /// measure `\includegraphics` output must ask for it, exactly as a
     /// runtime-v1 client asks by negotiating the capability.
     images: bool,
+    /// `--links`: `--v2` carries the `navigation` object
+    /// (`display-list-v2-links`). Off by default, so every existing caller's
+    /// bytes are unchanged.
+    links: bool,
 }
 
 impl Outputs {
@@ -57,7 +61,7 @@ impl Outputs {
             eprintln!("flashtex-render: {id} rendered in {:.2} ms", r.elapsed_ms);
         }
         if let Some(p) = &self.v2 {
-            let wire = flashtex_render_pipeline::display::Wire { images: self.images, device_color: self.device_color, diagnostics: false };
+            let wire = flashtex_render_pipeline::display::Wire { images: self.images, device_color: self.device_color, diagnostics: false, links: self.links };
             let text = r.v2.write_json_wire(id, wire);
             if let Err(e) = std::fs::write(p, text) {
                 eprintln!("flashtex-render: cannot write {}: {e}", p.display());
@@ -94,6 +98,7 @@ fn main() {
         timing: false,
         device_color: false,
         images: false,
+        links: false,
     };
     let mut dirs: Vec<PathBuf> = Vec::new();
     let mut options = RenderOptions::default();
@@ -142,10 +147,35 @@ fn main() {
             "--timing" => outputs.timing = true,
             "--device-color" => outputs.device_color = true,
             "--images" => outputs.images = true,
+            "--list-fonts" | "--list-math-fonts" => {
+                // The named-family index (`flashtex_font_discovery`), one
+                // family per line, as `\setmainfont{...}` would match it:
+                // what the Mac app's completion and Fonts sheet offer. The
+                // project's `fonts/` directory counts when `--project-root`
+                // precedes. `--list-math-fonts` keeps only the families with
+                // a face carrying an OpenType `MATH` table (the Math row of
+                // the sheet, `\setmathfont{...}`), in the same order.
+                let fonts = FontSet::with_default_dirs(&dirs);
+                fonts.set_project_root(options.project_root.as_deref());
+                let index = fonts.index();
+                let math_only = a == "--list-math-fonts";
+                let with_math: std::collections::BTreeSet<&str> =
+                    index.math_fonts().iter().map(|f| f.info.family.as_str()).collect();
+                for family in index.families() {
+                    if !math_only || with_math.contains(family.as_str()) {
+                        println!("{family}");
+                    }
+                }
+                return;
+            }
+            "--links" => outputs.links = true,
             "-h" | "--help" => {
-                eprintln!("usage: flashtex-render [--tex main.tex] [--v2 out.json] [--pdf out.pdf] [--font-dir DIR]... [--class-options OPTS] [--secnumdepth N] [--date YYYY-MM-DD] [--timing] [--device-color] [--images]");
+                eprintln!("usage: flashtex-render [--tex main.tex] [--v2 out.json] [--pdf out.pdf] [--font-dir DIR]... [--class-options OPTS] [--secnumdepth N] [--date YYYY-MM-DD] [--timing] [--device-color] [--images] [--links] [--list-fonts] [--list-math-fonts]");
                 eprintln!("  --images: --v2 also serialises image items (display-list-v2-images); off by default");
+            eprintln!("  --links: --v2 also carries the navigation object (display-list-v2-links); off by default");
                 eprintln!("  --date: what \\today renders (default 1970-01-01); a request's own payload.date wins");
+                eprintln!("  --list-fonts: print the installed font families named fonts resolve against, one per line, and exit");
+                eprintln!("  --list-math-fonts: the same list restricted to families with an OpenType MATH table");
                 eprintln!("  without --tex: runtime-v1 JSON Lines worker (compile requests on stdin, one compile_result per line on stdout)");
                 return;
             }

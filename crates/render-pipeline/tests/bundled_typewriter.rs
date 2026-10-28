@@ -15,6 +15,9 @@
 //! behaves the same with and without the packaging environment (the
 //! render-pipeline suite deliberately runs with no `FLASHTEX_*` exports).
 
+// Clippy debt in frozen old-engine code (D13): allowed, not refactored.
+#![allow(clippy::cloned_ref_to_slice_refs, reason = "frozen old engine (D13): fixes only; clippy debt is allowed rather than refactored")]
+
 use std::path::PathBuf;
 
 use flashtex_compiler::parser::SourceDocument;
@@ -38,7 +41,9 @@ fn bundle() -> PathBuf {
 }
 
 /// The bundled tree as the packaged app exposes it: the flat `Fonts`
-/// directory for outlines, and the three rooted metric directories.
+/// directory for outlines, and the four rooted metric directories
+/// (`BundledMetrics.defaultBundledDirectories`: Latin Modern, EC, AMS
+/// symbols, OT1 Computer Modern).
 fn bundled_fonts() -> FontSet {
     let root = bundle();
     let texmf = root.join("texmf/fonts/tfm");
@@ -48,6 +53,7 @@ fn bundled_fonts() -> FontSet {
             texmf.join("public/lm"),
             texmf.join("jknappen/ec"),
             texmf.join("public/amsfonts/symbols"),
+            texmf.join("public/cm"),
         ],
     )
 }
@@ -223,13 +229,21 @@ fn the_bundled_typewriter_files_are_reachable_by_every_discovery_route() {
     }
     let _ = std::fs::remove_dir_all(&stage);
 
-    // The environment route, spelled correctly.
+    // The environment route, spelled correctly (the four directories the
+    // Mac app appends; an OT1 document needs `public/cm` since the OT1
+    // `cmr` metrics route, `Family::ComputerModernOt1`).
     let env = FontSet::with_dirs(
         vec![root.clone()],
-        vec![texmf.join("public/lm"), texmf.join("jknappen/ec"), texmf.join("public/amsfonts/symbols")],
+        vec![texmf.join("public/lm"), texmf.join("jknappen/ec"), texmf.join("public/amsfonts/symbols"), texmf.join("public/cm")],
     );
     assert!(env.required_metrics().is_ok(), "{:?}", env.required_metrics().err());
-    assert_no_substitution(&env, "FLASHTEX_TFM_DIRS = the three rooted metric directories");
+    assert_no_substitution(&env, "FLASHTEX_TFM_DIRS = the four rooted metric directories");
+    // A `FLASHTEX_TFM_DIRS` that names only the first three still reaches
+    // the OT1 metrics through discovery: `Discovery::tfm_dirs_for` derives
+    // `<root>/fonts/tfm/public/cm` next to any explicit `<root>/fonts/tfm/...`.
+    let three = format!("{}:{}:{}", texmf.join("public/lm").display(), texmf.join("jknappen/ec").display(), texmf.join("public/amsfonts/symbols").display());
+    let derived = Discovery { tfm_dirs: Some(three), ..Discovery::default() }.tfm_dirs_for(&[root.clone()]);
+    assert!(derived.contains(&texmf.join("public/cm")), "{derived:?}");
 
     // The trap: the same files, named by a directory no root can be derived
     // from. This must FAIL, or a fallback run would pass a gate.

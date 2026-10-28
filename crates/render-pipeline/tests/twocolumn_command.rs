@@ -97,7 +97,7 @@ fn the_twocolumn_command_sets_the_abstract_and_its_boundary() {
         // (article.cls 386, `\if@twocolumn\else\endquotation\fi`), so the
         // `\begin{itemize}` beside it is not read in vertical mode and
         // takes no `\partopsep` — the point the issue makes about
-        // `abstractenv::end_is_endtrivlist` keying on class options.
+        // the compiler's `abstract_ends_trivlist` keying on class options.
         close(word(&words, "Bbb").baseline, item, &format!("{size} item baseline"));
         close(word(&words, "Ccc").baseline, after, &format!("{size} baseline after the list"));
     }
@@ -160,12 +160,17 @@ fn a_switch_after_material_is_reported_and_one_before_it_is_not() {
     let (codes, _) = layout(leading);
     assert!(!codes.iter().any(|c| c == "twocolumn_mid_document"), "{codes:?}");
 
-    // The page frame is still one frame for the whole document, so a
-    // switch that really changes the column count after material is named,
-    // not silently approximated.
+    // One bare switch after material is laid out, not reported: the pages
+    // after it use the post-switch frame (see `twocolumn_switch.rs` for
+    // the oracle numbers). Measured against pdflatex: `Aaa` stays
+    // one-column on page 1, `Bbb` opens the first two-column page
+    // indented a `\parindent` (15pt) into it.
     let mid = "\\documentclass[10pt]{article}\n\\begin{document}\nAaa\n\\twocolumn\nBbb\n\\end{document}\n";
-    let (codes, _) = layout(mid);
-    assert!(codes.iter().any(|c| c == "twocolumn_mid_document"), "{codes:?}");
+    let (codes, words) = layout(mid);
+    assert!(!codes.iter().any(|c| c == "twocolumn_mid_document"), "{codes:?}");
+    assert_eq!(word(&words, "Aaa").page, 1);
+    assert_eq!(word(&words, "Bbb").page, 2);
+    close(word(&words, "Bbb").x, 133.768 + 14.944, "post-switch column");
 
     // A `\twocolumn` that changes nothing still breaks the page, and says
     // nothing about columns.

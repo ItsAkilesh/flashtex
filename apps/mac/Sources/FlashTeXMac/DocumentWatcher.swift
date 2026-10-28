@@ -27,11 +27,17 @@ final class DocumentWatcher {
     var onChange: (@MainActor () -> Void)?
     private(set) var status = "not watching"
 
-    private var source: DispatchSourceFileSystemObject?
+    /// The vnode source; cancelled by `stop` and by deinit (an uncancelled
+    /// source keeps running, and keeps its file descriptor open, after its
+    /// watcher is gone). nonisolated(unsafe): deinit is nonisolated; the
+    /// watcher is released on main with its model.
+    nonisolated(unsafe) private(set) var source: DispatchSourceFileSystemObject?
     private var fd: Int32 = -1
     private var pending: DispatchWorkItem?
 
     var isWatching: Bool { source != nil }
+
+    deinit { source?.cancel() } // the cancel handler closes the fd
 
     /// Watches `url` (replacing any previous watch). False when the file
     /// cannot be opened (missing, unreadable); the watcher then waits for the
@@ -61,7 +67,10 @@ final class DocumentWatcher {
         }
         self.fd = fd
         let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .extend, .attrib, .delete, .rename, .revoke], queue: .main)
-        source.setEventHandler { [weak self] in
+        // The handler holds the source weakly: a source retains its handler
+        // until it is cancelled, so a strong capture made a cycle.
+        source.setEventHandler { [weak self, weak source] in
+            guard let source else { return }
             MainActor.assumeIsolated { self?.handle(source.data) }
         }
         source.setCancelHandler { close(fd) }
@@ -112,6 +121,13 @@ extension ShellModel {
         if let existing = objc_getAssociatedObject(self, &Self.watcherKey) as? DocumentWatcher { return existing }
         let watcher = DocumentWatcher()
         watcher.onChange = { [weak self] in self?.watcherFired(retry: true) }
+        // A check dropped while a save was in flight runs once the save's late
+        // reply has settled (#831): by then nothing is outstanding to lose.
+        files.onSaveSettledLate = { [weak self] in
+            guard let self, pendingWatcherRecheck else { return }
+            pendingWatcherRecheck = false
+            watcherFired(retry: false)
+        }
         objc_setAssociatedObject(self, &Self.watcherKey, watcher, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         return watcher
     }
@@ -120,10 +136,14 @@ extension ShellModel {
     /// the file layer restarts a helper with an unanswered request, which would
     /// lose the late receipt the reconciliation waits for (the event is often
     /// that very save landing). Retry once after the helper wait; a reply that
-    /// arrives meanwhile settles the state itself.
+    /// arrives meanwhile settles the state itself. If the reply is *still*
+    /// outstanding at the retry, the event is not dropped (#831): the check is
+    /// re-armed exactly once for when the late reply has been reconciled
+    /// (`onSaveSettledLate`), so a genuine external change made while the save
+    /// was in flight is seen without waiting for the next filesystem event.
     private func watcherFired(retry: Bool) {
         if files.helperBusy {
-            guard retry else { return }
+            guard retry else { pendingWatcherRecheck = true; return }
             let wait = max(files.helperTimeout, 0.5)
             DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
                 MainActor.assumeIsolated { self?.watcherFired(retry: false) }

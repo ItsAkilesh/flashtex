@@ -57,6 +57,16 @@ pub struct Options {
     /// `longnamesfirst`: the first citation of an entry uses its long author
     /// list (`\ifNAT@longnames`, line 519).
     pub longnamesfirst: bool,
+    /// Whether `\bibstyle` is still natbib's `\csname bibstyle@#1\endcsname`
+    /// (line 288), so the `\bibstyle{<style>}` that `\bibliographystyle`
+    /// writes to the `.aux` sets the style's `\bibpunct` when the next run
+    /// reads it at `\begin{document}` ([`Options::apply_bibstyle`]). Every
+    /// punctuation option executes `nobibstyle`; `authoryear` executes
+    /// `bibstyle` last (lines 236-263).
+    pub bibstyle: bool,
+    /// `\let\cite\citep` (revtex's `rmp` journal): a bare `\cite` is
+    /// `\citep`, not natbib's `\citet`.
+    pub cite_is_citep: bool,
 }
 
 impl Default for Options {
@@ -74,6 +84,8 @@ impl Default for Options {
             sort: false,
             compress: false,
             longnamesfirst: false,
+            bibstyle: true,
+            cite_is_citep: false,
         }
     }
 }
@@ -197,12 +209,101 @@ impl Options {
                 self.compress = true;
             }
             "longnamesfirst" => self.longnamesfirst = true,
-            // `nobibstyle`/`bibstyle`/`sectionbib`/`nonamebreak`/`openbib`
-            // change the .bst hook, the bibliography heading level, an
-            // unbreakable name box or the bibliography's own paragraph
-            // shape — none of which changes a citation's characters.
+            "nobibstyle" => self.bibstyle = false,
+            "bibstyle" => self.bibstyle = true,
+            // `sectionbib`/`nonamebreak`/`openbib` change the bibliography
+            // heading level, an unbreakable name box or the bibliography's
+            // own paragraph shape — none of which changes a citation's
+            // characters.
             _ => {}
         }
+        // Lines 236-261: every punctuation option ends with
+        // `\ExecuteOptions{nobibstyle}` (`authoryear` then runs `bibstyle`).
+        if matches!(option, "numbers" | "super" | "round" | "square" | "angle" | "curly" | "comma" | "semicolon" | "colon") {
+            self.bibstyle = false;
+        }
+        if option == "authoryear" {
+            self.bibstyle = true;
+        }
+    }
+
+    /// natbib as the REVTeX classes load and configure it, or `None` for a
+    /// class that is not one of them. Every one of `revtex4.cls` (line
+    /// 5480), `revtex4-1.cls` (7021) and `revtex4-2.cls` (7042) runs
+    /// `\RequirePackage[sort&compress]{natbib}`; the society/journal
+    /// substyle then sets `\bibpunct`:
+    ///
+    /// - APS, the default society: `\bibpunct{[}{]}{,}{n}{}{,}`, numbered
+    ///   (`aps.rtx` 420, `aps4-1.rtx` 452, `aps4-2.rtx` 482);
+    /// - the `rmp` journal (`rmp.rtx` 195; `apsrmp4-1.rtx` 226,
+    ///   `apsrmp4-2.rtx` 235, also reached as the `apsrmp` society):
+    ///   `\bibpunct{(}{)}{;}{a}{,}{,}` and `\let\cite\citep`;
+    /// - the `prb` journal under `revtex4`/`revtex4-1`:
+    ///   `\bibpunct{}{}{,}{s}{}{\textsuperscript{,}}`, superscript numbers
+    ///   (`aps.rtx` 486, `aps4-1.rtx` 529); `revtex4-2`'s `prb` keeps the
+    ///   APS brackets (pdflatex: `[1]`).
+    ///
+    /// The other societies (`aip`, `aapm`, `sor`, `osa`) choose among
+    /// several forms per journal and are left at natbib's own defaults.
+    pub fn revtex(class: &str, class_options: &str) -> Option<Options> {
+        if !matches!(class, "revtex4" | "revtex4-1" | "revtex4-2") {
+            return None;
+        }
+        let given: Vec<&str> = class_options.split(',').map(str::trim).collect();
+        let mut options = Options::from_option_list("sort&compress");
+        let other_society = given.iter().any(|o| matches!(*o, "aip" | "aapm" | "sor" | "osa" | "osameet" | "opex" | "tops" | "josa"));
+        if other_society {
+            return Some(options);
+        }
+        if given.iter().any(|o| matches!(*o, "rmp" | "apsrmp")) {
+            options.apply_bibpunct("(", ")", ";", 'a', ",", ",");
+            options.cite_is_citep = true;
+        } else if given.contains(&"prb") && class != "revtex4-2" {
+            options.apply_bibpunct("", "", ",", 's', "", ",");
+        } else {
+            options.apply_bibpunct("[", "]", ",", 'n', "", ",");
+        }
+        // The class's `\bibpunct` runs after `\ProcessOptions`, and
+        // `\bibstyle@apsrev`/`apsrmp` are undefined, so the `.aux` hook
+        // changes nothing for the class's own styles.
+        Some(options)
+    }
+
+    /// `\bibpunct[, ]{open}{close}{sep}{mode}{aysep}{yrsep}` (natbib.sty
+    /// 292-303): mode `n` numbers, `s` superscript numbers, anything else
+    /// author-year.
+    fn apply_bibpunct(&mut self, open: &str, close: &str, sep: &str, mode: char, aysep: &str, yrsep: &str) {
+        self.open = open.into();
+        self.close = close.into();
+        self.sep = sep.into();
+        self.numbers = matches!(mode, 'n' | 's');
+        self.superscript = mode == 's';
+        self.aysep = aysep.into();
+        self.yrsep = yrsep.into();
+        self.cmt = ", ".into();
+    }
+
+    /// natbib's `\bibstyle@<style>` (lines 206-234): the `\bibpunct` a
+    /// bibliography style selects, applied by `\citestyle{<style>}` or, while
+    /// [`Options::bibstyle`] holds, by `\bibliographystyle{<style>}`.
+    /// `\bibpunct[#1]{#2}{#3}{#4}{#5}{#6}{#7}` sets `\NAT@open`, `\NAT@close`,
+    /// `\NAT@sep`, the mode (`n` numbers, anything else author-year),
+    /// `\NAT@aysep`, `\NAT@yrsep`, and `\NAT@cmt` to its default `, `.
+    /// Returns whether the style is one natbib defines and this table
+    /// models; the ones that also redefine `\harvardand`, `\bibnumfmt` or
+    /// set superscripts (`agsm`, `kluwer`, `dcu`, `cospar`, `esa`,
+    /// `nature`) and `agu`'s tied year separator are left alone.
+    pub fn apply_bibstyle(&mut self, style: &str) -> bool {
+        let (open, close, sep, numbers, aysep, yrsep) = match style {
+            "plainnat" | "abbrvnat" | "unsrtnat" => ("[", "]", ",", false, ",", ","),
+            "plain" | "alpha" | "abbrv" | "unsrt" => ("[", "]", ",", true, "", ","),
+            "chicago" => ("(", ")", ";", false, ",", ","),
+            "named" => ("[", "]", ";", false, ",", ","),
+            "copernicus" | "egu" | "egs" | "pass" | "anngeo" | "nlinproc" => ("(", ")", ";", false, ",", ","),
+            _ => return false,
+        };
+        self.apply_bibpunct(open, close, sep, if numbers { 'n' } else { 'a' }, aysep, yrsep);
+        true
     }
 }
 
@@ -352,8 +453,12 @@ pub fn parse_label(raw: Option<&str>, counter: usize) -> Label {
             num: counter.to_string(),
         };
     };
-    if let Some((short, rest)) = raw.split_once('(') {
-        if let Some((date, long)) = rest.split_once(')') {
+    // `\NAT@ifcmd#1(@)(@)\@nil` and `\NAT@split`/`\NAT@apalk` are
+    // delimited macro arguments, so only a `(`, `)` or `, ` at brace depth 0
+    // cuts the label: the label is TeX source (`bib::optional_bracket_source`),
+    // and `{\em Smith (ed.)}(1990)` is one author list.
+    if let Some((short, rest)) = split_top(raw, "(") {
+        if let Some((date, long)) = split_top(rest, ")") {
             let short = short.trim().to_string();
             let long = long.trim();
             return Label::AuthorYear(Entry {
@@ -369,7 +474,7 @@ pub fn parse_label(raw: Option<&str>, counter: usize) -> Label {
         }
     }
     // `\NAT@apalk#1, #2, #3\@nil`: the delimiter is a comma *and a space*.
-    if let Some((name, date)) = raw.split_once(", ") {
+    if let Some((name, date)) = split_top(raw, ", ") {
         let date = date.trim();
         if !date.is_empty() {
             return Label::Apalike(Entry {
@@ -385,8 +490,50 @@ pub fn parse_label(raw: Option<&str>, counter: usize) -> Label {
     }
 }
 
+/// `source.split_once(delimiter)` at brace depth 0, skipping control
+/// symbols (`\{`), as TeX matches a macro's parameter delimiter.
+fn split_top<'a>(source: &'a str, delimiter: &str) -> Option<(&'a str, &'a str)> {
+    let bytes = source.as_bytes();
+    let mut depth = 0usize;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 2;
+                continue;
+            }
+            b'{' => depth += 1,
+            b'}' => depth = depth.saturating_sub(1),
+            _ if depth == 0 && bytes[i..].starts_with(delimiter.as_bytes()) => {
+                return Some((&source[..i], &source[i + delimiter.len()..]));
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
 /// A run of citation text and whether it is natbib's bold recovery marker.
 type Run = (String, bool);
+
+/// The run that marks a non-character token between two runs of text:
+/// `\NAT@nmfmt{\NAT@nm}` is the group `{\NAT@up#1}` (line 287) and a
+/// number is `\mbox{...}` (line 457), and TeX's lig/kern program stops at
+/// the brace (tex.web §1034-1040), so `Hobby` and the `,` of `\NAT@aysep`
+/// after it are set without cmr's `y`-`,` kern. [`into_inlines`] ends the
+/// inline there; an empty run is not otherwise text, and no bold run is
+/// empty.
+fn group_break() -> Run {
+    (String::new(), true)
+}
+
+/// `name` between two [`group_break`]s.
+fn grouped(runs: &mut Vec<Run>, name: String) {
+    runs.push(group_break());
+    runs.push((name, false));
+    runs.push(group_break());
+}
 
 /// Builds the inlines for one natbib citation.
 ///
@@ -489,7 +636,8 @@ fn author_year_body(
         last_date = entry.date.clone();
         match kind.ctype {
             0 if entry.date.is_empty() => {
-                runs.push((format!("{citea}{name}"), false));
+                runs.push((citea.clone(), false));
+                grouped(&mut runs, name);
             }
             0 if previous_name.as_deref() == Some(name.as_str()) => {
                 // Same author as the entry before: `\NAT@yrsep` and then only
@@ -502,18 +650,22 @@ fn author_year_body(
                 }
             }
             0 if kind.swa => {
-                runs.push((
-                    format!("{citea}{name}{} {}", options.aysep, entry.date),
-                    false,
-                ));
+                runs.push((citea.clone(), false));
+                grouped(&mut runs, name);
+                runs.push((format!("{} {}", options.aysep, entry.date), false));
             }
             0 => {
                 // `\citet`: each entry carries its own parentheses, and the
                 // pre-note goes inside every one of them (line 578).
                 let pre = pre.map(|pre| format!("{pre} ")).unwrap_or_default();
-                runs.push((format!("{citea}{name} {open}{pre}{}", entry.date), false));
+                runs.push((citea.clone(), false));
+                grouped(&mut runs, name);
+                runs.push((format!(" {open}{pre}{}", entry.date), false));
             }
-            1 => runs.push((format!("{citea}{name}"), false)),
+            1 => {
+                runs.push((citea.clone(), false));
+                grouped(&mut runs, name);
+            }
             _ => runs.push((format!("{citea}{}", entry.date), false)),
         }
         // `\NAT@def@citea` / `\NAT@def@citea@close` (lines 599-601): the
@@ -585,7 +737,9 @@ fn numeric_body(
                     runs.push((format!("{} ", options.yrsep), false));
                 } else {
                     runs.push((citea.clone(), false));
+                    runs.push(group_break());
                     runs.push(name_or_marker(&name, key, span, diags));
+                    runs.push(group_break());
                     runs.push((format!(" {open}"), false));
                 }
                 if let Some(pre) = pre {
@@ -596,7 +750,9 @@ fn numeric_body(
             }
             1 => {
                 runs.push((citea.clone(), false));
+                runs.push(group_break());
                 runs.push(name_or_marker(&name, key, span, diags));
+                runs.push(group_break());
                 citea = format!("{} ", options.sep);
             }
             _ => {
@@ -672,25 +828,51 @@ fn undefined(key: &str, span: Span) -> Diagnostic {
 }
 
 /// A `[...]` note as it is set: `~` is TeX's tie, an ordinary interword space
-/// that does not break. This layout never breaks inside a note, so a plain
-/// space renders it faithfully. An empty `[]` is `\if*#1*` — no note at all.
+/// that does not break, so it becomes U+00A0, which the pipeline sets as
+/// exactly that; a plain blank in the note is a break point like any other
+/// (`\cite[p.~5]{k}` breaks before `p.`, never after it). An empty `[]` is
+/// `\if*#1*` — no note at all.
+///
+/// Citation runs are TeX source the parser sets (`P::set_citation_source`),
+/// while a note arrives already flattened to text, so the characters that
+/// would mean something there are escaped back: `50\%` stays `50%`.
 fn note_text(raw: Option<&str>) -> Option<String> {
-    raw.map(|note| note.replace('~', " "))
-        .filter(|note| !note.is_empty())
+    raw.map(note_source).filter(|note| !note.is_empty())
+}
+
+/// A flattened `[note]` as TeX source that sets the same text; see
+/// [`note_text`]. Shared with the kernel's `\cite[note]`.
+pub(crate) fn note_source(note: &str) -> String {
+    let mut out = String::with_capacity(note.len());
+    for c in note.chars() {
+        match c {
+            '~' => out.push('\u{a0}'),
+            '%' | '#' | '&' | '$' | '^' | '_' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Merges adjacent runs of the same weight into `Inline::Text`. Only the
 /// first run carries `space_before`, exactly as `bib::cite_inlines` does.
 fn into_inlines(runs: Vec<Run>, span: Span) -> Vec<Inline> {
     let mut merged: Vec<Run> = Vec::new();
+    let mut apart = false;
     for (text, bold) in runs {
         if text.is_empty() {
+            // A [`group_break`]: the next run is an inline of its own.
+            apart |= bold;
             continue;
         }
         match merged.last_mut() {
-            Some((previous, previous_bold)) if *previous_bold == bold => previous.push_str(&text),
+            Some((previous, previous_bold)) if *previous_bold == bold && !apart => previous.push_str(&text),
             _ => merged.push((text, bold)),
         }
+        apart = false;
     }
     merged
         .into_iter()
@@ -704,6 +886,8 @@ fn into_inlines(runs: Vec<Run>, span: Span) -> Vec<Inline> {
                 TextStyle::default()
             },
             space_before: index == 0,
+            boundary_before: false,
+            glue_before: None,
         })
         .collect()
 }
@@ -786,11 +970,11 @@ mod tests {
     fn one_optional_argument_is_the_post_note_not_the_pre_note() {
         assert_eq!(
             set("citep", None, Some("p.~7"), &["kp"]),
-            "(Knuth and Plass, 1981, p. 7)"
+            "(Knuth and Plass, 1981, p.\u{a0}7)"
         );
         assert_eq!(
             set("citep", Some("see"), Some("p.~7"), &["kp"]),
-            "(see Knuth and Plass, 1981, p. 7)"
+            "(see Knuth and Plass, 1981, p.\u{a0}7)"
         );
         assert_eq!(
             set("citep", Some("see"), None, &["kp"]),
@@ -798,11 +982,11 @@ mod tests {
         );
         assert_eq!(
             set("citet", None, Some("p.~7"), &["kp"]),
-            "Knuth and Plass (1981, p. 7)"
+            "Knuth and Plass (1981, p.\u{a0}7)"
         );
         assert_eq!(
             set("citet", Some("see"), Some("p.~7"), &["kp"]),
-            "Knuth and Plass (see 1981, p. 7)"
+            "Knuth and Plass (see 1981, p.\u{a0}7)"
         );
     }
 
@@ -811,12 +995,12 @@ mod tests {
         assert_eq!(set("citealt", None, None, &["kp"]), "Knuth and Plass 1981");
         assert_eq!(
             set("citealt", None, Some("p.~7"), &["kp"]),
-            "Knuth and Plass 1981, p. 7"
+            "Knuth and Plass 1981, p.\u{a0}7"
         );
         assert_eq!(set("citealp", None, None, &["kp"]), "Knuth and Plass, 1981");
         assert_eq!(
             set("citealp", None, Some("p.~7"), &["kp"]),
-            "Knuth and Plass, 1981, p. 7"
+            "Knuth and Plass, 1981, p.\u{a0}7"
         );
     }
 
@@ -843,6 +1027,32 @@ mod tests {
         );
     }
 
+    /// The inlines of one citation, each as its own string.
+    fn runs_of(command: &str, keys: &[&str]) -> Vec<String> {
+        let kind = kind(command).unwrap();
+        let keys: Vec<String> = keys.iter().map(|key| (*key).to_string()).collect();
+        let mut diags = Vec::new();
+        cite_inlines(&Options::default(), kind, None, None, &keys, &library(), Span::new(0, 0), &mut diags)
+            .iter()
+            .map(|inline| match inline {
+                Inline::Text { text, .. } => text.clone(),
+                other => panic!("{other:?}"),
+            })
+            .collect()
+    }
+
+    /// `\NAT@nmfmt{\NAT@nm}` is the group `{\NAT@up#1}` (natbib.sty line
+    /// 287): the author list is an inline of its own, so no kern of the
+    /// face runs from its last letter into `\NAT@aysep` (pdflatex
+    /// `\showbox` of `\citep{hobby1986,frank1990}` at 10.95 pt: `y` `,`
+    /// with no `\kern-0.91251` between them, where a typed `y,` has one).
+    #[test]
+    fn the_author_list_is_a_group_of_its_own() {
+        assert_eq!(runs_of("citep", &["hobby", "frank"]), ["(", "Hobby", ", 1986; ", "Frank", ", 1990)"]);
+        assert_eq!(runs_of("citet", &["hobby"]), ["Hobby", " (1986)"]);
+        assert_eq!(runs_of("citeauthor", &["hobby", "frank"]), ["Hobby", "; ", "Frank"]);
+    }
+
     #[test]
     fn several_keys_use_the_separator_in_given_order() {
         assert_eq!(
@@ -855,7 +1065,7 @@ mod tests {
         );
         assert_eq!(
             set("citep", Some("see"), Some("p.~7"), &["plass81", "hobby"]),
-            "(see Plass, 1981; Hobby, 1986, p. 7)"
+            "(see Plass, 1981; Hobby, 1986, p.\u{a0}7)"
         );
         assert_eq!(
             set("citeauthor", None, None, &["plass81", "hobby"]),
@@ -963,7 +1173,7 @@ mod tests {
         let (text, _) = set_with(&options, "citet", None, None, &["plass81"]);
         assert_eq!(text, "Plass [2]");
         let (text, _) = set_with(&options, "citep", None, Some("p.~7"), &["plass81"]);
-        assert_eq!(text, "[2, p. 7]");
+        assert_eq!(text, "[2, p.\u{a0}7]");
     }
 
     #[test]
@@ -1008,6 +1218,31 @@ mod tests {
             Label::Standard { num: "AWK".into() }
         );
         assert_eq!(parse_label(None, 4), Label::Standard { num: "4".into() });
+    }
+
+    /// #956: the label is TeX source, and `\NAT@ifcmd`/`\NAT@apalk` only
+    /// cut at a `(`, `)` or `, ` at brace depth 0.
+    #[test]
+    fn a_label_splits_at_brace_depth_zero() {
+        assert_eq!(
+            parse_label(Some(r"Jones \emph{et~al.}(1990)Jones, Baker, and Williams"), 1),
+            Label::AuthorYear(entry(r"Jones \emph{et~al.}", "1990", "Jones, Baker, and Williams", "1"))
+        );
+        assert_eq!(
+            parse_label(Some(r"{Smith (ed.)}(1990)"), 2),
+            Label::AuthorYear(entry("{Smith (ed.)}", "1990", "{Smith (ed.)}", "2"))
+        );
+        assert_eq!(
+            parse_label(Some(r"{Smith, Jones}, 1990"), 3),
+            Label::Apalike(entry("{Smith, Jones}", "1990", "{Smith, Jones}", "3"))
+        );
+        assert_eq!(split_top(r"a\{(b", "("), Some((r"a\{", "b")));
+    }
+
+    #[test]
+    fn a_note_is_escaped_back_to_source() {
+        assert_eq!(note_source("p.~5"), "p.\u{a0}5");
+        assert_eq!(note_source("50%"), r"50\%");
     }
 
     #[test]

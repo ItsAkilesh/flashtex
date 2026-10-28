@@ -1,8 +1,12 @@
 # flashtex-project-files
 
-Original Rust project file layer for FlashTeX. Edition 2024; its only
-dependencies are `unicode-normalization` and `libc` (the rooted file
-operations' C bindings). Owner: `mac-project-files` (Claude Code subagent, parent `mac-claude-a`).
+Original Rust project file layer for FlashTeX. Edition 2024; the library's
+dependencies are `unicode-normalization`, `libc` (the rooted file
+operations' C bindings) and the sibling `flashtex-project-manifest`; the
+helper binary also links `flashtex-package-resolver` for its
+`resolve_packages`/`set_packages` operations (the one place this crate's
+process may touch the network, and only under the manifest's `[packages]`
+policy — see `src/bin/flashtex-project-files.rs`). Owner: `mac-project-files` (Claude Code subagent, parent `mac-claude-a`).
 
 It answers four questions the single-file Mac shell cannot today: *which files
 make up this project*, *what exactly is in them* (content identity), *how do I
@@ -45,7 +49,8 @@ does not do).
 ```rust
 let graph = ProjectGraph::discover(root, &ProjectPath::normalize("main.tex")?)?;
 let graph = ProjectGraph::discover_with(root, &entry, &overlay)?; // unsaved buffers win
-graph.files()         // ProjectFile { path, kind, source, text, sha256, bytes, references }
+let graph = ProjectGraph::discover_with_manifest(root, &entry, &overlay, &manifest, manifest_dir)?; // + package inputs
+graph.files()         // ProjectFile { path, kind, source, text, sha256, bytes, references, origin }
 graph.edges()         // Edge { from, to, reference }
 graph.diagnostics()   // Diagnostic { severity, message, path, span, argument_span, kind }
 graph.documents()     // runtime-v1 [{path, text}] — Tex files, entry first, DFS order
@@ -63,6 +68,17 @@ against the project root, not the including file's directory):
 | `\bibliography{x}` | `x.bib` (or `x` if it ends in `.bib`) | Bibliography, loaded, not scanned |
 | `\addbibresource{x}` | `x` if it has an extension, else `x.bib` | Bibliography |
 | `\includegraphics{x}` | `x` if it has a known extension, else `x.pdf,.png,.jpg,.jpeg,.eps,.svg` | Graphic, hashed, not loaded |
+
+Package inputs (`texinput_files`, docs/user/project-manifest.md) come after
+the closure: the root's own `.sty`/`.def` (`Package`) and `.cls`/`.clo`
+(`Class`) files, then every document-kind file of each `[project] texinputs`
+directory of the `flashtex.toml`, in manifest order, names sorted, no
+recursion. All are listed and read through the pinned root handle; a
+directory the manifest places outside the root is its own `ProjectRoot`
+and its files carry the virtual path `texinputs/<index>/<name>` with
+`origin` naming the real file. `documents()` exports `Tex`, `Package` and
+`Class`. Anything the manifest gets wrong is a `DiagnosticKind::Manifest`
+warning on `flashtex.toml`.
 
 Diagnostics (`DiagnosticKind`): `MissingFile{target, tried}` (error; warning
 for graphics), `InvalidPath{target, error}` (escaping `..`, absolute, bad
@@ -522,6 +538,7 @@ request order, one JSON object per line, 12 MiB line bound). Protocol
 | `{"id","operation":"read","path"}` | `{"path","exists","text"?,"sha256"?,"bytes"?,"mtime_unix_ms"?}` |
 | `{"id","operation":"status","path","expected_sha256"?}` | `{"path","exists","state":"unchanged"\|"modified"\|"deleted"\|"created",…}` relative to `expected_sha256` (`null`: caller expects no file) |
 | `{"id","operation":"save","path","text","expected":"new"\|"any"\|hex,"force"?}` | `{"outcome":"saved","receipt":{"path","bytes","sha256","mtime_unix_ms"}}` or `{"outcome":"conflict","conflict":{"path","kind","ours"?,"theirs"?,"mtime_unix_ms"?,"size"?}}` |
+| `{"id","operation":"manifest","entry"?}` | `{"path"?,"exists","manifest_dir"?,"manifest":{project,fonts,packages,library},"warnings":[{key,message}],"texinputs":[{index,raw,location,dir?,path?,reason?}],"files":[{path,kind,texinput?,origin?,text,sha256,bytes}],"diagnostics":[{key,message}],"template"}` — the `flashtex.toml` governing `--root` (`Manifest::locate`, defaults when absent), its classified `texinputs`, the package inputs (`texinput_files`, with text) and the commented template for `entry` (docs/user/project-manifest.md) |
 | `{"id","operation":"remove","path"}` | `{"path","removed":bool}` — `removed:false` when nothing was there; an absent file is not an error |
 | `{"id","operation":"rename","from","to"}` | `{"outcome":"renamed","from","to"}` or `{"outcome":"conflict","conflict":{…}}` with kind `deleted_externally` (no `from`) or `already_exists` (occupied `to`), all detail fields null |
 | `{"id","operation":"list","path"?}` | `{"path","files":[…],"truncated":bool}` — `path` is a project-relative directory (omitted/null lists the whole root); `files` is every project file under it as root-relative path strings, sorted |
@@ -548,7 +565,8 @@ lock, so (like `read`) it can observe a file mid-write by a concurrent saver.
 Errors are `{"id","error":{"code","message"}}`: `invalid_request`,
 `invalid_path`, `refused` (symlink component, escapes root, not a regular
 file, too large, lock held, unsupported target), `invalid_utf8`, `io`,
-`directory_sync`, `unsupported_operation`, `line_too_long`. A save conflict
+`directory_sync`, `unsupported_operation`, `line_too_long`, `manifest_syntax`
+(the manifest is not TOML; everything else it says wrong is a warning). A save conflict
 is a payload, never an error, because the consumer must show it and keep
 its buffer. `path` is a `ProjectPath` relative to `--root`; `--root` itself
 must be a real directory (the Mac shell resolves symlinks in the directory

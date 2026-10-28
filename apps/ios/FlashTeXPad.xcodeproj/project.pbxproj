@@ -11,6 +11,14 @@
 			isa = PBXBuildFile;
 			fileRef = 30F147C413EB16F59C94E670;
 		};
+		306AE35EA181F4D9B37C89AD /* CanvasGestures.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = F9C7081AF0545490F0D52C8C;
+		};
+		24C0AE6C861A0F471AFD7B44 /* CaptureCanvas.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 4E51C5901FEA4613483D5F81;
+		};
 		E61ADC75D2613BC05A89C79F /* CaptureView.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = DAB5331096CACE1D1611C89C;
@@ -18,6 +26,26 @@
 		09CB227A124543638E92BA22 /* ContentView.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 4FDDBCFB400C1F50ACD45711;
+		};
+		F49FFFACF3AAC0BCC879F4FC /* EditorAccessoryBar.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 5154501BF5F351ACED23FBAB;
+		};
+		5B5C47E3DD912C0AC2469033 /* EditorController.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = B130713758FAC22045CA1B61;
+		};
+		8D731047576C0471E817F2F2 /* EditorTextStorage.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 83BE1C6A2AE379645C7616F3;
+		};
+		B0AFBEE9498E6D5146E304B2 /* EditorTheme.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = F116189037D5C3A88648C929;
+		};
+		A2B4CD934F1337F4774B5BD3 /* EditorView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 83519153DEF0EE58CB539373;
 		};
 		045BB3308B2C5DD1D387C7D2 /* FlashTeXPadApp.swift in Sources */ = {
 			isa = PBXBuildFile;
@@ -30,6 +58,10 @@
 		A9456FCBAC7FC1D52CEE51D8 /* PairingScanner.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 08C275D119DF1F41894FD9F9;
+		};
+		A9B9670BEF21B102964AAA03 /* Assets.xcassets in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = 9AFEC47A57ED5D746955D7F0;
 		};
 		A87D4C8E0CAD968374E177C5 /* compile-result.json in Resources */ = {
 			isa = PBXBuildFile;
@@ -47,6 +79,10 @@
 			isa = PBXBuildFile;
 			fileRef = B06BAEBE69778185CEF5702F;
 		};
+		4570BFE0909E3C9D9071F43D /* supported-latex.json in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = B56138E7F38482CDA1F9B3BE;
+		};
 		BCD3BDDACBAEF96A6285F2EC /* FlashTeXPadKit in Frameworks */ = {
 			isa = PBXBuildFile;
 			productRef = 85E6D96FADC9313C36D00656 /* FlashTeXPadKit */;
@@ -59,6 +95,10 @@
 			isa = PBXBuildFile;
 			productRef = D5BA7FCD01AB119B8650B1DC /* FlashTeXProtocol */;
 		};
+		CCD1D5BD0B1ADA362A5320BF /* FlashTeXEditorCore in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = F62D1F23716F2E7839C0537D /* FlashTeXEditorCore */;
+		};
 		8852E4C9E3130B7E00B73EA9 /* AcceptanceSliceTests.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 9350128EF36336405FA0A78F;
@@ -67,6 +107,10 @@
 			isa = PBXBuildFile;
 			fileRef = B6E3658344378A345F18703C;
 		};
+		CF6828F1BA515CA5470F4F22 /* CanvasGestureTests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = D6EE7026EDAAC9A93B3DEF34;
+		};
 		5D3BA29BB7D8E223A38ED5BC /* CaptureQueueTests.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = 61E5796C7F96C2C8B3E99B01;
@@ -74,6 +118,18 @@
 		7612E28066AAB7164D53F329 /* CompanionInsertTests.swift in Sources */ = {
 			isa = PBXBuildFile;
 			fileRef = A2694342B852B776BF9749BF;
+		};
+		52E9ED878E670FF00C14AAAD /* EditorCompletionTests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = D709103C7CC3B2F8EBB30055;
+		};
+		A09F249D459F80A40C028D51 /* EditorControllerTests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 08723716444AB7736FE59407;
+		};
+		E8253C9EC1CA0629A7FBC13C /* EditorHighlightTests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = F43F3CE28AC62CE86684B0F1;
 		};
 		72B8562FE1F50D30C56A9348 /* FakeMac.swift in Sources */ = {
 			isa = PBXBuildFile;
@@ -87,6 +143,14 @@
 			isa = PBXBuildFile;
 			fileRef = B73028366B5779619C60CA89;
 		};
+		EC49B0E8F32690C335AADEF1 /* FolderAccessTests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 7A5CC62C5CEA7327E496A2BD;
+		};
+		94AE773125DDADB004681119 /* LinkedEnvironmentRenameTests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = AEC84AFDB673D6890915B950;
+		};
 		53C0190BDFB8EEED4C6E1598 /* FlashTeXPadKit in Frameworks */ = {
 			isa = PBXBuildFile;
 			productRef = 6DAF713200557312FB0DE2B8 /* FlashTeXPadKit */;
@@ -98,6 +162,14 @@
 		08E99B881C98B2D8077CD6F7 /* FlashTeXProtocol in Frameworks */ = {
 			isa = PBXBuildFile;
 			productRef = 58EED07B157162499BC602AE /* FlashTeXProtocol */;
+		};
+		37E414A223744B088172A2EC /* FlashTeXEditorCore in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = 2A2533CD3F601C689B7E5EC1 /* FlashTeXEditorCore */;
+		};
+		6C441CE23550C2725C25FD76 /* CanvasUITests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 9F63065B28B69D91CF6ADD5E;
 		};
 		578D97340F0ACA306E1FEFD2 /* CaptureFlowRealMacUITests.swift in Sources */ = {
 			isa = PBXBuildFile;
@@ -145,6 +217,18 @@
 			path = "CameraFocus.swift";
 			sourceTree = "<group>";
 		};
+		F9C7081AF0545490F0D52C8C /* CanvasGestures.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CanvasGestures.swift";
+			sourceTree = "<group>";
+		};
+		4E51C5901FEA4613483D5F81 /* CaptureCanvas.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CaptureCanvas.swift";
+			sourceTree = "<group>";
+		};
 		DAB5331096CACE1D1611C89C /* CaptureView.swift */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -155,6 +239,36 @@
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
 			path = "ContentView.swift";
+			sourceTree = "<group>";
+		};
+		5154501BF5F351ACED23FBAB /* EditorAccessoryBar.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "EditorAccessoryBar.swift";
+			sourceTree = "<group>";
+		};
+		B130713758FAC22045CA1B61 /* EditorController.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "EditorController.swift";
+			sourceTree = "<group>";
+		};
+		83BE1C6A2AE379645C7616F3 /* EditorTextStorage.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "EditorTextStorage.swift";
+			sourceTree = "<group>";
+		};
+		F116189037D5C3A88648C929 /* EditorTheme.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "EditorTheme.swift";
+			sourceTree = "<group>";
+		};
+		83519153DEF0EE58CB539373 /* EditorView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "EditorView.swift";
 			sourceTree = "<group>";
 		};
 		8154323B8EA2D5445564B276 /* FlashTeXPadApp.swift */ = {
@@ -173,6 +287,12 @@
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
 			path = "PairingScanner.swift";
+			sourceTree = "<group>";
+		};
+		9AFEC47A57ED5D746955D7F0 /* Assets.xcassets */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = folder.assetcatalog;
+			path = "Assets.xcassets";
 			sourceTree = "<group>";
 		};
 		B814BF36B6E3FFF2A9D456D9 /* Resources/compile-result.json */ = {
@@ -197,6 +317,12 @@
 			isa = PBXFileReference;
 			lastKnownFileType = text;
 			path = "Resources/sample-capture.png";
+			sourceTree = "<group>";
+		};
+		B56138E7F38482CDA1F9B3BE /* Resources/supported-latex.json */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.json;
+			path = "Resources/supported-latex.json";
 			sourceTree = "<group>";
 		};
 		B5A6CD6B3CE7282A17A0900C /* Info.plist */ = {
@@ -224,6 +350,12 @@
 			path = "CameraFocusTests.swift";
 			sourceTree = "<group>";
 		};
+		D6EE7026EDAAC9A93B3DEF34 /* CanvasGestureTests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CanvasGestureTests.swift";
+			sourceTree = "<group>";
+		};
 		61E5796C7F96C2C8B3E99B01 /* CaptureQueueTests.swift */ = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -234,6 +366,24 @@
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
 			path = "CompanionInsertTests.swift";
+			sourceTree = "<group>";
+		};
+		D709103C7CC3B2F8EBB30055 /* EditorCompletionTests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "EditorCompletionTests.swift";
+			sourceTree = "<group>";
+		};
+		08723716444AB7736FE59407 /* EditorControllerTests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "EditorControllerTests.swift";
+			sourceTree = "<group>";
+		};
+		F43F3CE28AC62CE86684B0F1 /* EditorHighlightTests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "EditorHighlightTests.swift";
 			sourceTree = "<group>";
 		};
 		8EA2299F037B17191402BB8E /* FakeMac.swift */ = {
@@ -254,12 +404,30 @@
 			path = "FluidCaptureTests.swift";
 			sourceTree = "<group>";
 		};
+		7A5CC62C5CEA7327E496A2BD /* FolderAccessTests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "FolderAccessTests.swift";
+			sourceTree = "<group>";
+		};
+		AEC84AFDB673D6890915B950 /* LinkedEnvironmentRenameTests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "LinkedEnvironmentRenameTests.swift";
+			sourceTree = "<group>";
+		};
 		F02BF388111682C7C305DDC3 /* FlashTeXPadTests.xctest */ = {
 			isa = PBXFileReference;
 			explicitFileType = "wrapper.cfbundle";
 			includeInIndex = 0;
 			path = "FlashTeXPadTests.xctest";
 			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		9F63065B28B69D91CF6ADD5E /* CanvasUITests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CanvasUITests.swift";
+			sourceTree = "<group>";
 		};
 		DA47D6461AFA4DDD78A13236 /* CaptureFlowRealMacUITests.swift */ = {
 			isa = PBXFileReference;
@@ -308,6 +476,7 @@
 				BCD3BDDACBAEF96A6285F2EC,
 				A100103B7F504A91A951AB15,
 				9A3F727C304DB6C49671A74B,
+				CCD1D5BD0B1ADA362A5320BF,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -318,6 +487,7 @@
 				53C0190BDFB8EEED4C6E1598,
 				05E5D02A6DD9BC0E136FFC25,
 				08E99B881C98B2D8077CD6F7,
+				37E414A223744B088172A2EC,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -336,15 +506,24 @@
 			isa = PBXGroup;
 			children = (
 				30F147C413EB16F59C94E670,
+				F9C7081AF0545490F0D52C8C,
+				4E51C5901FEA4613483D5F81,
 				DAB5331096CACE1D1611C89C,
 				4FDDBCFB400C1F50ACD45711,
+				5154501BF5F351ACED23FBAB,
+				B130713758FAC22045CA1B61,
+				83BE1C6A2AE379645C7616F3,
+				F116189037D5C3A88648C929,
+				83519153DEF0EE58CB539373,
 				8154323B8EA2D5445564B276,
 				3CCE5357B9F6A9468F70115A,
 				08C275D119DF1F41894FD9F9,
+				9AFEC47A57ED5D746955D7F0,
 				B814BF36B6E3FFF2A9D456D9,
 				696D572EB552F1B485EC7FD4,
 				DF516A2769098DAFFC545638,
 				B06BAEBE69778185CEF5702F,
+				B56138E7F38482CDA1F9B3BE,
 				B5A6CD6B3CE7282A17A0900C,
 			);
 			path = "FlashTeXPad";
@@ -355,11 +534,17 @@
 			children = (
 				9350128EF36336405FA0A78F,
 				B6E3658344378A345F18703C,
+				D6EE7026EDAAC9A93B3DEF34,
 				61E5796C7F96C2C8B3E99B01,
 				A2694342B852B776BF9749BF,
+				D709103C7CC3B2F8EBB30055,
+				08723716444AB7736FE59407,
+				F43F3CE28AC62CE86684B0F1,
 				8EA2299F037B17191402BB8E,
 				03C01BAAABAAA9818C6D82F5,
 				B73028366B5779619C60CA89,
+				7A5CC62C5CEA7327E496A2BD,
+				AEC84AFDB673D6890915B950,
 			);
 			path = "FlashTeXPadTests";
 			sourceTree = "<group>";
@@ -367,6 +552,7 @@
 		F6DACFB5EF322A77BC9A2FCB /* FlashTeXPadUITests */ = {
 			isa = PBXGroup;
 			children = (
+				9F63065B28B69D91CF6ADD5E,
 				DA47D6461AFA4DDD78A13236,
 				350C61371C77C7DF6188D8F9,
 				52C5885AA93684C7DAB7FFF8,
@@ -415,6 +601,7 @@
 				85E6D96FADC9313C36D00656 /* FlashTeXPadKit */,
 				49D3CBD738C0F617AF6861F6 /* NearbyClient */,
 				D5BA7FCD01AB119B8650B1DC /* FlashTeXProtocol */,
+				F62D1F23716F2E7839C0537D /* FlashTeXEditorCore */,
 			);
 			productName = FlashTeXPad;
 			productReference = F2B89058EBCD583C85703A57 /* FlashTeXPad.app */;
@@ -438,6 +625,7 @@
 				6DAF713200557312FB0DE2B8 /* FlashTeXPadKit */,
 				E61641E4AB94203613BDBF6B /* NearbyClient */,
 				58EED07B157162499BC602AE /* FlashTeXProtocol */,
+				2A2533CD3F601C689B7E5EC1 /* FlashTeXEditorCore */,
 			);
 			productName = FlashTeXPadTests;
 			productReference = F02BF388111682C7C305DDC3 /* FlashTeXPadTests.xctest */;
@@ -510,10 +698,12 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A9B9670BEF21B102964AAA03,
 				A87D4C8E0CAD968374E177C5,
 				BC0A22AF45038EEAE34C7CD7,
 				BD32D5321034B632D5392E0B,
 				7B96FABAB641BC15070A5149,
+				4570BFE0909E3C9D9071F43D,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -539,8 +729,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				F5ADC271C91EB24AF7D12A09,
+				306AE35EA181F4D9B37C89AD,
+				24C0AE6C861A0F471AFD7B44,
 				E61ADC75D2613BC05A89C79F,
 				09CB227A124543638E92BA22,
+				F49FFFACF3AAC0BCC879F4FC,
+				5B5C47E3DD912C0AC2469033,
+				8D731047576C0471E817F2F2,
+				B0AFBEE9498E6D5146E304B2,
+				A2B4CD934F1337F4774B5BD3,
 				045BB3308B2C5DD1D387C7D2,
 				01A4FCBFEF9A261F77159BC4,
 				A9456FCBAC7FC1D52CEE51D8,
@@ -553,11 +750,17 @@
 			files = (
 				8852E4C9E3130B7E00B73EA9,
 				01628618D47C292D7DEAB7D8,
+				CF6828F1BA515CA5470F4F22,
 				5D3BA29BB7D8E223A38ED5BC,
 				7612E28066AAB7164D53F329,
+				52E9ED878E670FF00C14AAAD,
+				A09F249D459F80A40C028D51,
+				E8253C9EC1CA0629A7FBC13C,
 				72B8562FE1F50D30C56A9348,
 				914F0A91E37F25D4F61A6EE2,
 				993E22C146E6587BA4B1EF02,
+				EC49B0E8F32690C335AADEF1,
+				94AE773125DDADB004681119,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -565,6 +768,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6C441CE23550C2725C25FD76,
 				578D97340F0ACA306E1FEFD2,
 				C7C127377FB47913308A63AC,
 				B8893983D5B15983E38B2BD0,
@@ -832,6 +1036,11 @@
 			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
 			productName = FlashTeXProtocol;
 		};
+		F62D1F23716F2E7839C0537D /* FlashTeXEditorCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = FlashTeXEditorCore;
+		};
 		6DAF713200557312FB0DE2B8 /* FlashTeXPadKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
@@ -846,6 +1055,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
 			productName = FlashTeXProtocol;
+		};
+		2A2533CD3F601C689B7E5EC1 /* FlashTeXEditorCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BBC34697956E0474D55D9DCE /* XCLocalSwiftPackageReference "Packages/FlashTeXPadKit" */;
+			productName = FlashTeXEditorCore;
 		};
 		E1D1674AC7999CBBDA3ADA3F /* NearbyClient */ = {
 			isa = XCSwiftPackageProductDependency;

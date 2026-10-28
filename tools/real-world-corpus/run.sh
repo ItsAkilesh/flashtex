@@ -3,10 +3,10 @@
 # worker and pdf routes. Every path can be overridden through the
 # environment; missing binaries are reported, not built.
 #
-#   FLASHTEX_COMPILER   crates/compiler/target/release/flashtex-compiler
-#   FLASHTEX_RENDER     crates/render-pipeline/target/release/flashtex-render
-#   FLASHTEX_PDF_EXACT  crates/pdf/target/release/flashtex-pdf-exact
-#   FLASHTEX_PDF        crates/pdf/target/release/flashtex-pdf
+#   FLASHTEX_COMPILER   target/release/flashtex-compiler (root workspace)
+#   FLASHTEX_RENDER     target/release/flashtex-render (root workspace)
+#   FLASHTEX_PDF_EXACT  target/release/flashtex-pdf-exact
+#   FLASHTEX_PDF        target/release/flashtex-pdf
 #   FLASHTEX_RENDER_NOTE  human provenance sentence for the render binary
 #
 # The render worker defaults to THIS checkout's own build, not a scratch build
@@ -15,15 +15,19 @@
 # every report "origin/agent/mac-render-pipeline/unified @ 9aaec57a" whether
 # or not that was the binary that ran -- a provenance claim the harness had
 # not checked. Build it with:
-#   cargo build --release --manifest-path crates/render-pipeline/Cargo.toml --bin flashtex-render
+#   cargo build --release -p flashtex-render-pipeline --bin flashtex-render
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 HEAD_SHA="$(git -C "$ROOT" rev-parse --short HEAD)"
-COMPILER="${FLASHTEX_COMPILER:-$ROOT/crates/compiler/target/release/flashtex-compiler}"
-RENDER="${FLASHTEX_RENDER:-$ROOT/crates/render-pipeline/target/release/flashtex-render}"
+# Every crate is a root-workspace member (Cargo.toml) since vendor/ was
+# retired, so every binary -- render-pipeline's included -- is in the one
+# target/ that crate-target-dir.sh resolves.
+WS_TARGET="$("$ROOT/scripts/crate-target-dir.sh" "$ROOT/crates/compiler" 2>/dev/null || echo "$ROOT/target")"
+COMPILER="${FLASHTEX_COMPILER:-$WS_TARGET/release/flashtex-compiler}"
+RENDER="${FLASHTEX_RENDER:-$WS_TARGET/release/flashtex-render}"
 RENDER_NOTE="${FLASHTEX_RENDER_NOTE:-crates/render-pipeline of this checkout @ $HEAD_SHA}"
-PDF_EXACT="${FLASHTEX_PDF_EXACT:-$ROOT/crates/pdf/target/release/flashtex-pdf-exact}"
-PDF_V1="${FLASHTEX_PDF:-$ROOT/crates/pdf/target/release/flashtex-pdf}"
+PDF_EXACT="${FLASHTEX_PDF_EXACT:-$WS_TARGET/release/flashtex-pdf-exact}"
+PDF_V1="${FLASHTEX_PDF:-$WS_TARGET/release/flashtex-pdf}"
 exec python3 "$ROOT/tools/real-world-corpus/run.py" \
   --compiler "$COMPILER" --compiler-note "crates/compiler of this checkout @ $HEAD_SHA" \
   --render "$RENDER" --render-note "$RENDER_NOTE" \

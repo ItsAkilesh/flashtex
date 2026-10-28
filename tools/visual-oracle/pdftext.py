@@ -217,6 +217,23 @@ class _Lexer:
 # document
 
 
+
+def _is_op_token(w):
+    """The lexer's result for a token it cannot read as a number or name."""
+    return (isinstance(w, tuple) and not isinstance(w, Ref) and len(w) == 2
+            and w[0] == "op" and isinstance(w[1], (bytes, bytearray)))
+
+
+_STRAY_MINUS = re.compile(rb"^([+-]?\d+)\.-(\d+)$")
+
+
+def _stray_minus_number(tok):
+    """`-40.-9` -> -40.9 (the stray minus after the dot is ignored, as in
+    pdf.js and Adobe); None when the token does not have that shape."""
+    m = _STRAY_MINUS.match(bytes(tok))
+    return float(m.group(1) + b"." + m.group(2)) if m else None
+
+
 class PdfDocument:
     def __init__(self, data):
         self.data = data
@@ -232,7 +249,14 @@ class PdfDocument:
 
     def _scan(self):
         d = self.data
-        for m in re.finditer(rb"(?<![0-9])(\d+)\s+(\d+)\s+obj\b", d):
+        headers = list(re.finditer(rb"(?<![0-9])(\d+)\s+(\d+)\s+obj\b", d))
+        # (num, gen) -> offset just past `obj`, so an indirect /Length is one
+        # lookup; a regex over the whole file per stream was quadratic (670 s
+        # on a 24-page arXiv reference with 6000 streams).
+        self._offsets = {}
+        for m in headers:
+            self._offsets.setdefault((int(m.group(1)), int(m.group(2))), m.end())
+        for m in headers:
             num = int(m.group(1))
             lx = _Lexer(d, m.end())
             obj = lx.object()
@@ -271,7 +295,10 @@ class PdfDocument:
                 self._expand_objstm(obj, stream)
 
     def _direct_length(self, ref):
-        m = re.search(rb"(?<![0-9])%d\s+%d\s+obj\s+(\d+)" % ref, self.data)
+        pos = self._offsets.get((ref[0], ref[1]))
+        if pos is None:
+            return None
+        m = re.compile(rb"\s+(\d+)").match(self.data, pos)
         return int(m.group(1)) if m else None
 
     def _expand_objstm(self, obj, stream):
@@ -346,20 +373,38 @@ class PdfDocument:
         sub = fdict.get("Subtype")
         base = str(fdict.get("BaseFont", ""))
         base_plain = re.sub(r"^[A-Z]{6}\+", "", base)
-        info = {"subtype": str(sub), "base": base_plain, "widths": {}, "text": {}, "missing_width": 0.0,
+        info = {"subtype": str(sub), "base": base_plain, "widths": {}, "text": {}, "names": {}, "missing_width": 0.0,
                 "unsupported": None}
         if sub not in ("Type1", "TrueType", "MMType1"):
             info["unsupported"] = f"font subtype {sub}"
             return info
+        desc = self.resolve(fdict.get("FontDescriptor"))
+        if isinstance(desc, dict) and "MissingWidth" in desc:
+            info["missing_width"] = float(self.resolve(desc["MissingWidth"])) / 1000.0
         first = self.resolve(fdict.get("FirstChar"))
         widths = self.resolve(fdict.get("Widths"))
         if isinstance(first, int) and isinstance(widths, list):
             for i, w in enumerate(widths):
                 w = self.resolve(w)
-                info["widths"][first + i] = float(w) / 1000.0
-        desc = self.resolve(fdict.get("FontDescriptor"))
-        if isinstance(desc, dict) and "MissingWidth" in desc:
-            info["missing_width"] = float(self.resolve(desc["MissingWidth"])) / 1000.0
+                if _is_op_token(w):
+                    # pdfTeX can write a number with a stray minus in the
+                    # middle (`-40.-9`); the lexer hands it back as an op
+                    # token. Read it the way pdf.js and Adobe do (the stray
+                    # minus is ignored: -40.9); a token that still cannot be
+                    # read uses MissingWidth. Any other non-number element
+                    # (null, array, dict, name, string) still raises.
+                    v = _stray_minus_number(w[1])
+                    note = "Widths[%d] malformed token %r" % (i, w[1])
+                    if v is None:
+                        info["widths"][first + i] = info["missing_width"]
+                        info.setdefault("notes", []).append(note + ": used MissingWidth")
+                    else:
+                        info["widths"][first + i] = v / 1000.0
+                        info.setdefault("notes", []).append(note + ": read as %s" % v)
+                else:
+                    info["widths"][first + i] = float(w) / 1000.0
+        if isinstance(desc, dict):
+            info["names"].update(self._builtin_encoding(desc))
         table = _OT1 if base_plain.upper().startswith("CM") else _T1
         for code in range(256):
             if 32 <= code < 127:
@@ -378,8 +423,33 @@ class PdfDocument:
                     else:
                         name = str(item)
                         info["text"][code] = _GLYPH_TEXT.get(name) or _uni_name(name) or "?"
+                        info["names"][code] = name
                         code += 1
         return info
+
+    def _builtin_encoding(self, desc):
+        """code -> glyph name from an embedded Type 1 program's own
+        `/Encoding` (the cleartext part, `dup <code> /<name> put`).
+
+        pdfTeX writes no `/Encoding` for a font used in its built-in encoding
+        (every `cm*`/`msbm`/`cmex` font), so this is the only place the glyph
+        names of those codes are recorded. Only read by callers that want
+        glyph identity (`tools/parity`); `text` above is unchanged by it."""
+        ref = desc.get("FontFile")
+        if not isinstance(ref, Ref):
+            return {}
+        obj, stream = self.objects.get(ref[0], (None, None))
+        if not isinstance(obj, dict) or stream is None:
+            return {}
+        try:
+            data = self.decode(obj, stream)
+        except (PdfError, zlib.error):
+            return {}
+        n1 = self.resolve(obj.get("Length1"))
+        clear = data[:n1] if isinstance(n1, int) and n1 > 0 else data[:65536]
+        if re.search(rb"/Encoding\s+StandardEncoding", clear):
+            return {}
+        return {int(c): n.decode("latin-1") for c, n in re.findall(rb"dup\s+(\d+)\s*/([^\s/]+)\s+put", clear)}
 
 
 def _uni_name(name):
@@ -451,7 +521,8 @@ def page_glyphs(doc, page):
             adv = (w0 * size + tc + (tw if code == 32 else 0.0)) * th
             scale = m[0] / (size * th) if size * th else 1.0
             glyphs.append({"x": x, "y_top": height - y, "size": m[3], "font": font["base"],
-                           "text": font["text"].get(code, "?"), "advance": adv * scale, "bt": bt, "code": code})
+                           "text": font["text"].get(code, "?"), "advance": adv * scale, "bt": bt, "code": code,
+                           "name": font["names"].get(code)})
             tm = _mul((1, 0, 0, 1, adv, 0), tm)
 
     def adjust(n):

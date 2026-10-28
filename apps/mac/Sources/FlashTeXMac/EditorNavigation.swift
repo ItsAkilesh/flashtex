@@ -1,4 +1,5 @@
 import Foundation
+import FlashTeXEditorCore
 import FlashTeXProtocol
 
 /// Editor navigation intelligence (lane mac-editor-dx-3): environment pair
@@ -14,139 +15,17 @@ import FlashTeXProtocol
 /// `SyntaxHighlighter.verbatimEnvironments` set) and `\verb<d>…<d>` are
 /// skipped whole, and `\\` / `\{` / `\%` are escapes. Nothing here parses TeX.
 enum EditorNavigation {
-    // MARK: lexical scan
+    // MARK: lexical scan and environment pairs (FlashTeXEditorCore/LaTeXScan.swift)
 
-    /// One control sequence with its complete braced argument, in document
-    /// order: `\name{arg}` (`range` spans the backslash through `}`), or a
-    /// bare `\name` (`argRange` nil) for every other command.
-    struct Use: Equatable {
-        var name: String
-        /// The whole `\name` (or `\name{arg}`) span.
-        var range: NSRange
-        /// The text between the braces, when the command has a braced argument right after its name.
-        var arg: String?
-        var argRange: NSRange?
-    }
+    typealias Use = LaTeXScan.Use
+    typealias EnvironmentPair = LaTeXScan.EnvironmentPair
 
-    /// Every command of `text` outside comments and verbatim, with its
-    /// immediate braced argument when one follows (whitespace allowed
-    /// between name and `{` only for `\begin`/`\end`, which LaTeX permits).
-    static func uses(in text: NSString) -> [Use] {
-        var out: [Use] = []
-        let n = text.length
-        var i = 0
-        var verbatimUntil: String? // `\end{name}` that closes the skipped block
-        func isLetter(_ c: unichar) -> Bool { (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) }
-        while i < n {
-            if let closer = verbatimUntil {
-                // Skip to the matching `\end{name}`; the `\end` itself is emitted.
-                let r = text.range(of: closer, options: .literal, range: NSRange(location: i, length: n - i))
-                guard r.location != NSNotFound else { break }
-                i = r.location
-                verbatimUntil = nil
-                // fall through to lex the `\end`
-            }
-            let c = text.character(at: i)
-            if c == 0x25 { // '%'
-                while i < n, text.character(at: i) != 0x0A { i += 1 }
-                continue
-            }
-            guard c == 0x5C else { i += 1; continue } // '\'
-            var j = i + 1
-            while j < n, isLetter(text.character(at: j)) { j += 1 }
-            if j == i + 1 { // control symbol: `\\`, `\%`, `\{`
-                i = min(n, i + 2)
-                continue
-            }
-            if j < n, text.character(at: j) == 0x2A { j += 1 } // `\newcommand*`, `\section*`
-            let name = text.substring(with: NSRange(location: i + 1, length: j - i - 1))
-            if name == "verb" || name == "verb*", j < n { // `\verb<d>…<d>` to the delimiter or line end
-                let d = text.character(at: j)
-                var k = j + 1
-                while k < n, text.character(at: k) != d, text.character(at: k) != 0x0A { k += 1 }
-                out.append(Use(name: name, range: NSRange(location: i, length: min(n, k + 1) - i), arg: nil, argRange: nil))
-                i = min(n, k + 1)
-                continue
-            }
-            var k = j
-            if name == "begin" || name == "end" { while k < n, text.character(at: k) == 0x20 { k += 1 } }
-            if k < n, text.character(at: k) == 0x7B { // '{'
-                var m = k + 1
-                var depth = 1
-                while m < n {
-                    let d = text.character(at: m)
-                    if d == 0x5C { m += 2; continue }
-                    if d == 0x7B { depth += 1 } else if d == 0x7D { depth -= 1; if depth == 0 { break } }
-                    if d == 0x0A, depth > 0, name == "begin" || name == "end" || name == "label" { break } // an env/label name never spans lines
-                    m += 1
-                }
-                if m < n, text.character(at: m) == 0x7D {
-                    let arg = text.substring(with: NSRange(location: k + 1, length: m - k - 1))
-                    out.append(Use(name: name, range: NSRange(location: i, length: m + 1 - i), arg: arg, argRange: NSRange(location: k + 1, length: m - k - 1)))
-                    if name == "begin", SyntaxHighlighter.verbatimEnvironments.contains(arg) || arg == "comment" { verbatimUntil = "\\end{\(arg)}" }
-                    i = k + 1 // keep lexing inside the argument: `\newcommand{\foo}` also yields the `\foo` use
-                    continue
-                }
-            }
-            out.append(Use(name: name, range: NSRange(location: i, length: j - i), arg: nil, argRange: nil))
-            i = j
-        }
-        return out
-    }
-
-    // MARK: environment pairs
-
-    struct EnvironmentPair: Equatable {
-        var name: String
-        /// `\begin{name}` span.
-        var begin: NSRange
-        /// `\end{name}` span; nil when the environment is never closed.
-        var end: NSRange?
-
-        /// From the `\begin` through the `\end` (or to `limit` when unclosed).
-        func whole(limit: Int) -> NSRange {
-            let stop = end.map(NSMaxRange) ?? limit
-            return NSRange(location: begin.location, length: max(0, stop - begin.location))
-        }
-    }
-
-    /// Every `\begin{X}` paired with its `\end{X}` by a per-name stack, so
-    /// nesting of the same name and unbalanced text both resolve: a stray
-    /// `\end` is ignored, an unclosed `\begin` keeps `end == nil`.
-    static func environmentPairs(in text: NSString) -> [EnvironmentPair] {
-        var pairs: [EnvironmentPair] = []
-        var open: [String: [Int]] = [:] // name → indices into pairs
-        for u in uses(in: text) {
-            guard let arg = u.arg, !arg.isEmpty else { continue }
-            if u.name == "begin" {
-                open[arg, default: []].append(pairs.count)
-                pairs.append(EnvironmentPair(name: arg, begin: u.range, end: nil))
-            } else if u.name == "end", let i = open[arg]?.popLast() {
-                pairs[i].end = u.range
-            }
-        }
-        return pairs
-    }
-
-    /// The pair whose `\begin` or `\end` contains `caret` (a caret right after
-    /// the closing brace counts as on it, like bracket matching).
-    static func environmentPair(at caret: Int, in text: NSString) -> EnvironmentPair? {
-        environmentPairs(in: text).first { p in
-            NSLocationInRange(caret, p.begin) || caret == NSMaxRange(p.begin)
-                || (p.end.map { NSLocationInRange(caret, $0) || caret == NSMaxRange($0) } ?? false)
-        }
-    }
-
-    /// The innermost environment whose span contains `caret` (the `document`
-    /// environment included: selecting it selects the body).
-    static func enclosingEnvironment(at caret: Int, in text: NSString) -> EnvironmentPair? {
-        var best: EnvironmentPair?
-        for p in environmentPairs(in: text) {
-            let whole = p.whole(limit: text.length)
-            guard whole.location <= caret, caret <= NSMaxRange(whole) else { continue }
-            if best == nil || whole.location >= best!.begin.location { best = p }
-        }
-        return best
+    static func uses(in text: NSString) -> [Use] { LaTeXScan.uses(in: text) }
+    static func environmentPairs(in text: NSString) -> [EnvironmentPair] { LaTeXScan.environmentPairs(in: text) }
+    static func environmentPair(at caret: Int, in text: NSString) -> EnvironmentPair? { LaTeXScan.environmentPair(at: caret, in: text) }
+    static func enclosingEnvironment(at caret: Int, in text: NSString) -> EnvironmentPair? { LaTeXScan.enclosingEnvironment(at: caret, in: text) }
+    static func forEachEnvironmentUse(in text: NSString, _ body: (_ isBegin: Bool, _ range: NSRange, _ arg: String) -> Void) {
+        LaTeXScan.forEachEnvironmentUse(in: text, body)
     }
 
     /// ⌘⇧A: the whole environment around `selection` — the innermost one
@@ -168,17 +47,20 @@ enum EditorNavigation {
     struct Wrap: Equatable {
         var range: NSRange
         var replacement: String
-        /// Where the caret goes: at the start of the wrapped body.
+        /// Where the caret goes: at the start of the wrapped body for an
+        /// environment; after the `}` (or between the braces when nothing
+        /// was selected) for a command.
         var selection: NSRange
     }
 
     /// ⌘⇧W: `\begin{env}` … `\end{env}` around `selection`. A selection that
     /// covers whole lines (or is empty) becomes a block: the environment on
     /// its own lines at the first line's indentation, every non-blank body
-    /// line indented one more `indentUnit` (none for verbatim-like
-    /// environments); anything else is wrapped inline. The caret lands at
-    /// the start of the body.
-    static func wrap(selection: NSRange, in text: NSString, environment env: String, indentUnit: String) -> Wrap {
+    /// line indented one more `indentUnit` when `rules` indent that body
+    /// (never for verbatim-like environments); anything else is wrapped
+    /// inline. The caret lands at the start of the body.
+    static func wrap(selection: NSRange, in text: NSString, environment env: String, indentUnit: String,
+                     rules: EnvironmentEditingRules = .conventional) -> Wrap {
         let sel = NSRange(location: max(0, min(selection.location, text.length)),
                           length: max(0, min(selection.length, text.length - min(selection.location, text.length))))
         var lineStart = sel.location
@@ -199,7 +81,7 @@ enum EditorNavigation {
         let block = NSRange(location: lineStart, length: lineEnd - lineStart)
         var lines = text.substring(with: block).components(separatedBy: "\n")
         let indent = String((lines.first ?? "").prefix(while: blank)) // the block's own indentation
-        let unit = SyntaxHighlighter.verbatimEnvironments.contains(env) ? "" : indentUnit
+        let unit = rules.indentsBody(of: env) ? indentUnit : ""
         if sel.length == 0, lines.allSatisfy({ $0.allSatisfy(blank) }) { lines = [indent] } // a blank line becomes the (indented) body line
         let body = lines.map { $0.allSatisfy(blank) && sel.length > 0 ? "" : unit + $0 }.joined(separator: "\n")
         let head = indent + begin + "\n"
@@ -207,6 +89,27 @@ enum EditorNavigation {
         let firstIndent = (lines.first ?? "").prefix(while: blank).utf16.count
         let caret = lineStart + head.utf16.count + unit.utf16.count + firstIndent
         return Wrap(range: block, replacement: out, selection: NSRange(location: caret, length: 0))
+    }
+
+    /// ⌘⇧B / ⌘I / ⌘U / ⌘⌥W: `\command{…}` around `selection`, always
+    /// inline (a command argument is never re-flowed onto its own lines).
+    /// `foo` + `textbf` → `\textbf{foo}` with the caret after the `}`; an
+    /// empty selection → `\textbf{|}`, the caret between the braces so the
+    /// `}` can be tracked as a pending closer (EditorKeyHandling.programmaticCloser).
+    static func wrap(selection: NSRange, in text: NSString, command: String) -> Wrap {
+        let location = max(0, min(selection.location, text.length))
+        let sel = NSRange(location: location, length: max(0, min(selection.length, text.length - location)))
+        let open = "\\" + command + "{"
+        let replacement = open + text.substring(with: sel) + "}"
+        let caret = sel.length > 0 ? sel.location + replacement.utf16.count : sel.location + open.utf16.count
+        return Wrap(range: sel, replacement: replacement, selection: NSRange(location: caret, length: 0))
+    }
+
+    /// The command a text-formatting shortcut resolves to: `math` when the
+    /// caret is known to be in math mode, else `text` (nil — no syntax model
+    /// to ask — is treated as text, the safe default).
+    static func wrapCommand(text: String, math: String, mathMode: Bool?) -> String {
+        mathMode == true ? math : text
     }
 
     // MARK: symbol rename

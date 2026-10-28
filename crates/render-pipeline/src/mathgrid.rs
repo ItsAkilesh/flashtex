@@ -20,6 +20,8 @@ use ml::{Glyph, MathBox, MathFontMetrics, MathParams, Style};
 pub const ARRAYCOLSEP: f64 = 5.0;
 /// amsmath `\jot`.
 pub const JOT: f64 = 3.0;
+/// amsmath `\minalignsep` (`\newcommand{\minalignsep}{10pt}`).
+pub const MINALIGNSEP: f64 = 10.0;
 
 /// How one grid environment places its cells.
 #[derive(Debug, Clone, PartialEq)]
@@ -54,6 +56,28 @@ pub struct GridSpec {
     /// `\vcenter` (`c`), from `array[t]` (latex.ltx `\@array`) or amsmath's
     /// `aligned[t]`/`gathered[b]` (`\ams@start@box`).
     pub vpos: char,
+    /// The [`Gaps::Quads`] gap is written in column 1's template rather
+    /// than column 2's: amsmath `cases` is `\array{@{}l@{\quad}l@{}}`, and
+    /// `\@mkpream` appends an `@{...}` to the *preceding* column's
+    /// `\@preamble`, so every row's first cell ends with the `\quad`
+    /// whether or not the row has a `&`. A `cases` whose rows never reach
+    /// column 2 is therefore still one `\quad` wider than its widest cell
+    /// (pdflatex `\showbox`: rows `x - 3y + 2z = -6` set 94.78958pt =
+    /// 83.9017 + `\glue 10.88788`). mathtools' `\newcases` puts the gap in
+    /// column 2's u-part (`&#1\strut@ #3`), so `rcases`/`dcases` do not.
+    pub gap_in_first_column: bool,
+    /// `\arrayrulewidth` where the environment starts: the thickness of
+    /// its `\hline`/`\cline` rules ([`GridSpec::read_rule_lengths`]).
+    pub rule_width: f64,
+    /// `\doublerulesep` there: `\@xhline`'s gap between two `\hline`s.
+    pub double_rule_sep: f64,
+    /// amsmath's `\alignsep@` for [`Gaps::Pairs`], in points: the
+    /// `\tabskip` after every even column of `aligned` (`\minalignsep`,
+    /// 10pt at every class size) or `alignedat` (`\z@skip`)
+    /// (`amsmath.sty` `\start@aligned`, lines 1462-1491). `None` keeps a
+    /// text quad (`split`, which has no such tabskip and never more than
+    /// one pair).
+    pub alignsep: Option<f64>,
 }
 
 /// amsgen.sty `\compute@ex@` (lines 104-125): amsmath's `\ex@` at font size
@@ -108,12 +132,17 @@ impl GridSpec {
             strut: true,
             outer_mu: 0.0,
             vpos,
+            gap_in_first_column: false,
+            rule_width: ARRAY_RULE_WIDTH,
+            double_rule_sep: DOUBLE_RULE_SEP,
+            alignsep: None,
         };
         match env.as_str() {
             "cases" => {
                 spec.stretch = 1.2;
                 spec.gaps = Gaps::Quads(1.0);
                 spec.trim_outer = true;
+                spec.gap_in_first_column = true;
             }
             // `cases` and `rcases` do NOT share a macro path: `cases` is
             // amsmath.sty's own `\env@cases` (`\arraystretch=1.2`,
@@ -123,7 +152,9 @@ impl GridSpec {
             // They land on numerically equivalent spacing (1.2 stretch, a
             // `\quad` gap) by coincidence of both authors' choices, not
             // shared code, which is why this compiler models them
-            // identically here.
+            // identically here -- except which column's template carries
+            // the gap (`gap_in_first_column`), which only shows when no row
+            // has a `&`.
             "rcases" => {
                 spec.stretch = 1.2;
                 spec.gaps = Gaps::Quads(1.0);
@@ -160,6 +191,11 @@ impl GridSpec {
                 spec.gaps = Gaps::Pairs;
                 spec.style = Style::DISPLAY;
                 spec.jot = JOT;
+                spec.alignsep = match env.as_str() {
+                    "aligned" => Some(MINALIGNSEP),
+                    "alignedat" => Some(0.0),
+                    _ => None,
+                };
             }
             "gathered" => {
                 spec.gaps = Gaps::Quads(0.0);
@@ -170,6 +206,29 @@ impl GridSpec {
         }
         spec
     }
+
+    /// `\arrayrulewidth` and `\doublerulesep` as the document has them at
+    /// byte `at` of `src` (the environment's `\begin`), read the way a text
+    /// `tabular` reads them (`adapter::length_at`: `\setlength`,
+    /// `\addtolength` and TeX assignments, local to the group they are made
+    /// in, and those a macro invoked before `at` makes); the kernel
+    /// defaults when the document sets neither. `size` is the class size
+    /// (for `em`/`ex`). Only a grid with rules needs this, so callers skip
+    /// the lookup otherwise.
+    pub fn read_rule_lengths(&mut self, src: &str, at: usize, size: u32) {
+        (self.rule_width, self.double_rule_sep) = rule_lengths_at(src, at, size);
+    }
+}
+
+/// `(\arrayrulewidth, \doublerulesep)` in pt at byte `at` of `src`
+/// ([`GridSpec::read_rule_lengths`]). The render cache keys a ruled grid
+/// on exactly these values (`incremental::hash_math_with`), since they
+/// come from the document rather than from the math list.
+pub fn rule_lengths_at(src: &str, at: usize, size: u32) -> (f64, f64) {
+    (
+        crate::adapter::length_at(src, "arrayrulewidth", size, at, ARRAY_RULE_WIDTH).unwrap_or(ARRAY_RULE_WIDTH),
+        crate::adapter::length_at(src, "doublerulesep", size, at, DOUBLE_RULE_SEP).unwrap_or(DOUBLE_RULE_SEP),
+    )
 }
 
 /// The environment name at `\begin{...}`, the `\\[<dimen>]` row skips of
@@ -237,6 +296,12 @@ pub struct Pitch {
     pub lineskiplimit: f64,
 }
 
+/// latex.ltx's defaults for `\arrayrulewidth` and `\doublerulesep`, which a
+/// grid uses unless the document changes them ([`GridSpec::rule_width`],
+/// [`GridSpec::double_rule_sep`]).
+pub const ARRAY_RULE_WIDTH: f64 = 0.4;
+pub const DOUBLE_RULE_SEP: f64 = 2.0;
+
 /// Places laid-out cells (`rows[i][j]`) as `\@array` does and `\vcenter`s
 /// the result on the axis (or sets it as a `\vtop`/`\vbox`, `spec.vpos`).
 /// `columns` are the `l`/`c`/`r` letters. `p` holds the parameters of the
@@ -245,6 +310,28 @@ pub struct Pitch {
 /// `\thickspace`, written in the preamble's text mode) are measured in,
 /// which does not shrink when the grid sits in a script.
 pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitch: Pitch, p: &MathParams, quad: f64) -> MathBox {
+    layout_grid_ruled(rows, columns, spec, pitch, p, quad, &[])
+}
+
+/// [`layout_grid`] with an `array`'s inter-row rules (compiler
+/// `Nucleus::Matrix::rules`). `\hline` is `\noalign{\hrule\@height
+/// \arrayrulewidth}` across the whole alignment, and a second one straight
+/// after adds `\vskip\doublerulesep\vskip-\arrayrulewidth` first (`\@xhline`). `\cline{a-b}` is
+/// a row of `\leaders\hrule\@height\arrayrulewidth\hfill` over the full
+/// width of columns a..b (their `\arraycolsep`s included, since the cells
+/// are `\omit`ted), followed by `\noalign{\vskip-\arrayrulewidth}`, so it
+/// takes no height. `\@array` stacks its rows with `\baselineskip` and
+/// `\lineskip` zero, so a rule's thickness adds directly to the distance
+/// between the rows around it.
+pub fn layout_grid_ruled(
+    rows: Vec<Vec<MathBox>>,
+    columns: &str,
+    spec: &GridSpec,
+    pitch: Pitch,
+    p: &MathParams,
+    quad: f64,
+    rules: &[flashtex_compiler::math::RowRule],
+) -> MathBox {
     let ncols = rows.iter().map(Vec::len).max().unwrap_or(0);
     let cols: Vec<char> = columns.chars().chain(std::iter::repeat('c')).take(ncols).collect();
     let widths: Vec<f64> = (0..ncols).map(|j| rows.iter().filter_map(|r| r.get(j)).map(|b| b.width).fold(0.0, f64::max)).collect();
@@ -270,14 +357,38 @@ pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitc
                 xs.push(x);
                 x += w;
             }
+            // The gap belongs to column 1's template, so a single-column
+            // grid still ends with it (`GridSpec::gap_in_first_column`).
+            if spec.gap_in_first_column && ncols == 1 {
+                x += n * quad;
+            }
         }
         Gaps::Pairs => {
+            let sep = spec.alignsep.unwrap_or(quad);
             for (j, w) in widths.iter().enumerate() {
                 if j > 0 && j % 2 == 0 {
-                    x += quad;
+                    x += sep;
                 }
                 xs.push(x);
                 x += w;
+            }
+            if let Some(sep) = spec.alignsep {
+                // `\start@aligned`'s template ends every even column with
+                // `\tabskip\alignsep@`, so that glue also follows the last
+                // column when it is even. `\\` after an even column is
+                // `&\kern-\alignsep@\cr` (`\math@cr@@@aligned`): an extra
+                // column `\alignsep@` wide the other way that cancels it,
+                // but only when no row has a real cell in that column,
+                // i.e. when the row reaching past the others ended so. The
+                // last row usually ends at `\end`, which adds nothing: a
+                // one-row `aligned` is `\alignsep@` wider than its cells
+                // (pdflatex `\showbox`: `\glue(\tabskip) 10.0` after column
+                // 2, and a second row adds the `x-10.0` column).
+                let ended_by_cr = spec.row_skips.len().min(rows.len());
+                let cancelled = rows[..ended_by_cr].iter().any(|r| r.len() == ncols);
+                if ncols % 2 == 0 && ncols > 0 && !cancelled {
+                    x += sep;
+                }
             }
         }
     }
@@ -316,8 +427,48 @@ pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitc
         y += dist;
         baselines.push(y);
     }
+    // The rules at each row boundary (0 = above the first row, `nrows` =
+    // below the last), as vertical advances and drawn rules.
+    use flashtex_compiler::math::RowRuleKind;
+    let nrows = baselines.len();
+    let mut advance = vec![0.0f64; nrows + 1];
+    // (boundary, offset of the rule's top from the boundary, x0, x1)
+    let mut drawn: Vec<(usize, f64, f64, f64)> = Vec::new();
+    let col_left = |j: usize| xs.get(j).map_or(0.0, |x| x - if j == 0 && spec.trim_outer { 0.0 } else { spec.colsep });
+    let col_right = |j: usize| xs.get(j).map_or(0.0, |x| x + widths[j] + if j + 1 == ncols && spec.trim_outer { 0.0 } else { spec.colsep });
+    let mut prev: Option<(usize, bool)> = None;
+    for rule in rules {
+        let b = rule.boundary.min(nrows);
+        match rule.kind {
+            RowRuleKind::HLine => {
+                if prev == Some((b, true)) {
+                    // `\@xhline`: `\vskip\doublerulesep\vskip-\arrayrulewidth`.
+                    advance[b] += spec.double_rule_sep - spec.rule_width;
+                }
+                drawn.push((b, advance[b], 0.0, width));
+                advance[b] += spec.rule_width;
+                prev = Some((b, true));
+            }
+            // Columns are 0-based here (the compiler checks `\cline{a-b}`'s
+            // 1-based range and stores `a-1`/`b-1`).
+            RowRuleKind::CLine { first, last } if last >= first && last < ncols => {
+                drawn.push((b, advance[b], col_left(first), col_right(last)));
+                prev = Some((b, false));
+            }
+            RowRuleKind::CLine { .. } => prev = Some((b, false)),
+        }
+    }
+    let mut shift = 0.0;
+    let mut boundary_top = vec![0.0f64; nrows + 1];
+    for i in 0..nrows {
+        boundary_top[i] = if i == 0 { 0.0 } else { baselines[i - 1] + extents[i - 1].1 };
+        shift += advance[i];
+        baselines[i] += shift;
+    }
+    boundary_top[nrows] = baselines.last().copied().unwrap_or(0.0) + extents.last().map_or(0.0, |e| e.1);
+    let y = baselines.last().copied().unwrap_or(0.0);
     let last_depth = extents.last().map_or(0.0, |e| e.1);
-    let total = y + last_depth;
+    let total = y + last_depth + advance[nrows];
     let (height, depth) = match spec.vpos {
         // `\vtop` (tex.web §1087): the height of the first row box.
         't' => (extents[0].0, total - extents[0].0),
@@ -342,6 +493,14 @@ pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitc
                 content: cell,
             });
         }
+    }
+    for (b, offset, x0, x1) in drawn {
+        let top = boundary_top[b] + offset;
+        children.push(Child {
+            dx: x0,
+            dy: top + spec.rule_width - height,
+            content: MathBox::rule(x1 - x0, spec.rule_width, 0.0),
+        });
     }
     MathBox {
         kind: BoxKind::HBox(children),
@@ -494,6 +653,40 @@ mod tests {
         assert_eq!((array.stretch, array.gaps, array.trim_outer), (1.0, Gaps::ColSep, false));
     }
 
+    /// pdflatex (TeX Live 2026, 11pt article, amsmath) `\showbox` of
+    /// `\begin{cases} 2x + y - z = 4 \\ x - 3y + 2z = -6 \\ 3x + 2y + z = 5
+    /// \end{cases}` -- no `&` anywhere: every row is `\hbox(...)x94.78958`
+    /// ending in `\glue 10.88788` (the `@{\quad}` of column 1's template, one
+    /// `ecrm1095` quad) after the 83.9017pt widest cell. Without the quad the
+    /// display was 10.888pt narrower and its centring put every word of
+    /// fixtures/real-world/ps-calculus page 2 5.42bp to the right.
+    #[test]
+    fn single_column_cases_still_ends_with_its_quad() {
+        let spec_for = |env: &str| {
+            let src = format!("\\begin{{{env}}} a \\\\ b \\end{{{env}}}");
+            GridSpec::from_source(&src, Span::in_document(Default::default(), 0, 6), 11)
+        };
+        let pitch = Pitch {
+            baselineskip: 13.6,
+            lineskip: 1.0,
+            lineskiplimit: 0.0,
+        };
+        let p = ml::CmMathMetrics::latex_10pt().params(ml::SizeClass::Text);
+        let rows = || vec![vec![MathBox::rule(60.0, 5.0, 1.0)], vec![MathBox::rule(83.9017, 5.0, 1.0)], vec![MathBox::rule(70.0, 5.0, 1.0)]];
+        let g = layout_grid(rows(), "ll", &spec_for("cases"), pitch, &p, 10.88788);
+        assert!((g.width - 94.78958).abs() < 1e-4, "{}", g.width);
+        // mathtools' `rcases`/`dcases` write the `\quad` in column 2's
+        // u-part, so a single-column one is exactly its widest cell.
+        for env in ["rcases", "dcases"] {
+            let g = layout_grid(rows(), "ll", &spec_for(env), pitch, &p, 10.88788);
+            assert!((g.width - 83.9017).abs() < 1e-9, "{env}: {}", g.width);
+        }
+        // With a second column the quad sits between the columns, as before.
+        let two = vec![vec![MathBox::rule(60.0, 5.0, 1.0), MathBox::rule(20.0, 5.0, 1.0)], vec![MathBox::rule(83.9017, 5.0, 1.0)]];
+        let g = layout_grid(two, "ll", &spec_for("cases"), pitch, &p, 10.88788);
+        assert!((g.width - (83.9017 + 10.88788 + 20.0)).abs() < 1e-9, "{}", g.width);
+    }
+
     #[test]
     fn grid_places_columns_with_arraycolsep_and_rows_at_baselineskip() {
         let cell = |w: f64, h: f64, d: f64| MathBox::rule(w, h, d);
@@ -511,6 +704,10 @@ mod tests {
             strut: true,
             outer_mu: 0.0,
             vpos: 'c',
+            gap_in_first_column: false,
+            rule_width: ARRAY_RULE_WIDTH,
+            double_rule_sep: DOUBLE_RULE_SEP,
+            alignsep: None,
         };
         let pitch = Pitch {
             baselineskip: 12.0,

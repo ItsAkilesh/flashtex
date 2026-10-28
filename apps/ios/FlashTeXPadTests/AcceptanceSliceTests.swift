@@ -20,17 +20,26 @@ final class AcceptanceSliceTests: XCTestCase {
     let code = "482913"
 
     override func setUp() async throws {
+        model = PadModel(link: MacLink(store: nil, connectTimeout: FakeMac.handshakeTimeout))
+    }
+
+    /// Only the transport tests start the loopback fixture. The local review
+    /// and completion tests never touch the network, so a slow listener bind
+    /// on a cold CI simulator cannot fail them (the old setUp bound a FakeMac
+    /// for every test and asserted its port; CI saw these tests fail
+    /// intermittently).
+    private func startMac() throws {
         let derived = NearbyCrypto.derive(code: code, salt: salt)
         mac = try FakeMac(keys: [.init(identity: derived.pairId, psk: derived.psk, bootstrap: true)], macName: "Fixture Mac",
                           destination: NearbyWire.Destination(destinationId: "dest-1", projectId: "review-fixture", path: "main.tex", baseRevision: 1))
         mac.start()
-        XCTAssertNotEqual(mac.port, 0, "FakeMac did not bind")
-        model = PadModel(link: MacLink(store: nil))
+        XCTAssertNotEqual(mac.port, 0, "FakeMac did not bind (listener state: \(mac.listenerState))")
     }
 
     override func tearDown() async throws {
         model.disconnect()
-        mac.stop()
+        mac?.stop()
+        mac = nil
     }
 
     // (a)
@@ -48,6 +57,7 @@ final class AcceptanceSliceTests: XCTestCase {
 
     // (b) real transport: pairing-code bootstrap, hello_ack, capture_submit → capture_received
     func testPairAndCaptureReceiptOverNearbyV1() async throws {
+        try startMac()
         model.openBundledSample()
         await model.pair(host: "127.0.0.1", port: String(mac.port), saltHex: NearbyCrypto.hex(salt),
                          fingerprint: NearbyCrypto.fingerprint(salt: salt), macName: "Fixture Mac", code: code)
@@ -76,6 +86,7 @@ final class AcceptanceSliceTests: XCTestCase {
     }
 
     func testWrongPairingCodeIsRefused() async throws {
+        try startMac()
         await model.pair(host: "127.0.0.1", port: String(mac.port), saltHex: NearbyCrypto.hex(salt),
                          fingerprint: NearbyCrypto.fingerprint(salt: salt), macName: "Fixture Mac", code: "000000")
         XCTAssertNotNil(model.linkError)
@@ -105,6 +116,7 @@ final class AcceptanceSliceTests: XCTestCase {
 
     // (d) approve: exactly one insertion + receipt
     func testApproveInsertsExactlyOnceAndEchoesReceipt() async throws {
+        try startMac()
         // Pair first so the flow is the full one: capture over the wire, then review locally.
         await model.pair(host: "127.0.0.1", port: String(mac.port), saltHex: NearbyCrypto.hex(salt),
                          fingerprint: NearbyCrypto.fingerprint(salt: salt), macName: "Fixture Mac", code: code)
@@ -152,14 +164,16 @@ final class AcceptanceSliceTests: XCTestCase {
         if case .refused = model.review!.state {} else { XCTFail("expected refused") }
     }
 
-    func testLocalCompletionsFromSource() {
+    func testLocalCompletionsFromSource() async {
         model.openBundledSample()
         let text = model.document!.text
         let caret = (text as NSString).range(of: "\\subsection{At the café}").location + 4 // after "\sub"
         model.caretMoved(caret)
+        await model.settleCompletions() // computed off the main actor after the debounce
         XCTAssertTrue(model.completions.contains { $0.text == "\\subsection" })
         let endCaret = (text as NSString).length
         model.caretMoved(endCaret)
+        await model.settleCompletions()
         // Document has an unclosed \begin{document}? demo.tex closes it; check the helper directly.
         XCTAssertEqual(LocalCompletion.openEnvironments(in: "\\begin{document}\\begin{itemize}"), ["document", "itemize"])
         let s = LocalCompletion.suggestions(in: "\\begin{itemize}\n\\e", caretByte: 18)

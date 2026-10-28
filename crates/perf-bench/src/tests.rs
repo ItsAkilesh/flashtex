@@ -152,6 +152,23 @@ fn a_changed_output_digest_fails_even_when_everything_got_faster() {
 }
 
 #[test]
+fn a_baseline_case_refused_by_the_run_fails_but_one_not_selected_only_warns() {
+    let base = report_of(vec![
+        case("refused", &[("cold.render_ms", 10.0, 0.01)], "aa"),
+        case("skipped", &[("cold.render_ms", 10.0, 0.01)], "aa"),
+    ]);
+    let mut now = report_of(Vec::new());
+    now.unmeasured.push(("refused".into(), "font diagnostics in a benchmarked render".into()));
+    let o = report::gate(&base, &now, 5.0);
+    // A case the font gate refused had its output go unchecked: that must
+    // not pass silently. A case left out with --only is just not this run's.
+    assert_eq!(o.digest_mismatches.len(), 1);
+    assert!(o.digest_mismatches[0].starts_with("refused:"));
+    assert!(o.warnings.iter().any(|w| w.starts_with("skipped: in the baseline but not in this run")));
+    assert!(report::gate_failed(&o, true));
+}
+
+#[test]
 fn timings_from_a_different_host_are_reported_but_not_enforced() {
     let mut base = report_of(vec![case("c", &[("cold.render_ms", 10.0, 0.01)], "aa")]);
     base.meta[0].1 = json::str_("macos/aarch64/other/10cpu");
@@ -188,6 +205,37 @@ fn overlapping_and_alternative_phases_are_excluded_from_coverage() {
         assert!(Phases::NAMES.contains(&n), "{n} should still be reported");
     }
     assert!(Phases::NAMES.contains(&"typeset"));
+}
+
+/// Cases left out by `--only` are not this run's: the per-PR job in perf.yml
+/// measures a 15-case subset on every run, so counting exclusions would fail
+/// the gate by construction. Only a selected case that produced no valid
+/// timing (a refusal) fails the gate without `--allow-unmeasured`.
+#[test]
+fn the_unmeasured_gate_ignores_only_excluded_cases() {
+    let s = |x: &str| x.to_string();
+    // A full run: nothing excluded, nothing refused.
+    assert!(crate::unmeasured_gate_error(&[], &[]).is_none());
+    // A subset run with every selected case measured: the excluded cases
+    // are ignored, not named, and the gate passes.
+    assert!(crate::unmeasured_gate_error(&[s("hw2"), s("tikz-heavy")], &[]).is_none());
+    // A refused measurement fails the gate too, even with no --only, and
+    // the error names the refused case and points at the flag.
+    let err = crate::unmeasured_gate_error(&[], &[("refused".into(), "font diagnostics".into())]).expect("refused case must fail the gate");
+    assert!(err.contains("refused"), "refused cases must be named: {err}");
+    assert!(err.contains("--allow-unmeasured"), "the error must point at the acknowledgement flag: {err}");
+    // A refusal inside a subset run still fails, naming the refused case.
+    let err = crate::unmeasured_gate_error(&[s("hw2")], &[("refused".into(), "font diagnostics".into())]).expect("refused case must fail the gate");
+    assert!(err.contains("refused"), "refused cases must be named: {err}");
+}
+
+#[test]
+fn excluded_ids_is_the_corpus_minus_the_selection() {
+    let s = |x: &str| x.to_string();
+    let all = vec![s("hw1"), s("hw2"), s("tikz-heavy")];
+    assert!(crate::excluded_ids(&all, &all).is_empty(), "selecting everything excludes nothing");
+    assert_eq!(crate::excluded_ids(&all, &[s("hw1")]), vec![s("hw2"), s("tikz-heavy")]);
+    assert!(crate::excluded_ids(&[], &[]).is_empty());
 }
 
 /// `unicode-accents` opens with multi-byte characters in its first prose line.

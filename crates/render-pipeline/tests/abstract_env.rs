@@ -129,6 +129,40 @@ fn the_head_is_small_and_centred_and_the_body_is_a_quotation() {
     );
 }
 
+/// `\noindent` on the first paragraph of the quotation body: `\@item`'s
+/// `\everypar` finds no `\parindent` box and answers `\kern-\itemindent`,
+/// cancelling the `\hskip\itemindent` of `\@labels`, so the line starts at
+/// `\leftmargini`. A later paragraph without it is indented by
+/// `\listparindent` (1.5em of `\small`). `fixtures/real-world/plain-article`
+/// opens its abstract this way; pdflatex sets "This" at x = 158.675 bp, the
+/// same x as the continuation lines, and our line was 13.8 bp further in.
+#[test]
+fn noindent_on_the_first_quotation_paragraph_starts_at_leftmargin() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    let text = TITLE_ABSTRACT.replace("SIZE", "10pt").replace(
+        "\\begin{abstract}\nBody",
+        "\\begin{abstract}\n\\noindent Body of the first paragraph.\n\nBody",
+    );
+    let (_, words) = layout(&text);
+    let s = flashtex_render_pipeline::Stylesheet::article(10, flashtex_render_pipeline::fonts::Family::LatinModern, None);
+    const TEXT_X: f64 = 72.0;
+    let first = words
+        .iter()
+        .filter(|w| w.text.starts_with("Body") && w.size < bp(9.5))
+        .map(|w| w.x)
+        .collect::<Vec<_>>();
+    assert_eq!(first.len(), 2, "two body paragraphs: {first:?}");
+    let left = TEXT_X + bp(s.leftmargini_pt);
+    assert!((first[0] - left).abs() < 0.02, "\\noindent first paragraph at \\leftmargini: {} vs {left}", first[0]);
+    // 1.5em of \small: cmr9's quad is 9.24774pt, so 13.87161pt (the
+    // `\hbox(0.0+0.0)x13.87161` in the module's `\showoutput` transcript).
+    let indented = left + bp(13.87161);
+    assert!((first[1] - indented).abs() < 0.05, "second paragraph indented by \\listparindent: {} vs {indented}", first[1]);
+}
+
 /// `\if@twocolumn` (article.cls 378-379) is `\section*{\abstractname}`: an
 /// unnumbered `\Large\bfseries` head at the *column* measure and the body as
 /// ordinary `\normalsize` paragraphs — no `\small`, no `quotation`, no
@@ -152,6 +186,42 @@ fn the_two_column_branch_is_an_unnumbered_section() {
     let body = word(&words, "Body");
     assert!((body.size - bp(10.0)).abs() < 0.01, "body at \\normalsize: {}", body.size);
     assert!((body.x - head.x).abs() < 0.02, "head and body share the column's left edge: {} vs {}", head.x, body.x);
+}
+
+/// `\end{abstract}` ends the paragraph (`\endlist`'s `\@endparenv`), so the
+/// text after it starts a new one even with no blank line between them —
+/// unindented, because `\@doendpe` takes the `\parindent` box off. The
+/// compiler has no model for the environment and set that text as a
+/// continuation of the body's own paragraph: `"Abs. Text"` on one line
+/// (`Text` at x = 194.82 on the body's baseline). Every number below is the
+/// baseline origin pdfTeX (TeX Live 2026) writes into the reference PDF of
+/// the quoted probe, read off its content stream.
+#[test]
+fn text_after_end_abstract_starts_a_new_paragraph() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    let plain = "\\documentclass[10pt]{article}\n\\begin{document}\n\\begin{abstract} Abs. \\end{abstract}\nText.\n\\end{document}";
+    let (_, words) = layout(plain);
+    let text = word(&words, "Text.");
+    assert!((text.x - 133.77).abs() < 0.1, "Text at the left margin, not run into the body: {}", text.x);
+    assert!((text.baseline - 168.31).abs() < 0.1, "Text on the next baseline: {}", text.baseline);
+    // The same after `\maketitle` (an explicit date, so `\today` cannot
+    // move either engine's page).
+    let titled = "\\documentclass[10pt]{article}\n\\title{A Title}\n\\author{An Author}\n\\date{March 14, 2025}\n\
+\\begin{document}\n\\maketitle\n\\begin{abstract} Abs. \\end{abstract}\nText.\n\\end{document}";
+    let (_, words) = layout(titled);
+    let text = word(&words, "Text.");
+    assert!((text.x - 133.77).abs() < 0.1, "Text at the left margin after \\maketitle: {}", text.x);
+    assert!((text.baseline - 298.36).abs() < 0.1, "Text on the next baseline after \\maketitle: {}", text.baseline);
+    // A blank line between the two keeps the indent; that path never merged
+    // and is unchanged.
+    let blank = "\\documentclass[10pt]{article}\n\\begin{document}\n\\begin{abstract} Abs. \\end{abstract}\n\nText.\n\\end{document}";
+    let (_, words) = layout(blank);
+    let text = word(&words, "Text.");
+    assert!((text.x - 148.71).abs() < 0.1, "Text indented after a blank line: {}", text.x);
+    assert!((text.baseline - 168.31).abs() < 0.1, "Text on the next baseline after a blank line: {}", text.baseline);
 }
 
 /// `\@item` opens a list with `\addvspace{\@topsep}` only when `\if@nobreak`

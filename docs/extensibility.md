@@ -14,9 +14,13 @@ use. None of them require patching the app.
 
 Every non-trivial feature in FlashTeX is a separate executable the app
 launches as a child process and talks to over private pipes with
-newline-delimited JSON. The compiler, PDF writer, preview controller, edit
-ledger, project-files indexer, capture bridge and the rule-based diagnostics
-explainer all work this way; so did the removed assistant, and so can yours.
+newline-delimited JSON. The edit ledger, project-files indexer and capture
+bridge work this way; so did the old engine's compiler, PDF writer and
+preview controller, the rule-based diagnostics explainer and the removed
+assistant (all gone from the app since retirement stage S6), and so can
+yours. The engine host (`flashtex-host`) is the exception: it speaks the
+display-list-v3 protocol over a Unix socket
+(`apps/mac/docs/engine-v3-preview.md`).
 
 The shape (`apps/mac/Sources/FlashTeXMac/LineProcessClient.swift`):
 
@@ -42,9 +46,9 @@ The shape (`apps/mac/Sources/FlashTeXMac/LineProcessClient.swift`):
   `components.json`.
 
 The runtime-v1 (`docs/contracts/runtime-v1.md`) and transfer-v1 contracts are
-the reference wire shapes; `crates/diagnostic-explanations` (the
-`flashtex-explain` front end) is the smallest complete example: one request
-type in, one reply type out, no state, no network.
+the reference wire shapes; `ExplanationClient` (`EditorDiagnostics.swift`),
+the client of the former `flashtex-explain`, is the smallest complete client:
+one request type in, one reply type out, no state, no network.
 
 A third-party feature therefore is: an executable speaking this protocol, a
 `FLASHTEX_<NAME>` variable (or a bundle copy), and a small Swift client that
@@ -113,6 +117,8 @@ assistant sheet (⌘⌥G, toolbar, palette, `AccessibilityCommand.askGrok`),
 (`ProposalPreview` explanation states, `GrokProviderSession`, `OneShotProcess`,
 `AssistantRecoveryLog`), the Grok status pill, the Grok preferences section
 and the connection probe, the `--assistant` helper bundling, and their tests
-and fixtures. The Rust side (`crates/assistant-context` explanation and
-provider-session paths) is no longer launched by the app; it remains a
-library a third party could wrap as a helper under contract 1.
+and fixtures. The Rust side (the former `crates/assistant-context`
+explanation and provider-session library) was removed once nothing launched
+it; a third party can still supply such a helper under contract 1. The iPad
+companion keeps its bundled `review-workflow.json` fixture and the
+reviewed-proposal contract it exercises.

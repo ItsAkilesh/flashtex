@@ -152,11 +152,11 @@ impl TexMathMetrics {
     }
 
     /// The metrics `\DeclareMathSizes` selects for text at `text_pt`: the
-    /// three class sizes (10, 10.95, 12) plus 8 pt, which is
-    /// `\footnotesize` of the 10pt class and 8/6/5 pt with cmr/cmmi/cmsy 8,
-    /// 6 and 5. `None` for a size whose TFMs math-layout does not embed --
-    /// 9 pt, the 11pt class's `\footnotesize`, needs cmr9/cmmi9/cmsy9.
-    /// `cmex_designs` and `roman_lm` are as in [`TexMathMetrics::new`].
+    /// three class sizes (10, 10.95, 12) plus the two `\footnotesize`s, 8 pt
+    /// (10pt class; fontmath.ltx 78: 8/6/5) and 9 pt (11pt class; line 79:
+    /// 9/6/5), with the cmr/cmmi/cmsy designs of those sizes. `None` for any
+    /// other size. `cmex_designs` and `roman_lm` are as in
+    /// [`TexMathMetrics::new`].
     pub fn at_text_size(text_pt: f64, cmex_designs: bool, roman_lm: bool, otf: Rc<MathFonts>, fonts: &FontSet) -> Option<TexMathMetrics> {
         let close = |at: f64| (text_pt - at).abs() < 0.01;
         let (cm, roman_names) = if close(10.0) {
@@ -192,6 +192,55 @@ impl TexMathMetrics {
                 },
                 ["rm-lmr8", "rm-lmr6", "rm-lmr5"],
             )
+        } else if close(9.0) {
+            (
+                // fontmath.ltx 79: \DeclareMathSizes{9}{9}{6}{5}, the 11pt
+                // class's `\footnotesize` (size11.clo). Without this branch
+                // a footnote's `$T$` was boxed from cmmi10 at 10.95pt
+                // (6.40pt + 1.52pt italic correction against cmmi9's
+                // 5.40pt + 1.28pt), 2.4pt over two symbols on lab-report
+                // p.1's footnote: enough to push `assumes` to the next line
+                // (`\tracingparagraphs` @@2 b=41 vs @@1 b=100).
+                CmMathMetrics {
+                    sizes: [9.0, 6.0, 5.0],
+                    extension: cm::ExtensionSizing::Fixed,
+                    families: [
+                        [&cm_tfm::CMR9, &cm_tfm::CMR6, &cm_tfm::CMR5],
+                        [&cm_tfm::CMMI9, &cm_tfm::CMMI6, &cm_tfm::CMMI5],
+                        [&cm_tfm::CMSY9, &cm_tfm::CMSY6, &cm_tfm::CMSY5],
+                    ],
+                },
+                ["rm-lmr9", "rm-lmr6", "rm-lmr5"],
+            )
+        } else if close(7.0) || close(6.0) || close(5.0) {
+            // fontmath.ltx 75-77: \DeclareMathSizes{5}{5}{5}{5}, {6}{6}{5}{5},
+            // {7}{7}{5}{5}: `\tiny`/`\scriptsize` of the three classes.
+            let (r, i, s, name) = if close(7.0) {
+                (&cm_tfm::CMR7, &cm_tfm::CMMI7, &cm_tfm::CMSY7, "rm-lmr7")
+            } else if close(6.0) {
+                (&cm_tfm::CMR6, &cm_tfm::CMMI6, &cm_tfm::CMSY6, "rm-lmr6")
+            } else {
+                (&cm_tfm::CMR5, &cm_tfm::CMMI5, &cm_tfm::CMSY5, "rm-lmr5")
+            };
+            (
+                CmMathMetrics {
+                    sizes: [text_pt.round(), 5.0, 5.0],
+                    extension: cm::ExtensionSizing::Fixed,
+                    families: [[r, &cm_tfm::CMR5, &cm_tfm::CMR5], [i, &cm_tfm::CMMI5, &cm_tfm::CMMI5], [s, &cm_tfm::CMSY5, &cm_tfm::CMSY5]],
+                },
+                [name, "rm-lmr5", "rm-lmr5"],
+            )
+        } else if [14.4, 17.28, 20.74, 24.88].into_iter().any(close) {
+            // fontmath.ltx 80-83: \DeclareMathSizes{\@xivpt}{\@xivpt}{\@xpt}
+            // {\@viipt} and the three above it -- `\large`..`\Huge` text,
+            // `{\large $x$}` or a `\section` title's formula -- with each
+            // family's design at each size (`cm::design_for`: cmr12/cmr17,
+            // cmmi12, cmsy10 scaled). The roman designs come from the
+            // metrics tree like the rows above; without them the size keeps
+            // the body's metrics (`math_fonts_at`).
+            let cm = CmMathMetrics::for_text_size(text_pt);
+            let names = cm.families[0].map(|f| lm_roman_tfm(f.name));
+            (cm, names)
         } else {
             return None;
         };
@@ -342,6 +391,20 @@ impl TexMathMetrics {
             .entry(lm_name(&name))
             .or_insert((self.otf.face().name.clone(), false));
         Some((self.otf.face().clone(), gid))
+    }
+
+    /// `\notin`'s slash over the `\in` box of width `width` at `size_pt`:
+    /// latex.ltx's `\c@ncel` is `\ooalign{$\hfil#1\mkern1mu/\hfil$\crcr
+    /// $#1\in$}`, so cmmi's `/` follows a 1mu kern and the pair is centred
+    /// on the `\in`. Returns the Latin Modern Math glyph `$a/b$` paints for
+    /// that `/` and its offset from the box's left edge.
+    pub fn notin_slash(&self, size_pt: f64, width: f64) -> Option<(u16, f64)> {
+        let i = (0..3).min_by(|&a, &b| (self.cm.sizes[a] - size_pt).abs().total_cmp(&(self.cm.sizes[b] - size_pt).abs()))?;
+        let at = self.cm.sizes[i];
+        let slash = mtfm::scale(self.cm.families[1][i].char(0x3D)?.width, at);
+        let mu = self.cm.families[2][i].fontdimen(6, at) / 18.0;
+        let gid = self.otf.face().face().glyph_id(MathFonts::math_char('/'))?;
+        Some((gid.0, (width - slash - mu).max(0.0) / 2.0 + mu))
     }
 
     /// A symbol outside the CM tables (compiler pin `87df3e4a` lists
@@ -540,6 +603,27 @@ impl TexMathMetrics {
         })
     }
 
+    /// A math-italic (cmmi) glyph the math-layout table does not list, from
+    /// the cmmi TFM of the size class: the hooks [`LHOOK`]/[`RHOOK`].
+    fn letter_family_glyph(&self, code: u8, ch: char, size: SizeClass) -> Option<Glyph> {
+        // Any letter gives the cmmi font id of the size (`a` is cmmi "61).
+        let font_id = self.cm.glyph('a', size)?.font_id;
+        let i = Self::size_index(size);
+        let c = self.cm.families[1][i].char(code)?;
+        let at = self.cm.sizes[i];
+        Some(Glyph {
+            font_id,
+            gid: u16::from(code),
+            ch,
+            size: at,
+            width: mtfm::scale(c.width, at),
+            height: mtfm::scale(c.height, at),
+            depth: mtfm::scale(c.depth, at),
+            italic: mtfm::scale(c.italic, at),
+            skew: 0.0,
+        })
+    }
+
     /// A symbol-family glyph the math-layout table does not list, from the
     /// `cmsy` TFM of the size class (metrics) and the symbol's own `char`.
     fn symbol_family_glyph(&self, code: u8, ch: char, size: SizeClass) -> Option<Glyph> {
@@ -554,13 +638,22 @@ impl TexMathMetrics {
         // 0.777781em, read at `typeset::symbol_atoms` rather than re-scanning
         // the source for the control word.
         let width = if ch == crate::mathfont::VARNOTHING_SENTINEL { VARNOTHING_MSBM_EM * at } else { mtfm::scale(c.width, at) };
+        // `\notin`'s `\ooalign` is a `\vtop` whose first row is the slash:
+        // as tall as the slash, as deep as the `\in` (the rows overlap).
+        let height = match ch {
+            '\u{2209}' => {
+                let slash = self.cm.families[1][i].char(0x3D).map_or(0.0, |s| mtfm::scale(s.height, at));
+                mtfm::scale(c.height, at).max(slash)
+            }
+            _ => mtfm::scale(c.height, at),
+        };
         Some(Glyph {
             font_id,
             gid: u16::from(code),
             ch,
             size: at,
             width,
-            height: mtfm::scale(c.height, at),
+            height,
             depth: mtfm::scale(c.depth, at),
             italic: mtfm::scale(c.italic, at),
             skew: 0.0,
@@ -711,6 +804,34 @@ impl TexMathMetrics {
             }
             return gid;
         }
+        // `\lhook`/`\rhook` (cmmi "2C/"2D): the hook end of U+21AA's/U+21A9's
+        // horizontal assembly (see [`LHOOK`]).
+        if name.starts_with("cmmi") && matches!(ch, LHOOK | RHOOK) {
+            let gid = match ch {
+                LHOOK => self.otf.hassembly_parts('\u{21AA}').first().copied(),
+                _ => self.otf.hassembly_parts('\u{21A9}').last().copied(),
+            };
+            if gid.is_none() {
+                self.unmapped.borrow_mut().push((name, code, ch));
+            }
+            return gid;
+        }
+        if name.starts_with("cmsy") {
+            match ch {
+                // `\mapstochar`: the bar end of U+21A6's assembly.
+                MAPSTOCHAR => {
+                    let gid = self.otf.hassembly_parts('\u{21A6}').first().copied();
+                    if gid.is_none() {
+                        self.unmapped.borrow_mut().push((name, code, ch));
+                    }
+                    return gid;
+                }
+                // `\notin`: the `\in` it is built on; the slash is painted
+                // over it (`notin_slash`), not Latin Modern Math's U+2209.
+                '\u{2209}' => return base('\u{2208}'),
+                _ => {}
+            }
+        }
         let result = if name.starts_with("cmex") {
             // Size chain in lmex: steps from the character's first cmex code
             // to `code` select the same-index vertical variant in MATH.
@@ -818,6 +939,9 @@ impl MathFontMetrics for TexMathMetrics {
             if let Some(g) = self.alphabet_glyph(alphabet, letter, ch, size) {
                 return Some(g);
             }
+        }
+        if let Some(code) = hook_slot(ch) {
+            return self.letter_family_glyph(code, ch, size);
         }
         match cm::symbol_slot(ch) {
             Some((Family::Roman, code)) => self.roman_glyph(code, ch, size),
@@ -955,6 +1079,38 @@ impl MathFontMetrics for TexMathMetrics {
 /// U+0338 and no compiler symbol uses it.
 pub const NOT_SLASH: char = '\u{0338}';
 
+/// `\mapstochar` (`fontmath.ltx`: `\mathchar"3237`, cmsy `"37`): the
+/// zero-width bar `\mapsto` and `\longmapsto` put before their arrow. Latin
+/// Modern Math has no glyph of its own for it; it paints the left part of
+/// U+21A6's horizontal assembly (the bar and a stub of shaft that the arrow
+/// overprints), placed where U+21A6 itself draws its bar
+/// ([`TexMathMetrics::mapstochar_paint`]).
+pub const MAPSTOCHAR: char = '\u{F8FE}';
+
+/// `\lhook` (`fontmath.ltx` 374: `\mathchar"312C`, cmmi `"2C`
+/// `arrowhookleft`): the hook `\hookrightarrow` and mathtools'
+/// `\xhookrightarrow` fill (`\lhook\joinrel\relbar`) start with. Boxed from
+/// the cmmi TFM of the size ([`hook_slot`]); Latin Modern Math has no glyph
+/// of its own for it, so it paints the hook end of U+21AA's horizontal
+/// assembly (`uni21AA.lft`: the hook and a stub of shaft the `\relbar`
+/// overprints), placed by `typeset::hook_paint_dx`.
+pub const LHOOK: char = '\u{F8FC}';
+
+/// `\rhook` (`fontmath.ltx` 375: `\mathchar"312D`, cmmi `"2D`
+/// `arrowhookright`), which `\hookleftarrow` and the `\xhookleftarrow` fill
+/// (`\relbar\joinrel\rhook`) end with: the hook end of U+21A9's assembly
+/// (`uni21A9.rt`), as for [`LHOOK`].
+pub const RHOOK: char = '\u{F8FD}';
+
+/// The cmmi slot of a hook sentinel ([`LHOOK`], [`RHOOK`]).
+fn hook_slot(ch: char) -> Option<u8> {
+    match ch {
+        LHOOK => Some(0x2C),
+        RHOOK => Some(0x2D),
+        _ => None,
+    }
+}
+
 /// `\varnothing`'s advance in ems (msbm10.tfm char "3F, `CHARWD R 0.777781`):
 /// the same physical constant the compiler's `math::VARNOTHING_MSBM_EM`
 /// carries (crate-private there), read from the now-`pub` `MathAtom.width_em`
@@ -966,6 +1122,18 @@ fn extra_symbol_slot(ch: char) -> Option<u8> {
     match ch {
         NOT_SLASH => Some(0x36),
         '\u{22A5}' => Some(0x3F),
+        // plain.tex/fontmath.ltx `\mathcode`\*="2203`: an ASCII `*` in math
+        // is cmsy's `asteriskmath`, the `\ast` slot (`Sgr A$^*$`, `x^*`).
+        // Without it the fallback glyph ran 0.6 pt narrow in a script.
+        '*' => Some(0x03),
+        // `\mapsto` = `\mapstochar\rightarrow` (fontmath.ltx 340-341): two
+        // atoms (`typeset::symbol_atoms`), cmsy "37 of zero width and "21.
+        MAPSTOCHAR => Some(0x37),
+        // `\notin` (latex.ltx: `\mathrel{\mathpalette\c@ncel\in}`): the box
+        // is `\in`'s (cmsy "32) as tall as the overprinted slash
+        // (`symbol_family_glyph`); the slash is painted over it
+        // (`TexMathMetrics::notin_slash`).
+        '\u{2209}' => Some(0x32),
         // `\varnothing`'s box is still cmsy10's `\emptyset` slot 0x3B (the
         // compiler forces only the advance, `MathAtom.width_em`; see
         // `symbol_family_glyph`); the outline is painted from New Computer
@@ -983,6 +1151,21 @@ fn extra_symbol_slot(ch: char) -> Option<u8> {
 /// [`TexMathMetrics::otf_glyph`] from the secondary face when it is loaded.
 fn script_capital_slot(ch: char) -> Option<u8> {
     ('A'..='Z').find(|l| flashtex_compiler::newcm_math::script(*l) == Some(ch)).map(|l| l as u8)
+}
+
+/// The Latin Modern roman TFM (`rm-lmr12.tfm`'s stem) that carries the
+/// metrics of a CM roman design `cm::design_for` picks.
+fn lm_roman_tfm(cm: &str) -> &'static str {
+    match cm {
+        "cmr5" => "rm-lmr5",
+        "cmr6" => "rm-lmr6",
+        "cmr7" => "rm-lmr7",
+        "cmr8" => "rm-lmr8",
+        "cmr9" => "rm-lmr9",
+        "cmr10" => "rm-lmr10",
+        "cmr12" => "rm-lmr12",
+        _ => "rm-lmr17",
+    }
 }
 
 /// The Latin Modern TFM that carries the same metrics as a CM table name

@@ -49,12 +49,6 @@ pub struct HeadingStyle {
     pub bold: bool,
     pub before: Skip,
     pub after: Skip,
-    /// `\@startsection`'s `#5` when it is negative: the heading runs into
-    /// the following paragraph and `\@xsect` puts `\hskip -#5` (this many
-    /// `em` of the heading font) after it instead of vertical glue.
-    /// `None` for a display heading, which uses [`Self::after`].
-    /// article.cls: `\paragraph`/`\subparagraph` are `-1em`.
-    pub run_in_after_em: Option<f64>,
 }
 
 /// `\usepackage[...]{microtype}` as pdfTeX sees it: the package options
@@ -115,6 +109,13 @@ pub struct Stylesheet {
     /// Whether math family 0 (`operators`) is Latin Modern's `rm-lmr*`
     /// instead of the kernel's `cmr*`; see [`math_roman_lm`].
     pub math_roman_lm: bool,
+    /// The class loads `amsmath` itself (beamer, `beamerbasetheorems.sty`
+    /// 15-18, unless its `noamsthm` option): amsmath's definitions are in
+    /// force without a `\usepackage` naming it.
+    pub class_loads_amsmath: bool,
+    /// The class loads `amssymb` itself (beamer, `beamerbasefont.sty`
+    /// 20-21, unless `noamssymb`): the msam/msbm symbol fonts are there.
+    pub class_loads_amssymb: bool,
     pub script_size_pt: f64,
     pub scriptscript_size_pt: f64,
     pub tolerance: f64,
@@ -141,6 +142,12 @@ pub struct Stylesheet {
     /// `center`/`quote`-style environments.
     pub topsep: Skip,
     pub partopsep: Skip,
+    /// `\topsep` as a `\trivlist` environment (`center`, `flushleft`, a
+    /// beamer `figure`/`table`) reads it: the class size file's `\@listI`
+    /// value. Equal to `topsep` in every class but beamer, whose 3pt
+    /// `\@listi` only a `\list` executes (`class_geometry::beamer::
+    /// trivlist_topsep`).
+    pub trivlist_topsep: Skip,
     pub leftmargini_pt: f64,
     /// `\parsep` of a level-1 list (`\@listi`): `\list` sets
     /// `\parskip\parsep`, so it is the gap every `\item` paragraph adds.
@@ -148,6 +155,16 @@ pub struct Stylesheet {
     /// `\labelsep` (article: `.5em` of `\normalsize`): the gap between a
     /// list label's right edge and the item text.
     pub labelsep_pt: f64,
+    /// `\itemsep` of a level-1 list (`\@listi`): article's equals
+    /// `\parsep`; beamer's is 3pt with `\parsep` 0.
+    pub itemsep: Skip,
+    /// `\familydefault`: the family a text run with no `\rmfamily`/
+    /// `\sffamily`/`\ttfamily` of its own is set in. `Rm` for every class
+    /// but beamer, whose `beamer.cls` selects `\sfdefault`.
+    pub default_family: crate::nfss::FamilyKind,
+    /// The class runs `\raggedright` for the whole document (beamer.cls:
+    /// `\rightskip 0pt plus 1fil`): plain paragraphs are set ragged right.
+    pub raggedright: bool,
     headings: [HeadingStyle; 5],
     /// The resolved class + geometry frame this stylesheet was built from
     /// ([`Stylesheet::from_resolved`]); `None` for [`Stylesheet::article`].
@@ -168,6 +185,14 @@ pub struct Stylesheet {
     /// stylesheet built without a document, or a document outside the
     /// pdfLaTeX `utf8` world). The adapter sets it.
     pub input: Option<crate::inputenc::InputSetup>,
+    /// Named font families the document or the manifest selected
+    /// (`crate::fontspec`): the specs, and which of them each family slot
+    /// (`\rmdefault`/`\sfdefault`/`\ttdefault`) defaults to. They are
+    /// layered over [`Stylesheet::family`], which stays the class family
+    /// (Latin Modern / Times / Computer Modern) every class-level metric
+    /// -- `em`/`ex` of preamble lengths, math -- is still read from. Empty
+    /// for a document that names no font.
+    pub fontspec: crate::fontspec::Settings,
 }
 
 impl Stylesheet {
@@ -210,11 +235,13 @@ impl Stylesheet {
             let h = ds.resolve(&[Block::Document, Block::Heading(level)]);
             let spec = flashtex_document_style::section_spec(level).expect("levels 1..=5");
             let before = spec.before_ex.scale(ex);
-            let (after, run_in_after_em) = match spec.after {
-                flashtex_document_style::SectionAfter::VerticalEx(s) => (s.scale(ex), None),
+            let after = match spec.after {
+                flashtex_document_style::SectionAfter::VerticalEx(s) => s.scale(ex),
                 // A run-in heading has no vertical after-skip at all: the
-                // `em` becomes horizontal space on the paragraph's first line.
-                flashtex_document_style::SectionAfter::RunInEm(em) => (flashtex_document_style::Skip::ZERO, Some(em)),
+                // compiler sets `\@xsect`'s `\hskip -#5` as an
+                // `Inline::HSpace` on the paragraph's first line instead
+                // (PLAN1 site 20), so nothing of `#5` is needed here.
+                flashtex_document_style::SectionAfter::RunInEm(_) => flashtex_document_style::Skip::ZERO,
             };
             HeadingStyle {
                 size_pt: h.font_size.0,
@@ -222,7 +249,6 @@ impl Stylesheet {
                 bold: h.bold,
                 before: Skip::new(before.pt, before.plus, before.minus),
                 after: Skip::new(after.pt, after.plus, after.minus),
-                run_in_after_em,
             }
         };
         let parskip = ds.parskip();
@@ -232,6 +258,11 @@ impl Stylesheet {
             nfss: match family {
                 Family::LatinModern => crate::nfss::Scheme::LmT1,
                 Family::ComputerModern | Family::Times => crate::nfss::Scheme::CmT1,
+                Family::ComputerModernOt1 => crate::nfss::Scheme::CmOt1,
+                // Never the stylesheet's own family (named families are
+                // layered over it, see `fontspec`); the T1 scheme is the
+                // encoding-neutral choice should one arrive here.
+                Family::Named(_) => crate::nfss::Scheme::LmT1,
             },
             base,
             page_width_pt: page.paper_width.0,
@@ -256,6 +287,8 @@ impl Stylesheet {
             fleqn: false,
             cmex_designs: false,
             math_roman_lm: false,
+            class_loads_amsmath: false,
+            class_loads_amssymb: false,
             script_size_pt: script,
             scriptscript_size_pt: scriptscript,
             tolerance: 200.0,
@@ -274,14 +307,19 @@ impl Stylesheet {
             marginparpush_pt: if matches!(base, BaseSize::Pt12) { 7.0 } else { 5.0 },
             topsep: Skip::new(list.topsep.pt, list.topsep.plus, list.topsep.minus),
             partopsep: Skip::new(list.partopsep.pt, list.partopsep.plus, list.partopsep.minus),
+            trivlist_topsep: Skip::new(list.topsep.pt, list.topsep.plus, list.topsep.minus),
             leftmargini_pt: list.leftmargin.0,
             parsep: Skip::new(list.parsep.pt, list.parsep.plus, list.parsep.minus),
             labelsep_pt: list.labelsep.0,
+            itemsep: Skip::new(list.itemsep.pt, list.itemsep.plus, list.itemsep.minus),
+            default_family: crate::nfss::FamilyKind::Rm,
+            raggedright: false,
             headings: [heading(1), heading(2), heading(3), heading(4), heading(5)],
             class_geometry: None,
             columns: crate::columns::ColumnMode::default(),
             microtype: None,
             input: None,
+            fontspec: crate::fontspec::Settings::default(),
         }
     }
 
@@ -361,8 +399,42 @@ impl Stylesheet {
             s.tolerance = 9999.0;
             s.emergency_stretch_pt = 3.0 * s.body_size_pt;
         }
+        if doc.options.kind == flashtex_class_geometry::ClassKind::Beamer {
+            // beamer.cls: `\usepackage{...}\renewcommand\familydefault
+            // \sfdefault` (cmss10 at 10.95 for the body), `\raggedright`,
+            // and `beamerbaselocalstructure.sty`'s list parameters
+            // (`\topsep`/`\itemsep` 3pt, `\parsep`/`\partopsep` 0,
+            // `\leftmargini` 2em). Every page is one `\vbox to\textheight`
+            // frame whose top is the paper top, so `\topskip` never acts
+            // on the page's first box: 0 here, while the class value stays
+            // 11pt in `class_geometry.params` (see `typeset::beamer`).
+            let l = flashtex_class_geometry::beamer::list_level(doc.font, 1);
+            let glue = |g: flashtex_class_geometry::Glue| Skip::new(frame_pt(g.natural), frame_pt(g.stretch), frame_pt(g.shrink));
+            s.default_family = crate::nfss::FamilyKind::Sf;
+            s.raggedright = true;
+            s.topskip_pt = 0.0;
+            // `center` and beamer's `figure`/`table` keep the size file's
+            // `\topsep` (9pt plus 3 minus 5 at 11pt): see `trivlist_topsep`.
+            s.trivlist_topsep = glue(flashtex_class_geometry::beamer::trivlist_topsep(doc.options.size));
+            s.topsep = glue(l.topsep);
+            s.partopsep = glue(l.partopsep);
+            s.parsep = glue(l.parsep);
+            s.itemsep = glue(l.itemsep);
+            s.leftmargini_pt = frame_pt(l.leftmargin);
+            s.labelsep_pt = frame_pt(l.labelsep);
+        }
         s.class_geometry = Some(Box::new(doc.clone()));
         s
+    }
+
+    /// Whether the document is a beamer slide deck (`ClassKind::Beamer`).
+    pub fn is_beamer(&self) -> bool {
+        self.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Beamer)
+    }
+
+    /// `\documentclass{letter}`.
+    pub fn is_letter(&self) -> bool {
+        self.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Letter)
     }
 
     /// The body family selected by the loaded packages.
@@ -377,14 +449,25 @@ impl Stylesheet {
     /// not the `ec-lm*` fonts `lmodern` selects, which are about 0.6%
     /// wider at 10.95pt and move line breaks. Those documents get
     /// [`Family::ComputerModern`]: EC metrics with Latin Modern outlines.
-    /// OT1 documents (no `fontenc`) keep the Latin Modern metrics.
+    /// OT1 documents (no `fontenc`, no `lmodern`) are `ot1cmr.fd`'s
+    /// Knuth metrics, [`Family::ComputerModernOt1`], whose kern programs
+    /// are not Latin Modern's; only `lmodern` documents keep the Latin
+    /// Modern metrics.
+    ///
+    /// A `fontspec` document is XeTeX's or LuaTeX's: no OT1/T1 TFM ever
+    /// enters its layout, so its base family (the one named families are
+    /// layered over, and the fallback for a glyph they lack) is Latin
+    /// Modern with the `ec-lm*` metrics.
     pub fn family_for(packages: &[String], t1_encoding: bool) -> Family {
+        let lmodern = packages.iter().any(|p| p == "lmodern" || p == "fontspec");
         if packages.iter().any(|p| matches!(p.as_str(), "times" | "mathptmx" | "newtxtext" | "txfonts")) {
             Family::Times
-        } else if t1_encoding && !packages.iter().any(|p| p == "lmodern") {
+        } else if lmodern {
+            Family::LatinModern
+        } else if t1_encoding {
             Family::ComputerModern
         } else {
-            Family::LatinModern
+            Family::ComputerModernOt1
         }
     }
 
@@ -601,9 +684,12 @@ mod tests {
         let p = |names: &[&str]| names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(Stylesheet::family_for(&p(&["amsmath"]), true), Family::ComputerModern);
         assert_eq!(Stylesheet::family_for(&p(&["lmodern"]), true), Family::LatinModern);
-        assert_eq!(Stylesheet::family_for(&p(&["amsmath"]), false), Family::LatinModern);
+        assert_eq!(Stylesheet::family_for(&p(&["lmodern"]), false), Family::LatinModern);
+        assert_eq!(Stylesheet::family_for(&p(&["fontspec"]), false), Family::LatinModern);
+        // No `fontenc`, no `lmodern`: `ot1cmr.fd`'s Knuth metrics.
+        assert_eq!(Stylesheet::family_for(&p(&["amsmath"]), false), Family::ComputerModernOt1);
         assert_eq!(Stylesheet::family_for(&p(&["times"]), true), Family::Times);
-        assert_eq!(Stylesheet::family_of(&p(&["amsmath"])), Family::LatinModern);
+        assert_eq!(Stylesheet::family_of(&p(&["amsmath"])), Family::ComputerModernOt1);
         assert!(crate::adapter::t1_encoding("\\usepackage[T1]{fontenc}"));
         assert!(crate::adapter::t1_encoding("\\usepackage[OT1, T1]{fontenc}"));
         assert!(!crate::adapter::t1_encoding("\\usepackage[T1,OT1]{fontenc}"));

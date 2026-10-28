@@ -5,6 +5,9 @@
 //! pdfTeX's join is 1.611em, which moved HW1 Problem 4(b)'s display by
 //! 0.84bp on each side of its `\Longrightarrow`.
 
+// Clippy debt in frozen old-engine code (D13): allowed, not refactored.
+#![allow(clippy::collapsible_str_replace, clippy::no_effect_replace, reason = "frozen old engine (D13): fixes only; clippy debt is allowed rather than refactored")]
+
 mod common;
 
 use common::*;
@@ -50,13 +53,13 @@ fn long_arrows_are_as_wide_as_pdftex_joins() {
         ("\\iff", 38.49976, "x⇐⇒y"),
         ("\\impliedby", 36.06642, "x⇐=y"),
         // GH-LONGMAPSTO-PIECES: `\longmapsto` is `\mapstochar\longrightarrow`,
-        // bit-for-bit as wide as `\longrightarrow` (the flag nets zero width).
+        // bit-for-bit as wide as `\longrightarrow` (the `\mapstochar` bar has no width).
         // Spelled as the literal U+27FC character because the vendored
         // compiler pin on this branch predates PR #603's `("longmapsto", "⟼")`
         // row, so the command does not reach the pipeline yet; the character
         // exercises the identical `symbol_atoms` path. Switch this row to
         // `"\\longmapsto"` when vendor/compiler is re-pinned past #603.
-        ("\u{27FC}", 29.9832, "x∣−→y"),
+        ("\u{27FC}", 29.9832, "x↦−→y"),
     ];
     for (arrow, pt, painted) in cases {
         let (xs, text) = formula(arrow);

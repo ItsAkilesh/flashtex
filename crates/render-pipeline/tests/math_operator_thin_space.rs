@@ -44,6 +44,9 @@
 //! -- which is why a fix that inserted only a thin space would still be
 //! 0.057 pt short.
 
+// Clippy debt in frozen old-engine code (D13): allowed, not refactored.
+#![allow(clippy::unnecessary_cast, reason = "frozen old engine (D13): fixes only; clippy debt is allowed rather than refactored")]
+
 mod common;
 
 use common::*;
@@ -54,8 +57,12 @@ fn bp(pt: f64) -> f64 {
     pt / 1.00375
 }
 
+/// The oracle preamble above (`12pt`, `T1`, `lmodern`): the documents
+/// carry it, so `math_roman_lm` selects the `rm-lmr` operators font the
+/// oracle values were measured with — a package-less document would set
+/// these runs from `cmr` instead (see `math_textrun_family`).
 fn doc(body: &str) -> String {
-    format!("\\begin{{document}}{body}\\end{{document}}")
+    format!("\\documentclass[12pt]{{article}}\\usepackage[T1]{{fontenc}}\\usepackage{{lmodern}}\\begin{{document}}{body}\\end{{document}}")
 }
 
 /// `(text, x bp)` of every math glyph on page 1, in order.

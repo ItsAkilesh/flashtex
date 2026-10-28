@@ -442,6 +442,9 @@ enum DS {
         static let nearbyEventsMaxHeight: CGFloat = 120
         /// The Settings window's fixed content width.
         static let settingsWidth: CGFloat = 460
+        /// The release-notes scroller inside the Check for Updates alert (UpdateChecker.swift).
+        static let updateNotesWidth: CGFloat = 440
+        static let updateNotesHeight: CGFloat = 180
         /// Find in Project window.
         static let searchWindowMinWidth: CGFloat = 520
         static let searchWindowMinHeight: CGFloat = 320
@@ -478,6 +481,13 @@ enum DS {
         static let hoverHighlightOpacity: Double = 0.10
         static let linkBoxFillOpacity: Double = 0.12
         static let linkBoxStrokeOpacity: Double = 0.8
+        /// The caret's paragraph band (accent over the page): fainter than
+        /// any caret mark, a touch stronger on the dark page where the accent
+        /// loses contrast against the ink.
+        static let paragraphBandOpacity: Double = 0.07
+        static let paragraphBandOpacityDark: Double = 0.11
+        /// The band overhangs its row's glyph boxes by this much, in points.
+        static let paragraphBandOverhang: CGFloat = 2
     }
 
     // MARK: motion — nothing exceeds 200 ms, nothing bounces
@@ -684,6 +694,8 @@ enum FileTypeStyle {
     case texEntry
     case bibliography
     case classOrStyle
+    /// The project manifest, `flashtex.toml` (ProjectManifest.swift).
+    case manifest
     case pdf
     case image
     case generated
@@ -697,7 +709,8 @@ enum FileTypeStyle {
         switch ext {
         case "tex", "ltx": return entry ? .texEntry : .tex
         case "bib": return .bibliography
-        case "cls", "sty": return .classOrStyle
+        case "cls", "sty", "def", "clo": return .classOrStyle
+        case "toml": return .manifest
         case "pdf": return .pdf
         case "png", "jpg", "jpeg", "gif", "tiff", "svg", "eps": return .image
         case "aux", "log", "out", "toc", "lof", "lot", "bbl", "blg", "fls", "gz", "synctex":
@@ -712,6 +725,7 @@ enum FileTypeStyle {
         case .texEntry: return "doc.text.fill"
         case .bibliography: return "books.vertical"
         case .classOrStyle: return "curlybraces.square"
+        case .manifest: return "doc.badge.gearshape"
         case .pdf: return "doc.richtext"
         case .image: return "photo"
         case .generated: return "gearshape"
@@ -727,6 +741,7 @@ enum FileTypeStyle {
         case .tex, .texEntry: return DS.Palette.typeBlue
         case .bibliography: return DS.Palette.typePurple
         case .classOrStyle: return DS.Palette.typeTeal
+        case .manifest: return DS.Palette.typeGray
         case .pdf: return DS.Palette.typeRed
         case .image: return DS.Palette.typeGreen
         case .generated: return DS.Palette.typeGray

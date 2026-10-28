@@ -41,13 +41,27 @@ struct P<'a> {
     s: &'a [u8],
     i: usize,
     em: f64,
+    var: Option<(&'a str, f64)>,
 }
 
 pub fn eval(text: &str, em: f64) -> Result<Value, String> {
+    eval_inner(text, em, None)
+}
+
+/// Like [`eval`], but the identifier `var` evaluates to `val` (used for the
+/// plot variable `x` of `\addplot`). Any other bare identifier is still an
+/// error, so `exp` never collides with a variable named `x`: identifiers
+/// lex whole.
+pub fn eval_bound(text: &str, em: f64, var: &str, val: f64) -> Result<Value, String> {
+    eval_inner(text, em, Some((var, val)))
+}
+
+fn eval_inner(text: &str, em: f64, var: Option<(&str, f64)>) -> Result<Value, String> {
     let mut p = P {
         s: text.as_bytes(),
         i: 0,
         em,
+        var,
     };
     let v = p.expr()?;
     p.ws();
@@ -167,6 +181,17 @@ impl P<'_> {
                 self.i += 1;
                 self.unit_suffix(v)
             }
+            // TikZ brace groups: `({\a+\c},2)` keeps macro arithmetic
+            // safe, so a `{...}` group parses like `(...)`.
+            Some(b'{') => {
+                self.i += 1;
+                let v = self.expr()?;
+                if self.peek() != Some(b'}') {
+                    return Err("missing `}`".into());
+                }
+                self.i += 1;
+                self.unit_suffix(v)
+            }
             Some(c) if c.is_ascii_digit() || c == b'.' => {
                 let start = self.i;
                 while self.i < self.s.len() && (self.s[self.i].is_ascii_digit() || self.s[self.i] == b'.') {
@@ -189,6 +214,11 @@ impl P<'_> {
                     "true" => return Ok(Value { v: 1.0, dim: false }),
                     "false" => return Ok(Value { v: 0.0, dim: false }),
                     _ => {}
+                }
+                if let Some((var, val)) = self.var
+                    && var == name
+                {
+                    return self.unit_suffix(Value { v: val, dim: false });
                 }
                 if self.peek() != Some(b'(') {
                     return Err(format!("unknown identifier `{name}`"));
@@ -279,7 +309,22 @@ mod tests {
         assert!((eval("2*3+4^2/8", 10.0).unwrap().v - 8.0).abs() < 1e-12);
         assert!((eval("sin(30)", 10.0).unwrap().v - 0.5).abs() < 1e-12);
         assert!((eval("-(1+2)*.5", 10.0).unwrap().v + 1.5).abs() < 1e-12);
+        assert!((eval("{3+1}", 10.0).unwrap().v - 4.0).abs() < 1e-12);
+        assert!((eval("{{2}*3}", 10.0).unwrap().v - 6.0).abs() < 1e-12);
+        assert!(eval("{1+2", 10.0).is_err());
         assert!((length_pt(".3333em", 10.0).unwrap() - 3.333).abs() < 1e-9);
         assert!(eval("foo", 10.0).is_err());
+    }
+
+    #[test]
+    fn bound_variable_resolves_plot_x() {
+        assert!((eval_bound("x^2", 10.0, "x", 3.0).unwrap().v - 9.0).abs() < 1e-12);
+        assert!((eval_bound("2*x+1", 10.0, "x", 4.0).unwrap().v - 9.0).abs() < 1e-12);
+        // Functions still resolve: identifiers lex whole, so `exp` never
+        // collides with a variable named `x`.
+        assert!((eval_bound("exp(1)", 10.0, "x", 5.0).unwrap().v - std::f64::consts::E).abs() < 1e-12);
+        assert!(eval_bound("exp", 10.0, "x", 1.0).is_err());
+        assert!(eval_bound("y", 10.0, "x", 1.0).is_err());
+        assert!(eval("x", 10.0).is_err());
     }
 }

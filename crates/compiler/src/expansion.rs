@@ -41,13 +41,20 @@
 //! - **Tables.** `\arraystretch` is read where LaTeX reads it, at
 //!   `\begin{tabular}`: a host prelude makes the engine emit its value there
 //!   (see [`HOST_PRELUDE`]), recorded in [`Expansion::arraystretch`].
+//! - **Packages and classes.** `\usepackage`/`\RequirePackage`/
+//!   `\documentclass`/`\LoadClass` read project `.sty`/`.cls` documents
+//!   through the engine's package reader ([`crate::packages::reader`]);
+//!   their tokens carry the file's own [`DocumentId`], and the loading
+//!   command's span is recorded in [`Expansion::package_files`]. Names the
+//!   reader declines (built-in models, missing files) reach the parser as
+//!   before.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
-use flashtex_tex_expansion::{self as tex, CatCode, Edit, Engine, IncrementalExpander, Limits, TokenKind as TexKind};
+use flashtex_tex_expansion::{self as tex, CatCode, Edit, Engine, IncrementalExpander, Limits, OpenedFile, PackageReader, TokenKind as TexKind};
 
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{tokenize_document, Token, TokenKind};
@@ -93,6 +100,12 @@ pub struct Expansion {
     /// otherwise never hear about it), keyed by the pushed
     /// `flashtexcurrentlabel` token's own span.
     pub current_label_by_marker: HashMap<(usize, usize), String>,
+    /// Every project `.sty`/`.cls` the engine read, with the span of the
+    /// `\usepackage`/`\documentclass`/... that loaded it, in loading order.
+    pub package_files: Vec<(DocumentId, Span)>,
+    /// The same files with what each defined (`crate::package_definitions`),
+    /// parallel to `package_files`.
+    pub package_records: Vec<crate::package_definitions::PackageRecord>,
 }
 
 /// Host definitions run before the document. `\DeclareMathOperator` is
@@ -112,12 +125,18 @@ pub struct Expansion {
 /// the parser resolves against its own `footnote`/`mpfootnote` counters
 /// that the engine never defines) are removed, so they pass through.
 ///
-/// `\\setlength`/`\\addtolength` keep the kernel meaning when `#1` is already
-/// defined (a `\\newlength` skip, so `\\the` can read it back). An undefined
-/// target (`\\textwidth`, `\\parindent`, `\\fboxsep`, ...) is rewritten to a
-/// host command the converter maps back, so the parser sees the original
-/// name with its argument still a control sequence, not consumed as a
-/// skip assignment, which would yield `\\addtolength{\\}`.
+/// `\\setlength`/`\\addtolength` are the engine's (`Primitive::SetLength`):
+/// every kernel length is a register there, set from the class's measured
+/// defaults ([`class_prelude`]), so the assignment executes with TeX's own
+/// `<glue>` grammar (`\\p@`, `\\@plus`, `0.5\\textwidth`, `\\dimexpr`) and
+/// `\\the`/`\\ifdim`/`\\advance` read it back. The lengths this parser keeps
+/// a copy of ([`crate::parser::OBSERVED_LENGTHS`]) are observed: the engine
+/// emits a `\\flashtexlengthset{\\name}{<value>}` marker after each
+/// assignment, which the converter hands the parser as the marker command
+/// (see its `length_marker` arm). A target that is no register (a package
+/// length the parser models, `\\LTleft`, `\\headrulewidth`) comes back as
+/// `\\flashtexsetlength{#1}{#2}`, mapped to the original command, so the
+/// parser sees the name with its argument still a control sequence.
 ///
 /// `\\AtBeginDocument` keeps the kernel queuing behavior, but wraps each
 /// queued chunk in `\\flashtexatbeginstart...\\flashtexatbeginend` markers
@@ -139,26 +158,489 @@ pub struct Expansion {
 /// and "Illegal unit of measure" on whatever follows it; real enumitem
 /// stores the keyval text unexecuted, where the bare register is already a
 /// complete dimension. The star is preserved for the parser.
+///
+/// `etoolbox`'s toggle booleans (`\newtoggle`/`\providetoggle` declare a
+/// false toggle, `\toggletrue`/`\togglefalse` set it,
+/// `\iftoggle{name}{true}{false}` selects a branch) mirror etoolbox.sty's
+/// own representation: `etb@tgl@<name>` `\let` to `\@firstoftwo` (true) or
+/// `\@secondoftwo` (false), tested with the kernel's `\@ifundefined` under
+/// `\makeatletter` (so a `\relax`-valued name still counts as undefined,
+/// and `@` tokenizes as a letter). The document engine has no `\errmessage`
+/// (it exists only on the INITEX probe path), so a duplicate `\newtoggle`
+/// and any use of an undefined toggle expand to a never-defined marker
+/// (`\etb@err@toggledefined` / `\etb@err@notoggle`, the latter named after
+/// etoolbox.sty's own error site): the parser reports it as an
+/// `unknown_command` error at the use span while existing state is left
+/// alone, matching the package's error-and-continue recovery. Like the
+/// package, `\iftoggle` takes only the name: the two branches stay braced
+/// in the input so `\@firstoftwo`/`\@secondoftwo` select whole groups (a
+/// three-argument form would strip the braces and select single tokens).
+/// The definitions are `\protected`, as the package's `\newrobustcmd*`
+/// ones are, and always installed, exactly like the `ifthen` primitives.
+///
+/// Lane `etoolbox-ifnumcomp-ifdimcomp`: etoolbox's numeric/dimension
+/// comparisons (`\ifnumcomp` with `\ifnumequal`/`\ifnumgreater`/`\ifnumless`,
+/// `\ifnumodd`, `\ifdimcomp` with `\ifdimequal`/`\ifdimgreater`/`\ifdimless`)
+/// are etoolbox.sty's own bodies (the engine's `\ifnum`/`\ifdim`/`\ifodd`
+/// over `\numexpr`/`\dimexpr` operands), gated on `\@ifpackageloaded` so
+/// they exist only once `\usepackage{etoolbox}` is seen; without it each
+/// expands to a never-defined marker the parser reports as `unknown_command`.
+/// `etoolbox`'s emptiness tests (`\ifdefempty`/`\ifcsempty` true for a
+/// parameterless macro expanding to nothing, `\ifdefvoid`/`\ifcsvoid` also
+/// true for an undefined or `\relax` name; lane
+/// etoolbox-ifdefempty-ifdefvoid) mirror etoolbox.sty's own
+/// `\ifundef`/`\ifdefmacro`/`\ifdefparam`/`\etb@ifdefempty` chain over
+/// `\meaning`/`\detokenize`, gated on `\ver@etoolbox.sty` so the four names
+/// only exist once the package is loaded, as in LaTeX.
+/// Lane `etoolbox-newbool-ifbool`: `etoolbox`'s TeX-bool booleans
+/// (`\newbool`/`\providebool` declare a false bool, `\booltrue`/`\boolfalse`
+/// set it, `\setbool{name}{true|false}` sets it by value,
+/// `\ifbool{name}{true}{false}` selects a branch and `\notbool` selects the
+/// inverted branch) mirror etoolbox.sty's own representation: `\newif\if<name>`
+/// (so `\ifb`, `\btrue`, `\bfalse` for a bool named `b`), tested with the
+/// kernel's `\@ifundefined` under `\makeatletter`. A duplicate `\newbool`,
+/// any use of an undefined bool, and a `\setbool` value other than the
+/// literals `true`/`false` expand to a never-defined marker
+/// (`\etb@err@booldefined` / `\etb@err@nobool` / `\etb@err@boolval`): the
+/// parser reports it as an `unknown_command` error at the use span while
+/// existing state is left alone, matching the package's error-and-continue
+/// recovery. The value check expands `#2` with true `\csname` semantics:
+/// `\ifcsname etb@setbool@is@#2@etb@ok\endcsname` forms the name by fully
+/// expanding the value (which crosses `\protected` boundaries, unlike
+/// `\edef`, and ignores catcodes, so `\detokenize{true}` counts) and only
+/// the names `etb@setbool@is@true@etb@ok` / `etb@setbool@is@false@etb@ok`
+/// are defined -- as `\@firstoftwo` / `\@secondoftwo`, so the same
+/// `\csname` then dispatches to `\<name>true` / `\<name>false`. The fixed
+/// `@etb@ok` trailer after `#2` makes the probe fail-closed: a value whose
+/// expansion itself errors (e.g. `true\undefined`) aborts the formation, so
+/// the truncated prefix (`...is@true`, without the trailer) names nothing
+/// and the value takes the invalid-value path with state unchanged, instead
+/// of matching the sentinel on its error-free prefix (or, in this engine's
+/// break-and-push-back recovery, executing both setter arms in turn).
+/// The probe and the dispatch form the name twice, so `#2` is expanded
+/// twice on the success path. Most values read identically twice: the probe
+/// mutates no state (`\ifcsname` interns nothing), there is no random
+/// expandable, `\write` is inert, and assignments (a self-redefining
+/// macro, a counter step) are unexpandable inside the formation, so they
+/// abort both formations identically instead of running. The one exception
+/// is a value whose expansion performs the `\csname` side effect itself:
+/// forming an undefined name with the `\csname...\endcsname` primitive
+/// defines it as `\relax` (the `\ifcsname...\endcsname` test itself defines
+/// nothing). In `\def\val{\ifcsname ftx@race\endcsname false\else
+/// \expandafter\@gobble\csname ftx@race\endcsname true\fi}`, the first
+/// expansion takes the else branch, whose explicit inner
+/// `\csname ftx@race\endcsname` defines `ftx@race` as `\relax` as a side
+/// effect, so `\val` reads `true`
+/// on the probe formation and `false` on the dispatch formation, and
+/// `\setbool{b}{\val}` from a true start reports no error yet leaves the
+/// bool false. That split matches real etoolbox's own multi-probe behavior
+/// on adversarial `\csname`-side-effect values rather than diverging from
+/// it: measured pdflatex (TeX Live 2026, real etoolbox.sty) gives 0 errors
+/// and `F.` on the same document: real `\setbool` re-expands `#2` in its own
+/// `\csname` formations (`\ifcsundef`'s `\ifx\csname#1#2\endcsname\relax`
+/// check and the dispatch `\csname#1#2\endcsname`, etoolbox.sty), so the same
+/// split falls out of the package's own multi-formation design. The
+/// regression test below pins this shared behavior. A
+/// single-formation variant (capture the name with `\let`, check with
+/// `\ifx...\relax`) was tried and reverted: without the conditional's
+/// skip-to-`\else`, an erroring value's debris (the rest of `#2` plus the
+/// `@etb@ok` trailer) is processed as ordinary input and leaks into the
+/// output as stray text, regressing the rejection tests below.
+/// This deliberately probes the sentinel rather than `\<name><value>`
+/// definedness the way the package does: the package's probe silently
+/// accepted values that happen to name a defined control sequence (e.g. the
+/// empty value for a bool named `b`, where `\b` is the kernel breve accent,
+/// executed `\b` with no error -- measured pdflatex typesets `ABNOC.` plus
+/// a stray breve for `A\setbool{b}{}B\ifbool{b}{YES}{NO}C.`, while this
+/// engine reports an error and keeps state). One deliberate difference from
+/// the package remains for erroring values: measured pdflatex
+/// (TeX Live 2026, `-interaction=nonstopmode`) forgets the undefined token
+/// and continues the formation, so `A\setbool{b}{true\undefined}B...`
+/// reports three `Undefined control sequence` errors (no invalid-value
+/// error) and still runs `\btrue`. This engine has no forget-and-continue
+/// recovery, so it rejects with the invalid-value error and keeps state --
+/// observably identical whenever the bool already holds the probed value.
+/// Residual forgeries: only an externally defined
+/// `\etb@setbool@is@<value>@etb@ok` still passes, the same class of
+/// internal-namespace collision the package itself has. A literal value of
+/// `true@etb@ok` does NOT pass: the trailer is appended after `#2`, so it
+/// forms the doubled `...is@true@etb@ok@etb@ok` and is rejected with state
+/// unchanged (measured). Like the package,
+/// `\ifbool`/`\notbool` take only the name: the two branches stay braced in
+/// the input so `\@firstoftwo`/`\@secondoftwo` select whole groups. The
+/// setters are `\protected`, as the package's `\newrobustcmd*` ones are, but
+/// `\ifbool`/`\notbool` are plain `\def` (the package's `\newcommand*`),
+/// fully expandable so `\edef` bakes the selected branch with no leftover
+/// tokens. The block is always installed, exactly like the toggle block
+/// above.
+/// Lane `etoolbox-ifdef-ifcsdef`: etoolbox's definedness tests
+/// (`\ifdef`/`\ifundef` for control-sequence tokens, `\ifcsdef`/`\ifcsundef`
+/// for csnames, `\ifdefmacro` for "is a macro" via `\meaning`) mirror
+/// etoolbox.sty's own `\ifdefined`/`\ifcsname`/`\meaning` implementation in
+/// [`ETOOLBOX_IFDEF_PRELUDE`]. Unlike the toggles they exist only when
+/// `etoolbox` is loaded ([`uses_etoolbox`], like [`uses_soul`]): without the
+/// package they stay undefined, so the parser reports them as unknown
+/// commands where they are used, as pdflatex reports "Undefined control
+/// sequence" there.
+/// `etoolbox`'s robust-command definers (lane `etoolbox-newrobustcmd`):
+/// `\newrobustcmd`/`\renewrobustcmd`/`\providerobustcmd` mirror
+/// etoolbox.sty's own definitions behind an `\@ifpackageloaded{etoolbox}`
+/// gate tested at each call, so use order matters as in LaTeX: with the
+/// package loaded they define `\protected` macros with `\newcommand`
+/// argument syntax (an `\@ifstar` short/long switch around `\@testopt`
+/// `[<n>]` and `[...]`-default readers; unstarred with parameters is
+/// `\long`, anything with none is not, exactly like `\@yargd@f` builds
+/// them; the `[<default>]` form keeps the kernel's `\expandafter ...
+/// \@testopt \csname\string<target>\endcsname` shape, whose inner macro
+/// stays unprotected and long-only-when-unstarred, exactly like
+/// etoolbox's). The engine has no `\@star@or@long`, `\@ifdefinable` or
+/// `\@yargdef`, so the `[<n>]` parameter text is built with `\ifcase`
+/// (nine parameters at most, like the engine's own `\newcommand`) and
+/// the newcommand semantics reuse the engine's own refusals where their
+/// text already matches: `\newrobustcmd` of a defined name re-emits the
+/// kernel's `\newcommand` error and keeps the old definition,
+/// `\renewrobustcmd` of an undefined name reports etoolbox's own
+/// `Package etoolbox Error` and still defines, and `\providerobustcmd`
+/// of a defined name re-emits the silent `\providecommand` no-op. A use
+/// without `etoolbox` loaded expands to a never-defined marker (one per
+/// command: `\etb@err@newrobustcmd` and friends, so the diagnostic names
+/// the rejected command): the parser reports it as an `unknown_command`
+/// error at the use span, matching pdflatex's `Undefined control
+/// sequence`. The `[0][<default>]` form is left gracefully defining (it
+/// is a fatal `File ended` crash in pdflatex itself, so there is no
+/// recovery to match).
+/// Engine identity (`iftex.sty` under pdfTeX): this compiler is
+/// pdflatex-equivalent, so `\ifxetex`/`\ifluatex` are defined false here --
+/// exactly as `iftex.sty` leaves them when neither `\XeTeXrevision` nor
+/// `\directlua` exists -- with `\ifXeTeX`/`\ifLuaTeX` let to the same
+/// switches as that package does. The `.sty` files themselves are never
+/// executed (`\usepackage{iftex}` and the legacy `ifxetex`/`ifluatex` are
+/// silent layout-neutral loads), so a guarded block
+/// (`\ifxetex\usepackage{fontspec}...\fi`) skips with no diagnostic, matching
+/// pdflatex's exit-0 behavior on the same input.
+/// `etoolbox`'s macro patchers (`\appto`/`\eappto`/`\gappto` append,
+/// `\preto`/`\gpreto` prepend, `\csappto`/`\cspreto` by csname) run as
+/// etoolbox.sty's own `\edef`/`\xdef` bodies, defining an undefined target
+/// instead of patching it, and expand to a never-defined marker when
+/// `\@ifpackageloaded{etoolbox}` is false, so plain-article use errors as
+/// pdflatex errors.
+/// `\hspace`/`\vspace` route through host primitives the same way (the
+/// star and `{<dimen>}` are absorbed, a bare or factored register is
+/// spliced to its current value text); real LaTeX absorbs those arguments
+/// unexpanded as macro parameters.
+/// `\DeclareTextCommandDefault` / `\ProvideTextCommandDefault` /
+/// `\DeclareTextSymbolDefault` are ltoutenc.dtx's encoding dispatch
+/// (latex.ltx 9825-9902, 9983-9984) with the encodings collapsed: the
+/// engine has no font switching, so every default is the `?` encoding and
+/// `\cf@encoding` stays `OT1` (the parser's own default). Each command
+/// becomes a dispatcher to `\flashtex@text@changed` (the kernel
+/// `\@changed@cmd`: try the current-encoding implementation, else the
+/// declared one, else the unavailable error), which takes the encoding and
+/// the command as plain arguments so no bare `\csname` ever crosses a
+/// macro-argument boundary (the kernel pre-forms those with the
+/// `\expandafter\def\expandafter#2` idiom instead). The selected
+/// implementation is stashed in `\flashtex@afterfi` and invoked after the
+/// `\fi`: an invoked implementation that takes arguments would otherwise
+/// swallow the `\else` as its first argument (this engine leaves a trailing
+/// `\expandafter\endcsname\else` in place, where real TeX consumes it).
+/// The `?`-implementation is defined with `\newcommand` /
+/// `\providecommand` (a Declare first resets it to `\relax`, which counts
+/// as undefined, so redeclaring stays silent like LaTeX's
+/// `\@rc@ifdefinable`; a Provide keeps first-wins). A command the parser
+/// already typesets itself (a host command, detected by its
+/// `\flashtex@host` meaning) keeps passing through: only its `?`
+/// implementation is recorded. `\UseTextSymbol` just yields its symbol,
+/// the info logging is dropped, and the math-mode/unavailable reports route
+/// to the engine's own warning/error primitives. `\DeclareTextSymbol`
+/// rides along because a symbol default is only observable paired with one.
 pub const HOST_PRELUDE: &str = "\\let\\label\\flashtexundefined
 \\let\\verb\\flashtexundefined
 \\let\\:\\flashtexundefined
 \\let\\counterwithin\\flashtexundefined
 \\let\\counterwithout\\flashtexundefined
 \\let\\fnsymbol\\flashtexundefined
-\\def\\setlength#1#2{\\ifdefined#1#1 #2\\relax\\else\\flashtexsetlength{#1}{#2}\\fi}%
-\\def\\addtolength#1#2{\\ifdefined#1\\advance#1 #2\\relax\\else\\flashtexaddtolength{#1}{#2}\\fi}%
+\\newif\\ifxetex\\xetexfalse
+\\newif\\ifluatex\\luatexfalse
+\\let\\ifXeTeX\\ifxetex
+\\let\\ifLuaTeX\\ifluatex
 \\def\\setlist{\\flashtexsetlist}%
+\\makeatletter
+\\protected\\def\\newtoggle#1{\\@ifundefined{etb@tgl@#1}{\\expandafter\\let\\csname etb@tgl@#1\\endcsname\\@secondoftwo}{\\etb@err@toggledefined}}%
+\\protected\\def\\providetoggle#1{\\@ifundefined{etb@tgl@#1}{\\expandafter\\let\\csname etb@tgl@#1\\endcsname\\@secondoftwo}{}}%
+\\protected\\def\\toggletrue#1{\\@ifundefined{etb@tgl@#1}{\\etb@err@notoggle}{\\expandafter\\let\\csname etb@tgl@#1\\endcsname\\@firstoftwo}}%
+\\protected\\def\\togglefalse#1{\\@ifundefined{etb@tgl@#1}{\\etb@err@notoggle}{\\expandafter\\let\\csname etb@tgl@#1\\endcsname\\@secondoftwo}}%
+\\protected\\def\\iftoggle#1{\\@ifundefined{etb@tgl@#1}{\\etb@err@notoggle\\@gobbletwo}{\\csname etb@tgl@#1\\endcsname}}%
+% lane etoolbox-appto-preto: etoolbox's macro patchers (\\appto/\\eappto/\\gappto append, \\preto/\\gpreto prepend, \\csappto/\\cspreto by csname) as etoolbox.sty defines them: \\edef/\\xdef bodies that keep the new code unexpanded and splice the old code after one expansion (\\etb@expandonce), defining an \\etb@ifundef (undefined-or-\\relax) target instead of appending to it. Each public command first asks \\@ifpackageloaded{etoolbox}: without the package it expands to a never-defined marker (\\etb@err@appto and friends), which the parser reports as an unknown_command error at the use span (pdflatex's Undefined control sequence) while existing state is left alone.
+\\long\\def\\etb@expandonce#1{\\unexpanded\\expandafter{#1}}%
+\\long\\def\\etb@ifundef#1{\\ifdefined#1\\ifx#1\\relax\\expandafter\\expandafter\\expandafter\\@firstoftwo\\else\\expandafter\\expandafter\\expandafter\\@secondoftwo\\fi\\else\\expandafter\\@firstoftwo\\fi}%
+\\protected\\long\\def\\etb@appto#1#2{\\etb@ifundef{#1}{\\edef#1{\\unexpanded{#2}}}{\\edef#1{\\etb@expandonce#1\\unexpanded{#2}}}}%
+\\protected\\long\\def\\etb@eappto#1#2{\\etb@ifundef{#1}{\\edef#1{#2}}{\\edef#1{\\etb@expandonce#1#2}}}%
+\\protected\\long\\def\\etb@gappto#1#2{\\etb@ifundef{#1}{\\xdef#1{\\unexpanded{#2}}}{\\xdef#1{\\etb@expandonce#1\\unexpanded{#2}}}}%
+\\protected\\long\\def\\etb@preto#1#2{\\etb@ifundef{#1}{\\edef#1{\\unexpanded{#2}}}{\\edef#1{\\unexpanded{#2}\\etb@expandonce#1}}}%
+\\protected\\long\\def\\etb@gpreto#1#2{\\etb@ifundef{#1}{\\xdef#1{\\unexpanded{#2}}}{\\xdef#1{\\unexpanded{#2}\\etb@expandonce#1}}}%
+\\protected\\long\\def\\appto#1#2{\\@ifpackageloaded{etoolbox}{\\etb@appto{#1}{#2}}{\\etb@err@appto}}%
+\\protected\\long\\def\\eappto#1#2{\\@ifpackageloaded{etoolbox}{\\etb@eappto{#1}{#2}}{\\etb@err@eappto}}%
+\\protected\\long\\def\\gappto#1#2{\\@ifpackageloaded{etoolbox}{\\etb@gappto{#1}{#2}}{\\etb@err@gappto}}%
+\\protected\\long\\def\\preto#1#2{\\@ifpackageloaded{etoolbox}{\\etb@preto{#1}{#2}}{\\etb@err@preto}}%
+\\protected\\long\\def\\gpreto#1#2{\\@ifpackageloaded{etoolbox}{\\etb@gpreto{#1}{#2}}{\\etb@err@gpreto}}%
+\\protected\\def\\csappto#1{\\expandafter\\appto\\csname#1\\endcsname}%
+\\protected\\def\\cspreto#1{\\expandafter\\preto\\csname#1\\endcsname}%
+% lane etoolbox-csdef-csuse: etoolbox's control-sequence constructors mirror
+% etoolbox.sty's own bodies (texdef -t latex -p etoolbox on TeX Live 2026):
+% \\csdef/\\csgdef are local/global \\def, \\csedef/\\csxdef local/global \\edef,
+% \\csuse expands its target only under \\ifcsname (an undefined name yields
+% nothing, with no error and no stray \\relax), and \\csletcs/\\cslet are \\let
+% aliases (\\csletcs of an undefined source inlines \\csundef, a \\let to the
+% never-defined \\etb@undefined, which the engine copies as undefined with no
+% error, exactly as in TeX). Each is gated on the engine's ver@etoolbox.sty
+% record, so use without \\usepackage{etoolbox} expands to a never-defined
+% marker (\\etb@err@noetoolbox) the parser reports where used while leftover
+% groups typeset as plain text -- pdflatex's undefined-control-sequence
+% recovery. \\csuse is unprotected, \\cslet \\long, as in the package. The
+% gated-out arm re-emits the name unbraced after the marker (never as a
+% group: the parser's unknown-command recovery would eat an all-lowercase
+% {foo} as a parameter), so it typesets as plain text exactly like the
+% leftover group pdflatex leaves behind.
+\\protected\\def\\csdef#1{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox #1}{\\expandafter\\def\\csname #1\\endcsname}}%
+\\protected\\def\\csgdef#1{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox #1}{\\expandafter\\gdef\\csname #1\\endcsname}}%
+\\protected\\def\\csedef#1{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox #1}{\\expandafter\\edef\\csname #1\\endcsname}}%
+\\protected\\def\\csxdef#1{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox #1}{\\expandafter\\xdef\\csname #1\\endcsname}}%
+\\def\\csuse#1{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox #1}{\\ifcsname #1\\endcsname\\csname #1\\expandafter\\endcsname\\fi}}%
+\\protected\\def\\csletcs#1#2{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox #1#2}{\\ifcsname #2\\endcsname\\expandafter\\@firstoftwo\\else\\expandafter\\@secondoftwo\\fi{\\expandafter\\let\\csname #1\\expandafter\\endcsname\\csname #2\\endcsname}{\\expandafter\\let\\csname #1\\endcsname\\etb@undefined}}}%
+\\protected\\long\\def\\cslet#1#2{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox #1#2}{\\expandafter\\let\\csname #1\\endcsname #2}}%
+\\makeatother
+% lane etoolbox-ifnumcomp-ifdimcomp: etoolbox's numeric/dimension comparisons
+% (\\ifnumcomp with \\ifnumequal/\\ifnumgreater/\\ifnumless, \\ifnumodd, \\ifdimcomp
+% with \\ifdimequal/\\ifdimgreater/\\ifdimless) are etoolbox.sty's own bodies over
+% the engine's \\ifnum/\\ifdim/\\ifodd with \\numexpr/\\dimexpr operands, selecting
+% the branches with \\@firstoftwo/\\@secondoftwo (etoolbox.sty 503-551). Unlike
+% the toggles above they are gated on the package: \\@ifpackageloaded reads the
+% \\ver@etoolbox.sty record the engine still makes for a passed-through
+% built-in load, so without \\usepackage{etoolbox} each expands to the
+% never-defined \\etb@err@noetoolbox marker the parser reports as
+% unknown_command, the way pdflatex reports Undefined control sequence. The
+% workers are plain expandable \\defs like the package's \\newcommand* ones,
+% not \\protected like the \\newrobustcmd* toggles.
+\\makeatletter
+\\def\\ifnumcomp{\\@ifpackageloaded{etoolbox}\\etb@ifnumcomp\\etb@err@noetoolbox}%
+\\def\\etb@ifnumcomp#1#2#3{\\ifnum\\numexpr#1\\relax#2\\numexpr#3\\relax\\expandafter\\@firstoftwo\\else\\expandafter\\@secondoftwo\\fi}%
+\\def\\ifnumequal#1{\\ifnumcomp{#1}=}%
+\\def\\ifnumgreater#1{\\ifnumcomp{#1}>}%
+\\def\\ifnumless#1{\\ifnumcomp{#1}<}%
+\\def\\ifnumodd{\\@ifpackageloaded{etoolbox}\\etb@ifnumodd\\etb@err@noetoolbox}%
+\\def\\etb@ifnumodd#1{\\ifodd\\numexpr#1\\relax\\expandafter\\@firstoftwo\\else\\expandafter\\@secondoftwo\\fi}%
+\\def\\ifdimcomp{\\@ifpackageloaded{etoolbox}\\etb@ifdimcomp\\etb@err@noetoolbox}%
+\\def\\etb@ifdimcomp#1#2#3{\\ifdim\\dimexpr#1\\relax#2\\dimexpr#3\\relax\\expandafter\\@firstoftwo\\else\\expandafter\\@secondoftwo\\fi}%
+\\def\\ifdimequal#1{\\ifdimcomp{#1}=}%
+\\def\\ifdimgreater#1{\\ifdimcomp{#1}>}%
+\\def\\ifdimless#1{\\ifdimcomp{#1}<}%
+% lane etoolbox-ifdefempty-ifdefvoid: \\ifdefempty/\\ifcsempty (true when the
+% macro exists, takes no parameters and expands to nothing) and
+% \\ifdefvoid/\\ifcsvoid (additionally true when the name is undefined or
+% \\relax), mirroring etoolbox.sty's own \\ifundef/\\ifdefmacro/\\ifdefparam/
+% \\etb@ifdefempty/\\ifstrempty chain over \\meaning/\\detokenize, so each
+% selects the branch pdflatex selects. The four names exist only once
+% etoolbox is loaded (the engine records \\ver@etoolbox.sty even for the
+% declined built-in file): without it they expand to a never-defined marker
+% the parser reports as an unknown_command error at the use span, as
+% pdflatex reports Undefined control sequence. Like the package, the token
+% forms take only the control sequence and the cs forms only the name; the
+% two branches stay braced in the input for \\@firstoftwo/\\@secondoftwo.
+\\def\\strip@prefix#1>{}%
+\\long\\def\\etb@ifempty@notblank#1{\\expandafter\\ifx\\expandafter\\relax\\detokenize\\expandafter{\\@gobble#1?}\\relax\\expandafter\\@secondoftwo\\else\\expandafter\\@firstoftwo\\fi}%
+\\long\\edef\\etb@ifempty@ismacro#1{\\noexpand\\expandafter\\noexpand\\etb@ifempty@ismacro@i\\noexpand\\meaning#1\\detokenize{macro}:&}%
+\\edef\\etb@ifempty@ismacro@i{\\def\\noexpand\\etb@ifempty@ismacro@i##1\\detokenize{macro}:##2&}%
+\\etb@ifempty@ismacro@i{\\etb@ifempty@notblank{#2}}%
+\\long\\edef\\etb@ifempty@hasparam#1{\\noexpand\\expandafter\\noexpand\\etb@ifempty@hasparam@i\\noexpand\\meaning#1\\detokenize{macro}:->&}%
+\\edef\\etb@ifempty@hasparam@i{\\def\\noexpand\\etb@ifempty@hasparam@i##1\\detokenize{macro}:##2->##3&}%
+\\etb@ifempty@hasparam@i{\\etb@ifempty@notblank{#2}}%
+\\long\\def\\etb@ifempty@ifstrempty#1{\\expandafter\\ifx\\expandafter&\\detokenize{#1}&\\expandafter\\@firstoftwo\\else\\expandafter\\@secondoftwo\\fi}%
+\\def\\etb@ifdefempty#1{\\expandafter\\expandafter\\expandafter\\etb@ifempty@ifstrempty\\expandafter\\expandafter\\expandafter{\\expandafter\\strip@prefix\\meaning#1}}%
+\\long\\def\\etb@ifempty@undef#1{\\ifdefined#1\\ifx#1\\relax\\expandafter\\expandafter\\expandafter\\@firstoftwo\\else\\expandafter\\expandafter\\expandafter\\@secondoftwo\\fi\\else\\expandafter\\@firstoftwo\\fi}%
+\\def\\etb@ifempty@csundef#1{\\ifcsname#1\\endcsname\\expandafter\\ifx\\csname#1\\endcsname\\relax\\expandafter\\expandafter\\expandafter\\@firstoftwo\\else\\expandafter\\expandafter\\expandafter\\@secondoftwo\\fi\\else\\expandafter\\@firstoftwo\\fi}%
+\\long\\def\\ifdefempty#1{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox}{\\etb@ifempty@undef{#1}{\\@secondoftwo}{\\etb@ifempty@ismacro{#1}{\\etb@ifempty@hasparam{#1}{\\@secondoftwo}{\\etb@ifdefempty{#1}}}{\\@secondoftwo}}}}%
+\\def\\ifcsempty#1{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox}{\\etb@ifempty@csundef{#1}{\\@secondoftwo}{\\expandafter\\etb@ifempty@hasparam\\csname#1\\endcsname{\\@secondoftwo}{\\expandafter\\etb@ifdefempty\\csname#1\\endcsname}}}}%
+\\long\\def\\ifdefvoid#1{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox}{\\etb@ifempty@undef{#1}{\\@firstoftwo}{\\etb@ifempty@ismacro{#1}{\\etb@ifempty@hasparam{#1}{\\@secondoftwo}{\\etb@ifdefempty{#1}}}{\\@secondoftwo}}}}%
+\\def\\ifcsvoid#1{\\@ifundefined{ver@etoolbox.sty}{\\etb@err@noetoolbox}{\\etb@ifempty@csundef{#1}{\\@firstoftwo}{\\expandafter\\etb@ifempty@hasparam\\csname#1\\endcsname{\\@secondoftwo}{\\expandafter\\etb@ifdefempty\\csname#1\\endcsname}}}}%
+\\makeatother
+% etoolbox-newbool-ifbool: etoolbox TeX-bool booleans over the package's own \\newif representation.
+\\makeatletter
+\\protected\\def\\newbool#1{\\@ifundefined{if#1}{\\expandafter\\newif\\csname if#1\\endcsname}{\\etb@err@booldefined}}%
+\\protected\\def\\providebool#1{\\@ifundefined{if#1}{\\expandafter\\newif\\csname if#1\\endcsname}{}}%
+\\protected\\def\\booltrue#1{\\@ifundefined{if#1}{\\etb@err@nobool}{\\csname#1true\\endcsname}}%
+\\protected\\def\\boolfalse#1{\\@ifundefined{if#1}{\\etb@err@nobool}{\\csname#1false\\endcsname}}%
+\\def\\etb@setbool@is@true@etb@ok{\\@firstoftwo}%
+\\def\\etb@setbool@is@false@etb@ok{\\@secondoftwo}%
+\\protected\\def\\setbool#1#2{\\@ifundefined{if#1}{\\etb@err@nobool}{\\ifcsname etb@setbool@is@#2@etb@ok\\endcsname\\csname etb@setbool@is@#2@etb@ok\\endcsname{\\csname#1true\\endcsname}{\\csname#1false\\endcsname}\\else\\etb@err@boolval\\fi}}%
+\\def\\ifbool#1{\\@ifundefined{if#1}{\\etb@err@nobool\\@gobbletwo}{\\csname if#1\\endcsname\\expandafter\\@firstoftwo\\else\\expandafter\\@secondoftwo\\fi}}%
+\\def\\notbool#1{\\@ifundefined{if#1}{\\etb@err@nobool\\@gobbletwo}{\\csname if#1\\endcsname\\expandafter\\@secondoftwo\\else\\expandafter\\@firstoftwo\\fi}}%
+\\makeatother
+\\makeatletter
+% lane etoolbox-newrobustcmd: etoolbox's robust-command definers (see the
+% HOST_PRELUDE docs); gated on the package, protected, newcommand syntax.
+\\protected\\def\\newrobustcmd{\\@ifpackageloaded{etoolbox}{\\etb@rc@new}{\\etb@err@newrobustcmd}}%
+\\protected\\def\\renewrobustcmd{\\@ifpackageloaded{etoolbox}{\\etb@rc@renew}{\\etb@err@renewrobustcmd}}%
+\\protected\\def\\providerobustcmd{\\@ifpackageloaded{etoolbox}{\\etb@rc@provide}{\\etb@err@providerobustcmd}}%
+\\def\\etb@rc@new{\\@ifstar{\\etb@rc@new@s}{\\etb@rc@new@n}}%
+\\def\\etb@rc@new@n#1{\\etb@rc@ifundef#1{\\etb@rc@def@long#1}{\\newcommand#1}}%
+\\def\\etb@rc@new@s#1{\\etb@rc@ifundef#1{\\etb@rc@def@short#1}{\\newcommand#1}}%
+\\def\\etb@rc@renew{\\@ifstar{\\etb@rc@renew@s}{\\etb@rc@renew@n}}%
+\\def\\etb@rc@renew@n#1{\\etb@rc@ifundef#1{\\flashtex@latex@error{Package etoolbox Error: \\string#1 undefined}\\etb@rc@def@long#1}{\\etb@rc@def@long#1}}%
+\\def\\etb@rc@renew@s#1{\\etb@rc@ifundef#1{\\flashtex@latex@error{Package etoolbox Error: \\string#1 undefined}\\etb@rc@def@short#1}{\\etb@rc@def@short#1}}%
+\\def\\etb@rc@provide{\\@ifstar{\\etb@rc@provide@s}{\\etb@rc@provide@n}}%
+\\def\\etb@rc@provide@n#1{\\etb@rc@ifundef#1{\\etb@rc@def@long#1}{\\providecommand#1}}%
+\\def\\etb@rc@provide@s#1{\\etb@rc@ifundef#1{\\etb@rc@def@short#1}{\\providecommand#1}}%
+\\def\\etb@rc@ifundef#1#2#3{\\edef\\etb@rc@name{\\expandafter\\@gobble\\string#1}\\expandafter\\@ifundefined\\expandafter{\\etb@rc@name}{#2}{#3}}%
+\\def\\etb@rc@def@long#1{\\@testopt{\\etb@rc@plain@long#1}0}%
+\\def\\etb@rc@def@short#1{\\@testopt{\\etb@rc@plain@short#1}0}%
+\\def\\etb@rc@plain@long#1[#2]{\\kernel@ifnextchar[{\\etb@rc@opt@long#1[#2]}{\\etb@rc@noopt@long#1[#2]}}%
+\\def\\etb@rc@plain@short#1[#2]{\\kernel@ifnextchar[{\\etb@rc@opt@short#1[#2]}{\\etb@rc@noopt@short#1[#2]}}%
+\\long\\def\\etb@rc@noopt@long#1[#2]#3{\\ifcase#2\\relax\\protected\\def#1{#3}\\or\\protected\\long\\def#1##1{#3}\\or\\protected\\long\\def#1##1##2{#3}\\or\\protected\\long\\def#1##1##2##3{#3}\\or\\protected\\long\\def#1##1##2##3##4{#3}\\or\\protected\\long\\def#1##1##2##3##4##5{#3}\\or\\protected\\long\\def#1##1##2##3##4##5##6{#3}\\or\\protected\\long\\def#1##1##2##3##4##5##6##7{#3}\\or\\protected\\long\\def#1##1##2##3##4##5##6##7##8{#3}\\or\\protected\\long\\def#1##1##2##3##4##5##6##7##8##9{#3}\\else\\etb@rc@many@long#1{#3}\\fi}%
+\\long\\def\\etb@rc@noopt@short#1[#2]#3{\\ifcase#2\\relax\\protected\\def#1{#3}\\or\\protected\\def#1##1{#3}\\or\\protected\\def#1##1##2{#3}\\or\\protected\\def#1##1##2##3{#3}\\or\\protected\\def#1##1##2##3##4{#3}\\or\\protected\\def#1##1##2##3##4##5{#3}\\or\\protected\\def#1##1##2##3##4##5##6{#3}\\or\\protected\\def#1##1##2##3##4##5##6##7{#3}\\or\\protected\\def#1##1##2##3##4##5##6##7##8{#3}\\or\\protected\\def#1##1##2##3##4##5##6##7##8##9{#3}\\else\\etb@rc@many@short#1{#3}\\fi}%
+\\long\\def\\etb@rc@opt@long#1[#2][#3]#4{\\expandafter\\protected\\expandafter\\def\\expandafter#1\\expandafter{\\expandafter\\@testopt\\csname\\string#1\\endcsname{#3}}\\expandafter\\etb@rc@inner@long\\csname\\string#1\\endcsname{#2}{#4}}%
+\\long\\def\\etb@rc@opt@short#1[#2][#3]#4{\\expandafter\\protected\\expandafter\\def\\expandafter#1\\expandafter{\\expandafter\\@testopt\\csname\\string#1\\endcsname{#3}}\\expandafter\\etb@rc@inner@short\\csname\\string#1\\endcsname{#2}{#4}}%
+\\long\\def\\etb@rc@inner@long#1#2#3{\\ifcase#2\\relax\\def#1[##1]{#3}\\or\\long\\def#1[##1]{#3}\\or\\long\\def#1[##1]##2{#3}\\or\\long\\def#1[##1]##2##3{#3}\\or\\long\\def#1[##1]##2##3##4{#3}\\or\\long\\def#1[##1]##2##3##4##5{#3}\\or\\long\\def#1[##1]##2##3##4##5##6{#3}\\or\\long\\def#1[##1]##2##3##4##5##6##7{#3}\\or\\long\\def#1[##1]##2##3##4##5##6##7##8{#3}\\or\\long\\def#1[##1]##2##3##4##5##6##7##8##9{#3}\\else\\etb@rc@manyinner@long#1{#3}\\fi}%
+\\long\\def\\etb@rc@inner@short#1#2#3{\\ifcase#2\\relax\\def#1[##1]{#3}\\or\\def#1[##1]{#3}\\or\\def#1[##1]##2{#3}\\or\\def#1[##1]##2##3{#3}\\or\\def#1[##1]##2##3##4{#3}\\or\\def#1[##1]##2##3##4##5{#3}\\or\\def#1[##1]##2##3##4##5##6{#3}\\or\\def#1[##1]##2##3##4##5##6##7{#3}\\or\\def#1[##1]##2##3##4##5##6##7##8{#3}\\or\\def#1[##1]##2##3##4##5##6##7##8##9{#3}\\else\\etb@rc@manyinner@short#1{#3}\\fi}%
+\\long\\def\\etb@rc@many@long#1#2{\\flashtex@latex@error{You already have nine parameters.}\\protected\\long\\def#1##1##2##3##4##5##6##7##8##9{#2}}%
+\\long\\def\\etb@rc@many@short#1#2{\\flashtex@latex@error{You already have nine parameters.}\\protected\\def#1##1##2##3##4##5##6##7##8##9{#2}}%
+\\long\\def\\etb@rc@manyinner@long#1#2{\\flashtex@latex@error{You already have nine parameters.}\\long\\def#1[##1]##2##3##4##5##6##7##8##9{#2}}%
+\\long\\def\\etb@rc@manyinner@short#1#2{\\flashtex@latex@error{You already have nine parameters.}\\def#1[##1]##2##3##4##5##6##7##8##9{#2}}%
+\\makeatother
+\\def\\hspace{\\flashtexhspace}%
+\\def\\vspace{\\flashtexvspace}%
 \\long\\def\\flashtexdeclaremathop#1#2#3{\\newcommand#2{\\operatorname#1{#3}}}%
 \\expandafter\\def\\expandafter\\DeclareMathOperator\\expandafter{\\csname @ifstar\\endcsname{\\flashtexdeclaremathop*}{\\flashtexdeclaremathop{}}}%
 \\def\\arraystretch{1}%
 \\def\\tabular{\\flashtexbegintabular\\expandafter{\\arraystretch}}%
 \\expandafter\\def\\csname tabular*\\endcsname{\\flashtexbegintabularstar\\expandafter{\\arraystretch}}%
 \\def\\array{\\flashtexbeginarray\\expandafter{\\arraystretch}}%
+\\begingroup\\catcode32=13\\relax
+\\gdef\\flashtexallttspaceinit{\\catcode32=13\\relax\\def {\\flashtexallttspace}}%
+\\endgroup
+\\begingroup\\catcode13=13\\relax
+\\gdef\\flashtexallttlineinit{\\catcode13=13\\relax\\def^^M{\\flashtexallttnewline}}%
+\\endgroup
+\\def\\alltt{\\flashtexbeginalltt\\catcode37=12\\relax\\catcode35=12\\relax\\catcode36=12\\relax\\catcode38=12\\relax\\catcode94=12\\relax\\catcode95=12\\relax\\catcode126=12\\relax\\flashtexallttspaceinit\\flashtexallttlineinit}%
+\\def\\endalltt{\\flashtexendalltt}%
 \\long\\def\\flashtexaddtobeginhook#1#2{\\begingroup\\csname toks@\\endcsname\\expandafter{#1\\flashtexatbeginstart#2\\flashtexatbeginend}\\xdef#1{\\the\\csname toks@\\endcsname}\\endgroup}%
 \\long\\def\\AtBeginDocument#1{\\expandafter\\flashtexaddtobeginhook\\csname @begindocumenthook\\endcsname{#1}}%
 \\makeatletter
 \\let\\flashtexrealrefstepcounter\\refstepcounter
 \\def\\refstepcounter#1{\\flashtexrealrefstepcounter{#1}\\flashtexcurrentlabelmarker\\expandafter{\\@currentlabel}}%
+\\def\\@startsection#1#2#3#4#5#6{\\par\\@tempskipa #4\\relax\\@afterindenttrue\\ifdim \\@tempskipa <\\z@ \\@tempskipa -\\@tempskipa \\@afterindentfalse\\fi\\@ifstar{\\@ssect{#3}{#4}{#5}{#6}}{\\@dblarg{\\@sect{#1}{#2}{#3}{#4}{#5}{#6}}}}%
+\\def\\@sect#1#2#3#4#5#6[#7]#8{\\@tempdima #3\\relax\\@tempskipa #4\\relax\\@tempskipb #5\\relax\\flashtexsect{#1}{#2}{\\ifnum #2>\\c@secnumdepth 0\\else 1\\fi}{\\the\\@tempdima}{\\the\\@tempskipa}{\\the\\@tempskipb}{#6}{#7}{#8}}%
+\\def\\@ssect#1#2#3#4#5{\\@tempdima #1\\relax\\@tempskipa #2\\relax\\@tempskipb #3\\relax\\flashtexsect{}{0}{0}{\\the\\@tempdima}{\\the\\@tempskipa}{\\the\\@tempskipb}{#4}{}{#5}}%
+\\def\\@xsect#1{\\@tempskipa #1\\relax\\ifdim \\@tempskipa>\\z@ \\par\\nobreak\\vskip \\@tempskipa\\fi\\ignorespaces}%
+\\makeatother
+\\makeatletter
+\\def\\cf@encoding{OT1}%
+\\def\\flashtex@inmathwarn#1{\\ifmmode\\flashtex@latex@warning{Command \\protect#1 invalid in math mode}\\fi}%
+\\def\\flashtex@text@unavailable#1{\\flashtex@latex@error{Command \\protect#1 unavailable in encoding \\cf@encoding}}%
+\\def\\flashtex@text@changed#1#2{\\ifx\\protect\\@typeset@protect\\flashtex@text@changed@go{#1}{#2}\\else\\let\\flashtex@afterfi\\relax\\noexpand#2\\fi\\flashtex@afterfi}%
+\\def\\flashtex@text@changed@go#1#2{\\flashtex@inmathwarn#2\\expandafter\\ifx\\csname\\cf@encoding\\string#2\\endcsname\\relax\\expandafter\\ifx\\csname#1\\string#2\\endcsname\\relax\\expandafter\\def\\csname#1\\string#2\\endcsname{\\flashtex@text@unavailable#2}\\fi\\global\\expandafter\\let\\csname\\cf@encoding\\string#2\\expandafter\\endcsname\\csname#1\\string#2\\endcsname\\fi\\expandafter\\let\\expandafter\\flashtex@afterfi\\csname\\cf@encoding\\string#2\\endcsname}%
+\\def\\flashtex@dec@text@cmd#1#2#3{\\ifx#1\\providecommand\\else\\expandafter\\let\\csname#3\\string#2\\endcsname\\relax\\fi\\edef\\flashtex@tmpmeaning{\\meaning#2}\\edef\\flashtex@hostmeaning{\\string\\flashtex@host}\\ifx\\flashtex@tmpmeaning\\flashtex@hostmeaning\\else\\def#2{\\flashtex@text@changed{#3}#2}\\fi\\expandafter#1\\csname#3\\string#2\\endcsname}%
+\\def\\DeclareTextCommandDefault#1{\\flashtex@dec@text@cmd\\newcommand#1?}%
+\\def\\ProvideTextCommandDefault#1{\\flashtex@dec@text@cmd\\providecommand#1?}%
+\\def\\DeclareTextSymbol#1#2#3{\\edef\\flashtex@tmpmeaning{\\meaning#1}\\edef\\flashtex@hostmeaning{\\string\\flashtex@host}\\ifx\\flashtex@tmpmeaning\\flashtex@hostmeaning\\else\\def#1{\\flashtex@text@changed{#2}#1}\\fi\\expandafter\\chardef\\csname#2\\string#1\\endcsname#3\\relax}%
+\\def\\DeclareTextSymbolDefault#1#2{\\DeclareTextCommandDefault#1{\\UseTextSymbol{#2}#1}}%
+\\DeclareRobustCommand*\\UseTextSymbol[2]{#2}%
+\\makeatother
+";
+
+/// fancyhdr's field commands, deferred as LaTeX defers them. fancyhdr.sty
+/// stores each field unexpanded (`\fancyhead[R]{\small\topicshort}` is a
+/// `\def`), and `\@outputpage` expands it when the page ships, so a macro a
+/// field names takes the definition in force at each shipout: it may be
+/// defined only after the `\fancyhead` (the 21-242 proof-practice fixture
+/// sets its head before `\newcommand{\topicshort}`) and `\renewcommand`ed
+/// from page to page.
+///
+/// Here every `\fancyhead`/`\fancyfoot`/`\fancyhf` and single-slot
+/// `\lhead`...`\rfoot` call is appended, unexpanded, to
+/// `\flashtex@fancy@calls`, after fancyhdr's own defaults
+/// (`\f@nch@initialise`: `\slshape\rightmark` left and `\leftmark` right,
+/// `\rmfamily\thepage` centred below; `[LE,RO]`/`[RE,LO]` twoside). Each
+/// control sequence in a call is watched (`\flashtex@watch`, a
+/// tex-expansion primitive), and so is every macro a re-expansion expands
+/// (`\flashtex@watchcollecton`), so a field that reaches `\topicshort`
+/// through `\myhead` follows it too. The recorded calls are re-expanded --
+/// `\flashtexfancybegin <calls> \flashtexfancyend`, each call under its host
+/// name (`\flashtexfancyhead` hands back `\fancyhead`) -- at
+/// `\begin{document}` and right after every body (re)definition of a
+/// watched name, `\flashtex@fancy@calls` itself included (a body field
+/// command), via `\flashtex@watchfired`, which the engine inserts after the
+/// assignment and, for a local one in a group, again at the group's end,
+/// where TeX restores the old meaning. The parser turns each
+/// re-expansion into the fields from there on (`parser::Inline::FancyFields`).
+/// Nothing is re-expanded in the preamble, where a field's macro may not be
+/// defined yet. Without fancyhdr loaded a call passes straight to the
+/// parser, which reports the missing package. `\fancypagestyle`'s
+/// definitions are not recorded (the command itself is not implemented and
+/// reports so): its body is dropped before it can run the field commands.
+pub const FANCY_PRELUDE: &str = "\\makeatletter
+\\def\\flashtex@fancy@calls{}%
+\\newif\\ifflashtex@fancy@live
+\\newif\\ifflashtex@fancy@insnap
+\\def\\fancyhead{\\flashtex@fancy@cmd\\flashtexfancyhead}%
+\\def\\fancyfoot{\\flashtex@fancy@cmd\\flashtexfancyfoot}%
+\\def\\fancyhf{\\flashtex@fancy@cmd\\flashtexfancyhf}%
+\\def\\lhead{\\flashtex@fancy@cmd\\flashtexlhead}%
+\\def\\chead{\\flashtex@fancy@cmd\\flashtexchead}%
+\\def\\rhead{\\flashtex@fancy@cmd\\flashtexrhead}%
+\\def\\lfoot{\\flashtex@fancy@cmd\\flashtexlfoot}%
+\\def\\cfoot{\\flashtex@fancy@cmd\\flashtexcfoot}%
+\\def\\rfoot{\\flashtex@fancy@cmd\\flashtexrfoot}%
+\\def\\flashtex@fancy@cmd#1{\\@ifpackageloaded{fancyhdr}{\\@ifnextchar[{\\flashtex@fancy@opt#1}{\\flashtex@fancy@noopt#1}}{#1}}%
+\\long\\def\\flashtex@fancy@opt#1[#2]#3{\\flashtex@fancy@add{#1[#2]{#3}}}%
+\\long\\def\\flashtex@fancy@noopt#1#2{\\flashtex@fancy@add{#1{#2}}}%
+\\long\\def\\flashtex@fancy@add#1{\\edef\\flashtex@fancy@calls{\\unexpanded\\expandafter{\\flashtex@fancy@calls}\\unexpanded{#1}}\\flashtex@watch{#1}}%
+\\flashtex@watch{\\flashtex@fancy@calls}%
+\\def\\flashtex@fancy@snap{\\ifflashtex@fancy@insnap\\else\\flashtex@fancy@insnaptrue\\flashtex@watchcollecton\\flashtexfancybegin\\flashtex@fancy@calls\\flashtexfancyend\\flashtex@watchcollectoff\\flashtex@fancy@insnapfalse\\fi}%
+\\def\\flashtex@watchfired{\\ifflashtex@fancy@live\\expandafter\\flashtex@fancy@snap\\fi}%
+\\def\\fancypagestyle#1{\\@ifnextchar[{\\flashtex@fancy@pso{#1}}{\\flashtex@fancy@ps{#1}}}%
+\\long\\def\\flashtex@fancy@pso#1[#2]#3{\\flashtexfancypagestyle{#1}{}}%
+\\long\\def\\flashtex@fancy@ps#1#2{\\flashtexfancypagestyle{#1}{}}%
+\\def\\flashtex@fancy@seed#1#2{\\edef\\flashtex@fancy@calls{\\unexpanded{\\flashtexfancyhf{}\\flashtexfancyhead[#1]{\\slshape\\rightmark}\\flashtexfancyhead[#2]{\\slshape\\leftmark}\\flashtexfancyfoot[C]{\\rmfamily\\thepage}}\\unexpanded\\expandafter{\\flashtex@fancy@calls}}}%
+\\def\\flashtex@fancy@init{\\flashtex@watchbase\\@ifundefined{if@twoside}{\\flashtex@fancy@seed{L}{R}}{\\if@twoside\\expandafter\\@firstoftwo\\else\\expandafter\\@secondoftwo\\fi{\\flashtex@fancy@seed{LE,RO}{RE,LO}}{\\flashtex@fancy@seed{L}{R}}}\\flashtex@fancy@livetrue\\flashtex@fancy@snap}%
+\\AtBeginDocument{\\@ifpackageloaded{fancyhdr}{\\flashtex@fancy@init}{}}%
+\\makeatother
+";
+
+/// The host names the recorded fancyhdr calls are re-expanded under
+/// ([`FANCY_PRELUDE`]), and the parser command each one hands back.
+const FANCY_HOST_COMMANDS: &[(&str, &str)] = &[
+    ("flashtexfancyhead", "fancyhead"),
+    ("flashtexfancyfoot", "fancyfoot"),
+    ("flashtexfancyhf", "fancyhf"),
+    ("flashtexlhead", "lhead"),
+    ("flashtexchead", "chead"),
+    ("flashtexrhead", "rhead"),
+    ("flashtexlfoot", "lfoot"),
+    ("flashtexcfoot", "cfoot"),
+    ("flashtexrfoot", "rfoot"),
+    ("flashtexfancypagestyle", "fancypagestyle"),
+];
+
+// Lane `etoolbox-ifdef-ifcsdef`: etoolbox's definedness tests, run only when
+// `etoolbox` is loaded (see [`uses_etoolbox`]). Each definition is
+// etoolbox.sty's own, with `\newcommand` spelled as `\def` (`\newcommand*`
+// as non-`\long` `\def`, the `\edef` factory as-is) since the prelude runs
+// before any document: `\ifdef` is true for any defined token (a `\relax`
+// name counts), `\ifundef` additionally treats `\relax` as undefined,
+// `\ifcsdef` tests the csname with `\ifcsname` (true for a `\relax` name),
+// `\ifcsundef` re-checks such a name with `\ifx...\relax`, and
+// `\ifdefmacro` matches etoolbox's `\meaning` prefix trick, with the
+// `\notblank` tail inlined under the private `\etb@ifdefmacro` name so no
+// extra public command appears (a document's own `\notblank` stays free
+// without the package, as in LaTeX).
+pub const ETOOLBOX_IFDEF_PRELUDE: &str = "\\makeatletter
+\\long\\def\\ifdef#1{\\ifdefined#1\\expandafter\\@firstoftwo\\else\\expandafter\\@secondoftwo\\fi}%
+\\long\\def\\ifundef#1{\\ifdefined#1\\ifx#1\\relax\\expandafter\\expandafter\\expandafter\\@firstoftwo\\else\\expandafter\\expandafter\\expandafter\\@secondoftwo\\fi\\else\\expandafter\\@firstoftwo\\fi}%
+\\def\\ifcsdef#1{\\ifcsname#1\\endcsname\\expandafter\\@firstoftwo\\else\\expandafter\\@secondoftwo\\fi}%
+\\def\\ifcsundef#1{\\ifcsname#1\\endcsname\\expandafter\\ifx\\csname#1\\endcsname\\relax\\expandafter\\expandafter\\expandafter\\@firstoftwo\\else\\expandafter\\expandafter\\expandafter\\@secondoftwo\\fi\\else\\expandafter\\@firstoftwo\\fi}%
+\\long\\edef\\ifdefmacro#1{\\noexpand\\expandafter\\noexpand\\etb@ifdefmacro\\noexpand\\meaning#1\\detokenize{macro}:&}%
+\\edef\\etb@ifdefmacro{\\def\\noexpand\\etb@ifdefmacro##1\\detokenize{macro}:##2&}%
+\\etb@ifdefmacro{\\expandafter\\ifx\\expandafter\\relax\\detokenize\\expandafter{\\@gobble#2?}\\relax\\expandafter\\@secondoftwo\\else\\expandafter\\@firstoftwo\\fi}%
 \\makeatother
 ";
 
@@ -458,6 +940,17 @@ struct Converter<'d> {
     /// [`include`]; each entry is kept trimmed and, when suffixed, stripped
     /// of one trailing `.tex`, mirroring `\include`'s own lookup.
     includeonly: Option<HashSet<String>>,
+    /// Some project document literally loads biblatex (`\usepackage` or
+    /// `\RequirePackage` naming it): gates the `\printbibliography` `.bbl`
+    /// fallback. A raw-token scan like [`document_fonts`]; a
+    /// macro-generated `\usepackage` is missed, like there.
+    biblatex: bool,
+    /// `\let` aliases by alias name ([`let_aliases`]): the engine copies a
+    /// host command's meaning onto the alias but emits it under its own
+    /// name, which the parser does not implement —
+    /// [`Converter::convert_token`] hands it over under the host command's
+    /// name instead.
+    let_aliases: HashMap<String, ScopedAlias>,
     /// Set once the converter emits `\begin{document}` (see [`push`]): what
     /// [`in_preamble`] reads to gate preamble-only `\includeonly`.
     document_begun: bool,
@@ -500,6 +993,20 @@ struct Converter<'d> {
     /// Every `\@currentlabel` record in production order, with its marker's
     /// engine token index (kept and spliced like `stretch_log`).
     current_label_log: Vec<(usize, (usize, usize), String)>,
+    /// Package files mapped so far (see [`Expansion::package_files`]).
+    package_files: Vec<(DocumentId, Span)>,
+    /// The same, with each file's engine source id: what
+    /// [`Converter::package_records`] pairs with the engine's final records.
+    package_sites: Vec<(u32, DocumentId, Span)>,
+    /// Inside a `\flashtexfancybegin`...`\flashtexfancyend` re-expansion of
+    /// the recorded fancyhdr calls ([`FANCY_PRELUDE`]): the span every token
+    /// of it is placed at, the begin marker's. The recorded calls mix the
+    /// prelude's own tokens (brackets, braces, host names: no source bytes)
+    /// with the document's field text from wherever it was written, so
+    /// their own spans run backwards; the parser's readers expect one
+    /// invocation's span throughout. Each token keeps its own bytes as its
+    /// definition span.
+    fancy_window: Option<Span>,
 }
 
 struct PendingWord {
@@ -628,6 +1135,15 @@ impl<'d> Converter<'d> {
         self.push_marked(kind, at, false);
     }
 
+    /// A `Space` unless the stream already ends in one (`\newblock`).
+    fn push_space_once(&mut self, at: Placement) {
+        self.flush_word();
+        let sink = if self.atbegin_capturing { &self.atbegin_buffer } else { &self.out };
+        if !matches!(sink.last().map(|t| &t.token.kind), Some(TokenKind::Space)) {
+            self.push(TokenKind::Space, at);
+        }
+    }
+
     /// Push one finished token, recording whether it was lexed from a
     /// backslash control symbol (see [`Token::control_symbol`]). Only the
     /// single-character control-sequence arm below passes `true`; every
@@ -638,18 +1154,23 @@ impl<'d> Converter<'d> {
             self.document_begun = true;
         }
         self.last_span = at.span;
-        // Whitespace runs collapse the way the parser's own tokenizer
-        // produces them: one `Space`, or one `ParBreak` if the run holds a
-        // paragraph break. While capturing `\AtBeginDocument` output the
-        // run collapses against the held-back buffer, never the frozen
-        // stream behind it.
+        // A paragraph break absorbs the whitespace next to it: one
+        // `ParBreak`, as the parser's own tokenizer produces it. Two `Space`s
+        // in a row stay two: the engine's tokenizer already reads a source
+        // blank run as one space token (TeX's state S), so a second one is
+        // a separate token -- the space after a macro that expanded to
+        // nothing or an assignment the engine ran (`text \nothing{x} in`,
+        // `a \setcounter{page}{1} b`) -- and TeX appends glue for each
+        // (issue #1124). While capturing `\AtBeginDocument` output the run
+        // collapses against the held-back buffer, never the frozen stream
+        // behind it.
         let sink = if self.atbegin_capturing {
             &mut self.atbegin_buffer
         } else {
             &mut self.out
         };
         match (&kind, sink.last().map(|t| &t.token.kind)) {
-            (TokenKind::Space, Some(TokenKind::Space | TokenKind::ParBreak)) => return,
+            (TokenKind::Space, Some(TokenKind::ParBreak)) => return,
             (TokenKind::ParBreak, Some(TokenKind::ParBreak)) => return,
             (TokenKind::ParBreak, Some(TokenKind::Space)) => {
                 sink.pop();
@@ -666,16 +1187,22 @@ impl<'d> Converter<'d> {
     fn push_char(&mut self, c: char, at: Placement) {
         self.last_span = at.span;
         if let Some(word) = &mut self.word {
+            // Characters the engine synthesized from one token (`\the`'s
+            // digits, the canonical operand of `\hskip`/`\kern`/`\penalty`,
+            // a length marker's value) all carry that token's span: an
+            // identical span is contiguous too, so `12.0pt` reaches the
+            // parser as one word, as the source text `12pt` would.
             let contiguous = word.maps == at.maps
                 && if at.maps {
                     word.span == at.span
                         && match (word.definition, at.definition) {
-                            (Some(a), Some(b)) => a.document == b.document && a.end == b.start,
+                            (Some(a), Some(b)) => a.document == b.document && (a.end == b.start || a == b),
                             (None, None) => true,
                             _ => false,
                         }
                 } else {
-                    word.span.document == at.span.document && word.span.end == at.span.start
+                    word.span.document == at.span.document
+                        && (word.span.end == at.span.start || word.span == at.span)
                 };
             if contiguous {
                 word.text.push(c);
@@ -772,22 +1299,117 @@ fn limits_for(bytes: usize) -> Limits {
 /// sets is part of the engine's checkpointed state.
 fn configure(engine: &mut Engine) {
     engine.run_host_prelude(HOST_PRELUDE);
+    // Lane `etoolbox-ifdef-ifcsdef`: `\bar` is kernel-defined
+    // (fontmath.ltx), so etoolbox's `\ifundef` takes its false branch under
+    // pdflatex. This compiler resolves it parser-side from an
+    // engine-undefined token, which made every definedness test misreport
+    // it; declaring it a host command keeps it passing through to the
+    // parser unchanged while counting as defined (`\newcommand` refuses it
+    // and `\renewcommand` accepts it, as in LaTeX).
+    engine.declare_host_command("bar");
     engine.set_emit_unbalanced_close(true);
     for name in BUILT_INS {
-        engine.declare_host_command(name);
+        match package_of_built_in(name) {
+            // A package's or a class's command exists only once that file is
+            // loaded (`\usepackage{siunitx}`, `\documentclass{letter}`); before
+            // that a document's own `\newcommand{\si}`/`\newcommand{\cc}` is
+            // free, as in LaTeX (parity 2026-09-23 cause 4).
+            Some(files) => {
+                for file in files {
+                    engine.declare_host_command_after(name, file);
+                }
+            }
+            None => engine.declare_host_command(name),
+        }
     }
     engine.declare_host_command("include");
+    for name in KERNEL_ENVIRONMENTS {
+        engine.declare_host_command(name);
+        engine.declare_host_command(&format!("end{name}"));
+    }
     // `\global\setlength{\parskip}{..}` is valid LaTeX: `\setlength` is a
     // macro, so TeX applies the prefix to the register assignment.
     engine.declare_host_assignment("flashtexsetlength");
     engine.declare_host_assignment("flashtexaddtolength");
     engine.declare_host_command("flashtexsetlistdone");
+    for name in [
+        "flashtexbeginalltt",
+        "flashtexendalltt",
+        "flashtexallttspace",
+        "flashtexallttnewline",
+    ] {
+        engine.declare_host_command(name);
+    }
+    engine.declare_host_command("flashtexhspacedone");
+    engine.declare_host_command("flashtexvspacedone");
+    engine.declare_host_command("flashtexsect");
+    // NFSS `\fontsize`/`\selectfont` run in the engine (`\set@fontsize`
+    // records `\f@size`/`\f@baselineskip`, `\size@update` sets
+    // `\baselineskip`), then hand the command back under these names so
+    // the parser sees `\fontsize{<f@size>}{<f@baselineskip>}` and
+    // `\selectfont` exactly as it did.
+    engine.declare_host_command("flashtexfontsizedone");
+    engine.declare_host_command("flashtexselectfontdone");
+    // fancyhdr's deferred fields: after the `BUILT_INS` declarations, whose
+    // host `\fancyhead`... the prelude replaces with its recording macros.
+    engine.declare_host_command("flashtexfancybegin");
+    engine.declare_host_command("flashtexfancycounter");
+    engine.declare_host_command("flashtexfancyend");
+    for (host, _) in FANCY_HOST_COMMANDS {
+        engine.declare_host_command(host);
+    }
+    engine.run_host_prelude(FANCY_PRELUDE);
+}
+
+/// The file that provides a `BUILT_INS` name when it is not the LaTeX
+/// kernel's or every standard class's: siunitx's commands and letter.cls's
+/// (`\cc`, `\ps`, `\address`, ...). Such a name is declared to the engine
+/// only once that file is loaded (`Engine::declare_host_command_after`).
+fn package_of_built_in(name: &str) -> Option<&'static [&'static str]> {
+    const AMS: &[&str] = &["amsart.cls", "amsbook.cls", "amsproc.cls"];
+    match name {
+        "num" | "qty" | "unit" | "si" | "SI" | "numlist" | "numrange" | "qtylist" | "qtyrange" | "SIlist"
+        | "SIrange" | "ang" | "complexnum" | "complexqty" | "sisetup" | "DeclareSIUnit" => Some(&["siunitx.sty"]),
+        // `\address` is letter.cls's and the AMS classes' (amsart.cls 506).
+        "address" => Some(&["letter.cls", "amsart.cls", "amsbook.cls", "amsproc.cls"]),
+        "signature" | "name" | "location" | "telephone" | "opening" | "closing" | "cc" | "encl"
+        | "ps" | "startbreaks" | "stopbreaks" | "stopletter" | "makelabels" => Some(&["letter.cls"]),
+        "curraddr" | "email" | "urladdr" | "subjclass" | "keywords" | "dedicatory" => Some(AMS),
+        _ => None,
+    }
 }
 
 /// The expansion engine's `em`/`ex` come from the text font its tracked font
-/// commands select ([`crate::font_units`]).
-fn configure_with_fonts(engine: &mut Engine, fonts: DocumentFonts) {
+/// commands select ([`crate::font_units`]); its `\usepackage` files from
+/// the project's package reader. `soul` is [`uses_soul`]: soul.sty owns
+/// `\so`/`\hl`, so with soul loaded they become host commands — still
+/// emitted unchanged for the parser's soul arms, but counting as defined,
+/// so `\newcommand` refuses them and `\renewcommand` accepts them, as in
+/// LaTeX. There is no per-package load hook in the engine to do this at
+/// the `\usepackage` itself (no built-in package claims names on load;
+/// even `appendix` registers nothing), so the claim happens here at
+/// configure time, from the same raw-token preamble scan `document_fonts`
+/// and [`uses_biblatex`] already use. Package presence is therefore
+/// order-independent, like the parser's own `self.packages` gate: a
+/// `\newcommand{\hl}` *before* `\usepackage{soul}` is refused at the
+/// `\newcommand` rather than at the load, where real pdflatex refuses the
+/// redefinition the other way round (soul.sty's own `\newcommand`).
+fn configure_with_fonts(
+    engine: &mut Engine,
+    fonts: DocumentFonts,
+    soul: bool,
+    etoolbox: bool,
+    reader: PackageReader,
+) {
     configure(engine);
+    if soul {
+        engine.declare_host_command("so");
+        engine.declare_host_command("hl");
+    }
+    if etoolbox {
+        engine.run_host_prelude(ETOOLBOX_IFDEF_PRELUDE);
+    }
+    engine.set_package_reader(reader);
     for (name, switch) in crate::font_units::font_switches() {
         engine.declare_font_switch(name, switch);
     }
@@ -795,17 +1417,186 @@ fn configure_with_fonts(engine: &mut Engine, fonts: DocumentFonts) {
         setup: fonts.setup,
         preamble_latin_modern: fonts.preamble_latin_modern,
     }));
+    // The class's measured lengths, then the names whose assignments come
+    // back as markers for the parser (see `HOST_PRELUDE`).
+    engine.run_host_prelude(&class_prelude(&fonts.class));
+    for name in crate::parser::OBSERVED_LENGTHS.iter().chain(crate::parser::OBSERVED_COUNTERS) {
+        engine.observe_register(name);
+    }
 }
 
 /// The document-wide font inputs the engine needs before it executes any
-/// `\setlength`: the class size option, `fontenc` and `lmodern`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// `\setlength`: the class size option, `fontenc` and `lmodern`, and the
+/// class itself (whose measured lengths the engine's registers start from).
+#[derive(Debug, Clone, PartialEq)]
 struct DocumentFonts {
     setup: crate::font_units::FontSetup,
     /// `lmodern` was loaded before `\usepackage[T1]{fontenc}`, whose
     /// `\selectfont` then switches the preamble to Latin Modern already.
     preamble_latin_modern: bool,
+    class: ClassSetup,
 }
+
+/// The `\documentclass` the entry names, with its options, and the
+/// `\LoadClass` a project class file makes (see [`class_prelude`]).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct ClassSetup {
+    pub name: String,
+    pub options: String,
+    pub loaded: Option<(String, String)>,
+}
+
+/// The engine's starting register values for a document: the kernel
+/// lengths, TeX parameters, float counters and float-fraction macros as
+/// pdflatex has them at `\begin{document}` under the document's class,
+/// size and layout options (`crate::kernel_lengths`, measured by
+/// `scripts/gen_kernel_lengths.py`), as TeX text for a host prelude.
+///
+/// The class is the entry's `\documentclass` when the table has it, else
+/// the class a project `.cls` `\LoadClass`es (the project file then sets its
+/// own values on top, exactly as it does in LaTeX), else `article` for the
+/// kernel-level values only: such a class allocates its own caption skips
+/// and float fractions (or none), so none are declared for it. A size the
+/// table lacks takes the nearest measured one; `a4paper`/`letterpaper`,
+/// `twocolumn`/`onecolumn` and `twoside`/`oneside` select the measured
+/// combination, the class's defaults filling in what the document leaves
+/// unsaid.
+pub(crate) fn class_prelude(class: &ClassSetup) -> String {
+    use crate::kernel_lengths::{ClassDefaults, CLASSES};
+    let by_name = |name: &str| CLASSES.iter().find(|c| c.class == name.trim());
+    let (defaults, exact, options): (&ClassDefaults, bool, String) = match by_name(&class.name) {
+        Some(c) => (c, true, class.options.clone()),
+        None => match class.loaded.as_ref().and_then(|(name, opts)| by_name(name).map(|c| (c, opts))) {
+            Some((c, opts)) => (c, true, format!("{},{}", class.options, opts)),
+            None => (by_name("article").expect("article is measured"), false, class.options.clone()),
+        },
+    };
+    let mut size: Option<f64> = None;
+    let mut a4 = None;
+    let mut twocolumn = None;
+    let mut twoside = None;
+    for option in options.split(',').map(str::trim) {
+        let option = option.strip_prefix("fontsize=").unwrap_or(option);
+        match option {
+            "a4paper" => a4 = Some(true),
+            "letterpaper" => a4 = Some(false),
+            "twocolumn" => twocolumn = Some(true),
+            "onecolumn" => twocolumn = Some(false),
+            "twoside" => twoside = Some(true),
+            "oneside" => twoside = Some(false),
+            _ => {
+                if let Some(pt) = option.strip_suffix("pt").and_then(|v| v.parse::<f64>().ok()) {
+                    size.get_or_insert(pt);
+                }
+            }
+        }
+    }
+    let pt_of = |s: &str| s.strip_suffix("pt").and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+    let wanted = size.unwrap_or_else(|| pt_of(defaults.size));
+    let nearest = defaults
+        .rows
+        .iter()
+        .map(|r| r.size)
+        .min_by(|a, b| (pt_of(a) - wanted).abs().partial_cmp(&(pt_of(b) - wanted).abs()).unwrap())
+        .unwrap_or(defaults.size);
+    let want = |given: Option<bool>, default: Option<bool>| given.or(default);
+    let (a4, twocolumn, twoside) = (
+        want(a4, defaults.a4paper),
+        want(twocolumn, defaults.twocolumn),
+        want(twoside, defaults.twoside),
+    );
+    let row = defaults.rows.iter().find(|r| {
+        r.size == nearest
+            && (r.a4paper.is_none() || r.a4paper == a4)
+            && (r.twocolumn.is_none() || r.twocolumn == twocolumn)
+            && (r.twoside.is_none() || r.twoside == twoside)
+    });
+    let mut text = String::from("\\makeatletter\n");
+    let declared: HashSet<&str> = if exact { defaults.class_lengths.iter().copied().collect() } else { HashSet::new() };
+    for name in &declared {
+        text.push_str(&format!("\\newskip\\{name}\n"));
+    }
+    let mut registers: Vec<(&str, &str)> = defaults.registers.to_vec();
+    let mut macros: Vec<(&str, &str)> = if exact { defaults.macros.to_vec() } else { Vec::new() };
+    if let Some(row) = row {
+        for (key, value) in row.delta {
+            match key.strip_prefix('\\') {
+                Some(macro_name) => {
+                    if let Some(entry) = macros.iter_mut().find(|(n, _)| *n == macro_name) {
+                        entry.1 = value;
+                    }
+                }
+                None => {
+                    if let Some(entry) = registers.iter_mut().find(|(n, _)| n == key) {
+                        entry.1 = value;
+                    }
+                }
+            }
+        }
+    }
+    for (name, value) in registers {
+        let class_only = defaults.class_lengths.contains(&name);
+        if class_only && !declared.contains(name) {
+            continue;
+        }
+        text.push_str(&format!("\\{name}={value}\n"));
+    }
+    for (name, value) in macros {
+        text.push_str(&format!("\\def\\{name}{{{value}}}\n"));
+    }
+    // The kernel switches the standard classes set from their options
+    // (`\@twosidetrue`, `\@twocolumntrue`, `\@titlepagetrue`, `\@openrighttrue`
+    // in classes.dtx), so a project's `.cls`/`.sty` that tests
+    // `\if@twoside`/`\if@titlepage` sees the class's answer. The switches
+    // themselves live in the engine prelude; `\if@titlepage` and
+    // `\if@openright` are class-level `\newif`s.
+    let is_report_like = matches!(defaults.class.trim(), "report" | "book");
+    text.push_str("\\newif\\if@titlepage\n\\newif\\if@openright\n");
+    let titlepage = options.split(',').map(str::trim).fold(is_report_like, |acc, option| match option {
+        "titlepage" => true,
+        "notitlepage" => false,
+        _ => acc,
+    });
+    let openright = options.split(',').map(str::trim).fold(is_report_like, |acc, option| match option {
+        "openright" => true,
+        "openany" => false,
+        _ => acc,
+    });
+    for (flag, on) in [("twoside", twoside == Some(true)), ("twocolumn", twocolumn == Some(true)), ("titlepage", titlepage), ("openright", openright)] {
+        if on {
+            text.push_str(&format!("\\@{flag}true\n"));
+        }
+    }
+    // NFSS's record of `\normalsize` after the class's size option
+    // (`size1x.clo`: `\@setfontsize\normalsize\@xpt\@xiipt` etc.), which
+    // `\fontsize`/`\@setfontsize` then update: `\f@size` 10/10.95/12 and
+    // `\f@baselineskip` 12/13.6/14.5pt (pdflatex `\typeout` at
+    // `\begin{document}` for the three options).
+    let (f_size, f_baselineskip) = options.split(',').map(str::trim).fold(("10", "12.0pt"), |acc, option| match option {
+        "10pt" => ("10", "12.0pt"),
+        "11pt" => ("10.95", "13.6pt"),
+        "12pt" => ("12", "14.5pt"),
+        _ => acc,
+    });
+    text.push_str(&format!("\\def\\f@size{{{f_size}}}\\def\\f@baselineskip{{{f_baselineskip}}}\n"));
+    text.push_str("\\makeatother\n");
+    text
+}
+
+/// Environments `latex.ltx` and the standard classes define in TeX, which
+/// this parser sets itself: declared to the engine as host commands
+/// (`\name`/`\endname`), so `\renewenvironment{abstract}` in a project's
+/// `.sty` redefines them, as in LaTeX, instead of reporting "Environment
+/// abstract undefined". Package environments (`proof`, `align`,
+/// `lstlisting`, ...) are not here: without their package a document's own
+/// `\newenvironment{proof}` must succeed, exactly as in real LaTeX.
+const KERNEL_ENVIRONMENTS: &[&str] = &[
+    "document", "abstract", "titlepage", "array", "center", "flushleft", "flushright",
+    "description", "displaymath", "enumerate", "eqnarray", "eqnarray*", "equation", "figure", "figure*",
+    "filecontents", "filecontents*", "itemize", "list", "lrbox", "math", "minipage", "picture", "quotation",
+    "quote", "samepage", "sloppypar", "tabbing", "table", "table*", "tabular", "tabular*", "thebibliography",
+    "theindex", "trivlist", "verbatim", "verbatim*", "verse",
+];
 
 /// The words of `tokens` from `index` up to the next `{`, and the words of
 /// that brace group.
@@ -827,28 +1618,78 @@ fn option_and_group_words(tokens: &[Token], index: usize) -> (String, String) {
     (options.trim_matches(|c| matches!(c, '[' | ']')).to_string(), group)
 }
 
-fn document_fonts(documents: &[SourceDocument<'_>]) -> DocumentFonts {
+/// `entry` is scanned first: its `\documentclass` size option wins over a
+/// project class file's `\LoadClass[11pt]{article}` (as article.cls's
+/// declaration order makes the later size win), whatever the document
+/// order. Package and class files of built-in names are never loaded, so
+/// they are not scanned.
+fn document_fonts(documents: &[SourceDocument<'_>], entry: usize) -> DocumentFonts {
     let mut class_pt = None;
     let mut t1 = false;
     let mut latin_modern = false;
     let mut preamble_latin_modern = false;
-    for (document_index, document) in documents.iter().enumerate() {
+    let mut class = ClassSetup::default();
+    let order = std::iter::once(entry).chain((0..documents.len()).filter(|i| *i != entry));
+    for document_index in order {
+        let Some(document) = documents.get(document_index) else {
+            continue;
+        };
+        if let Some((stem, ext)) = document.path.rsplit_once('.').filter(|(_, ext)| matches!(*ext, "sty" | "cls")) {
+            let name = stem.rsplit('/').next().unwrap_or(stem);
+            if crate::packages::is_built_in(name, ext) {
+                continue;
+            }
+        }
         let tokens = tokenize_document(document.text, DocumentId(document_index));
         for (index, token) in tokens.iter().enumerate() {
             let TokenKind::Command(name) = &token.kind else {
                 continue;
             };
             match name.as_str() {
-                "documentclass" if class_pt.is_none() => {
-                    let (options, _) = option_and_group_words(&tokens, index + 1);
+                "documentclass" | "LoadClass" => {
+                    let (options, group) = option_and_group_words(&tokens, index + 1);
+                    // The first `\documentclass` names the class (with its
+                    // options); a project class's first `\LoadClass` the one
+                    // its values build on (see `class_prelude`).
+                    if name == "documentclass" {
+                        if class.name.is_empty() {
+                            class.name = group.trim().to_string();
+                            class.options = options.clone();
+                        }
+                    } else if class.loaded.is_none() {
+                        class.loaded = Some((group.trim().to_string(), options.clone()));
+                    }
+                    if class_pt.is_some() {
+                        continue;
+                    }
                     class_pt = options.split(',').find_map(|option| match option.trim() {
                         "10pt" => Some(10.0),
                         "11pt" => Some(11.0),
                         "12pt" => Some(12.0),
                         _ => None,
                     });
+                    // KOMA classes default to 11pt and take `fontsize=11pt`;
+                    // the legacy `10pt`/`11pt`/`12pt` names above already won
+                    // when present.
+                    if class_pt.is_none()
+                        && matches!(
+                            group.trim(),
+                            "scrartcl" | "scrarticle" | "scrreprt" | "scrbook"
+                        )
+                    {
+                        class_pt = options
+                            .split(',')
+                            .filter_map(|option| {
+                                option.trim().strip_prefix("fontsize=").map(str::trim)
+                            })
+                            .filter_map(|v| {
+                                v.strip_suffix("pt").unwrap_or(v).parse::<f64>().ok()
+                            })
+                            .next()
+                            .or(Some(11.0));
+                    }
                 }
-                "usepackage" => {
+                "usepackage" | "RequirePackage" => {
                     let (options, group) = option_and_group_words(&tokens, index + 1);
                     for package in group.split(',').map(str::trim) {
                         match package {
@@ -870,11 +1711,33 @@ fn document_fonts(documents: &[SourceDocument<'_>]) -> DocumentFonts {
     DocumentFonts {
         setup: crate::font_units::FontSetup::new(class_pt, t1, latin_modern),
         preamble_latin_modern: preamble_latin_modern && t1,
+        class,
     }
 }
 
+/// The engine's reader for the project's `.sty`/`.cls` documents, serving
+/// the prepared text (see [`Prepared`]) of each, as `include` does.
+fn package_reader(documents: &[SourceDocument<'_>], prepared: &[Prepared<'_>]) -> PackageReader {
+    let files = documents
+        .iter()
+        .zip(prepared)
+        .filter(|(d, _)| crate::packages::is_package_file(d.path))
+        .map(|(d, p)| (d.path.to_string(), p.text.to_string()))
+        .collect();
+    crate::packages::reader(files)
+}
+
 fn has_includes(text: &str) -> bool {
-    text.contains("\\input") || text.contains("\\include")
+    // `\bibliography` also matches `\bibliographystyle` (and `\include`
+    // already matches `\includeonly`/`\includegraphics`): the superset only
+    // sends more documents down the full path, never the cache, which is the
+    // safe direction — a `.bbl` input makes expansion depend on another
+    // project document, exactly like `\input` does.
+    text.contains("\\input")
+        || text.contains("\\include")
+        || text.contains("\\InputIfFileExists")
+        || text.contains("\\bibliography")
+        || text.contains("\\printbibliography")
 }
 
 /// The engine stopped on the step limit or on TeX's "capacity exceeded"
@@ -896,8 +1759,20 @@ enum Flow {
     /// A source-level `\input`/`\include`: its braced path is still to be
     /// read.
     Include(String, Placement),
+    /// A source-level `\InputIfFileExists`: its three braced arguments
+    /// (`{file}{true}{false}`) are still to be read.
+    InputIfFileExists(Placement),
     /// A source-level `\includeonly`: its braced list is still to be read.
     IncludeOnly(Placement),
+    /// A source-level `\bibliography`: its braced database list is still to
+    /// be read; the main loop turns it into `.bbl` inputs (see
+    /// [`bibliography`]) or passes the command back for the parser's
+    /// missing-bibliography diagnostic.
+    Bibliography(Placement),
+    /// A source-level `\printbibliography`: its optional bracket argument is
+    /// still to be read; the main loop inputs the job's `.bbl` when biblatex
+    /// is loaded and the project carries it.
+    PrintBibliography(Placement),
 }
 
 impl<'d> Converter<'d> {
@@ -906,6 +1781,8 @@ impl<'d> Converter<'d> {
             documents,
             document_by_path: documents.iter().enumerate().map(|(i, d)| (d.path, i)).collect(),
             includeonly: None,
+            biblatex: uses_biblatex(documents),
+            let_aliases: let_aliases(documents, entry),
             document_begun: false,
             source_documents: HashMap::from([(0, Some(entry))]),
             entry,
@@ -924,7 +1801,45 @@ impl<'d> Converter<'d> {
             current_label_index: 0,
             stretch_log: Vec::new(),
             current_label_log: Vec::new(),
+            package_files: Vec::new(),
+            package_sites: Vec::new(),
+            fancy_window: None,
         }
+    }
+
+    /// Give the tokens of a `.sty`/`.cls` the engine opened their document:
+    /// the file is resolved by the same rule the reader used
+    /// (`crate::packages::resolve`), so the name the engine reports maps to
+    /// the document whose text it read. The loading command's span is kept
+    /// for the parser's "loaded here" label.
+    fn map_opened(&mut self, file: &OpenedFile) {
+        if self.source_documents.contains_key(&file.source_id) {
+            return;
+        }
+        let (name, ext) = file.name.rsplit_once('.').unwrap_or((&file.name, ""));
+        let index = crate::packages::resolve(self.documents, name, ext);
+        self.source_documents.insert(file.source_id, index);
+        if let Some(index) = index {
+            let at = self.span(file.loaded_at).unwrap_or(self.last_span);
+            self.package_files.push((DocumentId(index), at));
+            self.package_sites.push((file.source_id, DocumentId(index), at));
+        }
+    }
+
+    /// [`Expansion::package_records`] from the engine's opened files once
+    /// the run is over: a file is mapped when it opens
+    /// ([`Converter::map_opened`]), but what it defined is complete only
+    /// when it has been read to the end.
+    fn package_records<'f>(&self, files: impl Iterator<Item = &'f OpenedFile>) -> Vec<crate::package_definitions::PackageRecord> {
+        let files: HashMap<u32, &OpenedFile> = files.map(|file| (file.source_id, file)).collect();
+        self.package_sites
+            .iter()
+            .filter_map(|(source_id, document, at)| {
+                let file = files.get(source_id)?;
+                let path = self.documents[document.0].path;
+                Some(crate::package_definitions::PackageRecord::from_opened(file, *document, *at, path, &|span| self.span(span)))
+            })
+            .collect()
     }
 
     /// No partially built word, `\arraystretch` capture, `\@currentlabel`
@@ -938,11 +1853,15 @@ impl<'d> Converter<'d> {
             && self.current_label.is_none()
             && !self.atbegin_capturing
             && self.atbegin_buffer.is_empty()
+            && self.fancy_window.is_none()
     }
 
     fn convert_token(&mut self, prepared: &[Prepared<'_>], token: &tex::Token, origin: Option<tex::Span>) -> Flow {
         let conv = self;
-        let at = conv.place(token, origin);
+        let mut at = conv.place(token, origin);
+        if let Some(window) = conv.fancy_window {
+            at = Placement { span: window, definition: at.real.or(at.definition), maps: true, real: at.real };
+        }
         if let Some((key, depth, mut text)) = conv.stretch.take() {
             match &token.kind {
                 TexKind::Char(_, CatCode::BeginGroup) => {
@@ -1030,16 +1949,87 @@ impl<'d> Converter<'d> {
             TexKind::Eof => {}
             TexKind::ControlSequence(name) => {
                 let real_text = at.real.map_or("", |real| conv.source_text(real));
+                // A `\let` alias of a host command reaches the parser under
+                // the host command's name (see [`let_aliases`]), keeping the
+                // alias's own span.
+                let aliased;
+                let name = match resolve_let_alias(&conv.let_aliases, name) {
+                    Some(target) => {
+                        aliased = target;
+                        &aliased
+                    }
+                    None => name,
+                };
                 match name.as_str() {
-                    // Grouping bookkeeping and `\relax` produce nothing for the
-                    // parser (LaTeX's environment groups included).
-                    "begingroup" | "endgroup" | "relax" => {}
+                    // `\relax` produces nothing for the parser. Group
+                    // boundaries open and close a parser group, so
+                    // declarations stay scoped to it: `{...}` already
+                    // arrives as braces, and `\begingroup`/`\endgroup`
+                    // — literal ones as well as the pair the engine emits
+                    // around every `\begin{...}`/`\end{...}` — arrive
+                    // here.
+                    "relax" => {}
+                    "begingroup" => conv.push(TokenKind::LBrace, at),
+                    "endgroup" => conv.push(TokenKind::RBrace, at),
+                    // `\newblock`, the block separator every `.bst` style
+                    // emits between an entry's author/title/journal blocks
+                    // (the standard classes define it as a small horizontal
+                    // space): an interword space. Mapped here, not in the
+                    // parser, so it never reaches the supported-command
+                    // inventory — it is spacing, not a feature. A package
+                    // that redefines `\newblock` is expanded by the engine
+                    // first, so its definition still wins.
+                    // It merges with the source space in front of it
+                    // (`Barron.\n\newblock Line`), as it did while every
+                    // run of spaces collapsed: the pinned references match
+                    // one interword space there.
+                    "newblock" => conv.push_space_once(at),
                     "flashtexsetlength" => conv.push(TokenKind::Command("setlength".to_string()), at),
                     "flashtexaddtolength" => {
                         conv.push(TokenKind::Command("addtolength".to_string()), at)
                     }
+                    // The engine's observed-register markers
+                    // (`Engine::observe_register`): `{\name}{<\the text>}`
+                    // follows, read by the parser's `length_marker` arm.
+                    "flashtexlengthset" | "flashtexlengthadd" | "flashtexlengthassign" => {
+                        conv.push(TokenKind::Command(name.clone()), at)
+                    }
+                    // The host prelude's `\@sect`/`\@ssect`: the evaluated
+                    // `\@startsection` parameters and the title, read by the
+                    // parser's `startsection_marker`.
+                    "flashtexsect" => conv.push(TokenKind::Command(name.clone()), at),
+                    // fancyhdr's re-expanded field commands (`FANCY_PRELUDE`):
+                    // the window markers pass as they are, each recorded
+                    // call under the command the parser implements.
+                    "flashtexfancybegin" => {
+                        conv.push(TokenKind::Command(name.clone()), at);
+                        conv.fancy_window = Some(at.span);
+                    }
+                    "flashtexfancyend" => {
+                        conv.push(TokenKind::Command(name.clone()), at);
+                        conv.fancy_window = None;
+                    }
+                    _ if name.starts_with("flashtex")
+                        && FANCY_HOST_COMMANDS.iter().any(|(host, _)| host == name) =>
+                    {
+                        let command = FANCY_HOST_COMMANDS
+                            .iter()
+                            .find(|(host, _)| host == name)
+                            .map_or(name.as_str(), |(_, command)| command);
+                        conv.push(TokenKind::Command(command.to_string()), at);
+                    }
+                    // Ends the operand of an engine-scanned `\hskip`/
+                    // `\vskip`/`\kern`/`\penalty` (`Engine::emit_with_operand`):
+                    // the pending word closes with no space after it, as
+                    // TeX consumed the one optional space itself.
+                    "flashtexwordbreak" => conv.flush_word(),
                     // `do_flashtex_setlist`'s absorbed-and-spliced command.
                     "flashtexsetlistdone" => conv.push(TokenKind::Command("setlist".to_string()), at),
+                    // `do_flashtex_space`'s absorbed-and-spliced commands.
+                    "flashtexhspacedone" => conv.push(TokenKind::Command("hspace".to_string()), at),
+                    "flashtexvspacedone" => conv.push(TokenKind::Command("vspace".to_string()), at),
+                    "flashtexfontsizedone" => conv.push(TokenKind::Command("fontsize".to_string()), at),
+                    "flashtexselectfontdone" => conv.push(TokenKind::Command("selectfont".to_string()), at),
                     "flashtexbegintabular" | "flashtexbegintabularstar" | "flashtexbeginarray" => {
                         let env = match name.as_str() {
                             "flashtexbegintabular" => "tabular",
@@ -1055,6 +2045,10 @@ impl<'d> Converter<'d> {
                         conv.stretch = Some(((begin.span.document.0, begin.span.start), 0, String::new()));
                         conv.push_environment("begin", env, begin);
                     }
+                    "flashtexbeginalltt" => conv.push_environment("begin", "alltt", at),
+                    "flashtexendalltt" => conv.push_environment("end", "alltt", at),
+                    "flashtexallttspace" => conv.push(TokenKind::Word(" ".to_string()), at),
+                    "flashtexallttnewline" => conv.push(TokenKind::LineBreak, at),
                     // `\AtBeginDocument` hook output: the host prelude wraps
                     // every chunk queued before `\begin{document}` in these
                     // markers. The engine runs the hook ahead of the real
@@ -1086,7 +2080,17 @@ impl<'d> Converter<'d> {
                     "]" => conv.push(TokenKind::DisplayMathClose, at),
                     "(" => conv.push(TokenKind::InlineMathOpen, at),
                     ")" => conv.push(TokenKind::InlineMathClose, at),
-                    "par" if !real_text.starts_with('\\') && at.real.is_some() => conv.push(TokenKind::ParBreak, at),
+                    // A blank line's `\par` is a paragraph break, not the
+                    // control word: its own bytes never start with a
+                    // backslash. A file with no project document (a
+                    // vendored real package, `crate::packages::APPENDIX_STY`)
+                    // has no readable bytes, so its `real_text` is empty --
+                    // still not a backslash, so its blank lines fold here
+                    // too instead of reaching the parser as `\par` (an
+                    // error in the preamble). A literal `\par` spelled in
+                    // such a file folds the same way; in the body that
+                    // typesets identically (`flush_paragraph` either way).
+                    "par" if !real_text.starts_with('\\') => conv.push(TokenKind::ParBreak, at),
                     "verb" | "verb*" => {
                         let verb = at
                             .real
@@ -1114,6 +2118,24 @@ impl<'d> Converter<'d> {
                         .is_some_and(|real| prepared[real.document.0].verb_markers.contains(&real.start)) => {}
                     "input" | "include" if origin.is_none() && real_text == format!("\\{name}") => {
                         return Flow::Include(name.clone(), at);
+                    }
+                    // `\InputIfFileExists{file}{true}{false}` (ltfiles.dtx):
+                    // the braced arguments are still to be read; the main
+                    // loop runs the true branch and inputs the file when the
+                    // project carries it, otherwise only the false branch
+                    // (see [`input_if_file_exists`]). Like `\input` above,
+                    // only a source-level spelling counts: a macro
+                    // expansion that happens to emit the name stays data.
+                    "InputIfFileExists"
+                        if origin.is_none() && real_text == "\\InputIfFileExists" =>
+                    {
+                        return Flow::InputIfFileExists(at);
+                    }
+                    "bibliography" if origin.is_none() && real_text == "\\bibliography" => {
+                        return Flow::Bibliography(at);
+                    }
+                    "printbibliography" if origin.is_none() && real_text == "\\printbibliography" => {
+                        return Flow::PrintBibliography(at);
                     }
                     "includeonly" if origin.is_none() && real_text == "\\includeonly" => {
                         return Flow::IncludeOnly(at);
@@ -1226,10 +2248,19 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
     let entry_text: &str = prepared.get(entry).map_or("", |p| p.text.as_ref());
     let limits = limits_for(total_bytes);
     let mut engine = Engine::with_limits(entry_text, limits);
-    configure_with_fonts(&mut engine, document_fonts(documents));
+    configure_with_fonts(
+        &mut engine,
+        document_fonts(documents, entry),
+        uses_soul(documents),
+        uses_etoolbox(documents),
+        package_reader(documents, &prepared),
+    );
 
     let mut conv = Converter::new(documents, entry);
     let mut lookahead: VecDeque<(tex::Token, Option<tex::Span>)> = VecDeque::new();
+    // Package files the engine has opened so far (`map_opened` is cheap,
+    // so every pull checks the count).
+    let mut opened = 0usize;
     // Engine tokens taken so far. The output token limit is the incremental
     // expander's (`IncrementalExpander`'s run loop): the token that goes past
     // it is still converted, then the run stops with the same diagnostic and
@@ -1249,6 +2280,12 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
             }
         };
         let Some((token, origin)) = next else { break };
+        if engine.opened_package_files().len() > opened {
+            for file in &engine.opened_package_files()[opened..] {
+                conv.map_opened(file);
+            }
+            opened = engine.opened_package_files().len();
+        }
         match conv.convert_token(&prepared, &token, origin) {
             Flow::Next => continue,
             Flow::Include(name, at) => {
@@ -1262,6 +2299,11 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
                 }
                 include(&mut conv, &mut engine, &prepared, &name, path.trim(), at.span);
             }
+            Flow::InputIfFileExists(at) => {
+                input_if_file_exists(
+                    &mut conv, &mut engine, &prepared, &mut lookahead, &mut pulled, at,
+                );
+            }
             Flow::IncludeOnly(at) => {
                 let (taken, path, ok) = read_braced_argument(&mut engine);
                 pulled += taken.len() as u64;
@@ -1271,6 +2313,29 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
                     continue;
                 }
                 record_includeonly(&mut conv, path.trim(), at.span);
+            }
+            Flow::Bibliography(at) => {
+                // Read the braced database list through the engine.
+                let (taken, arg, ok) = read_braced_argument(&mut engine);
+                pulled += taken.len() as u64;
+                if !ok {
+                    conv.push(TokenKind::Command("bibliography".to_string()), at);
+                    lookahead.extend(taken);
+                    continue;
+                }
+                let entry = conv.entry;
+                if !bibliography(&mut conv, &mut engine, &prepared, entry, arg.trim(), at.span) {
+                    // No `.bbl` for any name: hand the whole command back so
+                    // the parser's missing-bibliography diagnostic fires
+                    // exactly as before.
+                    conv.push(TokenKind::Command("bibliography".to_string()), at);
+                    lookahead.extend(taken);
+                }
+            }
+            Flow::PrintBibliography(at) => {
+                if !print_bibliography(&mut conv, &mut engine, &prepared, &mut pulled, at.span) {
+                    conv.push(TokenKind::Command("printbibliography".to_string()), at);
+                }
             }
         }
     }
@@ -1283,9 +2348,20 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
             }
         }
     }
+    for file in &engine.opened_package_files()[opened..] {
+        conv.map_opened(file);
+    }
     let diagnostics = engine.diagnostics().to_vec();
     conv.map_diagnostics(&diagnostics);
-    Expansion { tokens: Rc::new(conv.out), diagnostics: conv.diagnostics, arraystretch: conv.arraystretch, current_label_by_marker: conv.current_label_by_marker }
+    let package_records = conv.package_records(engine.opened_package_files().iter());
+    Expansion {
+        tokens: Rc::new(conv.out),
+        diagnostics: conv.diagnostics,
+        arraystretch: conv.arraystretch,
+        current_label_by_marker: conv.current_label_by_marker,
+        package_files: conv.package_files,
+        package_records,
+    }
 }
 
 /// A converter state with nothing pending, recorded while converting: after
@@ -1318,6 +2394,18 @@ pub struct ExpansionCache {
     old_engine_tokens: usize,
     /// The class size and font packages change the engine's `em`/`ex`.
     fonts: DocumentFonts,
+    /// Whether soul's names were reserved as host commands at configure
+    /// time ([`uses_soul`]): toggling `\usepackage{soul}` rebuilds the
+    /// cache, since restored checkpoints would otherwise keep the old
+    /// reservation either way.
+    soul: bool,
+    /// Whether etoolbox's definedness tests were defined at configure time
+    /// ([`uses_etoolbox`]): like `soul`, toggling `\usepackage{etoolbox}`
+    /// rebuilds the cache so checkpoints never carry the wrong definitions.
+    etoolbox: bool,
+    /// The project's `.sty`/`.cls` texts the expander read: an edit to one
+    /// of them is not an edit of the entry, so the cache is rebuilt instead.
+    package_texts: Vec<(String, String)>,
     /// Tokens at the end of `out` typeset unexpanded after the engine
     /// stopped (see [`Converter::resume_unexpanded`]); no marks cover them.
     recovered: usize,
@@ -1414,7 +2502,9 @@ pub fn expand_project_with_cache(
         .map(|(index, d)| if index == entry { prepare(d.text, DocumentId(index)) } else { Prepared::plain(d.text) })
         .collect();
     let masked: &str = prepared[entry].text.as_ref();
-    let fonts = document_fonts(documents);
+    let fonts = document_fonts(documents, entry);
+    let soul = uses_soul(documents);
+    let etoolbox = uses_etoolbox(documents);
     // The same limits as `expand_project`, which the expander applies to
     // every edit (`IncrementalExpander::edit_with_limits`).
     let limits = limits_for(documents.iter().map(|d| d.text.len()).sum());
@@ -1422,7 +2512,10 @@ pub fn expand_project_with_cache(
         !c.lent
             && c.entry_path == document.path
             && c.fonts == fonts
+            && c.soul == soul
+            && c.etoolbox == etoolbox
             && masked.len() <= 2 * c.created_bytes.max(INCREMENTAL_MIN_BYTES)
+            && c.package_texts == crate::packages::package_texts(documents)
     });
     let expansion = if reusable {
         update_cache(cache.as_mut().expect("checked"), documents, entry, &prepared, limits)
@@ -1448,12 +2541,19 @@ pub fn expand_project_with_cache(
 
 fn build_cache(documents: &[SourceDocument<'_>], entry: usize, prepared: &[Prepared<'_>], limits: Limits) -> (ExpansionCache, Expansion) {
     let masked: &str = prepared[entry].text.as_ref();
-    let fonts = document_fonts(documents);
+    let fonts = document_fonts(documents, entry);
+    let reader = package_reader(documents, prepared);
+    let init_fonts = fonts.clone();
+    let soul = uses_soul(documents);
+    let etoolbox = uses_etoolbox(documents);
     let init: Rc<dyn Fn(&mut Engine)> = Rc::new(move |engine| {
-        configure_with_fonts(engine, fonts);
+        configure_with_fonts(engine, init_fonts.clone(), soul, etoolbox, reader.clone());
     });
     let expander = IncrementalExpander::with_host(masked, limits, CHECKPOINT_INTERVAL, init);
     let mut conv = Converter::new(documents, entry);
+    for file in expander.opened_package_files() {
+        conv.map_opened(file);
+    }
     let mut marks = vec![Mark { index: 0, out_len: 0, last_span: conv.last_span }];
     // One allocation for the converted stream: growing it by doubling frees
     // a chain of blocks as large as the stream (hundreds of MB on a runaway
@@ -1476,6 +2576,9 @@ fn build_cache(documents: &[SourceDocument<'_>], entry: usize, prepared: &[Prepa
         last_span: conv.last_span,
         old_engine_tokens: 0,
         fonts,
+        soul,
+        etoolbox,
+        package_texts: crate::packages::package_texts(documents),
         recovered: 0,
         lent: false,
     };
@@ -1550,11 +2653,20 @@ fn convert_range(
         }
         conv.index = k;
         // Includes never reach this path (`has_includes` sends their
-        // documents through the full expansion above); pass both commands
-        // through untouched so the parser, not the cache, reports them.
+        // documents through the full expansion above, and it covers
+        // `\bibliography`/`\printbibliography` for the same reason); pass
+        // the commands through untouched so the parser, not the cache,
+        // reports them.
         match conv.convert_token(prepared, &tokens[k], origins[k]) {
             Flow::Include(name, at) => conv.push(TokenKind::Command(name), at),
+            Flow::InputIfFileExists(at) => {
+                conv.push(TokenKind::Command("InputIfFileExists".to_string()), at)
+            }
             Flow::IncludeOnly(at) => conv.push(TokenKind::Command("includeonly".to_string()), at),
+            Flow::Bibliography(at) => conv.push(TokenKind::Command("bibliography".to_string()), at),
+            Flow::PrintBibliography(at) => {
+                conv.push(TokenKind::Command("printbibliography".to_string()), at);
+            }
             Flow::Next => {}
         }
     }
@@ -1585,6 +2697,9 @@ fn update_cache(
     if changes.old.is_empty() && changes.new.is_empty() && cache.masked.len() == masked.len() {
         if cache.expander.limits() == limits {
             let mut conv = Converter::new(documents, entry);
+            for file in cache.expander.opened_package_files() {
+                conv.map_opened(file);
+            }
             conv.out = Vec::new();
             conv.last_span = cache.last_span;
             conv.stretch_log = cache.stretch_log.clone();
@@ -1632,6 +2747,9 @@ fn update_cache(
     };
 
     let mut conv = Converter::new(documents, entry);
+    for file in cache.expander.opened_package_files() {
+        conv.map_opened(file);
+    }
     conv.out = out;
     conv.last_span = restart.last_span;
     // Records whose marker precedes the restart point are unchanged; later
@@ -1734,11 +2852,14 @@ fn stretch_map(log: &[(usize, (usize, usize), String)]) -> HashMap<(usize, usize
 fn finish_diagnostics(cache: &ExpansionCache, mut conv: Converter<'_>) -> Expansion {
     conv.last_span = cache.last_span;
     conv.map_diagnostics(cache.expander.diagnostics());
+    let package_records = conv.package_records(cache.expander.opened_package_files());
     Expansion {
         tokens: Rc::new(Vec::new()),
         diagnostics: conv.diagnostics,
         arraystretch: conv.arraystretch,
         current_label_by_marker: conv.current_label_by_marker,
+        package_files: conv.package_files,
+        package_records,
     }
 }
 
@@ -1859,6 +2980,589 @@ fn include_allowed(allowed: &HashSet<String>, requested: &str) -> bool {
     }
 }
 
+/// True when any project document literally loads biblatex: a raw-token
+/// scan for `\usepackage`/`\RequirePackage` naming it, mirroring how
+/// [`document_fonts`] reads the preamble (a macro-generated `\usepackage`
+/// is missed, like there).
+fn uses_biblatex(documents: &[SourceDocument<'_>]) -> bool {
+    for (index, document) in documents.iter().enumerate() {
+        let tokens = tokenize_document(document.text, DocumentId(index));
+        let mut i = 0;
+        while i < tokens.len() {
+            let TokenKind::Command(name) = &tokens[i].kind else {
+                i += 1;
+                continue;
+            };
+            if name != "usepackage" && name != "RequirePackage" {
+                i += 1;
+                continue;
+            }
+            let mut cursor = i + 1;
+            if let Some((_, after)) = crate::bib::optional_bracket_text(&tokens, cursor) {
+                cursor = after;
+            }
+            match crate::bib::group_text(&tokens, cursor) {
+                Some((packages, after)) => {
+                    if packages
+                        .split(',')
+                        .map(str::trim)
+                        .any(|package| package == "biblatex")
+                    {
+                        return true;
+                    }
+                    i = after;
+                }
+                None => i = cursor,
+            }
+        }
+    }
+    false
+}
+
+/// True when any project document literally loads the built-in soul model:
+/// a raw-token scan for `\usepackage`/`\RequirePackage` naming `soul`,
+/// exactly like [`uses_biblatex`] (a macro-generated `\usepackage` is
+/// missed, like there). When true the engine reserves soul's names (see
+/// [`configure_with_fonts`]): real soul.sty defines `\so`/`\hl`, so a
+/// later `\newcommand` on either errors there, and it must error here too
+/// (GH-828 item 3). Without soul the names stay undefined so a user's own
+/// `\newcommand{\hl}`/`\newcommand{\so}` wins, as in real LaTeX.
+/// One `\let` alias of another control sequence, with where it was defined:
+/// a group-local alias stops applying when its group closes, while a
+/// `\global` alias survives it (`doc` tells groups of different documents
+/// apart).
+struct ScopedAlias {
+    target: String,
+    depth: usize,
+    global: bool,
+    doc: usize,
+}
+
+/// `\let` aliases, by alias name: TeX copies the meaning, so
+/// `\let\oldsection\section` keeps typesetting numbered headings after
+/// `\section` is redefined, while the engine emits the alias under its own
+/// name — which the parser does not implement. [`Converter::convert_token`]
+/// therefore hands such an alias over under the host command's name.
+///
+/// A raw-token scan over the project documents (entry last, so its
+/// definitions win, as in execution order), in the style of [`uses_soul`]:
+/// files the engine never reads (built-in `.sty`/`.cls`, declined to the
+/// host) define nothing. Only `\let` is tracked — an alias of a macro
+/// expands in the engine and never reaches the parser under its own name —
+/// and only a control-sequence target is kept: anything else never emits a
+/// control sequence of the alias's name either. Redefining the alias
+/// (`\def`, `\newcommand`, `\renewcommand`, ..., a second `\let`) updates or
+/// drops the entry.
+///
+/// Like [`uses_soul`], this reads the static token order, not execution
+/// order: a `\let` inside a skipped conditional branch or inside a macro
+/// that never runs is still recorded, and one made through `\csname` is
+/// missed. Grouping is tracked, but a redefinition that only shadows an
+/// outer alias inside one group drops it outright.
+fn let_aliases(documents: &[SourceDocument<'_>], entry: usize) -> HashMap<String, ScopedAlias> {
+    let mut aliases = HashMap::new();
+    let order = (0..documents.len())
+        .filter(|index| *index != entry)
+        .chain(std::iter::once(entry));
+    for index in order {
+        let Some(document) = documents.get(index) else {
+            continue;
+        };
+        if let Some((stem, ext)) = document
+            .path
+            .rsplit_once('.')
+            .filter(|(_, ext)| matches!(*ext, "sty" | "cls"))
+        {
+            let name = stem.rsplit('/').next().unwrap_or(stem);
+            if crate::packages::is_built_in(name, ext) {
+                continue;
+            }
+        }
+        scan_let_aliases(document.text, index, &mut aliases);
+    }
+    aliases
+}
+
+/// Record one document's `\let` aliases into `aliases` (see [`let_aliases`]).
+fn scan_let_aliases(text: &str, doc: usize, aliases: &mut HashMap<String, ScopedAlias>) {
+    let tokens = tokenize_document(text, DocumentId(doc));
+    let mut depth = 0usize;
+    let mut global = false;
+    let mut i = 0;
+    while i < tokens.len() {
+        match &tokens[i].kind {
+            TokenKind::LBrace => {
+                depth += 1;
+                global = false;
+                i += 1;
+            }
+            TokenKind::RBrace => {
+                depth = depth.saturating_sub(1);
+                global = false;
+                aliases.retain(|_, alias| alias.doc != doc || alias.global || alias.depth <= depth);
+                i += 1;
+            }
+            TokenKind::Command(name) if is_let_prefix(name) => {
+                if comes_before_definer(&tokens, i + 1) {
+                    global = global || name == "global";
+                } else {
+                    global = false;
+                }
+                i += 1;
+            }
+            TokenKind::Command(name) if name == "let" => {
+                let this_global = std::mem::replace(&mut global, false);
+                match let_pair(&tokens, i + 1) {
+                    Some((new_name, Some(target), next)) => {
+                        aliases.insert(
+                            new_name,
+                            ScopedAlias {
+                                target,
+                                depth: if this_global { 0 } else { depth },
+                                global: this_global,
+                                doc,
+                            },
+                        );
+                        i = next;
+                    }
+                    Some((new_name, None, next)) => {
+                        aliases.remove(&new_name);
+                        i = next;
+                    }
+                    None => i += 1,
+                }
+            }
+            TokenKind::Command(name) if name == "futurelet" => {
+                global = false;
+                match cs_name(&tokens, i + 1) {
+                    Some((new_name, next)) => {
+                        aliases.remove(&new_name);
+                        i = next;
+                    }
+                    None => i += 1,
+                }
+            }
+            TokenKind::Command(name) if is_alias_definer(name) => {
+                global = false;
+                match defined_name(&tokens, i + 1) {
+                    Some((defined, next)) => {
+                        aliases.remove(&defined);
+                        i = next;
+                    }
+                    None => i += 1,
+                }
+            }
+            _ => {
+                if !matches!(
+                    &tokens[i].kind,
+                    TokenKind::Space | TokenKind::ParBreak | TokenKind::Comment
+                ) {
+                    global = false;
+                }
+                i += 1;
+            }
+        }
+    }
+}
+
+/// Assignment prefixes that may precede `\let` and the definers below.
+fn is_let_prefix(name: &str) -> bool {
+    matches!(name, "global" | "long" | "outer" | "protected")
+}
+
+/// Control sequences that (re)define a name, killing a `\let` alias of it
+/// (`\let` and `\futurelet` define it too, handled by their own arms above).
+fn is_alias_definer(name: &str) -> bool {
+    matches!(
+        name,
+        "def"
+            | "edef"
+            | "gdef"
+            | "xdef"
+            | "newcommand"
+            | "renewcommand"
+            | "providecommand"
+            | "newenvironment"
+            | "renewenvironment"
+    )
+}
+
+/// True when the tokens from `from` (trivia skipped) are more prefixes and
+/// then a definer: what [`scan_let_aliases`] treats a prefix as.
+fn comes_before_definer(tokens: &[Token], from: usize) -> bool {
+    let mut next = skip_trivia(tokens, from);
+    loop {
+        match tokens.get(next).map(|token| &token.kind) {
+            Some(TokenKind::Command(name)) if is_let_prefix(name) => {
+                next = skip_trivia(tokens, next + 1)
+            }
+            Some(TokenKind::Command(name)) => {
+                return name == "let" || name == "futurelet" || is_alias_definer(name)
+            }
+            _ => return false,
+        }
+    }
+}
+
+/// The next non-trivia token index from `from` (spaces, blank lines and
+/// comments are not TeX input here).
+fn skip_trivia(tokens: &[Token], mut from: usize) -> usize {
+    while matches!(
+        tokens.get(from).map(|token| &token.kind),
+        Some(TokenKind::Space | TokenKind::ParBreak | TokenKind::Comment)
+    ) {
+        from += 1;
+    }
+    from
+}
+
+/// The `\let` pair from `from`: the new name, the target when it is a control
+/// sequence, and where scanning resumes (past both, so the target is never
+/// re-read as a definer). `None` when no control sequence follows `\let`.
+fn let_pair(tokens: &[Token], from: usize) -> Option<(String, Option<String>, usize)> {
+    let new_at = skip_trivia(tokens, from);
+    let TokenKind::Command(new_name) = tokens.get(new_at).map(|token| &token.kind)? else {
+        return None;
+    };
+    let new_name = new_name.clone();
+    let mut target_at = skip_trivia(tokens, new_at + 1);
+    if matches!(tokens.get(target_at).map(|token| &token.kind), Some(TokenKind::Word(eq)) if eq == "=")
+    {
+        target_at = skip_trivia(tokens, target_at + 1);
+    }
+    match tokens.get(target_at).map(|token| &token.kind) {
+        Some(TokenKind::Command(target)) => Some((new_name, Some(target.clone()), target_at + 1)),
+        Some(_) => Some((new_name, None, target_at + 1)),
+        None => Some((new_name, None, target_at)),
+    }
+}
+
+/// The control sequence from `from` (trivia skipped) and where scanning
+/// resumes past it: `\futurelet`'s new name.
+fn cs_name(tokens: &[Token], from: usize) -> Option<(String, usize)> {
+    let at = skip_trivia(tokens, from);
+    let TokenKind::Command(name) = tokens.get(at).map(|token| &token.kind)? else {
+        return None;
+    };
+    Some((name.clone(), at + 1))
+}
+
+/// The name a definer from `from` (`\def`, `\newcommand`, ...) (re)defines
+/// and where scanning resumes (past the name; the body stays scanned, so a
+/// `\let` inside a macro that runs is still seen). `None` when no name
+/// follows. A braced word (`\newenvironment{foo}`) counts, since it defines
+/// `\foo`.
+fn defined_name(tokens: &[Token], from: usize) -> Option<(String, usize)> {
+    let mut at = skip_trivia(tokens, from);
+    if matches!(tokens.get(at).map(|token| &token.kind), Some(TokenKind::Word(star)) if star == "*")
+    {
+        at = skip_trivia(tokens, at + 1);
+    }
+    if matches!(
+        tokens.get(at).map(|token| &token.kind),
+        Some(TokenKind::LBrace)
+    ) {
+        at = skip_trivia(tokens, at + 1);
+    }
+    match tokens.get(at).map(|token| &token.kind) {
+        Some(TokenKind::Command(name)) => Some((name.clone(), at + 1)),
+        Some(TokenKind::Word(word)) => Some((word.clone(), at + 1)),
+        _ => None,
+    }
+}
+
+/// Follow `name` through `\let` chains (`\let\b\section`, `\let\a\b`); the
+/// terminal target when it is a command the parser implements, so
+/// [`Converter::convert_token`] can hand the alias over under that name.
+/// Anything else — no alias, a cycle, or a target the parser does not know
+/// (`\let\x\foo` with `\foo` undefined keeps erroring on `\x`) — is `None`.
+fn resolve_let_alias(aliases: &HashMap<String, ScopedAlias>, name: &str) -> Option<String> {
+    let mut seen = Vec::new();
+    let mut current = name;
+    while let Some(alias) = aliases.get(current) {
+        if alias.target == current || seen.contains(&alias.target.as_str()) {
+            break;
+        }
+        seen.push(alias.target.as_str());
+        current = &alias.target;
+        if seen.len() > 16 {
+            break;
+        }
+    }
+    (current != name && let_alias_target_known(current)).then(|| current.to_string())
+}
+
+/// Commands the parser implements that the engine passes through, so a
+/// `\let` alias of one can be handed over under its own name: the parser's
+/// [`BUILT_INS`], the kernel environments (with their `\end...` forms, all
+/// declared host commands in [`configure`]) and `\include`.
+fn let_alias_target_known(name: &str) -> bool {
+    if name == "include" || BUILT_INS.contains(&name) || KERNEL_ENVIRONMENTS.contains(&name) {
+        return true;
+    }
+    name.strip_prefix("end")
+        .is_some_and(|env| KERNEL_ENVIRONMENTS.contains(&env))
+}
+
+fn uses_soul(documents: &[SourceDocument<'_>]) -> bool {
+    for (index, document) in documents.iter().enumerate() {
+        let tokens = tokenize_document(document.text, DocumentId(index));
+        let mut i = 0;
+        while i < tokens.len() {
+            let TokenKind::Command(name) = &tokens[i].kind else {
+                i += 1;
+                continue;
+            };
+            if name != "usepackage" && name != "RequirePackage" {
+                i += 1;
+                continue;
+            }
+            let mut cursor = i + 1;
+            if let Some((_, after)) = crate::bib::optional_bracket_text(&tokens, cursor) {
+                cursor = after;
+            }
+            match crate::bib::group_text(&tokens, cursor) {
+                Some((packages, after)) => {
+                    if packages
+                        .split(',')
+                        .map(str::trim)
+                        .any(|package| package == "soul")
+                    {
+                        return true;
+                    }
+                    i = after;
+                }
+                None => i = cursor,
+            }
+        }
+    }
+    false
+}
+
+/// True when any project document literally loads etoolbox: a raw-token
+/// scan for `\usepackage`/`\RequirePackage` naming `etoolbox`, exactly like
+/// [`uses_soul`] (a macro-generated `\usepackage` is missed, like there).
+/// When true the engine defines etoolbox's definedness tests from
+/// [`ETOOLBOX_IFDEF_PRELUDE`]; without the package those names stay
+/// undefined, as in real LaTeX.
+fn uses_etoolbox(documents: &[SourceDocument<'_>]) -> bool {
+    for (index, document) in documents.iter().enumerate() {
+        let tokens = tokenize_document(document.text, DocumentId(index));
+        let mut i = 0;
+        while i < tokens.len() {
+            let TokenKind::Command(name) = &tokens[i].kind else {
+                i += 1;
+                continue;
+            };
+            if name != "usepackage" && name != "RequirePackage" {
+                i += 1;
+                continue;
+            }
+            let mut cursor = i + 1;
+            if let Some((_, after)) = crate::bib::optional_bracket_text(&tokens, cursor) {
+                cursor = after;
+            }
+            match crate::bib::group_text(&tokens, cursor) {
+                Some((packages, after)) => {
+                    if packages
+                        .split(',')
+                        .map(str::trim)
+                        .any(|package| package == "etoolbox")
+                    {
+                        return true;
+                    }
+                    i = after;
+                }
+                None => i = cursor,
+            }
+        }
+    }
+    false
+}
+
+/// The job's own `.bbl` next to the entry document (`main.tex` →
+/// `main.bbl`): biber names its output after the job, and real LaTeX's
+/// `\bibliography` inputs exactly that file whatever its argument says
+/// (latex.ltx `\@input@{\jobname.bbl}`). `None` for a pathless entry.
+fn job_bbl_path(entry_path: &str) -> Option<String> {
+    let (dir, base) = match entry_path.rfind('/') {
+        Some(i) => (&entry_path[..=i], &entry_path[i + 1..]),
+        None => ("", entry_path),
+    };
+    let stem = match base.rfind('.') {
+        Some(i) => &base[..i],
+        None => base,
+    };
+    if stem.is_empty() {
+        return None;
+    }
+    Some(format!("{dir}{stem}.bbl"))
+}
+
+/// One `\bibliography` name against the project's `.bbl` documents:
+/// `{name}.bbl` first, then the literal name — the same two-way match
+/// [`include`] performs with `.tex`. Unsafe paths never resolve, and a
+/// `.bib` database never resolves either: inputting one as TeX would
+/// typeset its `@article` records as body text (seen on a real document
+/// writing `\bibliography{main.bib}` next to `main.bib`).
+fn resolve_bbl(conv: &Converter<'_>, name: &str) -> Option<usize> {
+    if !path_is_safe(name) {
+        return None;
+    }
+    if name.ends_with(".bbl") {
+        return conv.document_by_path.get(name).copied();
+    }
+    // `\bibliography{main.bib}` names the database, not the prebuilt file:
+    // look next to it, never *at* it.
+    let base = name.strip_suffix(".bib").unwrap_or(name);
+    let appended = format!("{base}.bbl");
+    if let Some(index) = conv.document_by_path.get(appended.as_str()).copied() {
+        return Some(index);
+    }
+    // The literal name, unless it is a `.bib` database.
+    if base == name {
+        if let Some(index) = conv.document_by_path.get(name).copied() {
+            let is_bib = conv
+                .documents
+                .get(index)
+                .map(|document| document.path.ends_with(".bib"))
+                .unwrap_or(true);
+            if !is_bib {
+                return Some(index);
+            }
+        }
+    }
+    None
+}
+
+/// Consume `\bibliography{databases}` by inputting the project's pre-built
+/// `.bbl` files through [`include`], so the `thebibliography` they carry
+/// reaches the parser macro-expanded and `bib::prescan` resolves `\cite`
+/// against its `\bibitem`s. Every comma-separated name must resolve to a
+/// `.bbl` of its own; otherwise the job's own `.bbl` is tried (see
+/// [`job_bbl_path`]). Returns false when neither rule finds a file, and the
+/// caller hands the command back for the parser's missing-bibliography
+/// diagnostic, unchanged.
+fn bibliography(
+    conv: &mut Converter<'_>,
+    engine: &mut Engine,
+    prepared: &[Prepared<'_>],
+    entry: usize,
+    arg: &str,
+    span: Span,
+) -> bool {
+    let names: Vec<&str> = arg
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .collect();
+    let mut resolved = Vec::with_capacity(names.len());
+    let mut all = !names.is_empty();
+    for name in names {
+        match resolve_bbl(conv, name) {
+            Some(index) => resolved.push(index),
+            None => {
+                all = false;
+                break;
+            }
+        }
+    }
+    if all {
+        for index in resolved {
+            let path = conv.documents[index].path.to_string();
+            include(conv, engine, prepared, "bibliography", &path, span);
+        }
+        return true;
+    }
+    let entry_path = conv.documents.get(entry).map(|d| d.path).unwrap_or("");
+    if let Some(path) = job_bbl_path(entry_path) {
+        if conv.document_by_path.contains_key(path.as_str()) {
+            include(conv, engine, prepared, "bibliography", &path, span);
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether `\printbibliography`'s optional `[...]` literally follows the
+/// command in its own source: spaces and `%` comments, then `[`, read from
+/// the command token's own span — no engine pull, so nothing executes (a
+/// peek through the engine would run whatever follows, e.g. an end-of-file
+/// `\end{document}`, before the `.bbl` is input). A bracket donated past an
+/// `\input` boundary, or by a macro, is missed and the parser typesets it
+/// as text; both are degenerate placements real documents never use.
+fn bracket_follows(prepared: &[Prepared<'_>], span: Span) -> bool {
+    let Some(text) = prepared.get(span.document.0).map(|p| p.text.as_ref()) else {
+        return false;
+    };
+    let Some(mut rest) = text.get(span.end..) else {
+        return false;
+    };
+    loop {
+        rest = rest.trim_start_matches([' ', '\t', '\n', '\r']);
+        if let Some(after) = rest.strip_prefix('%') {
+            rest = match after.find('\n') {
+                Some(i) => &after[i + 1..],
+                None => return false,
+            };
+        } else {
+            break;
+        }
+    }
+    rest.starts_with('[')
+}
+
+/// Consume one `[...]` through the engine, dropping it: call only after
+/// [`bracket_follows`] saw the `[`, so the pulls start at the bracket and
+/// nothing else executes. A `]` inside a brace group does not end the scan,
+/// mirroring the parser's bracket argument.
+fn consume_bracket(engine: &mut Engine, pulled: &mut u64) {
+    let mut depth = 0usize;
+    while let Some((token, _)) = engine.next_content_token_with_origin() {
+        *pulled += 1;
+        match &token.kind {
+            TexKind::Char(_, CatCode::BeginGroup) => depth += 1,
+            TexKind::Char(_, CatCode::EndGroup) if depth > 0 => depth -= 1,
+            TexKind::Char(']', _) | TexKind::ActiveChar(']') if depth == 0 => break,
+            _ => {}
+        }
+    }
+}
+
+/// Consume `\printbibliography` by inputting the job's `.bbl` (see
+/// [`job_bbl_path`]) when the project loads biblatex and carries that file:
+/// real biblatex typesets exactly biber's output, and a BibTeX-style `.bbl`
+/// is the `thebibliography` the parser already renders — its own
+/// `References` heading replaces biblatex's, so the swallowed command's
+/// optional `[title=...]` is read and dropped here. Without biblatex, or
+/// without the file, returns false and the command passes through to the
+/// parser's own diagnostic. A resolvable `.bib` database keeps working
+/// through the existing biblatex path whenever no `.bbl` is present.
+fn print_bibliography(
+    conv: &mut Converter<'_>,
+    engine: &mut Engine,
+    prepared: &[Prepared<'_>],
+    pulled: &mut u64,
+    span: Span,
+) -> bool {
+    if !conv.biblatex {
+        return false;
+    }
+    let entry = conv.entry;
+    let entry_path = conv.documents.get(entry).map(|d| d.path).unwrap_or("");
+    let Some(path) = job_bbl_path(entry_path) else {
+        return false;
+    };
+    if !conv.document_by_path.contains_key(path.as_str()) {
+        return false;
+    }
+    if bracket_follows(prepared, span) {
+        consume_bracket(engine, pulled);
+    }
+    include(conv, engine, prepared, "printbibliography", &path, span);
+    true
+}
+
 fn include(
     conv: &mut Converter<'_>,
     engine: &mut Engine,
@@ -1877,6 +3581,16 @@ fn include(
             "skipped the empty include and continued",
         );
     }
+    // `\input{glyphtounicode}` (pdfTeX's glyph-to-Unicode table): the
+    // ~2,700-line system file is pure `\pdfglyphtounicode` metadata with zero
+    // visible effect (measured against pdflatex, TeX Live 2026), so it is a
+    // silent no-op. Matched by exact target name -- never a general
+    // kpathsea/system-file fallback. (The parser's own `include` carries the
+    // same exemption for the tokens that reach it.)
+    let target = requested.trim();
+    if target == "glyphtounicode" || target == "glyphtounicode.tex" {
+        return;
+    }
     if !path_is_safe(requested) {
         return skip(
             conv,
@@ -1884,17 +3598,21 @@ fn include(
             "skipped the unsafe include and continued",
         );
     }
-    // A recorded, non-empty `\includeonly` list selects which `\include`d
-    // files are read: any other file is a pure no-op. (`\include` has no
-    // page-break or paragraph-flush side effect of its own, so there is
-    // nothing to replay for the skipped file.) `\input` never consults the
-    // list — real LaTeX tests `\@partlist` only in `\@include`. With no
-    // `\includeonly` at all (`None`), every `\include` behaves exactly as
-    // before; a recorded list — even an empty one from `\includeonly{}`,
-    // which switches `\@partsw` on with an empty `\@partlist` — selects.
+    // A recorded `\includeonly` list selects which `\include`d files are read:
+    // any other file contributes no text. Its page breaks still happen —
+    // real LaTeX's `\@include` runs its two `\clearpage`s either way — but
+    // the second lands on the still-empty page and ships nothing (measured
+    // with pdflatex, TeX Live 2026: `A\include{c1}B` under `\includeonly{c2}`
+    // is 2 pages, `A` then `B`), so a single break reproduces the observable
+    // effect exactly. `\input` never consults the list — real LaTeX tests
+    // `\@partlist` only in `\@include`. With no `\includeonly` at all
+    // (`None`), every `\include` behaves exactly as before; a recorded
+    // list — even an empty one from `\includeonly{}`, which switches
+    // `\@partsw` on with an empty `\@partlist` — selects.
     if command == "include" {
         if let Some(allowed) = conv.includeonly.as_ref() {
             if !include_allowed(allowed, requested) {
+                push_include_break(engine, conv);
                 return;
             }
         }
@@ -1941,13 +3659,121 @@ fn include(
             "skipped the too-deep include and continued",
         );
     }
+    // `\include` is `\clearpage`, the file, `\clearpage` (latex.ltx
+    // `\@include`); `\input` and the bibliography inputs stay break-free.
+    // The breaks ride the engine's input stack so a redefined `\clearpage`
+    // still applies, exactly as if written at the `\include` site. The stack
+    // reads last-pushed-first, so the trailer goes on before the file and
+    // the header last.
+    if command == "include" {
+        push_include_break(engine, conv);
+    }
     let id = engine.push_input(prepared[index].text.as_ref());
     conv.source_documents.insert(id, Some(index));
+    if command == "include" {
+        push_include_break(engine, conv);
+    }
+}
+
+/// What an `\include` break pushes onto the engine's input stack: real
+/// LaTeX's `\@include` opens and closes with `\clearpage`. The trailing space
+/// ends the control word and lexes as one harmless space.
+const INCLUDE_CLEARPAGE: &str = "\\clearpage ";
+
+/// Push one [`INCLUDE_CLEARPAGE`] break with no document behind it (mapped
+/// like the prelude: [`Converter::source_documents`] keeps `None`).
+fn push_include_break(engine: &mut Engine, conv: &mut Converter<'_>) {
+    let id = engine.push_input(INCLUDE_CLEARPAGE);
+    conv.source_documents.insert(id, None);
+}
+
+/// A source-level `\InputIfFileExists{file}{true}{false}` (ltfiles.dtx):
+/// the file name is read through the engine (so a macro there expands,
+/// as in `\IfFileExists`), then the true branch runs and the file is
+/// input when the project carries it -- looked up exactly like
+/// [`include`] resolves it (`file`, then `file.tex`) so a taken true
+/// branch always finds its file -- and otherwise only the false branch
+/// runs. Never an error, matching pdflatex. The chosen branch's tokens
+/// go back on the lookahead so they convert ahead of the input file,
+/// which [`include`] pushes on the engine's input stack; an unbalanced
+/// call hands the whole command back, as the `\input` arm does.
+fn input_if_file_exists(
+    conv: &mut Converter<'_>,
+    engine: &mut Engine,
+    prepared: &[Prepared<'_>],
+    lookahead: &mut VecDeque<(tex::Token, Option<tex::Span>)>,
+    pulled: &mut u64,
+    at: Placement,
+) {
+    let mut groups: Vec<(Vec<(tex::Token, Option<tex::Span>)>, String)> = Vec::new();
+    for _ in 0..3 {
+        let (taken, path, ok) = read_braced_argument(engine);
+        *pulled += taken.len() as u64;
+        if !ok {
+            conv.push(TokenKind::Command("InputIfFileExists".to_string()), at);
+            for (taken, _) in groups {
+                lookahead.extend(taken);
+            }
+            lookahead.extend(taken);
+            return;
+        }
+        groups.push((taken, path));
+    }
+    let file = groups[0].1.trim();
+    let appended = format!("{file}.tex");
+    let exists = conv.document_by_path.contains_key(file)
+        || conv.document_by_path.contains_key(appended.as_str());
+    // Groups 1 and 2 are the true and false branches (group 0 is the file).
+    let chosen = if exists { 1 } else { 2 };
+    // The taken group keeps its outer braces: strip them so only the
+    // branch body converts.
+    let body = groups[chosen]
+        .0
+        .get(1..groups[chosen].0.len().saturating_sub(1))
+        .unwrap_or(&[]);
+    for token in body.iter().rev() {
+        lookahead.push_front(token.clone());
+    }
+    if exists {
+        include(conv, engine, prepared, "input", file, at.span);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::after_bracket_option;
+    use super::document_fonts;
+    use crate::parser::SourceDocument;
+
+    fn class_pt_of(preamble: &str) -> f64 {
+        let doc = SourceDocument {
+            path: "main.tex",
+            text: preamble,
+        };
+        document_fonts(std::slice::from_ref(&doc), 0).setup.class_pt
+    }
+
+    /// KOMA classes default to 11pt and honour `fontsize=`; the legacy
+    /// size names keep working and keep winning when present.
+    #[test]
+    fn koma_document_font_size() {
+        assert_eq!(class_pt_of("\\documentclass{scrartcl}\n\\begin{document}"), 11.0);
+        assert_eq!(class_pt_of("\\documentclass{scrreprt}\n\\begin{document}"), 11.0);
+        assert_eq!(class_pt_of("\\documentclass{scrbook}\n\\begin{document}"), 11.0);
+        assert_eq!(
+            class_pt_of("\\documentclass[fontsize=12pt]{scrartcl}\n\\begin{document}"),
+            12.0
+        );
+        assert_eq!(
+            class_pt_of("\\documentclass[10pt]{scrartcl}\n\\begin{document}"),
+            10.0
+        );
+        assert_eq!(class_pt_of("\\documentclass{article}\n\\begin{document}"), 10.0);
+        assert_eq!(
+            class_pt_of("\\documentclass[11pt]{article}\n\\begin{document}"),
+            11.0
+        );
+    }
 
     /// The byte index just past the options that `after_bracket_option`
     /// finds in `text` (whose `[` follows `\begin{lstlisting}` at index 0).

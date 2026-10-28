@@ -8,6 +8,9 @@
 //! the assertions below. The compiler side (`Nucleus::Text`) is an isolated
 //! candidate, so the lists are built directly with `TextSink`.
 
+// Clippy debt in frozen old-engine code (D13): allowed, not refactored.
+#![allow(clippy::doc_lazy_continuation, reason = "frozen old engine (D13): fixes only; clippy debt is allowed rather than refactored")]
+
 mod common;
 
 use std::rc::Rc;
@@ -53,7 +56,7 @@ fn place(fonts: &FontSet, texts: &[&str], scripts: Option<(&str, &str)>) -> Plac
         atoms.push(a);
     }
     let list = ml::MathList::new(atoms);
-    let metrics = TextRunMetrics::new(&tex, fonts, fonts.shaper(), Family::LatinModern, &sink.texts, &sink.keys, &sink.italics);
+    let metrics = TextRunMetrics::new(&tex, fonts, fonts.shaper(), Family::LatinModern, false, &sink.texts, &sink.keys, &sink.italics);
     let mut laid = ml::layout_with_report(&list, ml::Style::TEXT, &metrics);
     assert!(laid.limitations.is_empty(), "{:?}", laid.limitations);
     let (runs, _notices) = metrics.finish();

@@ -1,4 +1,4 @@
-use flashtex_document_runtime::{Event, Limits};
+use flashtex_document_runtime::{Event, Limits, RequestFonts};
 use flashtex_edit_ledger::{Document, Store};
 use flashtex_preview_controller::{Controller, Update};
 use flashtex_project_index::Category;
@@ -16,7 +16,7 @@ fn python3() -> std::path::PathBuf {
     if let Some(path) = std::env::var_os("FLASHTEX_TEST_PYTHON") {
         return path.into();
     }
-    let system = std::path::PathBuf::from("/usr/bin/python3");
+    let system = std::path::PathBuf::from("python3");
     if system.is_file() {
         return system;
     }
@@ -395,6 +395,9 @@ fn approved_insertion_is_durable_and_retry_never_inserts_twice() {
         removed_text: "α".into(),
         replacement: "β".into(),
         document_before_sha256: before.source_sha256,
+        // A direct range replacement, not a capture_prepare_insert: no
+        // approval-time delimiters were added, so replacement is the whole text.
+        wrap: None,
     };
     let applied = controller
         .apply_reviewed(ApprovedEdit::from_explicit_user_approval(edit.clone()))
@@ -449,6 +452,9 @@ fn approved_edit_conflict_cannot_modify_source() {
         removed_text: "α".into(),
         replacement: "β".into(),
         document_before_sha256: before.source_sha256.clone(),
+        // A direct range replacement, not a capture_prepare_insert: no
+        // approval-time delimiters were added, so replacement is the whole text.
+        wrap: None,
     };
     assert!(controller
         .apply_reviewed(ApprovedEdit::from_explicit_user_approval(edit))
@@ -675,8 +681,9 @@ fn compiler_restart_never_revalidates_older_index_snapshot() {
 }
 
 fn historical_fixture(dir: &std::path::Path) -> Controller {
-    let body = format!("import pathlib\n{}", ECHO.replace("time.sleep(.02)",
-        "\n while p['revision'] > 1 and not pathlib.Path(__file__).with_name('release').exists(): time.sleep(.001)"));
+    // The gate exits once its parent or temp dir is gone (#1221, #1329).
+    let body = format!("import pathlib,os\nP=os.getppid()\n{}", ECHO.replace("time.sleep(.02)",
+        "\n while p['revision'] > 1 and not pathlib.Path(__file__).with_name('release').exists(): time.sleep(.001); (os.getppid()!=P or not pathlib.Path(__file__).parent.exists()) and sys.exit(1)"));
     let mut controller = Controller::new(
         "p".into(),
         "main.tex".into(),
@@ -872,7 +879,8 @@ fn edit_admission_tracks_queued_supersession_and_failed_admission() {
         .unwrap();
     assert!(saved.compile_admission.is_none());
     assert!(saved.preview_error.is_some());
-    let gated = "import json,sys,pathlib,time\nroot=pathlib.Path(__file__).parent\nfor line in sys.stdin:\n r=json.loads(line);p=r['payload'];(root/'started').touch()\n while not (root/'release').exists(): time.sleep(.001)\n print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[]}}),flush=True)\n";
+    // The gate exits once its parent or temp dir is gone (#1221, #1329).
+    let gated = "import json,sys,pathlib,time,os\nroot=pathlib.Path(__file__).parent\nP=os.getppid()\nfor line in sys.stdin:\n r=json.loads(line);p=r['payload'];(root/'started').touch()\n while not (root/'release').exists(): time.sleep(.001); (os.getppid()!=P or not root.exists()) and sys.exit(1)\n print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[]}}),flush=True)\n";
     controller
         .restart(command(dir.path(), gated), Limits::default())
         .unwrap();
@@ -974,4 +982,48 @@ fn grouped_encoding_refusal_preserves_source_and_permanent_retry() {
             "x".repeat(2048)
         );
     }
+}
+/// `payload.fonts` (the manifest's `[fonts]`): forwarded on every request
+/// once configured, kept across a compiler restart, and absent -- the
+/// unchanged legacy request -- when nothing is named.
+#[test]
+fn configured_fonts_reach_every_request_including_after_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    // A fake compiler that reports the request's `fonts` member as a diagnostic.
+    let echo_fonts = "import json,sys\nfor line in sys.stdin:\n r=json.loads(line);p=r['payload']\n print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[{'severity':'warning','message':'fonts='+json.dumps(p.get('fonts'),sort_keys=True),'source':None,'recovery':None}]}}),flush=True)\n";
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), echo_fonts),
+        Limits::default(),
+    )
+    .unwrap();
+    let reported = |controller: &mut Controller| -> String {
+        let events = wait(controller, |events| events.iter().any(|e| matches!(e, Update::Preview(_))));
+        let preview = events
+            .into_iter()
+            .rev()
+            .find_map(|e| if let Update::Preview(p) = e { Some(p) } else { None })
+            .unwrap();
+        preview.result["payload"]["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    controller.compile_current().unwrap();
+    assert_eq!(reported(&mut controller), "fonts=null", "nothing configured: no field");
+    let fonts = RequestFonts { text: Some("Libertinus Serif".into()), mono: Some("JetBrains Mono".into()), ..RequestFonts::default() };
+    controller.configure_fonts(Some(fonts.clone())).unwrap();
+    assert_eq!(controller.fonts(), Some(&fonts));
+    assert_eq!(reported(&mut controller), r#"fonts={"mono": "JetBrains Mono", "text": "Libertinus Serif"}"#);
+    // A restart re-applies the setting to the new session.
+    controller
+        .restart(command(dir.path(), echo_fonts), Limits::default())
+        .unwrap();
+    assert_eq!(reported(&mut controller), r#"fonts={"mono": "JetBrains Mono", "text": "Libertinus Serif"}"#);
+    // A table naming nothing is no field again.
+    controller.configure_fonts(Some(RequestFonts::default())).unwrap();
+    assert_eq!(controller.fonts(), None);
+    assert_eq!(reported(&mut controller), "fonts=null");
 }

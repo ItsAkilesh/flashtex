@@ -105,9 +105,32 @@ impl Shaped {
 /// edited for hours never grows it without bound).
 pub const SHAPER_CACHE_LIMIT: usize = 200_000;
 
+/// What a shaping request asks for beyond the face's defaults, as bits of
+/// the cache key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct ShapeFlags(pub u8);
+
+impl ShapeFlags {
+    pub const NONE: ShapeFlags = ShapeFlags(0);
+    /// Ligatures and kerns off: verbatim's regime (`crate::tfm::literal_run`).
+    pub const LITERAL: ShapeFlags = ShapeFlags(1);
+    /// `GSUB` `smcp`: a named family's `\scshape` (fontspec `Letters=SmallCaps`).
+    pub const SMALL_CAPS: ShapeFlags = ShapeFlags(2);
+    /// `GSUB` `onum`: fontspec `Numbers=OldStyle`.
+    pub const OLDSTYLE_NUMS: ShapeFlags = ShapeFlags(4);
+
+    pub fn contains(self, other: ShapeFlags) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    pub fn with(self, other: ShapeFlags) -> ShapeFlags {
+        ShapeFlags(self.0 | other.0)
+    }
+}
+
 #[derive(Default)]
 pub struct Shaper {
-    cache: RefCell<HashMap<(Rc<str>, String, bool), Rc<Shaped>>>,
+    cache: RefCell<HashMap<(Rc<str>, String, ShapeFlags), Rc<Shaped>>>,
 }
 
 impl Shaper {
@@ -117,14 +140,22 @@ impl Shaper {
 
     /// Shapes `text` in `face` with kerning and ligatures on.
     pub fn shape(&self, face: &Rc<LoadedFace>, text: &str) -> Rc<Shaped> {
-        self.shape_with(face, text, false)
+        self.shape_with(face, text, ShapeFlags::NONE)
     }
 
     /// Shapes `text` with ligatures and kerns **off**: verbatim's regime
     /// (`crate::tfm::literal_run`). A separate cache entry, because the same
     /// face and text shape differently under it.
     pub fn shape_literal(&self, face: &Rc<LoadedFace>, text: &str) -> Rc<Shaped> {
-        self.shape_with(face, text, true)
+        self.shape_with(face, text, ShapeFlags::LITERAL)
+    }
+
+    /// [`Shaper::shape`] with explicit flags: literal, and the `GSUB`
+    /// single-substitution features a named family's run asks for (applied
+    /// after font-engine's shaping on the OpenType path only; a TFM-shaped
+    /// face has no such features).
+    pub fn shape_flags(&self, face: &Rc<LoadedFace>, text: &str, flags: ShapeFlags) -> Rc<Shaped> {
+        self.shape_with(face, text, flags)
     }
 
     /// Shapes `text` with kerning and ligatures on, but restarts the
@@ -135,58 +166,35 @@ impl Shaper {
     /// cached) on their own and joined. When they disagree on metrics (one
     /// piece left the TFM for the font program), the text is shaped whole.
     pub fn shape_cut(&self, face: &Rc<LoadedFace>, text: &str, cuts: &[usize]) -> Rc<Shaped> {
+        self.shape_cut_flags(face, text, cuts, ShapeFlags::NONE)
+    }
+
+    /// [`Shaper::shape_cut`] with [`ShapeFlags`] on every piece.
+    pub fn shape_cut_flags(&self, face: &Rc<LoadedFace>, text: &str, cuts: &[usize], flags: ShapeFlags) -> Rc<Shaped> {
         let mut bounds: Vec<usize> = cuts.iter().copied().filter(|&b| b > 0 && b < text.len() && text.is_char_boundary(b)).collect();
         bounds.sort_unstable();
         bounds.dedup();
         if bounds.is_empty() {
-            return self.shape(face, text);
+            return self.shape_with(face, text, flags);
         }
         let starts = std::iter::once(0).chain(bounds.iter().copied());
         let ends = bounds.iter().copied().chain(std::iter::once(text.len()));
-        let parts: Vec<(usize, Rc<Shaped>)> = starts.zip(ends).map(|(a, b)| (a, self.shape(face, &text[a..b]))).collect();
-        let (_, first) = &parts[0];
-        let uniform = parts.iter().all(|(_, p)| {
-            p.units_per_em == first.units_per_em && p.tfm_metrics == first.tfm_metrics && p.refused.is_none() && p.tfm_error.is_none()
-        });
-        if !uniform {
-            return self.shape(face, text);
+        let parts: Vec<(usize, Rc<Shaped>)> = starts.zip(ends).map(|(a, b)| (a, self.shape_with(face, &text[a..b], flags))).collect();
+        match join_parts(face, text, &parts) {
+            Some(joined) => Rc::new(joined),
+            None => self.shape_with(face, text, flags),
         }
-        let mut joined = Shaped {
-            face: face.clone(),
-            text: text.to_string(),
-            clusters: Vec::new(),
-            units_per_em: first.units_per_em,
-            tfm_metrics: first.tfm_metrics,
-            width_units: 0,
-            height_units: 0,
-            depth_units: 0,
-            missing: Vec::new(),
-            refused: None,
-            tfm_error: None,
-        };
-        for (at, p) in &parts {
-            joined.clusters.extend(p.clusters.iter().map(|c| SCluster {
-                glyphs: c.glyphs.clone(),
-                text_range: c.text_range.start + at..c.text_range.end + at,
-                text: c.text.clone(),
-            }));
-            joined.missing.extend(p.missing.iter().map(|(ch, off)| (*ch, off + at)));
-            joined.width_units += p.width_units;
-            joined.height_units = joined.height_units.max(p.height_units);
-            joined.depth_units = joined.depth_units.max(p.depth_units);
-        }
-        Rc::new(joined)
     }
 
-    fn shape_with(&self, face: &Rc<LoadedFace>, text: &str, literal: bool) -> Rc<Shaped> {
+    fn shape_with(&self, face: &Rc<LoadedFace>, text: &str, flags: ShapeFlags) -> Rc<Shaped> {
         // Keyed by the face's metrics identity, not its wire `font_id`: one
         // OpenType program is laid out with different TFMs (`ec-lmr10` for
         // `lmodern`, `ecrm1095`/`ecrm1000` for T1 `cmr`).
-        let key = (face.shape_key.clone(), text.to_string(), literal);
+        let key = (face.shape_key.clone(), text.to_string(), flags);
         if let Some(hit) = self.cache.borrow().get(&key) {
             return hit.clone();
         }
-        let shaped = Rc::new(shape_uncached(face, text, literal));
+        let shaped = Rc::new(shape_uncached(face, text, flags));
         let mut cache = self.cache.borrow_mut();
         if cache.len() >= SHAPER_CACHE_LIMIT {
             cache.clear();
@@ -204,25 +212,251 @@ impl Shaper {
     }
 }
 
-fn shape_uncached(face: &Rc<LoadedFace>, text: &str, literal: bool) -> Shaped {
+/// Pieces of `text` shaped on their own (each at its byte offset `at`),
+/// joined into one shaping. `None` when they disagree on metrics (one piece
+/// left the TFM for the font program, or was refused): the caller then
+/// shapes the text whole.
+fn join_parts(face: &Rc<LoadedFace>, text: &str, parts: &[(usize, Rc<Shaped>)]) -> Option<Shaped> {
+    let (_, first) = parts.first()?;
+    let uniform = parts.iter().all(|(_, p)| {
+        p.units_per_em == first.units_per_em && p.tfm_metrics == first.tfm_metrics && p.refused.is_none() && p.tfm_error.is_none()
+    });
+    if !uniform {
+        return None;
+    }
+    let mut joined = Shaped {
+        face: face.clone(),
+        text: text.to_string(),
+        clusters: Vec::new(),
+        units_per_em: first.units_per_em,
+        tfm_metrics: first.tfm_metrics,
+        width_units: 0,
+        height_units: 0,
+        depth_units: 0,
+        missing: Vec::new(),
+        refused: None,
+        tfm_error: None,
+    };
+    for (at, p) in parts {
+        joined.clusters.extend(p.clusters.iter().map(|c| SCluster {
+            glyphs: c.glyphs.clone(),
+            text_range: c.text_range.start + at..c.text_range.end + at,
+            text: c.text.clone(),
+        }));
+        joined.missing.extend(p.missing.iter().map(|(ch, off)| (*ch, off + at)));
+        joined.width_units += p.width_units;
+        joined.height_units = joined.height_units.max(p.height_units);
+        joined.depth_units = joined.depth_units.max(p.depth_units);
+    }
+    Some(joined)
+}
+
+fn shape_uncached(face: &Rc<LoadedFace>, text: &str, flags: ShapeFlags) -> Shaped {
+    let literal = flags.contains(ShapeFlags::LITERAL);
     if let Some(tfm) = &face.tfm {
+        if let Some(s) = shape_around_isolated_chars(face, tfm, text, literal) {
+            return s;
+        }
         match shape_tfm(face, tfm, text, literal) {
             Ok(Some(s)) => return s,
             Ok(None) => {}
             Err(e) => {
-                let mut s = shape_otf(face, text, literal);
+                let mut s = shape_otf(face, text, flags);
                 s.tfm_error = Some(e.to_string());
                 return s;
             }
         }
     }
-    shape_otf(face, text, literal)
+    shape_otf(face, text, flags)
 }
 
-/// TFM shaping; `Ok(None)` when a character has no T1 slot (the caller then
-/// shapes through the font program and its own metrics); `Err` propagates
-/// the shared interpreter's errors (malformed program, run budget).
+/// A character that TeX sets outside the text font's ligature/kern
+/// program: a TS1 symbol (a character of the companion font), or, in an
+/// OT1 font, an accented letter (an `\accent` construction).
+enum Isolated {
+    Ts1(EncodingCode),
+    /// An OT1 `\accent` construction, or `\L`'s box (`accent: None`).
+    Construction { base: EncodingCode, accent: Option<EncodingCode> },
+}
+
+/// TFM shaping of text holding characters the text font's program cannot
+/// set as a run ([`Isolated`]):
+///
+/// * TS1 symbols (`©`, `°`, `€`, ...: characters T1 has no slot for that
+///   the kernel sets from the text companion font,
+///   [`EncodingCode::ts1_symbol`]) -- in TeX a character of another font,
+///   so the program stops on both sides of it and its box comes from the
+///   companion's metrics (`\showbox`: `\TS1/cmr/m/n/10.95 ©` is
+///   `hbox(8.21059+2.7369)x12.093`, `tcrm1095` slot 169 at 1.11084 em --
+///   Latin Modern Roman's own `©` is 0.683 em, which put `\copyright~2026`
+///   4.6 bp short);
+/// * in an OT1 font, accented letters and `Ł`/`ł`
+///   ([`EncodingCode::ot1_construction`]): `make_accent` and `\L`'s
+///   `\hbox to\wd` give them the base letter's width and no kern with
+///   the neighbours.
+///
+/// The pieces between are shaped by [`shape_tfm`] and joined; `None` when
+/// the text has no such character or a piece cannot be TFM-shaped (the
+/// caller then proceeds as it would have without this).
+fn shape_around_isolated_chars(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str, literal: bool) -> Option<Shaped> {
+    let isolated: Vec<(usize, char, Isolated)> = text
+        .char_indices()
+        .filter_map(|(i, c)| {
+            if let Some(slot) = EncodingCode::ts1_symbol(c).filter(|_| face.ts1_tfm.is_some()) {
+                return Some((i, c, Isolated::Ts1(slot)));
+            }
+            if face.encoding == Encoding::OT1 {
+                if let Some((base, accent)) = EncodingCode::ot1_construction(c) {
+                    return Some((i, c, Isolated::Construction { base, accent }));
+                }
+            }
+            None
+        })
+        .collect();
+    if isolated.is_empty() {
+        return None;
+    }
+    let mut parts: Vec<(usize, Rc<Shaped>)> = Vec::new();
+    let mut at = 0;
+    let mut piece = |parts: &mut Vec<(usize, Rc<Shaped>)>, a: usize, b: usize| -> Option<()> {
+        if a < b {
+            let shaped = shape_tfm(face, tfm, &text[a..b], literal).ok().flatten()?;
+            parts.push((a, Rc::new(shaped)));
+        }
+        Some(())
+    };
+    for (i, c, how) in isolated {
+        piece(&mut parts, at, i)?;
+        let shaped = match how {
+            Isolated::Ts1(slot) => shape_ts1_symbol(face, face.ts1_tfm.as_deref()?, c, slot)?,
+            Isolated::Construction { base, accent } => shape_ot1_construction(face, tfm, c, base, accent)?,
+        };
+        parts.push((i, Rc::new(shaped)));
+        at = i + c.len_utf8();
+    }
+    piece(&mut parts, at, text.len())?;
+    join_parts(face, text, &parts)
+}
+
+/// One accented letter of an OT1 font as `\accent` builds it (tex.web
+/// §1123): the base letter's width, italic correction and depth, the box
+/// as tall as the accent raised onto the base (the accent sits at its own
+/// height over a lowercase base; over a taller base it is raised by the
+/// difference to the x-height) -- or, without an accent, `\L`'s box at
+/// the base's own size. The precomposed glyph of this face draws it.
+/// `None` when the TFM lacks a slot.
+fn shape_ot1_construction(face: &Rc<LoadedFace>, tfm: &Tfm, ch: char, base: EncodingCode, accent: Option<EncodingCode>) -> Option<Shaped> {
+    let b = tfm.metrics(base.0)?;
+    let height = match accent {
+        Some(accent) => {
+            let a = tfm.metrics(accent.0)?;
+            let x_height = tfm.param(5).unwrap_or(0);
+            let raise = (b.height - x_height).max(0);
+            b.height.max(a.height + raise)
+        }
+        None => b.height,
+    };
+    let mut missing = Vec::new();
+    let gid = match face.face().glyph_id(ch) {
+        Some(gid) => gid,
+        None => {
+            missing.push((ch, 0));
+            GlyphId(0)
+        }
+    };
+    let bounds = face.bounds(gid, Some(ch));
+    let empty = bounds.empty || gid.0 == 0;
+    let glyph = SGlyph {
+        gid,
+        advance: b.width,
+        italic: b.italic,
+        x_offset: 0,
+        y_offset: 0,
+        y_max: if empty { 0 } else { bounds.y_max },
+        y_min: if empty { 0 } else { bounds.y_min },
+        x_max: if empty { 0 } else { bounds.x_max },
+        empty,
+        // The construction is not one character of the font for
+        // microtype's tables either.
+        tfm_code: None,
+        tfm_kern: 0,
+    };
+    Some(Shaped {
+        face: face.clone(),
+        text: ch.to_string(),
+        clusters: vec![SCluster { glyphs: vec![glyph], text_range: 0..ch.len_utf8(), text: ch.to_string() }],
+        units_per_em: FIX,
+        tfm_metrics: true,
+        width_units: i64::from(b.width),
+        height_units: height,
+        depth_units: b.depth,
+        missing,
+        refused: None,
+        tfm_error: None,
+    })
+}
+
+/// One TS1 symbol as the companion font sets it: the slot's width, height
+/// and depth from `ts1`, the glyph from this face's `cmap`, drawn centred
+/// in the companion's advance when the two designs differ in width (the
+/// EC `©` is a wide circled c; Latin Modern's is narrower). `None` when
+/// the companion has no metrics for the slot.
+fn shape_ts1_symbol(face: &Rc<LoadedFace>, ts1: &Tfm, ch: char, slot: EncodingCode) -> Option<Shaped> {
+    let m = ts1.metrics(slot.0)?;
+    let mut missing = Vec::new();
+    let gid = match face.face().glyph_id(ch) {
+        Some(gid) => gid,
+        None => {
+            missing.push((ch, 0));
+            GlyphId(0)
+        }
+    };
+    let b = face.bounds(gid, Some(ch));
+    let empty = b.empty || gid.0 == 0;
+    let x_offset = if empty {
+        0
+    } else {
+        let upem = f64::from(face.units_per_em);
+        let own = face.face().advance(gid).map_or(0.0, f64::from);
+        let companion = f64::from(m.width) / FIX as f64 * upem;
+        ((companion - own) / 2.0).round() as i32
+    };
+    let glyph = SGlyph {
+        gid,
+        advance: m.width,
+        italic: m.italic,
+        x_offset,
+        y_offset: 0,
+        y_max: if empty { 0 } else { b.y_max },
+        y_min: if empty { 0 } else { b.y_min },
+        x_max: if empty { 0 } else { b.x_max },
+        empty,
+        // Not a slot of the text font: microtype's protrusion tables for
+        // the T1 font do not apply to it.
+        tfm_code: None,
+        tfm_kern: 0,
+    };
+    Some(Shaped {
+        face: face.clone(),
+        text: ch.to_string(),
+        clusters: vec![SCluster { glyphs: vec![glyph], text_range: 0..ch.len_utf8(), text: ch.to_string() }],
+        units_per_em: FIX,
+        tfm_metrics: true,
+        width_units: i64::from(m.width),
+        height_units: m.height,
+        depth_units: m.depth,
+        missing,
+        refused: None,
+        tfm_error: None,
+    })
+}
+
+/// TFM shaping in the face's encoding; `Ok(None)` when a character has no
+/// slot there (the caller then shapes through the font program and its own
+/// metrics); `Err` propagates the shared interpreter's errors (malformed
+/// program, run budget).
 fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str, literal: bool) -> Result<Option<Shaped>, crate::tfm::TfmError> {
+    let encoding = face.encoding;
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let mut codes = Vec::with_capacity(chars.len());
     // Which input character each code came from, so a character that sets
@@ -249,7 +483,7 @@ fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str, literal: bool) -> Res
             }
             continue;
         }
-        let Some(code) = EncodingCode::for_char(*c, Encoding::T1) else {
+        let Some(code) = EncodingCode::for_char(*c, encoding) else {
             return Ok(None);
         };
         codes.push(code.0);
@@ -307,8 +541,8 @@ fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str, literal: bool) -> Res
         let kern_after = if explicit { ellipsis_kern } else { g.kern_after };
         let range = end_of(g.input.0)..end_of(g.input.1);
         let ctext = text[range.clone()].to_string();
-        let Some(ch) = EncodingCode(g.code).to_char(Encoding::T1) else {
-            return Err(crate::tfm::TfmError(format!("ligature program produced undeclared T1 slot {:#04x}", g.code)));
+        let Some(ch) = EncodingCode(g.code).to_char(encoding) else {
+            return Err(crate::tfm::TfmError(format!("ligature program produced undeclared {encoding:?} slot {:#04x}", g.code)));
         };
         let gid = match face.face().glyph_id(ch) {
             Some(gid) => gid,
@@ -372,8 +606,19 @@ fn shape_tfm(face: &Rc<LoadedFace>, tfm: &Tfm, text: &str, literal: bool) -> Res
     }))
 }
 
-fn shape_otf(face: &Rc<LoadedFace>, text: &str, literal: bool) -> Shaped {
+fn shape_otf(face: &Rc<LoadedFace>, text: &str, flags: ShapeFlags) -> Shaped {
+    let literal = flags.contains(ShapeFlags::LITERAL);
     let f = face.face();
+    // The single-substitution features asked for, applied to each shaped
+    // glyph below, after font-engine's cmap/liga/kern pass. A full shaper
+    // runs `smcp`/`onum` before `kern`; here the pair kern stays the base
+    // pair's and the advance becomes the substitute's own `hmtx`, which is
+    // what changes visibly (the kern difference is within a unit or two).
+    let maps: Vec<Rc<std::collections::BTreeMap<u16, u16>>> = [(ShapeFlags::SMALL_CAPS, b"smcp"), (ShapeFlags::OLDSTYLE_NUMS, b"onum")]
+        .into_iter()
+        .filter(|(flag, _)| flags.contains(*flag))
+        .filter_map(|(_, tag)| face.feature_map(tag))
+        .collect();
     // Verbatim: no GSUB `liga`, no f-ligature cmap fallback, no pair
     // kerning. Mark composition stays on — it is not a ligature, and a
     // verbatim run reaching this path at all means the text left T1.
@@ -394,16 +639,26 @@ fn shape_otf(face: &Rc<LoadedFace>, text: &str, literal: bool) -> Shaped {
                         .iter()
                         .map(|g| {
                             let ch = c.text.chars().next();
-                            let b = face.bounds(g.gid, ch);
+                            let mut gid = g.gid;
+                            let mut advance = g.advance;
+                            for map in &maps {
+                                if let Some(&sub) = map.get(&gid.0) {
+                                    let old = f.advance(gid).unwrap_or(0);
+                                    let new = f.advance(GlyphId(sub)).unwrap_or(old);
+                                    advance += i32::from(new) - i32::from(old);
+                                    gid = GlyphId(sub);
+                                }
+                            }
+                            let b = face.bounds(gid, ch);
                             SGlyph {
-                                gid: g.gid,
-                                advance: g.advance,
+                                gid,
+                                advance,
                                 italic: 0,
                                 x_offset: g.x_offset,
                                 y_offset: g.y_offset,
                                 y_max: if b.empty { 0 } else { b.y_max },
                                 y_min: if b.empty { 0 } else { b.y_min },
-                                x_max: if b.empty { g.advance } else { b.x_max },
+                                x_max: if b.empty { advance } else { b.x_max },
                                 empty: b.empty,
                                 tfm_code: None,
                                 tfm_kern: 0,
@@ -461,12 +716,12 @@ mod tests {
         let face = fonts.resolve(Family::LatinModern, Role::Text { bold: false, italic: false }, 10.0).face;
         let shaper = Shaper::new();
         // The OpenType path (GSUB/GPOS), bypassing the TFM.
-        let s = Rc::new(shape_otf(&face, "office", false));
+        let s = Rc::new(shape_otf(&face, "office", ShapeFlags::NONE));
         // "ffi" is one cluster covering bytes 1..4.
         let lig = s.clusters.iter().find(|c| c.text == "ffi").expect("ffi ligature cluster");
         assert_eq!(lig.text_range, 1..4);
         assert_eq!(lig.glyphs.len(), 1);
-        let av = Rc::new(shape_otf(&face, "AV", false));
+        let av = Rc::new(shape_otf(&face, "AV", ShapeFlags::NONE));
         let plain: i64 = av.clusters.iter().flat_map(|c| c.glyphs.iter()).map(|g| i64::from(g.advance)).sum();
         // font-engine README: "AV" shaped at 10pt is 13.89pt -> 1389 units (kerned).
         assert_eq!(plain, 1389);

@@ -136,10 +136,14 @@ impl StyleMacros {
 /// The class's default `\pagestyle` (article.cls line 629 `plain`;
 /// book.cls line 734 `headings`).
 pub fn class_default(kind: ClassKind) -> PageStyle {
-    if kind == ClassKind::Book {
-        PageStyle::Headings
-    } else {
-        PageStyle::Plain
+    match kind {
+        ClassKind::Book => PageStyle::Headings,
+        // beamer ships its own headline/footline templates through its
+        // output routine; the default theme's are empty and there is no
+        // folio (measured: no digit on any page of the beamer corpus). The
+        // kernel page style underneath is irrelevant, so `empty` models it.
+        ClassKind::Beamer => PageStyle::Empty,
+        _ => PageStyle::Plain,
     }
 }
 
@@ -197,9 +201,11 @@ pub fn mark_rules(kind: ClassKind, style: PageStyle, class_twoside: bool) -> Vec
         number_if_depth_above: above,
         mainmatter_only: mm,
     };
-    let book = kind == ClassKind::Book;
+    // `scrbook` has `\frontmatter` / `\mainmatter` like `book`; `scrartcl`
+    // marks like `article` (no chapters to mark).
+    let book = matches!(kind, ClassKind::Book | ClassKind::Scrbook);
     match (kind, class_twoside) {
-        (ClassKind::Article, true) => vec![
+        (ClassKind::Article | ClassKind::Scrartcl, true) => vec![
             r(
                 "section",
                 MarkTarget::Both,
@@ -217,7 +223,7 @@ pub fn mark_rules(kind: ClassKind, style: PageStyle, class_twoside: bool) -> Vec
                 false,
             ),
         ],
-        (ClassKind::Article, false) => vec![r(
+        (ClassKind::Article | ClassKind::Scrartcl, false) => vec![r(
             "section",
             MarkTarget::Right,
             true,

@@ -438,46 +438,6 @@ final class AutosaveTests: XCTestCase {
         XCTAssertEqual(model.documentURL, main)
     }
 
-    /// A helper export that answers only after File > Open replaced the
-    /// project must not record the old document's save on the new one.
-    func testLateControllerSaveAfterAProjectReplaceTouchesNothing() async throws {
-        let fake = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/fake_preview_controller.py")
-        let dir = try tempDir("late-export")
-        let main = dir.appendingPathComponent("main.tex"), other = dir.appendingPathComponent("other.tex")
-        try "Hello\n".write(to: main, atomically: true, encoding: .utf8)
-        try "Other\n".write(to: other, atomically: true, encoding: .utf8)
-        let mark = dir.appendingPathComponent("export.mark"), release = dir.appendingPathComponent("export.release")
-        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", dir.appendingPathComponent("ledger").path, 1)
-        setenv("FAKE_PC_EXPORT_MARK", mark.path, 1)
-        setenv("FAKE_PC_EXPORT_RELEASE", release.path, 1)
-        defer { for k in ["FLASHTEX_CONTROLLER_LEDGER_ROOT", "FAKE_PC_EXPORT_MARK", "FAKE_PC_EXPORT_RELEASE"] { unsetenv(k) } }
-        let model = ShellModel()
-        model.files.policy = .disabled(reason: "test: no helper binary")
-        model.autoCompile = true
-        XCTAssertEqual(model.openTex(at: main), .opened)
-        model.attachController(at: fake)
-        defer { FileManager.default.createFile(atPath: release.path, contents: nil); model.detachController() }
-        func waitUntil(_ what: String, _ cond: () -> Bool) async throws {
-            let start = Date()
-            while !cond() {
-                if Date().timeIntervalSince(start) > 10 { XCTFail("timed out waiting for \(what)"); throw XCTSkip(what) }
-                try await Task.sleep(nanoseconds: 20_000_000)
-            }
-        }
-        try await waitUntil("controller ready") { model.controllerState.ready && model.controllerState.durable["main.tex"] != nil }
-        model.updateActiveText("Hello, edited\n")
-        let save = Task { @MainActor in await model.controllerSave() }
-        try await waitUntil("export sent") { FileManager.default.fileExists(atPath: mark.path) }
-        XCTAssertEqual(model.openTex(at: other, dirty: .discard), .opened)
-        FileManager.default.createFile(atPath: release.path, contents: nil)
-        let outcome = await save.value
-        guard case .failed = outcome else { return XCTFail("a save resuming in another project must fail, got \(outcome)") }
-        XCTAssertEqual(model.documentURL, other)
-        XCTAssertEqual(model.savedText, "Other\n", "the new document's saved baseline is untouched")
-        XCTAssertFalse(model.isDirty)
-        XCTAssertNil(model.files.conflict)
-    }
-
     // MARK: #786 — a project replacement considers every dirty document
 
     /// Keeps the durable snapshot store inside the test's temp directory. The
@@ -526,25 +486,6 @@ final class AutosaveTests: XCTestCase {
         XCTAssertTrue(model.project.isOpen("chapter.tex"))
     }
 
-    func testFixtureLoadSavesEveryDirtyDocumentFirst() async throws {
-        let (model, main, chapter, _) = try await projectWithInactiveDirtyMember("786-fixture-save")
-        model.updateActiveText("\\input{chapter}\n% entry edit\n")
-        XCTAssertEqual(model.loadFixturesReplacingProject(request: nil, result: CaretSyncTests.resultURL, dirty: .saveFirst), .opened)
-        XCTAssertEqual(try disk(main), "\\input{chapter}\n% entry edit\n")
-        XCTAssertEqual(try disk(chapter), "Chapter, edited.\n", "fixture load saved only the entry")
-        XCTAssertEqual(model.previewSource, .fixture)
-    }
-
-    func testFixtureLoadIsAbortedWhenAMemberSaveConflicts() async throws {
-        let (model, _, chapter, _) = try await projectWithInactiveDirtyMember("786-fixture-conflict")
-        try "Chapter, external.\n".write(to: chapter, atomically: true, encoding: .utf8)
-        XCTAssertEqual(model.loadFixturesReplacingProject(request: nil, result: CaretSyncTests.resultURL, dirty: .saveFirst), .saveFailed)
-        XCTAssertTrue(model.project.isOpen("chapter.tex"), "nothing replaced")
-        XCTAssertEqual(model.documents.first(where: { $0.path == "chapter.tex" })?.text, "Chapter, edited.\n")
-        XCTAssertEqual(try disk(chapter), "Chapter, external.\n")
-        XCTAssertNotEqual(model.previewSource, .fixture)
-    }
-
     // MARK: #806 — discard follow-ups
 
     func testDiscardSnapshotsLandInTheTestsPrivateStore() async throws {
@@ -569,29 +510,6 @@ final class AutosaveTests: XCTestCase {
         XCTAssertTrue(model.captureNote?.contains("chapter.tex") == true, model.captureNote ?? "")
     }
 
-    func testDiscardViaFixtureLoadKeepsEachDocumentsTextAndNamesItsRecovery() async throws {
-        let (model, _, chapter, _) = try await projectWithInactiveDirtyMember("806-fixture-discard")
-        model.updateActiveText("\\input{chapter}\n% entry edit\n")
-        XCTAssertEqual(model.loadFixturesReplacingProject(request: nil, result: CaretSyncTests.resultURL, dirty: .discard), .opened)
-        XCTAssertEqual(model.previewSource, .fixture)
-        XCTAssertEqual(model.recoverableBuffer?.text, "\\input{chapter}\n% entry edit\n")
-        XCTAssertEqual(model.dirtySnapshots.read(for: chapter)?.text, "Chapter, edited.\n")
-    }
-
-    /// A rejected fixture replaces nothing, so it must not record a discard
-    /// either (overwriting the recoverable slot or a member's snapshot).
-    func testRejectedFixtureRecordsNoDiscard() async throws {
-        let (model, main, chapter, _) = try await projectWithInactiveDirtyMember("806-fixture-rejected")
-        model.updateActiveText("\\input{chapter}\n% entry edit\n")
-        let bad = main.deletingLastPathComponent().appendingPathComponent("bad-result.json")
-        try "{}".write(to: bad, atomically: true, encoding: .utf8)
-        XCTAssertEqual(model.loadFixturesReplacingProject(request: nil, result: bad, dirty: .discard), .readFailed)
-        XCTAssertNil(model.recoverableBuffer, "a rejected fixture recorded a discard")
-        XCTAssertNil(model.dirtySnapshots.read(for: main))
-        XCTAssertNil(model.dirtySnapshots.read(for: chapter))
-        XCTAssertTrue(model.project.isDirty("chapter.tex"))
-    }
-
     /// Reload after an entry-save conflict replaces the whole project: the
     /// prompt names the dirty members it also discards, and each file's
     /// recovery command.
@@ -603,7 +521,7 @@ final class AutosaveTests: XCTestCase {
         XCTAssertNotNil(model.files.conflict)
         let review = try XCTUnwrap(model.prepareReload())
         XCTAssertTrue(review.bufferDirty)
-        XCTAssertTrue(review.summary.contains("Unsaved edits to chapter.tex are discarded too (recoverable via File > Restore Unsaved Snapshot…)"), review.summary)
+        XCTAssertTrue(review.summary.contains("Unsaved edits to chapter.tex are discarded too (recoverable via File > Restore Unsaved Snapshot… once they are open again)"), review.summary)
         XCTAssertTrue(review.summary.contains("Edit > Restore Discarded Buffer"), review.summary)
         let outcome = await model.confirmReload(review, dirty: .discard)
         XCTAssertEqual(outcome, .opened)
@@ -654,9 +572,6 @@ final class AutosaveTests: XCTestCase {
         XCTAssertTrue(model.captureNote?.contains("nothing replaced") == true, model.captureNote ?? "")
         XCTAssertTrue(model.captureNote?.contains("chapter.tex") == true, model.captureNote ?? "")
 
-        XCTAssertEqual(model.loadFixturesReplacingProject(request: nil, result: CaretSyncTests.resultURL, dirty: .discard), .saveFailed)
-        XCTAssertNotEqual(model.previewSource, .fixture, "fixture load replaced the project")
-
         XCTAssertEqual(model.reloadFromDisk(dirty: .discard), .saveFailed)
 
         XCTAssertNil(model.recoverableBuffer)
@@ -664,6 +579,96 @@ final class AutosaveTests: XCTestCase {
         XCTAssertTrue(model.project.isDirty("chapter.tex"))
         XCTAssertEqual(model.documents.first(where: { $0.path == "chapter.tex" })?.text, "Chapter, edited.\n")
         XCTAssertEqual(try disk(chapter), "Chapter.\n")
+    }
+
+    // MARK: #811 — residual discard-recovery edge cases
+
+    /// The discard hint names the reopen step: File > Restore Unsaved
+    /// Snapshot… is enabled only once the member is open again under its
+    /// project, so a hint that just names the menu item points at a disabled
+    /// item.
+    func testDiscardHintSaysTheMemberMustBeOpenAgainFirst() async throws {
+        let (model, _, _, next) = try await projectWithInactiveDirtyMember("811-hint")
+        XCTAssertEqual(model.discardRecoveryRoutes, "chapter.tex via File > Restore Unsaved Snapshot… once main.tex and chapter.tex are open again")
+        XCTAssertEqual(model.openTex(at: next, dirty: .discard), .opened)
+        XCTAssertTrue(model.captureNote?.contains("once main.tex and chapter.tex are open again") == true, model.captureNote ?? "")
+        XCTAssertTrue(model.files.offeredSnapshots.isEmpty, "the new project offers nothing; the item is disabled until the old member is reopened")
+    }
+
+    /// Two dirty members: chapter.tex's snapshot is written, other.tex's
+    /// write fails. Nothing is replaced, so chapter.tex's snapshot is
+    /// withdrawn again — it gets back the snapshot it had before (an earlier
+    /// session's), or none — instead of staying as a stale "discarded" copy.
+    func testPartialSnapshotFailureRollsBackTheMembersAlreadyKept() async throws {
+        let (model, main, chapter, next) = try await projectWithInactiveDirtyMember("811-partial")
+        let other = main.deletingLastPathComponent().appendingPathComponent("other.tex")
+        try "Other.\n".write(to: other, atomically: true, encoding: .utf8)
+        let openedOther = await model.project.openDocument("other.tex")
+        XCTAssertEqual(openedOther, .opened(path: "other.tex"))
+        model.project.switchDocument(to: "other.tex")
+        model.updateActiveText("Other, edited.\n")
+        model.project.switchDocument(to: "main.tex")
+        XCTAssertEqual(model.documents.map(\.path), ["main.tex", "chapter.tex", "other.tex"], "chapter.tex is kept first")
+        // other.tex's snapshot path is a directory: its atomic write fails while the store itself is writable.
+        try FileManager.default.createDirectory(at: model.dirtySnapshots.fileURL(for: other), withIntermediateDirectories: true)
+
+        // (1) chapter.tex had a snapshot from before: the aborted discard puts it back.
+        let earlier = DirtySnapshot(file: chapter.path, text: "Chapter, from an earlier session.\n", diskSha256: nil,
+                                    savedAt: Date(timeIntervalSince1970: 1), reason: "earlier session")
+        XCTAssertNotNil(model.dirtySnapshots.write(earlier))
+        XCTAssertEqual(model.openTex(at: next, dirty: .discard), .saveFailed)
+        XCTAssertEqual(model.project.entryPath, "main.tex", "nothing replaced")
+        XCTAssertEqual(model.dirtySnapshots.read(for: chapter), earlier, "chapter.tex's new snapshot was rolled back to the earlier one")
+        XCTAssertNil(model.dirtySnapshots.read(for: other))
+        let note = model.captureNote ?? ""
+        XCTAssertTrue(note.contains("other.tex"), note)
+        XCTAssertTrue(note.contains("nothing replaced"), note)
+        XCTAssertTrue(note.contains("chapter.tex were withdrawn"), note)
+
+        // (2) chapter.tex had no snapshot: the aborted discard leaves none.
+        model.dirtySnapshots.remove(for: chapter)
+        XCTAssertEqual(model.openTex(at: next, dirty: .discard), .saveFailed)
+        XCTAssertNil(model.dirtySnapshots.read(for: chapter), "chapter.tex's snapshot from the aborted discard is stale: it was never discarded")
+        XCTAssertNil(model.recoverableBuffer)
+        XCTAssertTrue(model.project.isDirty("chapter.tex"))
+        XCTAssertTrue(model.project.isDirty("other.tex"))
+        XCTAssertEqual(model.documents.first(where: { $0.path == "chapter.tex" })?.text, "Chapter, edited.\n")
+        XCTAssertEqual(model.documents.first(where: { $0.path == "other.tex" })?.text, "Other, edited.\n")
+
+        // (3) A later edit-and-save of chapter.tex is not shadowed by a stale offer.
+        model.project.switchDocument(to: "chapter.tex")
+        model.updateActiveText("Chapter, edited again.\n")
+        guard case .saved = model.project.saveDocumentNow("chapter.tex") else { return XCTFail("save failed: \(model.project.status)") }
+        XCTAssertNil(model.dirtySnapshots.read(for: chapter))
+        XCTAssertFalse(model.files.offeredSnapshots.contains { $0.file == chapter.path })
+    }
+
+    /// A buffer with no file has no project folder, so no snapshot can be
+    /// written: the hint must not promise File > Restore Unsaved Snapshot….
+    func testDiscardingABufferWithNoFileDoesNotPromiseASnapshot() throws {
+        EditorPreferences.shared.autosave = false
+        let dir = try tempDir("811-no-folder")
+        let next = dir.appendingPathComponent("next.tex")
+        try "Next.\n".write(to: next, atomically: true, encoding: .utf8)
+        let model = ShellModel()
+        model.files.policy = .disabled(reason: "test: no helper binary")
+        privateSnapshots(model, dir)
+        model.updateActiveText("typed into the seeded buffer\n")
+        model.updateActiveText("typed into the seeded buffer, more\n")
+        XCTAssertTrue(model.hasUnsavedDocuments)
+        XCTAssertNil(model.project.projectRoot)
+
+        let routes = model.discardRecoveryRoutes
+        XCTAssertFalse(routes.contains("Restore Unsaved Snapshot"), routes)
+        XCTAssertTrue(routes.contains("Restore Discarded Buffer"), routes)
+        XCTAssertTrue(routes.contains("no snapshot is kept"), routes)
+
+        XCTAssertEqual(model.openTex(at: next, dirty: .discard), .opened)
+        let note = model.captureNote ?? ""
+        XCTAssertFalse(note.contains("Restore Unsaved Snapshot"), note)
+        XCTAssertTrue(note.contains("no snapshot is kept"), note)
+        XCTAssertEqual(model.recoverableBuffer?.text, "typed into the seeded buffer, more\n", "the session slot still has it")
+        XCTAssertEqual(model.dirtySnapshots.all(), [], "nothing to key a snapshot by")
     }
 
     // MARK: #789 — member save conflicts are recorded per path

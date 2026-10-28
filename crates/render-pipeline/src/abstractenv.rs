@@ -235,29 +235,6 @@ fn branch(style: &Stylesheet, document: usize, at: usize) -> Branch {
     Branch::OneColumn
 }
 
-/// Whether the `\end{abstract}` at `at` in document `document` is an
-/// `\endtrivlist`, so the `\begin` beside it is read in vertical mode and
-/// takes `\partopsep` ([`crate::adapter`]'s `gap_has_trivlist_end`).
-///
-/// Only [`Branch::OneColumn`] is. article.cls 386 closes the environment
-/// with `\if@twocolumn\else\endquotation\fi`: in two columns the body is
-/// ordinary paragraphs under a `\section*` and the `\end` expands to
-/// *nothing at all*, so there is no `\@endparenv` and no `\par`. #728 put
-/// `abstract` in `TRIVLIST_ENVS` unconditionally, having swept only the
-/// one-column branch, which made every two-column
-/// `\end{abstract}\begin{center|quote|verbatim|itemize|enumerate|
-/// description}` 1.992 bp long at 10 pt, 2.989 at 11 pt and 2.988 at 12 pt
-/// — one `\partopsep` that pdflatex does not put there. (`\begin{thm}`,
-/// which takes no `\partopsep` at all, was right either way.) The
-/// `titlepage` branch is not `\endtrivlist` either — its `\end` is
-/// `\par\vfil\null\endtitlepage`, so what follows starts a page rather
-/// than taking a boundary skip — and `book`, which has no `abstract` at
-/// all, keeps the compiler's warning.
-pub(crate) fn end_is_endtrivlist(style: &Stylesheet, document: usize, at: usize) -> bool {
-    !style.class_geometry.as_ref().is_some_and(|g| g.options.kind == flashtex_class_geometry::ClassKind::Book)
-        && branch(style, document, at) == Branch::OneColumn
-}
-
 /// Rewrites the plain paragraphs the compiler produced for each `abstract`
 /// body into the class's own shape and inserts its head before them.
 /// Returns the source spans whose compiler diagnostic the pipeline now
@@ -290,6 +267,9 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
             continue;
         };
         let last = blocks.iter().rposition(inside).unwrap_or(first);
+        // `\end{abstract}` closes the paragraph the body was set in; cut
+        // whatever the compiler merged past it back off (see below).
+        split_after_end(texts, blocks, last, document, range);
         if form == Branch::TitlePage {
             // The body is ordinary `\normalsize` paragraphs at the full
             // measure: whatever the compiler (and the environment/list
@@ -337,12 +317,21 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
             continue;
         }
         for block in &mut blocks[first..=last] {
+            let noindent = noindent_before(texts, block);
             let Block::Paragraph { indent, style: para_style, env_open, list, sized, .. } = block else { continue };
             // `\list` sets `\parindent\listparindent`, and `\@item`'s
             // `\everypar` drops the `\parindent` box of the first paragraph
             // only to re-add the same width as `\itemindent`: every
-            // paragraph of a `quotation` is indented by `\listparindent`.
-            *indent = true;
+            // paragraph of a `quotation` is indented by `\listparindent` —
+            // unless it opens with `\noindent`. Then there is no box for
+            // `\lastbox` to take, and `\@item`'s `\everypar` answers with
+            // `\kern-\itemindent` (ltlists.dtx `\ifvoid\z@ \kern-\itemindent
+            // \fi`) which cancels the `\hskip\itemindent` of `\@labels`: the
+            // first line starts at `\leftmargin`. Later paragraphs are the
+            // ordinary case (`\noindent` simply sets no `\parindent` box).
+            // `fixtures/real-world/plain-article` opens its abstract with
+            // `\noindent`, and pdflatex sets that line at `\leftmargini`.
+            *indent = !noindent;
             *para_style = ParaStyle::Quote;
             // The `\list`'s own `\addvspace\@topsep` is absorbed whole by
             // the `\end{center}` skip already on the vertical list: at
@@ -356,8 +345,10 @@ pub fn apply(texts: &[&str], blocks: &mut Vec<Block>, style: &Stylesheet) -> Vec
                 size_pt: small.size_pt,
                 baselineskip_pt: small.baselineskip_pt,
                 parindent_em: Some(LISTPARINDENT_EM),
+                parindent_pt: None,
                 vspace_after_em: 0.0,
                 close_skip: Some(small.topsepadd()),
+                strut: false,
             });
         }
         let mut head = head_block(texts, document, range, &small);
@@ -420,6 +411,7 @@ fn take_lead(body: &mut Block, head: &mut Block, texts: &[&str], range: Range, s
         addvspace_flex: b_addflex,
         vspace_flex: b_vflex,
         endlist_adjust: b_endlist,
+        penalty_before: b_penalty,
         ..
     } = body
     else {
@@ -445,6 +437,8 @@ fn take_lead(body: &mut Block, head: &mut Block, texts: &[&str], range: Range, s
         lead_vflex,
         std::mem::replace(b_endlist, 0.0),
     );
+    // `\@endparenv`'s penalty stands where the skips do, before the head.
+    let penalty = b_penalty.take();
     match head {
         Block::Paragraph {
             eject_before: h_eject,
@@ -453,8 +447,10 @@ fn take_lead(body: &mut Block, head: &mut Block, texts: &[&str], range: Range, s
             addvspace_flex: h_addflex,
             vspace_flex: h_vflex,
             endlist_adjust: h_endlist,
+            penalty_before: h_penalty,
             ..
         } => {
+            *h_penalty = penalty;
             *h_eject = eject;
             *h_vspace = vspace;
             *h_addvspace = addvspace;
@@ -614,7 +610,7 @@ fn page_head_block(texts: &[&str], document: usize, range: Range) -> Block {
         // `\@endparenv`, whose `\addvspace{\@topsepadd}` is the whole of
         // the gap between the head and the body (10/12/13 pt at 10/11/12
         // pt, plus the body's own `\baselineskip`).
-        env_open: Some(EnvOpen { vmode: true, skips: None }),
+        env_open: Some(EnvOpen { vmode: true, skips: None, nested: false, thm: false }),
         env_close: true,
         eject_before: false,
         vspace_before: 0.0,
@@ -622,9 +618,12 @@ fn page_head_block(texts: &[&str], document: usize, range: Range) -> Block {
         addvspace_flex: (0.0, 0.0),
         vspace_flex: (0.0, 0.0),
         endlist_adjust: 0.0,
+        penalty_before: None,
         list: None,
         sized: None,
         leading_pt: None,
+        hang: None,
+        parskip_pt: None,
     }
 }
 
@@ -652,7 +651,7 @@ fn head_block(texts: &[&str], document: usize, range: Range, small: &crate::styl
         // `\begin{abstract}` is always read in vertical mode: the compiler
         // only emits a body block for it after `\par`, and `\@trivlist`
         // takes `\partopsep` whenever it is.
-        env_open: Some(EnvOpen { vmode: true, skips: None }),
+        env_open: Some(EnvOpen { vmode: true, skips: None, nested: false, thm: false }),
         env_close: true,
         eject_before: false,
         vspace_before: 0.0,
@@ -660,19 +659,24 @@ fn head_block(texts: &[&str], document: usize, range: Range, small: &crate::styl
         addvspace_flex: (0.0, 0.0),
         vspace_flex: (0.0, 0.0),
         endlist_adjust: 0.0,
+        penalty_before: None,
         list: None,
         sized: Some(SizedPara {
             size_pt: small.size_pt,
             baselineskip_pt: small.baselineskip_pt,
             parindent_em: None,
+            parindent_pt: None,
             vspace_after_em: HEAD_VSPACE_EM,
             // `\end{center}` is a `\trivlist`: `\@topsepadd` is whatever
             // `\topsep`/`\partopsep` hold, which `\small` has not touched.
             close_skip: None,
+            strut: false,
         }),
         // The head's leading travels on its `SizedPara`, which resizes the
         // whole paragraph; nothing here is a compiler-observed `\par`.
         leading_pt: None,
+        hang: None,
+        parskip_pt: None,
     }
 }
 
@@ -699,9 +703,12 @@ fn section_head_block(texts: &[&str], document: usize, range: Range) -> Block {
         items: vec![Item::Word(word)],
         eject_before: false,
         vspace_before: 0.0,
+        leading_pt: None,
+        numbered: false,
         number: String::new(),
         title: name,
         span: Span::in_document(flashtex_compiler::DocumentId(document), range.begin.0, range.begin.1),
+        parskip_pt: None,
     }
 }
 
@@ -733,6 +740,216 @@ fn abstract_name(texts: &[&str]) -> Option<String> {
     name
 }
 
+/// `\end{abstract}` ends the paragraph: `\endquotation` is `\endlist`,
+/// and `\endlist`'s `\@endparenv` closes the paragraph the body was set
+/// in, so the text after it starts a new one. With a blank line between
+/// the two the compiler sees the `\par` and sets two blocks, which was
+/// already exact (the trailing one indented, at the next baseline). Without
+/// one it cannot know the environment ended anything, so it sets the
+/// trailing text as a continuation of the body's own paragraph:
+/// `\begin{abstract} Abs. \end{abstract}` newline `Text.` set `"Abs.
+/// Text"` on one line — `Text` at x = 194.82 on the body's baseline, where
+/// pdfTeX starts a new line at x = 133.77, one `\baselineskip` plus the
+/// closing `\@topsepadd` below. Cut that continuation off the last body
+/// block into the ordinary `\normalsize` paragraph it is. With no blank
+/// line `\@doendpe` takes its `\parindent` box off, so it is unindented; a
+/// blank line would already have split the blocks, and the source is
+/// re-read for it anyway rather than assumed. Whatever vertical skips the
+/// merged block carried stay on the body — they stood before it, the
+/// position the head takes over — and the new paragraph starts clean, the
+/// way the compiler's own split block does.
+fn split_after_end(texts: &[&str], blocks: &mut Vec<Block>, at: usize, document: usize, range: Range) {
+    let cut = range.end.1;
+    let Some(Block::Paragraph { parts, .. }) = blocks.get(at) else { return };
+    // The first trailing source position, which also bounds the blank-line
+    // re-read below. A word the boundary falls inside is split at the
+    // character level: the command text between the two sides means that
+    // never happens, but a whole-word assignment would silently move text
+    // across the boundary.
+    let mut start: Option<usize> = None;
+    for part in parts {
+        match part {
+            ParaPart::Lines(items) => {
+                for item in items {
+                    if let Item::Word(w) = item {
+                        for src in w.segments.iter().flat_map(|s| &s.chars) {
+                            if src.document.0 == document && src.start >= cut {
+                                start = Some(start.map_or(src.start, |lo| lo.min(src.start)));
+                            }
+                        }
+                    } else if let Some(s) = item_span(item) {
+                        if s.document.0 == document && s.start >= cut {
+                            start = Some(start.map_or(s.start, |lo| lo.min(s.start)));
+                        }
+                    }
+                }
+            }
+            _ => {
+                if let Some(s) = part_span(part) {
+                    if s.document.0 == document && s.start >= cut {
+                        start = Some(start.map_or(s.start, |lo| lo.min(s.start)));
+                    }
+                }
+            }
+        }
+    }
+    let Some(start) = start else { return };
+    let indented = texts.get(document).and_then(|t| t.get(cut..start)).is_some_and(has_blank_line);
+    let after = {
+        let Some(Block::Paragraph { parts, .. }) = blocks.get_mut(at) else { return };
+        let mut kept = Vec::with_capacity(parts.len());
+        let mut after = Vec::new();
+        for part in parts.drain(..) {
+            match part {
+                ParaPart::Lines(items) => {
+                    let mut before_items = Vec::new();
+                    let mut after_items = Vec::new();
+                    // Spanless items (interword glue, a `\label`) travel
+                    // with whatever stands before them: the space the
+                    // newline after `\end{abstract}` leaves stays on the
+                    // body, where a line break drops it.
+                    let mut crossed = false;
+                    for item in items {
+                        if crossed {
+                            after_items.push(item);
+                            continue;
+                        }
+                        if let Item::Word(w) = &item {
+                            let (wb, wa) = split_word(w, document, cut);
+                            match wa {
+                                Some(wa) => {
+                                    if let Some(wb) = wb {
+                                        before_items.push(Item::Word(wb));
+                                    }
+                                    after_items.push(Item::Word(wa));
+                                    crossed = true;
+                                }
+                                None => before_items.push(item),
+                            }
+                        } else {
+                            match item_span(&item) {
+                                Some(s) if s.document.0 == document && s.start >= cut => {
+                                    after_items.push(item);
+                                    crossed = true;
+                                }
+                                _ => before_items.push(item),
+                            }
+                        }
+                    }
+                    if !before_items.is_empty() {
+                        kept.push(ParaPart::Lines(before_items));
+                    }
+                    if !after_items.is_empty() {
+                        after.push(ParaPart::Lines(after_items));
+                    }
+                }
+                other => {
+                    if part_span(&other).is_some_and(|s| s.document.0 == document && s.start >= cut) {
+                        after.push(other);
+                    } else {
+                        kept.push(other);
+                    }
+                }
+            }
+        }
+        std::mem::replace(parts, kept);
+        after
+    };
+    if after.is_empty() {
+        return;
+    }
+    blocks.insert(
+        at + 1,
+        Block::Paragraph {
+            parts: after,
+            indent: indented,
+            style: ParaStyle::Plain,
+            env_open: None,
+            env_close: false,
+            eject_before: false,
+            vspace_before: 0.0,
+            addvspace_before: 0.0,
+            addvspace_flex: (0.0, 0.0),
+            vspace_flex: (0.0, 0.0),
+            endlist_adjust: 0.0,
+            penalty_before: None,
+            list: None,
+            sized: None,
+            leading_pt: None,
+            hang: None,
+            parskip_pt: None,
+        },
+    );
+}
+
+/// The characters of `w` each side of `cut`, as words of their own; `None`
+/// is no character there.
+fn split_word(w: &Word, document: usize, cut: usize) -> (Option<Word>, Option<Word>) {
+    let mut before = Vec::new();
+    let mut after = Vec::new();
+    for s in &w.segments {
+        let (mut bt, mut bc, mut at, mut ac) = (String::new(), Vec::new(), String::new(), Vec::new());
+        for (ch, src) in s.text.chars().zip(s.chars.iter()) {
+            if src.document.0 == document && src.start >= cut {
+                at.push(ch);
+                ac.push(*src);
+            } else {
+                bt.push(ch);
+                bc.push(*src);
+            }
+        }
+        if !bt.is_empty() {
+            before.push(Segment { text: bt, chars: bc, style: s.style });
+        }
+        if !at.is_empty() {
+            after.push(Segment { text: at, chars: ac, style: s.style });
+        }
+    }
+    let before = (!before.is_empty()).then_some(Word { segments: before });
+    let after = (!after.is_empty()).then_some(Word { segments: after });
+    (before, after)
+}
+
+/// A blank line in `gap` (two newlines with only spaces between, or an
+/// explicit `\par`).
+fn has_blank_line(gap: &str) -> bool {
+    let mut rest = gap;
+    while let Some(nl) = rest.find('\n') {
+        let after = &rest[nl + 1..];
+        if after.trim_start_matches([' ', '\t']).starts_with('\n') {
+            return true;
+        }
+        rest = after;
+    }
+    crate::adapter::find_command(gap, "par").is_some()
+}
+
+/// The source range an item covers, for the items that carry one. `None`
+/// is no position of its own (interword glue, `\hfill`, a `\label`).
+fn item_span(item: &Item) -> Option<Span> {
+    match item {
+        Item::Word(w) => Some(w.span()),
+        Item::Math { span, .. }
+        | Item::Logo { span, .. }
+        | Item::Rule { span, .. }
+        | Item::Footnote { span, .. }
+        | Item::Overlong { span, .. } => Some(*span),
+        _ => None,
+    }
+}
+
+/// Whether `\noindent` stands right before the block's first material,
+/// with nothing but whitespace between — the same entry-only rule the
+/// adapter applies to a plain paragraph (its own `noindent_at` check),
+/// re-read from the source bytes because the compiler carried this body as
+/// plain text and the adapter's decision has been overwritten here.
+fn noindent_before(texts: &[&str], block: &Block) -> bool {
+    let Some(span) = block_span(block) else { return false };
+    let Some(text) = texts.get(span.document.0) else { return false };
+    let Some(before) = text.get(..span.start) else { return false };
+    before.trim_end().ends_with("\\noindent")
+}
+
 /// The first source position a block sets material at.
 pub(crate) fn block_span(block: &Block) -> Option<Span> {
     match block {
@@ -746,7 +963,7 @@ fn part_span(part: &ParaPart) -> Option<Span> {
     match part {
         ParaPart::Lines(items) => items.iter().find_map(|i| match i {
             Item::Word(w) => Some(w.span()),
-            Item::Math { span, .. } | Item::Logo { span, .. } | Item::Rule { span, .. } | Item::Footnote { span, .. } => Some(*span),
+            Item::Math { span, .. } | Item::Logo { span, .. } | Item::Rule { span, .. } | Item::Footnote { span, .. } | Item::Overlong { span, .. } => Some(*span),
             _ => None,
         }),
         ParaPart::Display { span, .. } | ParaPart::Rows { span, .. } => Some(*span),

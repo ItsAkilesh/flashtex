@@ -25,7 +25,7 @@ import FlashTeXProtocol
 /// the members it `\input`s / `\include`s, so the sidebar shows the include
 /// tree the moment the entry document opens.
 enum ProjectTemplate: String, CaseIterable, Identifiable {
-    case blankArticle, articleWithSections, reportWithChapters, homeworkSheet
+    case blankArticle, articleWithSections, reportWithChapters, homeworkSheet, thesis, lectureNotes, beamerPresentation
 
     var id: String { rawValue }
 
@@ -35,6 +35,9 @@ enum ProjectTemplate: String, CaseIterable, Identifiable {
         case .articleWithSections: "Article with sections"
         case .reportWithChapters: "Report with chapters"
         case .homeworkSheet: "Homework sheet"
+        case .thesis: "Thesis"
+        case .lectureNotes: "Lecture notes"
+        case .beamerPresentation: "Beamer presentation"
         }
     }
 
@@ -44,6 +47,9 @@ enum ProjectTemplate: String, CaseIterable, Identifiable {
         case .articleWithSections: "main.tex with \\input{sections/introduction} and \\input{sections/methods}."
         case .reportWithChapters: "main.tex (report class) with \\include{chapters/introduction} and \\include{chapters/background}."
         case .homeworkSheet: "main.tex with the problem-sheet preamble (geometry, amsmath, amssymb, enumitem) and a \\problem macro."
+        case .thesis: "main.tex (report class) with chapters, a title page, and a bibliography stub."
+        case .lectureNotes: "main.tex with two lecture sections and date/topic placeholders."
+        case .beamerPresentation: "main.tex (beamer class) with a title frame and two example frames."
         }
     }
 
@@ -153,6 +159,85 @@ enum ProjectTemplate: String, CaseIterable, Identifiable {
             \\end{document}
 
             """)]
+        case .thesis:
+            return [(Self.entryPath, """
+            \\documentclass{report}
+            \\usepackage[margin=1in]{geometry}
+            \\usepackage{amsmath,amssymb}
+
+            \\title{\(title)}
+            \\author{}
+            \\date{\\today}
+
+            \\begin{document}
+            \\maketitle
+            \\tableofcontents
+
+            \\include{chapters/introduction}
+            \\include{chapters/background}
+
+            \\begin{thebibliography}{9}
+            \\bibitem{example} Author, \\emph{Reference title}. Publisher, year.
+            \\end{thebibliography}
+
+            \\end{document}
+
+            """),
+                    ("chapters/introduction.tex", "\\chapter{Introduction}\n\n"),
+                    ("chapters/background.tex", "\\chapter{Background}\n\n")]
+        case .lectureNotes:
+            return [(Self.entryPath, """
+            \\documentclass{article}
+            \\usepackage[margin=1in]{geometry}
+            \\usepackage{amsmath,amssymb}
+
+            \\title{\(title)}
+            \\author{}
+            \\date{}
+
+            \\begin{document}
+            \\maketitle
+
+            \\section{Lecture 1: [Topic]}
+            Date: [Date]
+
+            Notes for this lecture.
+
+            \\section{Lecture 2: [Topic]}
+            Date: [Date]
+
+            Notes for this lecture.
+
+            \\end{document}
+
+            """)]
+        case .beamerPresentation:
+            return [(Self.entryPath, """
+            \\documentclass{beamer}
+
+            \\title{\(title)}
+            \\author{}
+            \\date{\\today}
+
+            \\begin{document}
+            \\begin{frame}
+            \\titlepage
+            \\end{frame}
+
+            \\begin{frame}{Overview}
+            \\begin{itemize}
+                \\item First idea
+                \\item Second idea
+            \\end{itemize}
+            \\end{frame}
+
+            \\begin{frame}{Next steps}
+            Add the next result here.
+            \\end{frame}
+
+            \\end{document}
+
+            """)]
         }
     }
 
@@ -170,6 +255,21 @@ enum ProjectTemplate: String, CaseIterable, Identifiable {
         }
         return out
     }
+}
+
+/// What the window holds when FlashTeX opens with no file
+/// (`ShellModel.Startup.untitledDocument`): File › New Project…'s "Blank
+/// article" entry document titled "Untitled" — the one source of that text —
+/// with the caret on the empty line under `\section{Introduction}`, where
+/// the first sentence goes. Never on disk until Save As….
+enum UntitledDocument {
+    static let path = ProjectTemplate.entryPath
+    static let text = ProjectTemplate.blankArticle.files(projectName: "Untitled")[0].text
+    /// UTF-16 offset of the line after `\section{Introduction}`.
+    static let caretUTF16: Int = {
+        let line = (text as NSString).range(of: "\\section{Introduction}\n")
+        return line.location == NSNotFound ? 0 : NSMaxRange(line)
+    }()
 }
 
 /// Writes a template into `<folder>/<name>` (pure file-system work; the
@@ -263,15 +363,17 @@ enum NewFilePath {
         }
     }
 
-    /// `raw` normalized to a rooted `.tex` path.
+    /// `raw` normalized to a rooted `.tex` path — or a `.sty`/`.cls` path
+    /// when the name says so (a package or class file gets its template,
+    /// `PackageTemplate`); any other extension is completed with `.tex`.
     static func resolve(_ raw: String) -> Result<String, Failure> {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let path: String
         do { path = try ProjectIncludes.normalize(trimmed) }
         catch { return .failure(.invalid("\(error)")) }
-        let withExt = path.hasSuffix(".tex") ? path : path + ".tex"
+        let withExt = path.hasSuffix(".tex") || PackageTemplate.kind(of: path) != nil ? path : path + ".tex"
         if withExt == ProjectTemplate.entryPath { return .failure(.isEntry) }
-        if withExt.split(separator: "/").last.map({ $0 == ".tex" }) ?? true { return .failure(.invalid("empty file name")) }
+        if withExt.split(separator: "/").last.map({ $0 == ".tex" || $0 == ".sty" || $0 == ".cls" }) ?? true { return .failure(.invalid("empty file name")) }
         return .success(withExt)
     }
 
@@ -280,9 +382,101 @@ enum NewFilePath {
         path.hasSuffix(".tex") ? String(path.dropLast(4)) : path
     }
 
-    /// The `\input{…}` line inserted at the caret, on its own line.
+    /// The command that references a new file from the document that made
+    /// it: `\input{sections/a}` for a `.tex` file, `\usepackage{mystyle}`
+    /// for a `.sty` (the compiler resolves it by name next to the entry),
+    /// nil for a `.cls` — a class is named by `\documentclass`, which the
+    /// document already has.
+    static func referenceCommand(for path: String, kind: ProjectIncludes.Kind = .input) -> String? {
+        switch PackageTemplate.kind(of: path) {
+        case .package: return "\\usepackage{\(PackageTemplate.name(of: path))}"
+        case .documentClass: return nil
+        case nil: return "\\\(kind.rawValue){\(inputArgument(for: path))}"
+        }
+    }
+
+    /// The `\input{…}` (or `\usepackage{…}`) line inserted at the caret, on its own line.
     static func referenceText(for path: String, kind: ProjectIncludes.Kind = .input, into text: String, atByte byte: Int) -> String {
-        Insertion.insertionText("\\\(kind.rawValue){\(inputArgument(for: path))}", into: text, atByte: byte)
+        Insertion.insertionText(referenceCommand(for: path, kind: kind) ?? "", into: text, atByte: byte)
+    }
+}
+
+// MARK: - package and class templates
+
+/// What File › New File… writes into a fresh `.sty` or `.cls` (and the
+/// "Create mystyle.sty" quick fix on the compiler's missing-package
+/// diagnostic, ProblemsPanel.swift): the ltclass preamble every package
+/// and class starts with, with today's date in the `\Provides…` line.
+/// A `.tex` gets no template (nil), as before.
+enum PackageTemplate {
+    enum Kind: Equatable { case package, documentClass }
+
+    /// `.sty` → package, `.cls` → class, anything else nil.
+    static func kind(of path: String) -> Kind? {
+        switch (path as NSString).pathExtension.lowercased() {
+        case "sty": return .package
+        case "cls": return .documentClass
+        default: return nil
+        }
+    }
+
+    /// The name `\ProvidesPackage`/`\usepackage` use: the file name without
+    /// its extension (`styles/mystyle.sty` → `mystyle`).
+    static func name(of path: String) -> String {
+        ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+    }
+
+    /// `yyyy/mm/dd` as `\ProvidesPackage` wants it.
+    static func dateStamp(_ date: Date = Date()) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy/MM/dd"
+        return f.string(from: date)
+    }
+
+    /// The template for `path`, nil when it is not a package or class file.
+    static func text(for path: String, date: Date = Date()) -> String? {
+        guard let kind = kind(of: path) else { return nil }
+        let name = name(of: path)
+        let stamp = dateStamp(date)
+        switch kind {
+        case .package:
+            return """
+            \\NeedsTeXFormat{LaTeX2e}
+            \\ProvidesPackage{\(name)}[\(stamp) v1.0 \(name)]
+
+            % Options: \\DeclareOption{name}{code}, then \\ProcessOptions.
+            \\DeclareOption*{\\PackageWarning{\(name)}{Unknown option `\\CurrentOption'}}
+            \\ProcessOptions\\relax
+
+            % Packages this one needs.
+            % \\RequirePackage{xcolor}
+
+            % Definitions (\\@ is a letter here: no \\makeatletter needed).
+
+            \\endinput
+
+            """
+        case .documentClass:
+            return """
+            \\NeedsTeXFormat{LaTeX2e}
+            \\ProvidesClass{\(name)}[\(stamp) v1.0 \(name)]
+
+            % Options not declared here go to the parent class.
+            \\DeclareOption*{\\PassOptionsToClass{\\CurrentOption}{article}}
+            \\ProcessOptions\\relax
+            \\LoadClass{article}
+
+            % Packages this class needs.
+            % \\RequirePackage{geometry}
+
+            % Definitions (\\@ is a letter here: no \\makeatletter needed).
+
+            \\endinput
+
+            """
+        }
     }
 }
 
@@ -297,6 +491,17 @@ enum MissingIncludeFix {
 
     /// The requested name, or nil when `message` is not that diagnostic.
     static func requested(from message: String) -> String? {
+        // TeX's wording under the engine-v3 preview (`latex/file-not-found`):
+        // LaTeX Error: File `chap.tex' not found.
+        if let file = ProjectPackagesState.texMissingFile(in: message) {
+            guard file.hasSuffix(".tex"), file.count > 4 else { return nil }
+            return String(file.dropLast(4))
+        }
+        // `\include` of a missing file under the engine-v3 preview (`latex/no-file`): No file chap.tex.
+        if message.hasPrefix("No file "), message.hasSuffix(".tex."), message.count > "No file .tex.".count {
+            let name = String(message.dropFirst("No file ".count).dropLast(".tex.".count))
+            return name.contains(" ") ? nil : name
+        }
         guard message.hasPrefix(prefix) else { return nil }
         let rest = message.dropFirst(prefix.count)
         guard let end = rest.range(of: "' and '") else { return nil }
@@ -386,7 +591,8 @@ extension ProjectDocuments {
     /// The rooted URL a new member would be written to, or why not.
     struct Refusal: Error, Equatable { var why: String }
 
-    private func newFileURL(_ path: String) -> Result<URL, Refusal> {
+    /// Also the destination check of a move (ProjectMove.swift).
+    func newFileURL(_ path: String) -> Result<URL, Refusal> {
         guard let root = projectRoot else { return .failure(Refusal(why: "the entry document is not saved, so there is no project root; save it first (⌘S)")) }
         // Every existing ancestor must be a real directory under the root; the
         // leaf may not exist yet, so check the deepest existing prefix.
@@ -403,16 +609,18 @@ extension ProjectDocuments {
         }
     }
 
-    /// New File…: writes `<root>/<path>` (empty, or `text`) and opens it as a
-    /// member with `role`. Refuses an existing file, a path outside the root,
-    /// and the entry document's name.
+    /// New File…: writes `<root>/<path>` (empty, or `text`; a `.sty`/`.cls`
+    /// with no text gets its `PackageTemplate`) and opens it as a member
+    /// with `role`. Refuses an existing file, a path outside the root, and
+    /// the entry document's name.
     @discardableResult
-    func createDocument(_ rawPath: String, text: String = "", role: ProjectDocument.Role = .opened) async -> CreateOutcome {
+    func createDocument(_ rawPath: String, text given: String = "", role: ProjectDocument.Role = .opened) async -> CreateOutcome {
         let path: String
         switch NewFilePath.resolve(rawPath) {
         case .success(let p): path = p
         case .failure(let f): return noteCreate(.refused("cannot create \(rawPath): \(f.text)"))
         }
+        let text = given.isEmpty ? (PackageTemplate.text(for: path) ?? "") : given
         if isOpen(path) { return noteCreate(.refused("cannot create \(path): it is already open")) }
         let url: URL
         switch newFileURL(path) {
@@ -454,6 +662,9 @@ extension ProjectDocuments {
     /// an edit is pending, so the switch waits for the editor).
     func newFile(_ rawPath: String, insertReference: Bool) async -> CreateOutcome {
         let referencing = model.activePath
+        // A `.sty` is referenced with `\usepackage{name}`; a `.cls` has no
+        // reference to insert (the document's `\documentclass` names it).
+        let insertReference = insertReference && NewFilePath.referenceCommand(for: (try? NewFilePath.resolve(rawPath).get()) ?? rawPath) != nil
         let outcome = await createDocument(rawPath, role: insertReference ? .included(from: referencing) : .opened)
         guard case .created(let path) = outcome else { return outcome }
         if insertReference, model.activePath == referencing {
@@ -488,6 +699,7 @@ extension ProjectDocuments {
     /// carrying unsaved edits (they would be lost or land in the wrong file).
     func changeRefusal(for path: String) -> String? {
         if path == entryPath { return "\(path) is the entry document" }
+        if let why = readOnlyNote(for: path) { return why }
         if isDirty(path) { return "\(path) has unsaved edits; save them first (⌘S)" }
         return nil
     }

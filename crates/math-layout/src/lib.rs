@@ -9,10 +9,14 @@
 //! No TeX engine is involved at runtime. The Computer Modern adapter embeds
 //! metrics extracted from TFM files at development time; see `README.md`.
 
+// Clippy debt in frozen old-engine code (D13): allowed, not refactored.
+#![allow(clippy::clone_on_copy, clippy::type_complexity, reason = "frozen old engine (D13): fixes only; clippy debt is allowed rather than refactored")]
+
 pub mod ams;
 pub mod ams_tfm;
 pub mod boxes;
 pub mod cm;
+pub mod cm_slots;
 pub mod cm_tfm;
 #[doc(hidden)]
 pub mod fixtures;
@@ -30,12 +34,13 @@ pub use boxes::{
     PositionedGlyph, PositionedRule, PositionedRuns, positioned_runs,
 };
 pub use cm::CmMathMetrics;
-pub use layout::{Layout, Limitation, layout, layout_with_report};
+pub use layout::{Layout, Limitation, Neighbours, layout, layout_in_context, layout_with_report};
 pub use mathlist::{
-    Atom, AtomClass, BigSizing, LeftScripts, Limits, MathFlex, MathList, Nucleus, TextPiece,
-    TextStyle,
+    ArrowChar, ArrowPiece, Atom, AtomClass, BigSizing, LeftScripts, Limits, MathFlex, MathList,
+    Nucleus, TextPiece, TextStyle,
 };
 pub use metrics::{FontId, Glyph, MathFontMetrics, MathParams, OpenTypeMathConstants, SizeClass};
+pub use metrics::{Assembly, AssemblyPart, KernCorner, OpenTypeExtras};
 pub use metrics::{MathChar, OrdLigature, OrdPair};
 pub use source::{SourceSpan, SourceTag};
 pub use spacing::{Space, between};

@@ -63,8 +63,13 @@ enum EditorDiagnostics {
         /// the caret; the gutter marks these lines (design-principles §9 —
         /// the Tab affordance is invisible without a marker).
         var hasFix: Bool = false
+        /// The diagnostic's `code` (`unsupported_feature`, `unknown_command`, …),
+        /// carried so the editor classifies a gap exactly as the panel does.
+        var code: String? = nil
 
         var id: String { identity.key }
+        /// A FlashTeX gap by the panel's rule (`EditorDiagnostics.isGap(code:message:)`).
+        var isGap: Bool { EditorDiagnostics.isGap(code: code, message: message) }
         var diagnosticIndex: Int { identity.index }
         /// The original byte span (for the list row's "bytes a..<b" text).
         var originalSource: RuntimeV1.SourceRange { identity.source }
@@ -164,18 +169,48 @@ enum EditorDiagnostics {
     /// a gap and the other issue-#76 codes are not; unknown codes and a missing
     /// `code` fall back to the message phrases (the compiler's own wording).
     static func isGap(_ message: String) -> Bool {
-        gapPhrases.contains { message.contains($0) }
+        // A byte search (the phrases are ASCII): Foundation's `contains` here
+        // was most of counting a long book's thousands of rows, which the
+        // panel, the status bar and VoiceOver each do at every reply.
+        var m = message
+        return m.withUTF8 { b in gapPhraseBytes.contains { Self.contains(b, $0) } }
+    }
+    private static let gapPhraseBytes: [[UInt8]] = gapPhrases.map { Array($0.utf8) }
+    /// Whether `s` holds the bytes of `needle` (a byte search; for ASCII phrases).
+    static func bytesContain(_ s: String, _ needle: String) -> Bool {
+        var m = s
+        let n = Array(needle.utf8)
+        return m.withUTF8 { contains($0, n) }
+    }
+    private static func contains(_ b: UnsafeBufferPointer<UInt8>, _ needle: [UInt8]) -> Bool {
+        let n = needle.count
+        guard n > 0, b.count >= n else { return n == 0 }
+        let first = needle[0]
+        var i = 0
+        while i <= b.count - n {
+            if b[i] == first {
+                var j = 1
+                while j < n, b[i + j] == needle[j] { j += 1 }
+                if j == n { return true }
+            }
+            i += 1
+        }
+        return false
     }
     static func isGap(_ diagnostic: RuntimeV1.Diagnostic) -> Bool {
-        if let code = diagnostic.code, !code.isEmpty {
+        isGap(code: diagnostic.code, message: diagnostic.message)
+    }
+    /// The one rule for the panel and the editor's marks (`Mark.isGap`).
+    static func isGap(code: String?, message: String) -> Bool {
+        if let code, !code.isEmpty {
             switch code {
             case "unsupported_feature": return true
             case "unknown_command", "syntax_error", "export_limitation", "fidelity_note", "recovered_input":
                 return false
-            default: return isGap(diagnostic.message)
+            default: return isGap(message)
             }
         }
-        return isGap(diagnostic.message)
+        return isGap(message)
     }
     private static let gapPhrases = ["not implemented", "not supported by this compiler version",
                                      "not supported in math mode", "not supported in the document preamble", "is unsupported"]
@@ -262,9 +297,57 @@ enum EditorDiagnostics {
             guard let ns = currentText.clusterAlignedNSRange(utf8Start: start, utf8End: end) else { continue }
             marks.append(Mark(identity: identity, nsRange: ns, severity: diagnostic.severity,
                               message: diagnostic.message, recovery: diagnostic.recovery, resultStatus: result.status,
-                              hasFix: mechanicalEdit(for: diagnostic) != nil))
+                              hasFix: mechanicalEdit(for: diagnostic) != nil, code: diagnostic.code))
         }
+        marks += packageHints(for: result, resultID: resultID, path: path, region: region, currentText: currentText)
         return Report(marks: marks, stale: stale, edit: region)
+    }
+
+    /// A problem inside a package or class file (`source.path` a `.sty`/
+    /// `.cls`, the compiler's diagnostic at the package line) is also marked
+    /// where the document loaded it: the compiler's secondary label
+    /// "mystyle.sty is loaded here" names the `\usepackage` span in `path`.
+    /// One mark per such span — "mystyle.sty: 2 problems — loaded here",
+    /// the worst severity of them — so the gutter, the underline, the hover
+    /// and the error lens all point at the line to look under, and stepping
+    /// (⌘⇧]) reaches it. The identity is the first diagnostic's index with
+    /// the label's span as its source, so it never collides with the mark
+    /// the package buffer draws for the same diagnostic. Rebased and refused
+    /// exactly like a primary mark; never a fix.
+    static func packageHints(for result: RuntimeV1.CompileResult, resultID: String?, path: String,
+                             region: SourceMapping.ChangedRegion?, currentText: String) -> [Mark] {
+        struct Hint { var index: Int; var source: RuntimeV1.SourceRange; var severity: RuntimeV1.Severity; var count: Int; var file: String }
+        var order: [String] = []
+        var hints: [String: Hint] = [:]
+        for (index, d) in result.diagnostics.enumerated() {
+            guard let source = d.source, source.path != path, ProjectManifest.isPackagePath(source.path), let labels = d.labels else { continue }
+            for label in labels where !label.primary && label.source.path == path {
+                let key = "\(source.path)@\(label.source.startByte)..<\(label.source.endByte)"
+                if var hint = hints[key] {
+                    hint.count += 1
+                    if d.severity == .error { hint.severity = .error }
+                    hints[key] = hint
+                } else {
+                    order.append(key)
+                    hints[key] = Hint(index: index, source: label.source, severity: d.severity, count: 1,
+                                      file: ProjectManifest.packageDisplayName(source.path))
+                }
+            }
+        }
+        var out: [Mark] = []
+        for key in order {
+            guard let hint = hints[key] else { continue }
+            var start = hint.source.startByte, end = hint.source.endByte
+            if let region {
+                guard case .rebased(let s, let e) = SourceMapping.rebase(start: start, end: end, across: region) else { continue }
+                start = s; end = e
+            }
+            guard let ns = currentText.clusterAlignedNSRange(utf8Start: start, utf8End: end) else { continue }
+            let message = "\(hint.file): \(hint.count) problem\(hint.count == 1 ? "" : "s") — loaded here"
+            out.append(Mark(identity: Identity(resultID: resultID, index: hint.index, source: hint.source), nsRange: ns,
+                            severity: hint.severity, message: message, recovery: nil, resultStatus: result.status, hasFix: false))
+        }
+        return out
     }
 
     // MARK: keyboard navigation (document order, wrapping, "n of m")
@@ -363,13 +446,18 @@ extension EditorDiagnostics {
         let recovery: String?
         let occurrences: [Int]
 
+        /// Made once: the panel's List asks for every row's id at each update.
+        let id: String
+
+        init(severity: RuntimeV1.Severity, message: String, code: String?, recovery: String?, occurrences: [Int]) {
+            self.severity = severity; self.message = message; self.code = code
+            self.recovery = recovery; self.occurrences = occurrences
+            if let code, !code.isEmpty { id = "\(severity.rawValue):\(code):\(message)" } else { id = "\(severity.rawValue):\(message)" }
+        }
+
         var count: Int { occurrences.count }
         /// Index of the first occurrence (document order); the row's explanation and quick fix use it.
         var first: Int { occurrences[0] }
-        var id: String {
-            if let code, !code.isEmpty { return "\(severity.rawValue):\(code):\(message)" }
-            return "\(severity.rawValue):\(message)"
-        }
         /// "12× \in is not supported in math mode", or just the message for one.
         var title: String { count > 1 ? "\(count)× " + message : message }
     }
@@ -384,7 +472,11 @@ extension EditorDiagnostics {
     /// `groups(of:)` over any diagnostics list (the panel shows the result's
     /// diagnostics followed by the shell's own layout diagnostics).
     static func groups(of diagnostics: [RuntimeV1.Diagnostic], documentOrder: [String] = []) -> [Group] {
-        func rank(_ path: String) -> Int { documentOrder.firstIndex(of: path) ?? documentOrder.count }
+        // A path's place in the listing, looked up (the sort asks for it
+        // n log n times; a scan of a big project's listing each time was most
+        // of a 1,152-page book's Problems update, EDITOR-FREEZE).
+        let ranks = Dictionary(documentOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        func rank(_ path: String) -> Int { ranks[path] ?? documentOrder.count }
         var order: [String] = []
         var members: [String: [Int]] = [:]
         for (i, d) in diagnostics.enumerated() {
@@ -410,11 +502,13 @@ extension EditorDiagnostics {
                          code: (codes.count == 1 && !codes.contains("")) ? diagnostics[sorted[0]].code : nil,
                          recovery: recoveries.count == 1 ? diagnostics[sorted[0]].recovery : nil, occurrences: sorted)
         }
-        groups.sort {
-            let ba = listBucket(diagnostics[$0.first]), bb = listBucket(diagnostics[$1.first])
-            if ba != bb { return ba < bb }
-            return before($0.first, $1.first)
+        // Each group's bucket once, not at every comparison (it reads the message).
+        let buckets = groups.map { listBucket(diagnostics[$0.first]) }
+        let sorted = groups.indices.sorted { a, b in
+            if buckets[a] != buckets[b] { return buckets[a] < buckets[b] }
+            return before(groups[a].first, groups[b].first)
         }
+        groups = sorted.map { groups[$0] }
         return groups
     }
 
@@ -1065,10 +1159,9 @@ extension EditorDiagnostics {
     /// The edit comes from `mechanicalEdit`, so this accepts both forms: a
     /// `help.replacement`, and the flat `suggestion` over the diagnostic's own
     /// `source`. Gating on `help.replacement` alone made the affordance
-    /// unreachable in the shipping configuration — `ShellModel`
-    /// `locateDefaultProducer` attaches `flashtex-render`, whose
-    /// `display::Diagnostic` carries no `help` field at all, so the wire has
-    /// only `suggestion`. The compiler sets `suggestion` at exactly one site
+    /// unreachable for producers whose diagnostics carry no `help` field
+    /// (the old engine's `flashtex-render`), so the wire had only
+    /// `suggestion`. The compiler sets `suggestion` at exactly one site
     /// (`Diagnostic::command_error`), where the span is the command token, so
     /// replacing `source` with it is the same edit `help.replacement` would
     /// have carried.
@@ -1114,6 +1207,10 @@ extension EditorDiagnostics {
                                           compiledRevision: compiledRevision,
                                           editorRevision: editorRevision),
                   let edit = mechanicalEdit(for: d) else { continue }
+            // Tab edits only what the caret is on: a fix elsewhere (in a
+            // macro's definition, a \usepackage in the preamble) is the
+            // Problems panel's "Fix…", where the author sees where it goes.
+            guard edit.path == path, edit.startByte <= source.endByte, edit.endByte >= source.startByte else { continue }
             return CaretFix(diagnosticIndex: index,
                             title: d.help?.message ?? "Replace with \(edit.replacement)",
                             replacement: edit.replacement,

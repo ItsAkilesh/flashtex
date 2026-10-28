@@ -1,5 +1,5 @@
 use flashtex_tex_expansion::{
-    expand_str, is_group_token, tokens_to_display_string, Engine, Limits, Token,
+    expand_str, is_group_token, tokens_to_display_string, Engine, Limits, Span, Token, TokenKind,
 };
 
 /// Content text with grouping tokens removed (they are emitted for the
@@ -95,6 +95,25 @@ fn romannumeral_primitive() {
 #[test]
 fn the_of_count_register() {
     assert_eq!(run(r"\count0=5 \the\count0"), "5");
+}
+
+/// KERNEL-REGISTERS-LEFTOVER: `\@secpenalty` and `\col@number`, the two
+/// remaining unknown kernel registers real class files read after
+/// 096951c0b (`\z@`/`\@tempskipa` were already bound). Values from
+/// latex.ltx: `\newcount\@secpenalty \@secpenalty=-300` (article.cls's
+/// sectioning uses it as a page-break penalty), `\newcount\col@number
+/// \col@number=\@ne` (one-vs-two-column state; `\@ne` is latex.ltx's
+/// `\chardef` for 1). Real documents only reach these from inside a
+/// `.cls`/`.sty` file, which is always processed with `\makeatletter`
+/// active -- `@` is catcode 12 (not a name character) at the top level of
+/// an ordinary document, exactly like real LaTeX.
+#[test]
+fn secpenalty_and_col_number_are_real_registers() {
+    assert_eq!(run(r"\makeatletter\the\@secpenalty\makeatother"), "-300");
+    assert_eq!(run(r"\makeatletter\the\col@number\makeatother"), "1");
+    // Both are assignable, like every other latex.ltx count register.
+    assert_eq!(run(r"\makeatletter\@secpenalty=-150 \the\@secpenalty\makeatother"), "-150");
+    assert_eq!(run(r"\makeatletter\col@number=2 \the\col@number\makeatother"), "2");
 }
 
 #[test]
@@ -271,6 +290,81 @@ fn ifthenelse_numeric_tests() {
     assert_eq!(run(r"\ifthenelse{\isundefined{\nosuchcommand}}{YES}{NO}"), "YES");
 }
 
+/// WB-1: `\value{c}` as a numeric operand in bare `<number> <relation>`
+/// `<number>` tests joined by infix `\AND`/`\OR` or negated with `\NOT`,
+/// as the `ifthen` package parses them. Expected texts measured with
+/// pdflatex (TeX Live 2026):
+/// `pdflatex -interaction=nonstopmode final.tex` (article + ifthen,
+/// `\newcounter{c}\setcounter{c}{3}`) reported 0 errors and
+/// `T1:in T2:in T3:in T4:in T5:in T6:out T7:out U1:in U2:in U3:in U4:in
+/// U5:in T9:in T10:in N1:in N2:out`.
+/// T7 pins left-to-right evaluation (`\AND`/`\OR` share one precedence).
+#[test]
+fn ifthenelse_value_relations_with_and_or_not() {
+    let setup = r"\newcounter{c}\setcounter{c}{3}";
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\value{{c}}>2 \AND \value{{c}}<5}}{{in}}{{out}}")), "in");
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\value{{c}}>10 \OR \value{{c}}<5}}{{in}}{{out}}")), "in");
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\NOT \value{{c}}>10}}{{in}}{{out}}")), "in");
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\value{{c}}>2}}{{in}}{{out}}")), "in");
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\value{{c}}=3}}{{in}}{{out}}")), "in");
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\value{{c}}<2}}{{in}}{{out}}")), "out");
+    // Left-associative: (T OR F) AND F, not T OR (F AND F).
+    assert_eq!(run(r"\ifthenelse{\equal{a}{a} \OR \equal{a}{b} \AND \equal{a}{b}}{in}{out}"), "out");
+    assert_eq!(
+        run(&format!(r"{setup}\ifthenelse{{\(\value{{c}}>2 \OR \value{{c}}>10\) \AND \value{{c}}<5}}{{in}}{{out}}")),
+        "in"
+    );
+    // Lowercase operators, as the package accepts them.
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\value{{c}}>10 \and \value{{c}}>20 \or \value{{c}}=3}}{{in}}{{out}}")), "in");
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\not \value{{c}}>10}}{{in}}{{out}}")), "in");
+    // Mixed with the named test forms.
+    assert_eq!(
+        run(&format!(
+            r"\newboolean{{draft}}\setboolean{{draft}}{{true}}{setup}\ifthenelse{{\boolean{{draft}} \AND \value{{c}}=3}}{{in}}{{out}}"
+        )),
+        "in"
+    );
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\NOT\equal{{a}}{{b}} \AND \value{{c}}<5}}{{in}}{{out}}")), "in");
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\isodd{{\value{{c}}}} \AND \value{{c}}>2}}{{in}}{{out}}")), "in");
+    assert_eq!(run(&format!(r"{setup}\ifthenelse{{\lengthtest{{1pt<2pt}} \AND \value{{c}}=3}}{{in}}{{out}}")), "in");
+    // Bare literal numbers are the same `\ifnum` test.
+    assert_eq!(run(r"\ifthenelse{3>2}{in}{out}"), "in");
+    assert_eq!(run(r"\ifthenelse{3<2}{in}{out}"), "out");
+}
+
+/// A plain `\newif` conditional used on its own next to an `\ifthenelse`
+/// with the infix `\AND`/`\OR`/`\NOT` grammar: the test parser must stay
+/// inside the condition argument, so the `\newif` switch keeps its frame
+/// (no "Extra \else." / "Extra \fi."). `run` asserts zero diagnostics.
+#[test]
+fn newif_conditional_alongside_ifthenelse_infix_ops() {
+    let setup = r"\newcounter{c}\setcounter{c}{3}\newif\ifmyflag\myflagtrue";
+    assert_eq!(
+        run(&format!(r"{setup}\ifthenelse{{\value{{c}}>2 \AND \value{{c}}<5}}{{T}}{{F}}\ifmyflag Y\else N\fi")),
+        "TY"
+    );
+    assert_eq!(
+        run(&format!(r"{setup}\ifthenelse{{\value{{c}}>10 \OR \value{{c}}<5}}{{T}}{{F}}\ifmyflag Y\else N\fi")),
+        "TY"
+    );
+    assert_eq!(
+        run(&format!(r"{setup}\ifthenelse{{\NOT \value{{c}}>10}}{{T}}{{F}}\ifmyflag Y\else N\fi")),
+        "TY"
+    );
+    // The `\newif` switch also works first, and when the flag is false.
+    assert_eq!(
+        run(&format!(r"{setup}\ifmyflag Y\else N\fi\ifthenelse{{\value{{c}}>2 \AND \value{{c}}<5}}{{T}}{{F}}")),
+        "YT"
+    );
+    assert_eq!(
+        run(r"\newcounter{c}\setcounter{c}{3}\newif\ifmyflag\ifthenelse{\value{c}>2 \AND \value{c}<5}{T}{F}\ifmyflag Y\else N\fi"),
+        "TN"
+    );
+    // The named-test form next to the switch, in either order.
+    assert_eq!(run(r"\newif\ifmyflag\myflagtrue\ifthenelse{\equal{a}{a}}{yes}{no} \ifmyflag Y\else N\fi"), "yes Y");
+    assert_eq!(run(r"\newif\ifmyflag\myflagtrue\ifmyflag Y\else N\fi\ifthenelse{\equal{a}{a}}{yes}{no}"), "Yyes");
+}
+
 #[test]
 fn ifthenelse_boolean() {
     assert_eq!(run(r"\newboolean{draft}\ifthenelse{\boolean{draft}}{YES}{NO}"), "NO");
@@ -340,6 +434,226 @@ fn newenvironment_expands_begin_end() {
     assert_eq!(
         run(r"\newenvironment{myenv}{[BEGIN]}{[END]}\begin{myenv}content\end{myenv}"),
         "[BEGIN]content[END]"
+    );
+}
+
+#[test]
+fn newenvironment_with_argument_substitutes() {
+    assert_eq!(
+        run(r"\newenvironment{greet}[1]{Hello #1: }{!}\begin{greet}{World}body\end{greet}"),
+        "Hello World: body!"
+    );
+}
+
+#[test]
+fn renewenvironment_replaces_begin_and_end_code() {
+    assert_eq!(
+        run(r"\newenvironment{shout}{Hi }{!}\renewenvironment{shout}{Yo }{?}\begin{shout}Bob\end{shout}"),
+        "Yo Bob?"
+    );
+}
+
+#[test]
+fn begin_end_emit_balanced_group_markers() {
+    // `\end` already reaches the output as `\endgroup`; `\begin` must
+    // emit the matching `\begingroup`, or an environment whose begin/end
+    // code expands inline (every `\newenvironment`) leaves no scope
+    // behind for the typesetter.
+    let src = r"\newenvironment{myenv}{[BEGIN]}{[END]}\begin{myenv}content\end{myenv}";
+    let r = expand_str(src);
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    assert_eq!(
+        tokens_to_display_string(&r.tokens),
+        "\\begingroup [BEGIN]content[END]\\endgroup "
+    );
+    // The markers carry the `\begin`/`\end` spans, not the definition's.
+    let span_text = |t: &Token| &src[t.span.start as usize..t.span.end as usize];
+    assert_eq!(span_text(&r.tokens[0]), "\\begin");
+    assert_eq!(span_text(&r.tokens[r.tokens.len() - 1]), "\\end");
+}
+
+#[test]
+fn newenvironment_begin_code_originates_at_the_whole_invocation() {
+    // Begin code ending in a space followed by the body gives one space, as
+    // in TeX -- and every begin-code token carries the whole
+    // `\begin{myenv}` invocation as its origin, not the bare `\begin`
+    // control word. The bare span reads as `\begin` downstream, which the
+    // typesetting layer mistakes for an amsthm theorem head and sets with
+    // an extra `\thm@headsep` (5pt) before the body (FlashTeX put `x`
+    // 1.657bp past pdflatex).
+    let src = r"\newenvironment{myenv}[1][Q]{[#1: }{ :end]}\begin{myenv}x\end{myenv}";
+    let call = r"\begin{myenv}";
+    let start = src.find(call).expect("invocation in source") as u32;
+    let invocation = Span { source_id: 0, start, end: start + call.len() as u32 };
+    let mut e = Engine::new(src);
+    let mut out = Vec::new();
+    while let Some(pair) = e.next_content_token_with_origin() {
+        out.push(pair);
+    }
+    assert!(e.diagnostics().is_empty(), "{src:?}: {:?}", e.diagnostics());
+    let text: String = out
+        .iter()
+        .filter(|(t, _)| !is_group_token(t))
+        .map(|(t, _)| match &t.kind {
+            TokenKind::Char(c, _) => *c,
+            TokenKind::ControlSequence(cs) => cs.chars().next().unwrap(),
+            _ => '?',
+        })
+        .collect();
+    assert_eq!(text, "[Q: x :end]", "{src:?}");
+    let body: Vec<TokenKind> = out.iter().map(|(t, _)| t.kind.clone()).collect();
+    assert_eq!(
+        body.iter().filter(|k| matches!(k, TokenKind::Char(' ', _))).count(),
+        2,
+        "{src:?}: exactly the begin code's trailing space and the end code's leading space"
+    );
+    // The end side is untouched by this change: `\end{myenv}` still pushes
+    // `\endmyenv` with the bare `\end` span (the converter matches host
+    // environments on those exact bytes), so end-code tokens keep it.
+    let end_start = src.find(r"\end").expect("end in source") as u32;
+    let end_invocation = Span { source_id: 0, start: end_start, end: end_start + 4 };
+    let content: Vec<&(Token, Option<Span>)> =
+        out.iter().filter(|(t, _)| !is_group_token(t)).collect();
+    let expected: Vec<(char, Option<Span>)> = vec![
+        ('[', Some(invocation)),
+        ('Q', Some(invocation)),
+        (':', Some(invocation)),
+        (' ', Some(invocation)),
+        ('x', None),
+        (' ', Some(end_invocation)),
+        (':', Some(end_invocation)),
+        ('e', Some(end_invocation)),
+        ('n', Some(end_invocation)),
+        ('d', Some(end_invocation)),
+        (']', Some(end_invocation)),
+    ];
+    assert_eq!(content.len(), expected.len(), "{src:?}");
+    for ((tok, origin), (ch, want)) in content.iter().zip(&expected) {
+        let got = match &tok.kind {
+            TokenKind::Char(c, _) => *c,
+            _ => '?',
+        };
+        assert_eq!(got, *ch, "{src:?}");
+        assert_eq!(*origin, *want, "{src:?}: origin of {tok:?}");
+    }
+    assert_eq!(&src[invocation.start as usize..invocation.end as usize], call);
+}
+
+#[test]
+fn nested_newenvironment_begin_code_keeps_the_outer_invocation() {
+    // `\begin{wrapa}` runs `\begin{wrapb}` from its begin code, whose own
+    // begin code is `X`. The `\begin{wrapb}` bytes sit in the preamble
+    // definition; the document shows `\begin{wrapa}`, so that invocation
+    // (not the definition's bytes) is the origin of the inner begin code.
+    let src = r"\newenvironment{wrapa}{\begin{wrapb}}{\end{wrapb}}\newenvironment{wrapb}{X}{}\begin{wrapa}y\end{wrapa}";
+    let call = r"\begin{wrapa}";
+    let start = src.find(call).expect("invocation in source") as u32;
+    let invocation = Span { source_id: 0, start, end: start + call.len() as u32 };
+    let mut e = Engine::new(src);
+    let mut out = Vec::new();
+    while let Some(pair) = e.next_content_token_with_origin() {
+        out.push(pair);
+    }
+    // Diagnostics are not asserted: the engine checks `\end{wrapa}`'s name
+    // before running `\endwrapa` (LaTeX runs the end code first, then
+    // `\@checkend`), so it reports `\begin{wrapb} ended by \end{wrapa}`,
+    // which is unrelated to the begin code's origin.
+    let content: Vec<&(Token, Option<Span>)> =
+        out.iter().filter(|(t, _)| !is_group_token(t)).collect();
+    let x = content
+        .iter()
+        .find(|(t, _)| matches!(t.kind, TokenKind::Char('X', _)))
+        .expect("the inner begin code");
+    assert_eq!(x.1, Some(invocation), "{src:?}: origin of the inner begin code");
+}
+
+/// The origin of the first `X` token `src` expands to.
+fn origin_of_x(src: &str) -> Option<Span> {
+    let mut e = Engine::new(src);
+    let mut out = Vec::new();
+    while let Some(pair) = e.next_content_token_with_origin() {
+        out.push(pair);
+    }
+    out.iter().find(|(t, _)| matches!(t.kind, TokenKind::Char('X', _))).expect("the begin code").1
+}
+
+fn span_of(src: &str, call: &str) -> Span {
+    let start = src.rfind(call).expect("invocation in source") as u32;
+    Span { source_id: 0, start, end: start + call.len() as u32 }
+}
+
+#[test]
+fn chained_newenvironment_begin_code_keeps_the_outermost_invocation() {
+    let src = r"\newenvironment{wrapa}{\begin{wrapb}}{\end{wrapb}}\newenvironment{wrapb}{\begin{wrapc}}{\end{wrapc}}\newenvironment{wrapc}{X}{}\begin{wrapa}y\end{wrapa}";
+    assert_eq!(origin_of_x(src), Some(span_of(src, r"\begin{wrapa}")), "{src:?}");
+}
+
+#[test]
+fn begin_passed_through_a_macro_argument_originates_at_its_own_invocation() {
+    // The `\begin{w}` tokens are the argument of `\call`, so they are read
+    // with `\call` as their origin; that origin is not an environment's
+    // begin code, so the begin code of `w` is stamped with the `\begin{w}`
+    // bytes themselves, not with `\call`.
+    let src = r"\newcommand{\call}[1]{#1}\newenvironment{w}{X}{}\call{\begin{w}y\end{w}}";
+    assert_eq!(origin_of_x(src), Some(span_of(src, r"\begin{w}")), "{src:?}");
+    // The same inside a wrapper's begin code keeps the outer invocation.
+    let src = r"\newcommand{\call}[1]{#1}\newenvironment{outerw}{\call{\begin{w}}}{\end{w}}\newenvironment{w}{X}{}\begin{outerw}y\end{outerw}";
+    assert_eq!(origin_of_x(src), Some(span_of(src, r"\begin{outerw}")), "{src:?}");
+}
+
+#[test]
+fn host_begin_call_keeps_the_bare_begin_span() {
+    // A host (or undefined) `\name` passes through instead of expanding,
+    // so there is no begin code to stamp -- but the converter still
+    // detects the `\begin{name}` opener by reading the call token's own
+    // bytes (`real_text == "\\begin"`, and the exact `{name}` piece
+    // split starts at `real.end`). The call therefore keeps the bare
+    // `\begin` span with no origin: stamping the widened invocation
+    // there silently unmatches those checks and the environment never
+    // opens downstream (27 amsthm tests). Only a macro `\name` carries
+    // the whole invocation, as its origin -- see
+    // `newenvironment_begin_code_originates_at_the_whole_invocation`.
+    let src = r"\begin{theorem}T\end{theorem}";
+    let mut e = Engine::new(src);
+    e.declare_host_command("theorem");
+    e.declare_host_command("endtheorem");
+    let mut out = Vec::new();
+    while let Some(pair) = e.next_content_token_with_origin() {
+        out.push(pair);
+    }
+    assert!(e.diagnostics().is_empty(), "{src:?}: {:?}", e.diagnostics());
+    let content: Vec<&(Token, Option<Span>)> =
+        out.iter().filter(|(t, _)| !is_group_token(t)).collect();
+    assert_eq!(content.len(), 3, "{src:?}: {content:?}");
+    let text_of = |t: &Token| &src[t.span.start as usize..t.span.end as usize];
+    match &content[0].0.kind {
+        TokenKind::ControlSequence(name) => assert_eq!(name, "theorem", "{src:?}"),
+        other => panic!("{src:?}: expected the theorem call, got {other:?}"),
+    }
+    assert_eq!(text_of(&content[0].0), r"\begin", "{src:?}");
+    assert_eq!(content[0].1, None, "{src:?}: host call carries no origin");
+    match &content[1].0.kind {
+        TokenKind::Char('T', _) => {}
+        other => panic!("{src:?}: expected the body, got {other:?}"),
+    }
+    match &content[2].0.kind {
+        TokenKind::ControlSequence(name) => assert_eq!(name, "endtheorem", "{src:?}"),
+        other => panic!("{src:?}: expected the end call, got {other:?}"),
+    }
+    assert_eq!(text_of(&content[2].0), r"\end", "{src:?}");
+    assert_eq!(content[2].1, None, "{src:?}: end call carries no origin");
+}
+
+#[test]
+fn undefined_begin_end_emit_balanced_group_markers() {
+    // Environments the engine passes through (`quote` here) get the same
+    // pair: the opener is new, the closer was already emitted.
+    let r = expand_str(r"\begin{quote}X\end{quote}");
+    assert_eq!(tokens_to_display_string(&r.tokens), "\\begingroup \\quote X\\endquote \\endgroup ");
+    assert!(
+        r.diagnostics.iter().any(|d| d.message.contains("passed through")),
+        "{:?}",
+        r.diagnostics
     );
 }
 
@@ -863,6 +1177,21 @@ fn newtheorem_let_to_relax_guard_still_declares() {
     assert!(out.contains(r"\endthm "), "{out:?}");
 }
 
+/// ltdefns.dtx `\@ifdefinable` goes through `\@ifundefined`, so a name
+/// `\csname` has just made `\relax` is free: the
+/// `\expandafter\newcommand\csname name\endcsname` idiom defines it, as
+/// does `\newcommand` after `\let\name\relax`; `\relax` itself stays
+/// refused (`\@qrelax`).
+#[test]
+fn newcommand_defines_a_relax_valued_name() {
+    let r = expand_str(r"\expandafter\newcommand\csname foo\endcsname{F}\let\bar\relax\newcommand\bar{B}\foo\bar");
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    assert_eq!(text(&r.tokens), "FB");
+    let r = expand_str(r"\newcommand\relax{x}");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\relax already defined."]);
+}
+
 #[test]
 fn newtheorem_relax_itself_is_never_definable() {
     // `\relax`'s own meaning is trivially `Relax`, the same value the
@@ -899,6 +1228,75 @@ fn newtheorem_successful_reclaim_inside_a_group_is_global() {
     assert!(out.contains(r"\endfoo "), "{out:?}");
 }
 
+/// Issue #835: `\hspace`/`\vspace` routed through the host shims
+/// (`\flashtexhspace`/`\flashtexvspace`, as the compiler's host prelude
+/// wires them) splice a bare or factored length register to its value
+/// text, so the register never reaches the stomach as an assignment.
+const SPACE_SHIM: &str = "\\def\\hspace{\\flashtexhspace}\\def\\vspace{\\flashtexvspace}";
+
+fn space_run(src: &str) -> String {
+    run(&format!("{SPACE_SHIM}{src}"))
+}
+
+#[test]
+fn space_shim_splices_bare_register_like_the() {
+    let setup = "\\newlength{\\mylen}\\setlength{\\mylen}{1em}";
+    // A bare register behaves exactly like the already-working `\the`
+    // form, and the value is the register's fixed-point text.
+    assert_eq!(
+        space_run(&format!("{setup}\\hspace{{\\mylen}}y")),
+        space_run(&format!("{setup}\\hspace{{\\the\\mylen}}y")),
+    );
+    assert_eq!(
+        space_run(&format!("{setup}\\hspace{{\\mylen}}y")),
+        "\\flashtexhspacedone 10.0pty",
+    );
+    // `\vspace` shares the shim.
+    assert_eq!(
+        space_run(&format!("{setup}\\vspace{{\\mylen}}y")),
+        "\\flashtexvspacedone 10.0pty",
+    );
+}
+
+#[test]
+fn space_shim_splices_factor_times_register() {
+    let setup = "\\newlength{\\mylen}\\setlength{\\mylen}{1em}\
+         \\newlength{\\zerolen}\\setlength{\\zerolen}{0pt}";
+    // TeX's `<factor><internal dimen>`: the fixed-point product.
+    assert_eq!(
+        space_run(&format!("{setup}\\hspace{{2\\mylen}}y")),
+        "\\flashtexhspacedone 20.0pty",
+    );
+    // A leading `-` negates the whole value, as `scan_dimen` does.
+    assert_eq!(
+        space_run(&format!("{setup}\\hspace{{-\\mylen}}y")),
+        "\\flashtexhspacedone -10.0pty",
+    );
+    // A factor times a register set to 0pt is 0pt, with no diagnostics.
+    assert_eq!(
+        space_run(&format!("{setup}\\hspace{{2\\zerolen}}y")),
+        "\\flashtexhspacedone 0.0pty",
+    );
+}
+
+#[test]
+fn space_shim_leaves_other_arguments_untouched() {
+    // A literal dimension passes through for the main loop exactly as
+    // before (group tokens stripped by `text`).
+    assert_eq!(space_run("\\hspace{1em}y"), "\\flashtexhspacedone 1emy");
+    // The star is preserved.
+    assert_eq!(
+        space_run("\\newlength{\\mylen}\\setlength{\\mylen}{1em}\\hspace*{\\mylen}y"),
+        "\\flashtexhspacedone *10.0pty",
+    );
+    // An undeclared register is not the shim's to report: it passes
+    // through with no engine diagnostic (the host parser names it).
+    assert_eq!(
+        space_run("\\hspace{\\nosuchlen}y"),
+        "\\flashtexhspacedone \\nosuchlen y",
+    );
+}
+
 #[test]
 fn newtheorem_second_declaration_of_the_same_name_errors() {
     // Like `\newenvironment`, a repeated declaration keeps the first
@@ -907,4 +1305,386 @@ fn newtheorem_second_declaration_of_the_same_name_errors() {
     let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
     assert_eq!(messages, ["LaTeX Error: Command \\thm already defined."], "{messages:?}");
     assert!(text(&r.tokens).contains("\\newtheorem "), "{:?}", r.tokens);
+}
+
+#[test]
+fn newtheorem_failed_shared_counter_leaves_the_name_claimable() {
+    // `\newtheorem{widget}[nonexistent]{Widget}` shares the counter of an
+    // undeclared environment, so the compiler's `parser.rs::new_theorem`
+    // rejects it -- but expansion must not claim `\widget`/`\endwidget`
+    // first. The failed declaration burns nothing: a corrected retry on
+    // the next line succeeds with no "already defined" error and the
+    // environment is usable. Expansion itself stays silent here (no second
+    // diagnostic); the one diagnostic for the bad `shared` counter comes
+    // from the compiler, which owns that check.
+    let r = expand_str(
+        "\\newtheorem{widget}[nonexistent]{Widget}\n\\newtheorem{widget}{Widget}\\begin{widget}Hi\\end{widget}",
+    );
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let out = text(&r.tokens);
+    assert!(out.contains("Hi"), "{out:?}");
+    assert!(out.contains(r"\widget "), "{out:?}");
+    assert!(out.contains(r"\endwidget "), "{out:?}");
+}
+
+#[test]
+fn newtheorem_shared_counter_control_sequence_does_not_falsely_match_a_name() {
+    // `bracket_arg_text` must not strip the backslash off a control
+    // sequence in `[shared]`: `scan_through_bracket` reads with `next_raw`
+    // (no expansion), so `[\base]` stays the literal token `\base`, and the
+    // compiler's own `parser.rs::new_theorem` never re-expands its bracket
+    // argument either -- both sides must compare the same raw
+    // representation. Before this fix, stripping the backslash turned
+    // `\base` into the string "base", which coincidentally matched the
+    // *name* of an unrelated, already-declared theorem environment
+    // (`\newtheorem{base}{Base}`), letting a declaration through that both
+    // pdflatex and the compiler's own check reject. `\def\base{notcounter}`
+    // is part of the reported repro; this check does not depend on macro
+    // expansion of `\base` (neither side performs it), only on the two
+    // sides agreeing about what `[\base]`'s raw text is.
+    let r = expand_str(
+        "\\newtheorem{base}{Base}\\def\\base{notcounter}\\newtheorem{alias}[\\base]{Alias}\n\\newtheorem{alias}{Alias}\\begin{alias}Hi\\end{alias}",
+    );
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let out = text(&r.tokens);
+    assert!(out.contains("Hi"), "{out:?}");
+    assert!(out.contains(r"\alias "), "{out:?}");
+    assert!(out.contains(r"\endalias "), "{out:?}");
+}
+
+#[test]
+fn newtheorem_shared_counter_macro_is_expanded_before_the_existence_check() {
+    // The `[shared]` counter name is an expanded context like the `{name}`
+    // argument (`scan_through_group(true)`): `\base`, a `\def`-defined
+    // macro for the real counter `thm`, must expand to `thm` before the
+    // existence check, so this declaration claims `\cor` exactly like a
+    // literal `[thm]` would -- not the raw token text `\base`, which
+    // matches no declared environment. The expanded name is also what is
+    // handed downstream, so the compiler's own raw read of the bracket
+    // agrees with this check instead of rejecting it.
+    let r = expand_str(
+        r"\newtheorem{thm}{Theorem}\def\base{thm}\newtheorem{cor}[\base]{Corollary}\begin{cor}Hi\end{cor}",
+    );
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let out = text(&r.tokens);
+    assert!(out.contains("Hi"), "{out:?}");
+    assert!(out.contains("[thm]"), "{out:?}");
+    assert!(out.contains(r"\cor "), "{out:?}");
+    assert!(out.contains(r"\endcor "), "{out:?}");
+}
+
+#[test]
+fn newtheorem_valid_shared_counter_still_declares() {
+    // A counter-sharing declaration that refers to an earlier, successful
+    // `\newtheorem` keeps working exactly as before: both names are
+    // claimed and the shared-counter environment is usable.
+    let r = expand_str(
+        r"\newtheorem{first}{First}\newtheorem{second}[first]{Second}\begin{second}Hi\end{second}",
+    );
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let out = text(&r.tokens);
+    assert!(out.contains("Hi"), "{out:?}");
+    assert!(out.contains(r"\second "), "{out:?}");
+    assert!(out.contains(r"\endsecond "), "{out:?}");
+}
+
+#[test]
+fn newtheorem_declaration_inside_a_group_is_globally_visible() {
+    // `\newtheorem` is a global declaration in real LaTeX (like
+    // `\newcommand`): a declaration inside a group stays visible and usable
+    // after the group closes.
+    let r = expand_str(r"{\newtheorem{x}{X}}\begin{x}Hi\end{x}");
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let out = text(&r.tokens);
+    assert!(out.contains("Hi"), "{out:?}");
+    assert!(out.contains(r"\x "), "{out:?}");
+    assert!(out.contains(r"\endx "), "{out:?}");
+}
+
+
+// The LaTeX kernel's own `\newif` switches, font defaults, `\@setfontsize`
+// and `\newinsert` allocation are in the prelude, so a project's `.cls`/
+// `.sty` that tests or redefines them behaves as under pdflatex (oracle
+// probes p1-p4 of lane PARITY-CLS-STY-READING, TeX Live 2026).
+
+#[test]
+fn kernel_switches_are_predefined() {
+    // pdflatex: `\if@compatibility` false, `\if@filesw` true, the rest false.
+    assert_eq!(
+        run(r"\makeatletter\if@compatibility compat\else nocompat\fi\space\if@filesw fw\else nofw\fi\space\if@twoside two\else one\fi\space\@mparswitchtrue\if@mparswitch mp\else nomp\fi\makeatother"),
+        "nocompat fw one mp"
+    );
+    // `\if@compatibility\else ... \fi` is the classes' guard around their
+    // `\DeclareOption`s: no "Extra \else".
+    assert_eq!(run(r"\makeatletter\if@compatibility\else B\fi\makeatother"), "B");
+}
+
+#[test]
+fn setfontsize_takes_its_arguments_unexpanded() {
+    // A class's `\def\normalsize{\@setfontsize\normalsize\@xpt\@xiipt}`:
+    // `#1` is `\normalsize` itself, taken as a token, so calling
+    // `\normalsize` must not recurse (it used to overflow the input stack).
+    let (out, diags) = run_allow_diag(r"\makeatletter\def\normalsize{\@setfontsize\normalsize\@xpt\@xiipt}\normalsize\makeatother x");
+    assert_eq!(diags, 0);
+    // `\fontsize`/`\selectfont` run in the engine (NFSS state) and come
+    // back to the host as `\flashtexfontsizedone{10}{12.0pt}` and
+    // `\flashtexselectfontdone` (the compiler maps them back to the real
+    // names); the `\relax` is `\size@update`'s glue terminator.
+    assert_eq!(out, "\\relax \\flashtexfontsizedone 1012.0pt\\relax \\flashtexselectfontdone x");
+    // pdflatex: \meaning\@setfontsize
+    assert_eq!(
+        run(r"\makeatletter\meaning\@setfontsize\makeatother"),
+        "macro:#1#2#3->\\@nomath #1\\ifx \\protect \\@typeset@protect \\let \\@currsize #1\\fi \\fontsize {#2}{#3}\\selectfont "
+    );
+    // `\@currsize` remembers the size command.
+    assert_eq!(
+        run(r"\makeatletter\def\small{\@setfontsize\small\@ixpt{11}}\small\meaning\@currsize\makeatother"),
+        "\\relax \\flashtexfontsizedone 911.0pt\\relax \\flashtexselectfontdone macro:->\\@setfontsize \\small \\@ixpt {11}"
+    );
+}
+
+#[test]
+fn kernel_font_defaults_are_defined_and_renewable() {
+    // pdflatex: cmr/cmss/cmtt/cmr/m/n/b/OT1
+    assert_eq!(
+        run(r"\rmdefault/\sfdefault/\ttdefault/\familydefault/\seriesdefault/\shapedefault/\bfdefault/\encodingdefault"),
+        "cmr/cmss/cmtt/cmr/m/n/b/OT1"
+    );
+    // The times.sty idiom every IEEEtran/neurips/spconf file uses.
+    assert_eq!(
+        run(r"\renewcommand{\sfdefault}{phv}\renewcommand{\rmdefault}{ptm}\rmdefault/\sfdefault/\familydefault"),
+        "ptm/phv/ptm"
+    );
+}
+
+#[test]
+fn newinsert_allocates_downward_from_the_kernel_inserts() {
+    // pdflatex: \footins is 253 (\@mpfootins took 254); the first
+    // `\newinsert` of a class gets 252, and `\skip\footins` is skip 253.
+    assert_eq!(run(r"\makeatletter\number\footins\makeatother"), "253");
+    assert_eq!(run(r"\makeatletter\newinsert\myins\number\myins/\number\@mpfootins\makeatother"), "252/254");
+    // (`\relax` ends the glue scan: a `\the` right after `plus 12pt` is
+    // expanded while TeX looks for `minus`, before the value is stored.)
+    assert_eq!(run(r"\makeatletter\skip\footins 12pt plus 12pt\relax\the\skip\footins\makeatother"), "\\relax 12.0pt plus 12.0pt");
+}
+
+#[test]
+fn fontsize_records_the_nfss_size_state_and_selectfont_sets_baselineskip() {
+    // pdflatex (article, \makeatletter), `\f@size/\f@baselineskip/\the\baselineskip`:
+    //   at \begin{document}                       10/12.0pt/12.0pt
+    //   \fontsize{9}{11}\selectfont               9/11.0pt/11.0pt
+    //   \fontsize{9pt}{11pt}\selectfont           9/11.0pt/11.0pt
+    //   \fontsize{\@ixpt}{11}\selectfont          9/11.0pt/11.0pt
+    //   \@setfontsize\small\@ixpt{10.5}           9/10.5pt/10.5pt, \@currsize = \small
+    //   \fontsize{10.5}{13}\selectfont            10.5/13.0pt/13.0pt
+    // (`\baselinestretch` is the typesetter's here, so `\f@linespread` is
+    // what `\set@fontsize` was given: 1.)
+    // (The engine's own `\baselineskip` starts at 0pt; the compiler's class
+    // prelude sets it, so the probe sets it first.)
+    let probe = r"\f@size/\f@baselineskip/\the\baselineskip";
+    assert_eq!(run(&format!(r"\makeatletter\baselineskip=12pt {probe}\makeatother")), "10/12.0pt/12.0pt");
+    // `\fontsize` itself is the host's: it comes back as `\fontsize{9}{11.0pt}`
+    // (the NFSS-normalised values) followed by `\selectfont`.
+    assert_eq!(
+        run(&format!(r"\makeatletter\fontsize{{9}}{{11}}\selectfont{probe}\makeatother")),
+        "\\flashtexfontsizedone 911.0pt\\relax \\flashtexselectfontdone 9/11.0pt/11.0pt"
+    );
+    assert_eq!(
+        run(&format!(r"\makeatletter\fontsize{{9pt}}{{11pt}}\selectfont{probe}\makeatother")),
+        "\\flashtexfontsizedone 911.0pt\\relax \\flashtexselectfontdone 9/11.0pt/11.0pt"
+    );
+    assert_eq!(
+        run(&format!(r"\makeatletter\fontsize{{\@ixpt}}{{11}}\selectfont{probe}\makeatother")),
+        "\\flashtexfontsizedone 911.0pt\\relax \\flashtexselectfontdone 9/11.0pt/11.0pt"
+    );
+    assert_eq!(
+        run(&format!(r"\makeatletter\@setfontsize\small\@ixpt{{10.5}}{probe}\makeatother")),
+        "\\relax \\flashtexfontsizedone 910.5pt\\relax \\flashtexselectfontdone 9/10.5pt/10.5pt"
+    );
+    assert_eq!(
+        run(&format!(r"\makeatletter\fontsize{{10.5}}{{13}}\selectfont{probe}\makeatother")),
+        "\\flashtexfontsizedone 10.513.0pt\\relax \\flashtexselectfontdone 10.5/13.0pt/13.0pt"
+    );
+    // `\selectfont` with no pending size (`\fontfamily{ptm}\selectfont`)
+    // leaves `\baselineskip` alone: `\size@update` is `\relax` (which the
+    // host sees, as TeX's stomach would).
+    assert_eq!(
+        run(&format!(r"\makeatletter\baselineskip=12pt \selectfont{probe}\makeatother")),
+        "\\relax \\flashtexselectfontdone 10/12.0pt/12.0pt"
+    );
+}
+
+#[test]
+fn skip_number_is_an_internal_glue_dimen_and_integer() {
+    // pdflatex (article, \makeatletter), the idioms of neurips_*.sty,
+    // lipics-v2021.cls, paperstyle2024.sty, IEEEtran.cls, jheppub.sty and
+    // jcappub.sty:
+    //   \setlength{\skip\footins}{9\p@ \@plus 4\p@ \@minus 2\p@}
+    //     -> \the\skip\footins = 9.0pt plus 4.0pt minus 2.0pt
+    //   \skip\@mpfootins = \skip\footins -> the whole glue is copied
+    //   \newdimen\xx \xx=\skip\footins   -> 9.0pt (natural part)
+    //   \newcount\cc \cc=\skip\footins   -> 589824 (sp)
+    //   \addtolength{\skip\footins}{1pt} -> 10.0pt plus 4.0pt minus 2.0pt
+    //   \setlength\leftmargini \parindent -> 15.0pt (both arguments unbraced)
+    let pre = r"\makeatletter\setlength{\skip\footins}{9\p@ \@plus 4\p@ \@minus 2\p@}";
+    assert_eq!(run(&format!(r"{pre}\the\skip\footins\makeatother")), "9.0pt plus 4.0pt minus 2.0pt");
+    assert_eq!(
+        run(&format!(r"{pre}\skip\@mpfootins = \skip\footins\the\skip\@mpfootins\makeatother")),
+        "9.0pt plus 4.0pt minus 2.0pt"
+    );
+    assert_eq!(run(&format!(r"{pre}\newdimen\xx \xx=\skip\footins\the\xx\makeatother")), "9.0pt");
+    assert_eq!(run(&format!(r"{pre}\newcount\cc \cc=\skip\footins\the\cc\makeatother")), "589824");
+    assert_eq!(
+        run(&format!(r"{pre}\addtolength{{\skip\footins}}{{1pt}}\the\skip\footins\makeatother")),
+        "10.0pt plus 4.0pt minus 2.0pt"
+    );
+    assert_eq!(
+        run(r"\newlength{\pind}\setlength{\pind}{15pt}\setlength\leftmargini \pind\the\leftmargini"),
+        "15.0pt"
+    );
+}
+
+
+// ---- `\the<counter>` of a host-numbered counter -------------------------
+//
+// LaTeX's `\newcounter` defines `\the<ctr>` (ltcounts.dtx), so a document's
+// `\renewcommand{\theequation}{...}` is the ordinary way to renumber and
+// `\newcommand{\theequation}` collides. The kernel/class counters and
+// `\newtheorem` counters are numbered by the host, so the replacement text
+// is handed to it unexpanded as `\flashtexthe{<ctr>}{<text>}` (oracle:
+// `err_newcommand_theequation`, `err_newcommand_thetheorem` and
+// `err_renewcommand_theequation_ok` in tests/oracle/manifest.json for the
+// collision side).
+
+#[test]
+fn renewcommand_of_a_kernel_counter_representation_is_handed_to_the_host() {
+    let r = expand_str(r"\renewcommand{\theequation}{\thesection.\arabic{equation}}\begin{document}(\theequation)\end{document}");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, Vec::<&str>::new(), "{messages:?}");
+    let out = tokens_to_display_string(&r.tokens);
+    assert!(out.contains(r"\flashtexthe {equation}{\thesection .\arabic {equation}}"), "{out}");
+    // `\theequation` stays a pass-through for the typesetter that formats it.
+    assert!(out.contains(r"(\theequation )"), "{out}");
+}
+
+#[test]
+fn newcommand_of_a_kernel_counter_representation_collides_like_latex() {
+    let r = expand_str(r"\newcommand{\theequation}{A\arabic{equation}}\begin{document}x\end{document}");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["LaTeX Error: Command \\theequation already defined."], "{messages:?}");
+    let out = tokens_to_display_string(&r.tokens);
+    assert!(!out.contains("flashtexthe"), "{out}");
+}
+
+#[test]
+fn def_of_a_theorem_counter_representation_is_handed_to_the_host() {
+    // `\newtheorem` counters are host-numbered too; `\def` (a class's
+    // spelling) hands the text over the same way, kernel `\@arabic\c@..`
+    // form included.
+    let r = expand_str(r"\newtheorem{theorem}{Theorem}[section]\makeatletter\def\thetheorem{\@arabic\c@theorem}\begin{document}x\end{document}");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, Vec::<&str>::new(), "{messages:?}");
+    let out = tokens_to_display_string(&r.tokens);
+    assert!(out.contains(r"\flashtexthe {theorem}{\@arabic \c@theorem }"), "{out}");
+}
+
+#[test]
+fn renewcommand_of_a_document_counter_representation_stays_in_the_engine() {
+    // A counter this engine numbers itself (`\newcounter` in the document)
+    // has a real `\thefoo` macro: redefined and expanded here, no hand-off.
+    let r = expand_str(r"\newcounter{foo}\renewcommand{\thefoo}{[\arabic{foo}]}\begin{document}\stepcounter{foo}\thefoo\end{document}");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, Vec::<&str>::new(), "{messages:?}");
+    let out = tokens_to_display_string(&r.tokens);
+    assert!(!out.contains("flashtexthe"), "{out}");
+    assert!(out.contains("[1]"), "{out}");
+}
+
+#[test]
+fn providecommand_of_a_kernel_counter_representation_is_a_no_op() {
+    let r = expand_str(r"\providecommand{\thesection}{X}\begin{document}x\end{document}");
+    let messages: Vec<&str> = r.diagnostics.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, Vec::<&str>::new(), "{messages:?}");
+    let out = tokens_to_display_string(&r.tokens);
+    assert!(!out.contains("flashtexthe"), "{out}");
+}
+
+
+// ---- host commands a package or class provides ---------------------------
+//
+// `Engine::declare_host_command_after(name, file)`: siunitx's `\si` and
+// letter.cls's `\cc` exist only once that file is loaded (its `\ver@<file>`
+// record is made whether the engine reads the file or declines it to the
+// host), so a document without siunitx defines `\newcommand{\si}{\sigma}`
+// exactly as LaTeX does (oracle: `newcommand_si_without_siunitx` in
+// tests/oracle/manifest.json; the collision with siunitx loaded is
+// `\@ifdefinable`'s ordinary "already defined", `err_newcommand_defined`).
+
+fn run_declaring(src: &str, name: &str, file: &str) -> (Vec<Token>, Vec<String>) {
+    let mut engine = Engine::new(src);
+    engine.declare_host_command_after(name, file);
+    let tokens = engine.run();
+    let messages = engine.take_diagnostics().into_iter().map(|d| d.message).collect();
+    (tokens, messages)
+}
+
+#[test]
+fn a_package_host_command_is_free_until_the_package_is_loaded() {
+    let (tokens, messages) = run_declaring(r"\newcommand{\si}{sigma}\begin{document}\si\end{document}", "si", "siunitx.sty");
+    assert_eq!(messages, Vec::<String>::new(), "{messages:?}");
+    let out = text(&tokens);
+    assert!(out.contains("sigma") && !out.contains(r"\si"), "{out}");
+}
+
+#[test]
+fn a_package_host_command_collides_once_the_package_is_loaded() {
+    let (tokens, messages) = run_declaring(
+        r"\usepackage{siunitx}\newcommand{\si}{sigma}\begin{document}\si{m}\end{document}",
+        "si",
+        "siunitx.sty",
+    );
+    assert_eq!(messages, ["LaTeX Error: Command \\si already defined."], "{messages:?}");
+    // The host command passes through untouched.
+    let out = tokens_to_display_string(&tokens);
+    assert!(out.contains(r"\si {m}"), "{out}");
+}
+
+#[test]
+fn a_class_host_command_is_declared_by_documentclass() {
+    let (_, messages) = run_declaring(
+        r"\documentclass{letter}\newcommand{\cc}{C}\begin{document}\cc{x}\end{document}",
+        "cc",
+        "letter.cls",
+    );
+    assert_eq!(messages, ["LaTeX Error: Command \\cc already defined."], "{messages:?}");
+    let (tokens, messages) = run_declaring(
+        r"\documentclass{article}\newcommand{\cc}{C}\begin{document}\cc{x}\end{document}",
+        "cc",
+        "letter.cls",
+    );
+    assert_eq!(messages, Vec::<String>::new(), "{messages:?}");
+    let out = text(&tokens);
+    assert!(out.contains("Cx") && !out.contains(r"\cc"), "{out}");
+}
+
+// `\flashtex@watch{<tokens>}` (the compiler's fancyhdr prelude): every later
+// (re)definition of a watched control sequence -- `\def`, `\renewcommand` --
+// inserts `\flashtex@watchfired` right after the assignment, so a host
+// prelude can re-expand what depends on it there. An unwatched name fires
+// nothing, and a local redefinition in a group fires again where the group
+// ends and TeX restores the old meaning.
+#[test]
+fn a_watched_macro_redefinition_runs_the_watch_hook_after_it() {
+    let src = r"\makeatletter\def\flashtex@watchfired{[\topic]}\flashtex@watch{\topic}\makeatother\def\topic{A}B\def\topic{C}D\def\other{E}F\renewcommand\topic{G}H{\def\topic{X}}I";
+    assert_eq!(run(src), "[A]B[C]DF[G]H[X][G]I");
+}
+
+// `\flashtex@watchcollecton`: every macro expanded while it is on is
+// watched, so redefining one a watched expansion reached fires the hook
+// too; `\flashtex@watchbase` sets the document level, below which a local
+// redefinition fires again at its group's end (the restore).
+#[test]
+fn collected_macros_fire_and_a_local_redefinition_fires_again_at_its_group_end() {
+    let src = r"\makeatletter\def\flashtex@watchfired{[\a]}\def\b{B}\def\a{A\b}\flashtex@watchcollecton\a\flashtex@watchcollectoff\flashtex@watchbase\makeatother|\def\b{C}|{\def\b{D}}|";
+    assert_eq!(run(src), "AB|[AC]|[AD][AC]|");
 }

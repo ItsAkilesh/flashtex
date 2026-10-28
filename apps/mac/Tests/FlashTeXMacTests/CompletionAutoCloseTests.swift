@@ -3,6 +3,7 @@ import HostedWindows
 import SwiftUI
 import XCTest
 @testable import FlashTeXMac
+@testable import FlashTeXEditorCore
 
 /// GH#2: accepting a completion whose replacement supplies its own closing
 /// delimiter, while the editor's own auto-inserted closer sits immediately
@@ -30,7 +31,13 @@ final class CompletionAutoCloseTests: XCTestCase {
         let box: TextBox
         let pairs: Set<Character>
         var body: some View {
-            SourceEditorView(text: Binding(get: { box.text }, set: { box.text = $0 }), autoClosePairs: pairs)
+            // An article project: the hosted editor gates class-scoped
+            // commands on the root document's class
+            // (`ProjectDocuments.entryDocumentClass`), and without it beamer's
+            // text entries (`\frametitle`) would fill the `\fr` list and keep
+            // the mode filter from falling back to `\frac` (Completion.swift).
+            SourceEditorView(text: Binding(get: { box.text }, set: { box.text = $0 }), autoClosePairs: pairs,
+                             projectDocumentClass: { "article" })
         }
     }
 
@@ -43,6 +50,8 @@ final class CompletionAutoCloseTests: XCTestCase {
     }
 
     private var windows: [NSWindow] = []
+    /// The environment skeletons indent their body one unit (EnvironmentEditingRules).
+    private let unit = EditorPreferences.shared.indentString
 
     override func tearDown() {
         windows.forEach { $0.orderOut(nil) }
@@ -114,7 +123,8 @@ final class CompletionAutoCloseTests: XCTestCase {
     }
 
     /// The invariant `pendingClosers` exists to hold: every tracked offset is
-    /// inside the buffer and holds a closing delimiter.
+    /// inside the buffer and holds a closing delimiter (or a unit of an
+    /// auto-inserted `\right…`, whose letters are typed over too).
     private func assertClosersMatchTheText(_ co: SourceEditorView.Coordinator, _ tv: NSTextView,
                                            file: StaticString = #filePath, line: UInt = #line) {
         let ns = tv.string as NSString
@@ -123,9 +133,121 @@ final class CompletionAutoCloseTests: XCTestCase {
                 XCTFail("pending closer \(offset) is outside a buffer of \(ns.length)", file: file, line: line); continue
             }
             let ch = ns.substring(with: NSRange(location: offset, length: 1))
-            XCTAssertTrue(ch.first.map(SourceEditorView.BraceMatcher.isCloser) ?? false,
+            XCTAssertTrue(ch.first.map(SourceEditorView.BraceMatcher.isCloser) ?? false || "right|.".contains(ch),
                           "pending closer \(offset) points at \(ch.debugDescription), not a closer", file: file, line: line)
         }
+    }
+
+    // MARK: `\left(` → `\right)`
+
+    /// In math mode the delimiter after `\left` pairs its `\right…` after the
+    /// caret, and typing that `\right)` by hand steps over the inserted one.
+    func testLeftDelimiterPairsItsRightInMathModeAndIsTypedOver() throws {
+        let (tv, co, _, _) = try editor(autoClosePairs: ["{", "[", "(", "$"])
+        type("$", into: tv) // auto-paired: `$|$`
+        XCTAssertEqual(tv.string, "$$")
+        type("\\left(", into: tv)
+        XCTAssertEqual(tv.string, "$\\left(\\right)$")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 7, length: 0), "the caret between the halves")
+        XCTAssertEqual(co.pendingClosers.sorted(), Array(7...14), "every unit of `\\right)` and the paired `$`")
+        assertClosersMatchTheText(co, tv)
+        type("x", into: tv)
+        XCTAssertEqual(tv.string, "$\\left(x\\right)$")
+        XCTAssertEqual(co.pendingClosers.sorted(), Array(8...15), "shifted past the typed body")
+        type("\\right)", into: tv)
+        XCTAssertEqual(tv.string, "$\\left(x\\right)$", "typed over, not duplicated")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 15, length: 0))
+        XCTAssertEqual(co.pendingClosers, [15])
+    }
+
+    func testTheOtherLeftDelimitersPairTheirPartners() throws {
+        let (tv, co, _, _) = try editor(autoClosePairs: ["{", "[", "(", "$"])
+        type("$ ", into: tv) // inline math, the paired `$` after the caret
+        XCTAssertEqual(tv.string, "$ $")
+        for (opener, closer) in [("[", "\\right]"), ("\\{", "\\right\\}"), ("|", "\\right|"), (".", "\\right.")] {
+            let before = NSString(string: tv.string) // a copy: the storage's own string is live
+            let caret = tv.selectedRange().location
+            let insert: (String) -> String = { before.replacingCharacters(in: NSRange(location: caret, length: 0), with: $0) }
+            type("\\left" + opener, into: tv)
+            XCTAssertEqual(tv.string, insert("\\left" + opener + closer), "\\left\(opener)")
+            XCTAssertEqual(tv.selectedRange().location, caret + ("\\left" + opener).utf16.count)
+            assertClosersMatchTheText(co, tv)
+            type(closer + " ", into: tv) // step over it and separate from the next case
+            XCTAssertEqual(tv.string, insert("\\left" + opener + closer + " "), "\\left\(opener): the closer was typed over")
+        }
+    }
+
+    /// `\left` is a math command: outside math the `(` pairs a plain `)` as before.
+    func testLeftDoesNotPairInTextMode() throws {
+        let (tv, co, _, _) = try editor(autoClosePairs: ["{", "[", "(", "$"])
+        type("\\left(", into: tv)
+        XCTAssertEqual(tv.string, "\\left()", "the ordinary `(` pair only")
+        XCTAssertFalse(tv.string.contains("\\right"))
+        XCTAssertEqual(co.pendingClosers, [6])
+        // Auto-close off for `(`: nothing at all.
+        let (tv2, co2, _, _) = try editor(autoClosePairs: ["{"])
+        type("$\\left(", into: tv2)
+        XCTAssertEqual(tv2.string, "$\\left(")
+        XCTAssertEqual(co2.pendingClosers, [])
+    }
+
+    // MARK: #932 — `\` inside an auto-closed `\[ \]` / `\( \)`
+
+    /// `\[` pairs `\]`; a `\` typed to start a command inside is a real
+    /// backslash, never the closer's first half, so `\alpha` lands whole.
+    /// Typing the closer by hand (`\` then `]`) still steps over it.
+    func testABackslashInsideDisplayMathNeverOvertypesTheCloser() throws {
+        let (tv, co, _, _) = try editor(autoClosePairs: ["{", "[", "(", "$"])
+        type("\\[", into: tv)
+        XCTAssertEqual(tv.string, "\\[\\]")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 2, length: 0))
+        XCTAssertEqual(co.pendingClosers.sorted(), [2, 3])
+        type("\\alpha", into: tv)
+        XCTAssertEqual(tv.string, "\\[\\alpha\\]", "the command's backslash was inserted, not stepped over")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 8, length: 0), "the caret before the closer")
+        XCTAssertEqual(co.pendingClosers.sorted(), [8, 9])
+        assertClosersMatchTheText(co, tv)
+        type("\\]", into: tv)
+        XCTAssertEqual(tv.string, "\\[\\alpha\\]", "the hand-typed closer stepped over the inserted one")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 10, length: 0))
+        XCTAssertEqual(co.pendingClosers, [])
+    }
+
+    func testABackslashInsideInlineMathNeverOvertypesTheCloser() throws {
+        let (tv, co, _, _) = try editor(autoClosePairs: ["{", "[", "(", "$"])
+        type("\\(", into: tv)
+        XCTAssertEqual(tv.string, "\\(\\)")
+        type("\\alpha", into: tv)
+        XCTAssertEqual(tv.string, "\\(\\alpha\\)")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 8, length: 0))
+        // A lone `]` (the wrong terminal) is a real character; `\` `)` completes.
+        type("]", into: tv)
+        XCTAssertEqual(tv.string, "\\(\\alpha]\\)")
+        turn() // the body is its own undo group, as separate keystrokes would be
+        type("\\)", into: tv)
+        XCTAssertEqual(tv.string, "\\(\\alpha]\\)")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 11, length: 0))
+        XCTAssertEqual(co.pendingClosers, [])
+        // The step-over's deletion is its own undo step: ⌘Z never takes the body with it.
+        turn()
+        tv.undoManager?.undo()
+        XCTAssertTrue(tv.string.hasPrefix("\\(\\alpha]"), "undo kept the body: \(tv.string.debugDescription)")
+    }
+
+    /// `\right)` is completed the same way: a `\` typed inside `\left( \right)`
+    /// starts a command; the `)` after a hand-typed `\right` steps over the pair.
+    func testABackslashInsideLeftRightNeverOvertypesTheCloser() throws {
+        let (tv, co, _, _) = try editor(autoClosePairs: ["{", "[", "(", "$"])
+        type("$\\left(", into: tv)
+        XCTAssertEqual(tv.string, "$\\left(\\right)$")
+        type("\\frac", into: tv)
+        XCTAssertEqual(tv.string, "$\\left(\\frac\\right)$")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 12, length: 0))
+        assertClosersMatchTheText(co, tv)
+        type("\\right)", into: tv)
+        XCTAssertEqual(tv.string, "$\\left(\\frac\\right)$", "typed over, not duplicated")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 19, length: 0))
+        XCTAssertEqual(co.pendingClosers, [19], "only the paired `$` remains")
     }
 
     // MARK: the reported bug
@@ -149,8 +271,8 @@ final class CompletionAutoCloseTests: XCTestCase {
 
         accept(environment("proof"), in: tv, exec)
         // The whole point: one `}`, not two.
-        XCTAssertEqual(tv.string, "\\begin{proof}\n\n\\end{proof}")
-        XCTAssertEqual(tv.selectedRange(), NSRange(location: 14, length: 0), "caret on the empty middle line")
+        XCTAssertEqual(tv.string, "\\begin{proof}\n\(unit)\n\\end{proof}")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 14 + unit.utf16.count, length: 0), "caret on the empty middle line")
         XCTAssertEqual(co.pendingClosers, [], "the tracked closer was consumed by the replacement, not left dangling")
         assertClosersMatchTheText(co, tv)
         turn()
@@ -161,7 +283,7 @@ final class CompletionAutoCloseTests: XCTestCase {
         undo.undo()
         XCTAssertEqual(tv.string, "\\begin{proof}", "one undo restores exactly the pre-accept buffer")
         undo.redo()
-        XCTAssertEqual(tv.string, "\\begin{proof}\n\n\\end{proof}")
+        XCTAssertEqual(tv.string, "\\begin{proof}\n\(unit)\n\\end{proof}")
     }
 
     /// `\end{` completes without a snippet (`insertCompletion`), and carries a
@@ -172,7 +294,7 @@ final class CompletionAutoCloseTests: XCTestCase {
         accept(command("\\begin{}"), in: tv, exec)
         type("itemize", into: tv)
         accept(environment("itemize"), in: tv, exec)
-        XCTAssertEqual(tv.string, "\\begin{itemize}\n\\item \n\\end{itemize}")
+        XCTAssertEqual(tv.string, "\\begin{itemize}\n\(unit)\\item \n\\end{itemize}")
         XCTAssertEqual(co.pendingClosers, [])
         turn()
 
@@ -185,7 +307,7 @@ final class CompletionAutoCloseTests: XCTestCase {
         type("item", into: tv)
         XCTAssertEqual(co.pendingClosers, [closer + 4])
         accept({ $0.kind == .environment && $0.label == "itemize" && $0.snippet == nil }, in: tv, exec)
-        XCTAssertEqual(tv.string, "\\begin{itemize}\n\\item \n\\end{itemize}\n\\end{itemize}")
+        XCTAssertEqual(tv.string, "\\begin{itemize}\n\(unit)\\item \n\\end{itemize}\n\\end{itemize}")
         XCTAssertEqual(co.pendingClosers, [])
         assertClosersMatchTheText(co, tv)
     }
@@ -237,7 +359,7 @@ final class CompletionAutoCloseTests: XCTestCase {
         XCTAssertEqual(co.pendingClosers, [], "nothing tracked")
         tv.setSelectedRange(NSRange(location: 12, length: 0))
         accept(environment("proof"), in: tv, exec)
-        XCTAssertEqual(tv.string, "\\begin{proof}\n\n\\end{proof}}", "the user's own brace is left exactly where they put it")
+        XCTAssertEqual(tv.string, "\\begin{proof}\n\(unit)\n\\end{proof}}", "the user's own brace is left exactly where they put it")
         assertClosersMatchTheText(co, tv)
     }
 
@@ -258,7 +380,7 @@ final class CompletionAutoCloseTests: XCTestCase {
         XCTAssertEqual(co.pendingClosers, [7])
         type("proof", into: tv)
         accept(environment("proof"), in: tv, exec)
-        XCTAssertEqual(tv.string, "\\begin{proof}\n\n\\end{proof}")
+        XCTAssertEqual(tv.string, "\\begin{proof}\n\(unit)\n\\end{proof}")
         XCTAssertEqual(co.pendingClosers, [])
         assertClosersMatchTheText(co, tv)
     }
@@ -272,7 +394,8 @@ final class CompletionAutoCloseTests: XCTestCase {
             accept(command("\\begin{}"), in: tv, exec)
             type(String(name.prefix(3)), into: tv)
             accept(environment(name), in: tv, exec)
-            let expected = "\\begin{" + Completion.environmentSnippet(name, indent: "").text
+            let expected = "\\begin{" + Completion.environmentSnippet(name, indent: "", unit: EditorPreferences.shared.indentString,
+                                                                    rules: EditorPreferences.shared.environmentRules).text
             XCTAssertEqual(tv.string, expected, "\(name): exactly the template, no stray closer")
             XCTAssertFalse(tv.string.hasSuffix("}}"), "\(name): no doubled brace at the end")
             // `figure` parks the caret inside `\includegraphics{}`, so that
@@ -285,7 +408,8 @@ final class CompletionAutoCloseTests: XCTestCase {
             XCTAssertEqual(co.pendingClosers, tracked, "\(name): only a closer the caret sits before is tracked")
             assertClosersMatchTheText(co, tv)
             // Tab reaches every placeholder and ends inside the buffer.
-            let stops = Completion.environmentSnippet(name, indent: "").stops.map { $0 + 7 }
+            let stops = Completion.environmentSnippet(name, indent: "", unit: EditorPreferences.shared.indentString,
+                                                      rules: EditorPreferences.shared.environmentRules).stops.map { $0 + 7 }
             XCTAssertTrue(stops.allSatisfy { $0 <= (tv.string as NSString).length }, "\(name): stops fit the buffer")
             turn()
         }

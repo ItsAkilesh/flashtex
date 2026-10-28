@@ -12,7 +12,11 @@ import os
 /// 1. `\end{X}` for every `\begin{X}` before the caret that is still open.
 /// 2. Commands the compiler supports (`supported`; default list below), the
 ///    one spelled exactly as typed first, then in table order.
-/// 3. Commands typed elsewhere in the document that are not in `supported`,
+/// 3. Commands the document (or another open one) defines with
+///    `\newcommand`/`\def`/`\DeclareMathOperator`/… (`declaredCommands`),
+///    marked "declared in this document" — these rank right under the exact
+///    spelling, and are never marked unsupported, whatever the index says.
+/// 4. Commands typed elsewhere in the document that are not in `supported`,
 ///    marked "not supported by this compiler version".
 /// 4. Environment names (after `\begin{`/`\end{`), labels (after `\ref{`) and
 ///    citation keys (after `\cite{`) seen in the document.
@@ -38,18 +42,25 @@ enum Completion {
         /// When set, accepting inserts this instead of `insertText` and places
         /// the caret inside it (one undoable edit).
         var snippet: Snippet? = nil
+        /// A documentation line the origin supplies itself (a `.bib` record's
+        /// title; BibScanner.swift). Nil means the pane derives one from the
+        /// kind and name (`CompletionPopup.displayedDocumentation`).
+        var documentation: String? = nil
+        /// An installed font family (`\setmainfont{` and its kin): the row
+        /// sets its label and a sample in that family (ProjectFonts.swift
+        /// `FontSamples`), when the app has a face for it.
+        var sampleFamily: String? = nil
     }
 
-    /// Replacement text plus the caret position inside it, in UTF-16 units.
-    struct Snippet: Equatable {
-        let text: String
-        let caretUTF16: Int
-        /// Further placeholders (UTF-16 offsets into `text`, in Tab order,
-        /// after the caret's); the editor visits them with Tab / ⇧Tab.
-        var stops: [Int] = []
-    }
+    /// Replacement text plus the caret position inside it and the further
+    /// Tab stops, in UTF-16 units: the shared core's type, so a snippet the
+    /// iPad builds is the Mac's value too (FlashTeXEditorCore/LaTeXVocabulary.swift).
+    typealias Snippet = LaTeXSnippet
 
     static let maxSuggestions = 12
+    /// Places under the cap kept for the project's and the text's own
+    /// commands when the vocabulary alone would fill it (see `suggestions`).
+    static let reservedDocumentRows = 3
 
     /// The compiler's command set, decoded from its machine-readable inventory
     /// `crates/compiler/supported/supported-latex.json` (schema
@@ -62,7 +73,8 @@ enum Completion {
     /// every rendered command is offered exactly once. Nothing here is
     /// written by hand except the snippet overrides.
     enum Vocabulary {
-        enum Mode: String, Equatable, Decodable { case text, math }
+        /// The shared core's mode (text or math), so the math filter is one rule.
+        typealias Mode = LaTeXVocabulary.Mode
 
         /// The inventory's `origin`: which compiler table accepts the command.
         enum Origin: String, Equatable, Decodable {
@@ -93,6 +105,32 @@ enum Completion {
             /// For a command the compiler accepts in both modes (`\textbf`,
             /// `\quad`): the math-mode behaviour, shown after the text one.
             var mathDescription: String? = nil
+            /// The inventory's `requires_class`: the document class that
+            /// defines the command (several comma-separated, as for the AMS
+            /// classes' top matter), or nil when every class does. The compiler
+            /// diagnoses `\frametitle` outside beamer and `\opening` outside
+            /// letter exactly as pdflatex's "Undefined control sequence" does;
+            /// see `offered(inClass:)` for what completion makes of that.
+            var requiresClass: String? = nil
+
+            /// Whether completion offers this command in a document whose
+            /// class is `documentClass` — the class the document itself
+            /// declares, else the class of the project's root document
+            /// (`commandSuggestions`), else nil.
+            ///
+            /// A universal command is offered everywhere; a class-scoped one
+            /// is hidden only where the class is known and *different*, so
+            /// `\fra` means `\frac` in an article and `\frametitle` in a
+            /// beamer deck's own included slide file. Nil — no class in the
+            /// text and no project root to read one from — hides nothing,
+            /// which mirrors the compiler's `Command::offered_in_class`.
+            /// Permissive is the safe reading there: two-thirds of the real
+            /// `.tex` files in the corpora declare no `\documentclass`
+            /// (included chapters and frames), and a strict rule would take
+            /// `\frametitle` away from exactly the files that use it.
+            func offered(inClass documentClass: String?) -> Bool {
+                LaTeXVocabulary.classOffers(requiresClass, documentClass: documentClass)
+            }
 
             var label: String { "\\" + name + arguments }
 
@@ -101,26 +139,7 @@ enum Completion {
             /// braces (`\section{|}`, `\frac{|}{}`, `\newcommand{|}{}`).
             /// Nil for commands without a braced argument.
             var snippet: Completion.Snippet? {
-                if let override = Vocabulary.snippetOverrides[name] { return override }
-                var out = "\\" + name
-                var stops: [Int] = []
-                var i = arguments.startIndex
-                while i < arguments.endIndex {
-                    let c = arguments[i]
-                    if c == "[" {
-                        i = arguments[i...].firstIndex(of: "]").map(arguments.index(after:)) ?? arguments.endIndex
-                    } else if c == "{" {
-                        out += "{"
-                        stops.append((out as NSString).length)
-                        out += "}"
-                        i = arguments[i...].firstIndex(of: "}").map(arguments.index(after:)) ?? arguments.endIndex
-                    } else {
-                        i = arguments.index(after: i)
-                    }
-                }
-                guard let caret = stops.first else { return nil }
-                // Tab visits the later braces, then leaves the snippet.
-                return Completion.Snippet(text: out, caretUTF16: caret, stops: Array(stops.dropFirst()) + [(out as NSString).length])
+                LaTeXSnippets.argument(name: name, arguments: arguments)
             }
             var detail: String {
                 switch mode {
@@ -140,10 +159,8 @@ enum Completion {
         static let argumentOverrides: [String: String] = [:]
 
         /// Whole-snippet overrides for commands whose insertion is not the
-        /// brace skeleton of their argument shape.
-        static let snippetOverrides: [String: Completion.Snippet] = [
-            "left": Completion.Snippet(text: "\\left( \\right)", caretUTF16: 6, stops: [14]),
-        ]
+        /// brace skeleton of their argument shape (shared with the iPad).
+        static let snippetOverrides: [String: Completion.Snippet] = LaTeXSnippets.overrides
 
         // MARK: the inventory
 
@@ -157,11 +174,27 @@ enum Completion {
                 let description: String
                 var glyph: String? = nil
                 let renders: Bool
+                /// Absent for a universal command; the class name for one the
+                /// compiler defines under that `\documentclass` alone
+                /// (`crates/compiler/src/supported.rs`, `requires_class`).
+                var requiresClass: String? = nil
+
+                enum CodingKeys: String, CodingKey {
+                    case name, mode, origin, arguments, description, glyph, renders
+                    case requiresClass = "requires_class"
+                }
             }
             struct Environment: Decodable {
                 let name: String
                 let mode: Mode
                 let description: String
+                /// The inventory's `requires_class`, as on `Command`: beamer's
+                /// blocks, columns and overlay environments, letter.cls's `letter`.
+                var requiresClass: String? = nil
+                enum CodingKeys: String, CodingKey {
+                    case name, mode, description
+                    case requiresClass = "requires_class"
+                }
             }
             let schema: String
             let generator: String
@@ -176,16 +209,39 @@ enum Completion {
             static let resourceExtension = "json"
         }
 
+        /// The bundled inventory's bytes, read once at first use; nil (logged)
+        /// when the resource is missing.
+        private static let inventoryData: Data? = {
+            do {
+                return try loadInventoryData()
+            } catch {
+                FlashTeXLog.write("completion: supported-latex.json unavailable: \(error)")
+                return nil
+            }
+        }()
+
         /// The bundled inventory, decoded once at first use. A missing or
         /// unreadable resource is logged and yields an empty vocabulary (the
         /// editor keeps working; `make-app.sh` and the tests refuse such a
         /// build).
         static let inventory: Inventory = {
             do {
-                return try decodeInventory(loadInventoryData())
+                if let inventoryData { return try decodeInventory(inventoryData) }
             } catch {
-                FlashTeXLog.write("completion: supported-latex.json unavailable: \(error)")
-                return Inventory(schema: Inventory.schema, generator: "", compilerVersion: "", commands: [], environments: [])
+                FlashTeXLog.write("completion: supported-latex.json unreadable: \(error)")
+            }
+            return Inventory(schema: Inventory.schema, generator: "", compilerVersion: "", commands: [], environments: [])
+        }()
+
+        /// The same bytes through the shared core's decoder: the command
+        /// rows, their order and the math descriptions the iPad offers.
+        static let shared: LaTeXVocabulary = {
+            guard let inventoryData else { return .empty }
+            do {
+                return try LaTeXVocabulary(inventoryData: inventoryData)
+            } catch {
+                FlashTeXLog.write("completion: supported-latex.json unreadable: \(error)")
+                return .empty
             }
         }()
 
@@ -227,24 +283,15 @@ enum Completion {
         /// A command the compiler accepts in both modes is one text entry
         /// carrying the math description; `control_symbol` contributes only
         /// `\\` (the math spacing symbols `\,` `\;` … are not completed).
-        static let entries: [Entry] = buildEntries(from: inventory)
-
-        static func buildEntries(from inventory: Inventory) -> [Entry] {
-            let rendered = inventory.commands.filter(\.renders)
-            let mathDescriptions = Dictionary(rendered.filter { $0.mode == .math }.map { ($0.name, $0.description) }, uniquingKeysWith: { a, _ in a })
-            var out: [Entry] = []
-            var seen = Set<String>()
-            func add(_ c: Inventory.Command, mathDescription: String? = nil) {
-                guard seen.insert(c.name).inserted else { return }
-                out.append(Entry(name: c.name, arguments: argumentOverrides[c.name] ?? c.arguments, description: c.description,
-                                 mode: c.mode, origin: c.origin, glyph: c.glyph, mathDescription: mathDescription))
-            }
-            for c in rendered where c.mode == .text && c.origin != .controlSymbol { add(c, mathDescription: mathDescriptions[c.name]) }
-            for c in rendered where c.origin == .controlSymbol && c.name == "\\" { add(c) }
-            for origin in [Origin.mathStructure, .mathOperator, .mathSymbol] {
-                for c in rendered where c.origin == origin { add(c) }
-            }
-            return out
+        ///
+        /// The shared core decides the rows and their order
+        /// (`LaTeXVocabulary(inventoryData:)`), so the Mac and the iPad offer
+        /// the same commands in the same order; only `argumentOverrides` is
+        /// applied on top here.
+        static let entries: [Entry] = shared.commands.map { c in
+            Entry(name: c.name, arguments: argumentOverrides[c.name] ?? c.arguments, description: c.description,
+                  mode: c.mode, origin: Origin(rawValue: c.origin) ?? .textDispatch, glyph: c.glyph,
+                  mathDescription: c.mathDescription, requiresClass: c.requiresClass)
         }
 
         /// `math_symbol` commands with the glyph the compiler renders, in file order.
@@ -255,6 +302,24 @@ enum Completion {
 
         /// Text/display environments and the math grids the compiler accepts, in file order.
         static let environments: [String] = inventory.environments.map(\.name)
+
+        /// The class each class-scoped environment needs (`requires_class`);
+        /// a universal environment has no entry.
+        static let environmentClasses: [String: String] = Dictionary(inventory.environments.compactMap { e in
+            e.requiresClass.map { (e.name, $0) }
+        }, uniquingKeysWith: { a, _ in a })
+
+        /// `Entry.offered(inClass:)` for an environment name: hidden only
+        /// where the class is known and different (`invisibleenv` is not
+        /// offered in an article; unknown gates nothing).
+        static func environmentOffered(_ name: String, inClass documentClass: String?) -> Bool {
+            guard let required = environmentClasses[name], let documentClass else { return true }
+            return required == documentClass
+        }
+
+        /// Each environment's inventory `description` (the popup's documentation line when no hand-written one exists).
+        static let environmentDescriptions: [String: String] = Dictionary(inventory.environments.map { ($0.name, $0.description) },
+                                                                         uniquingKeysWith: { a, _ in a })
 
         static let byName: [String: Entry] = Dictionary(entries.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
         static let names: [String] = entries.map(\.name)
@@ -267,6 +332,17 @@ enum Completion {
 
     /// Anchors `Bundle(for:)` to this module for the inventory lookup.
     private final class VocabularyBundleMarker {}
+
+    /// `\name` plus its argument shape as an insertion: every `{…}` of
+    /// `arguments` becomes `{}`, `[…]` optionals are dropped, the caret lands
+    /// in the first braces and Tab visits the later ones, then leaves. Nil
+    /// when the shape has no braced argument. The rule behind the
+    /// vocabulary's snippets (`Vocabulary.Entry.snippet`), the kernel's
+    /// (`CommandDocs.kernel`) and a declared macro's (`Declaration.snippet`);
+    /// the shared core's `LaTeXSnippets.skeleton`, as on the iPad.
+    static func argumentSnippet(name: String, arguments: String) -> Snippet? {
+        LaTeXSnippets.skeleton(name: name, arguments: arguments)
+    }
 
     static let defaultSupported: [String] = Vocabulary.names
 
@@ -287,7 +363,9 @@ enum Completion {
         /// A run of letters, with what immediately precedes it (`\begin{`, `\ref{`, …).
         case word(text: String, start: Int, end: Int, context: Context)
 
-        enum Context: Equatable { case none, beginEnvironment, endEnvironment, reference, citation, label, package, file }
+        /// `package`: `\usepackage{`/`\RequirePackage{`; `documentClass`:
+        /// `\documentclass{`/`\LoadClass{` (a class name).
+        enum Context: Equatable { case none, beginEnvironment, endEnvironment, reference, citation, label, package, documentClass, file, graphics, font }
 
         var start: Int {
             switch self { case .command(_, let s, _), .word(_, let s, _, _): return s }
@@ -298,19 +376,21 @@ enum Completion {
     }
 
     /// Returns nil when the caret is not on a scalar boundary or there is no
-    /// token immediately before it.
-    static func token(in text: String, caretUTF16: Int) -> Token? {
+    /// token immediately before it. `atLetter` makes `@` a letter of a
+    /// control word (`\@ifnextchar` is one token inside `\makeatletter` and
+    /// in a package file; `SyntaxHighlighter.atLetter(at:)` answers it).
+    static func token(in text: String, caretUTF16: Int, atLetter: Bool = false) -> Token? {
         guard let caretByte = utf8Offset(of: caretUTF16, in: text) else { return nil }
-        return withBytes(text) { b in token(in: b, caretByte: caretByte) }
+        return withBytes(text) { b in token(in: b, caretByte: caretByte, atLetter: atLetter) }
     }
 
-    private static func token(in b: UnsafeBufferPointer<UInt8>, caretByte: Int) -> Token? {
+    private static func token(in b: UnsafeBufferPointer<UInt8>, caretByte: Int, atLetter: Bool = false) -> Token? {
         guard caretByte <= b.count, let p = b.baseAddress else { return nil }
         if let key = argumentKeyToken(in: b, caretByte: caretByte) { return key }
         let table = wordByteClass
         var start = caretByte
         var asciiLettersOnly = true
-        while start > 0, table[Int(p[start - 1])] != 0 {
+        while start > 0, table[Int(p[start - 1])] != 0 || (atLetter && p[start - 1] == UInt8(ascii: "@")) {
             if p[start - 1] >= 0x80 { asciiLettersOnly = false }
             start -= 1
         }
@@ -334,21 +414,63 @@ enum Completion {
     /// opener immediately before it.
     private static func context(in b: UnsafeBufferPointer<UInt8>, before start: Int) -> Token.Context {
         guard start > 0, b[start - 1] == UInt8(ascii: "{") else { return .none }
-        if endsWith(b, upTo: start, suffix: "\\begin{") { return .beginEnvironment }
-        if endsWith(b, upTo: start, suffix: "\\end{") { return .endEnvironment }
-        if endsWith(b, upTo: start, suffix: "\\label{") { return .label }
-        if endsWith(b, upTo: start, suffix: "\\ref{") || endsWith(b, upTo: start, suffix: "\\eqref{")
-            || endsWith(b, upTo: start, suffix: "\\pageref{") || endsWith(b, upTo: start, suffix: "\\autoref{") {
+        // `\includegraphics[width=2cm]{`, `\usepackage[utf8]{`, `\cite[p.~3]{`:
+        // one optional argument between the command and its brace is skipped
+        // (single-line, unnested — the shapes these commands take).
+        var end = start - 1
+        if end > 0, b[end - 1] == UInt8(ascii: "]") {
+            var j = end - 1
+            while j > 0, b[j - 1] != UInt8(ascii: "["), b[j - 1] != UInt8(ascii: "\n"), b[j - 1] != UInt8(ascii: "{"), b[j - 1] != UInt8(ascii: "}") { j -= 1 }
+            guard j > 0, b[j - 1] == UInt8(ascii: "[") else { return .none }
+            end = j - 1
+        }
+        if endsWith(b, upTo: end, suffix: "\\begin") { return .beginEnvironment }
+        if endsWith(b, upTo: end, suffix: "\\end") { return .endEnvironment }
+        if endsWith(b, upTo: end, suffix: "\\label") { return .label }
+        if endsWith(b, upTo: end, suffix: "\\ref") || endsWith(b, upTo: end, suffix: "\\eqref")
+            || endsWith(b, upTo: end, suffix: "\\pageref") || endsWith(b, upTo: end, suffix: "\\autoref") {
             return .reference
         }
-        if citationCommands.contains(where: { endsWith(b, upTo: start, suffix: "\\" + $0 + "{") }) { return .citation }
-        if endsWith(b, upTo: start, suffix: "\\usepackage{") { return .package }
-        if fileCommands.contains(where: { endsWith(b, upTo: start, suffix: "\\" + $0 + "{") }) { return .file }
+        if citationCommands.contains(where: { endsWith(b, upTo: end, suffix: "\\" + $0) }) { return .citation }
+        if packageCommands.contains(where: { endsWith(b, upTo: end, suffix: "\\" + $0) }) { return .package }
+        if classCommands.contains(where: { endsWith(b, upTo: end, suffix: "\\" + $0) }) { return .documentClass }
+        // `\PassOptionsToPackage{options}{`: the name is the second braced
+        // argument, so one `{…}` group (single-line, unnested) before this
+        // brace is stepped over for these two only.
+        if end > 0, b[end - 1] == UInt8(ascii: "}") {
+            var j = end - 1
+            while j > 0, b[j - 1] != UInt8(ascii: "{"), b[j - 1] != UInt8(ascii: "\n"), b[j - 1] != UInt8(ascii: "}") { j -= 1 }
+            if j > 0, b[j - 1] == UInt8(ascii: "{") {
+                if endsWith(b, upTo: j - 1, suffix: "\\PassOptionsToPackage") { return .package }
+                if endsWith(b, upTo: j - 1, suffix: "\\PassOptionsToClass") { return .documentClass }
+            }
+        }
+        if fileCommands.contains(where: { endsWith(b, upTo: end, suffix: "\\" + $0) }) { return .file }
+        if graphicsCommands.contains(where: { endsWith(b, upTo: end, suffix: "\\" + $0) }) { return .graphics }
+        if fontCommands.contains(where: { endsWith(b, upTo: end, suffix: "\\" + $0) }) { return .font }
         return .none
     }
 
-    /// Commands whose `{` argument completes a project file path.
-    static let fileCommands = ["input", "include", "includegraphics"]
+    /// Commands whose `{` argument completes a project document path.
+    static let fileCommands = ["input", "include"]
+
+    /// Commands whose first `{` argument is a package name: the document's
+    /// `\usepackage` and the package author's `\RequirePackage` family
+    /// (`\PassOptionsToPackage{options}{name}` is matched on its second, in
+    /// `context(in:before:)`).
+    static let packageCommands = ["usepackage", "RequirePackage", "RequirePackageWithOptions"]
+
+    /// Commands whose first `{` argument is a class name: `\documentclass`
+    /// and the class author's `\LoadClass` family.
+    static let classCommands = ["documentclass", "LoadClass", "LoadClassWithOptions"]
+
+    /// Commands whose `{` argument completes an image file under the project root.
+    static let graphicsCommands = ["includegraphics"]
+
+    /// fontspec commands whose `{` argument is an installed font family
+    /// (`crates/render-pipeline/src/fontspec.rs`); `\newfontfamily\cmd{` is
+    /// not here because the bytes before its brace are the switch's name.
+    static let fontCommands = ["setmainfont", "setsansfont", "setmonofont", "setmathfont", "setromanfont", "fontspec"]
 
     /// Argument keys are wider than words: `eq:main`, `knuth-84`, `ch/one.tex`,
     /// `amsmath` after a comma. Scanned back from the caret over key bytes to
@@ -375,7 +497,7 @@ enum Completion {
         }
         let context = context(in: b, before: opener)
         switch context {
-        case .reference, .citation, .label, .package, .file:
+        case .reference, .citation, .label, .package, .documentClass, .file, .graphics, .font:
             let text = String(decoding: b[start..<caretByte], as: UTF8.self)
             guard text.utf8.allSatisfy({ $0 < 0x80 }) || text.unicodeScalars.allSatisfy({ $0.properties.isAlphabetic }) else { return nil }
             return .word(text: text, start: start, end: caretByte, context: context)
@@ -412,13 +534,13 @@ enum Completion {
     /// The token at the caret, read from at most `window` UTF-16 units before
     /// it. This is the cheap main-thread gate for automatic completion: it is
     /// O(window), never O(document), so it may run on every keystroke.
-    static func caretToken(in text: NSString, caretUTF16: Int, window: Int = caretTokenWindow) -> CaretToken? {
+    static func caretToken(in text: NSString, caretUTF16: Int, window: Int = caretTokenWindow, atLetter: Bool = false) -> CaretToken? {
         let caret = max(0, min(caretUTF16, text.length))
         var from = max(0, caret - max(1, window))
         if from > 0, from < text.length { from = text.rangeOfComposedCharacterSequence(at: from).location }
         guard from <= caret else { return nil }
         let slice = text.substring(with: NSRange(location: from, length: caret - from))
-        guard let token = token(in: slice, caretUTF16: (slice as NSString).length),
+        guard let token = token(in: slice, caretUTF16: (slice as NSString).length, atLetter: atLetter),
               let ns = slice.nsRange(utf8Bytes: .init(path: "", startByte: token.start, endByte: token.end))
         else { return nil }
         return CaretToken(token: token, startUTF16: from + ns.location)
@@ -476,12 +598,72 @@ enum Completion {
         return strong.isEmpty ? weak : strong
     }
 
+    // MARK: recently used
+
+    /// What the author accepted from the list lately, most recent first, so
+    /// `\t` offers `\textbf` above the inventory's `\tableofcontents` once it
+    /// has been chosen once. Commands are kept by name (no backslash),
+    /// environments by name; nothing else is remembered. In memory for the
+    /// app's lifetime, per editor by default (`CompletingTextView.recentlyUsed`)
+    /// and shared across documents by the hosted editor (`shared`).
+    @MainActor
+    final class RecentlyUsed {
+        static let shared = RecentlyUsed()
+        static let limit = 64
+        private(set) var commands: [String] = []
+        private(set) var environments: [String] = []
+
+        func record(_ suggestion: Suggestion) {
+            switch suggestion.kind {
+            case .command where suggestion.insertText.hasPrefix("\\"):
+                Self.push(String(suggestion.insertText.dropFirst()), onto: &commands)
+            case .environment where !suggestion.label.hasPrefix("\\"):
+                Self.push(suggestion.label, onto: &environments)
+            default:
+                break
+            }
+        }
+
+        /// Forgets everything (tests that assert the inventory's own order on
+        /// a hosted editor, which shares this store across the process).
+        func removeAll() {
+            commands = []
+            environments = []
+        }
+
+        private static func push(_ name: String, onto list: inout [String]) {
+            list.removeAll { $0 == name }
+            list.insert(name, at: 0)
+            if list.count > limit { list.removeLast(list.count - limit) }
+        }
+    }
+
+    /// `supported` with the names in `recent` (most recent first) moved to
+    /// the front; the rest keep their table order. `commandSuggestions` walks
+    /// `supported` in order, so this is what ranks recent commands first
+    /// without changing how they are matched.
+    static func prioritising(_ supported: [String], recent: [String]) -> [String] {
+        guard !recent.isEmpty else { return supported }
+        let known = Set(supported)
+        let first = recent.filter { known.contains($0) }
+        guard !first.isEmpty else { return supported }
+        let moved = Set(first)
+        return first + supported.filter { !moved.contains($0) }
+    }
+
+    /// Where Page Up/Down (`pages` of `pageSize` rows) lands from `index` in
+    /// a list of `count` rows: clamped to the ends, never wrapping.
+    static func pagedSelection(from index: Int, pages: Int, pageSize: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        return min(max(index + pages * max(1, pageSize), 0), count - 1)
+    }
+
     /// UTF-16 range the chosen suggestion replaces: the token before the caret
     /// including a leading `\`, or an empty range at the caret.
-    static func completionRange(in text: String, caretUTF16: Int) -> NSRange {
+    static func completionRange(in text: String, caretUTF16: Int, atLetter: Bool = false) -> NSRange {
         let length = (text as NSString).length
         let caret = max(0, min(caretUTF16, length))
-        guard let token = token(in: text, caretUTF16: caret),
+        guard let token = token(in: text, caretUTF16: caret, atLetter: atLetter),
               let ns = text.nsRange(utf8Bytes: .init(path: "", startByte: token.start, endByte: token.end))
         else { return NSRange(location: caret, length: 0) }
         return ns
@@ -511,8 +693,8 @@ enum Completion {
     /// from `text` (it is bound as-is). Prefer `suggestions(in:caretUTF16:metadata:)`
     /// with metadata the caller has already bound to the caret's revision.
     static func suggestions(in text: String, caretUTF16: Int, result: RuntimeV1.CompileResult?,
-                            supported: [String] = defaultSupported) -> [Suggestion] {
-        suggestions(in: text, caretUTF16: caretUTF16, metadata: result.map(Metadata.from), supported: supported)
+                            supported: [String] = defaultSupported, projectClass: String? = nil) -> [Suggestion] {
+        suggestions(in: text, caretUTF16: caretUTF16, metadata: result.map(Metadata.from), supported: supported, projectClass: projectClass)
     }
 
     /// `metadata` must already be bound to the revision of `text` (see
@@ -521,33 +703,75 @@ enum Completion {
     /// so an off-main computation stops early; a cancelled call returns `[]`.
     /// `mathMode` says whether the caret is in math mode (`isMathMode`). The
     /// caller passes it because it can answer cheaply from the editor's own
-    /// syntax model; the default, false, keeps the plain text-mode order.
+    /// syntax model. It is a hard filter on the command list (`allows`):
+    /// true hides the inventory's text-only commands, false hides its
+    /// math-only ones, and nil — the default, a caller with no syntax model —
+    /// filters nothing and keeps the plain text-mode order.
+    /// `declaredElsewhere` names the macros the project's other open documents
+    /// define (`declaredCommands` over each; the scheduler computes it
+    /// off-main), offered as declared like the buffer's own.
+    /// `bibliographyEntries` are the records of the project's `.bib` files
+    /// read directly (`BibScanner.entries(for:)`, computed by the scheduler
+    /// off-main when the caret is in `\cite{`), offered after the helper's keys.
+    /// `projectClass` is the `\documentclass` of the project's root document
+    /// (`ProjectDocuments.entryDocumentClass`, read on the main thread when
+    /// the list is requested): what gates class-scoped commands when `text`
+    /// itself declares no class — an included chapter or slide file. Nil, the
+    /// default, is a file with no project, which gates nothing.
+    /// `indentUnit` and `environmentRules` shape the environment skeletons
+    /// (`environmentSnippet`): whether the body is indented, and what its
+    /// first line starts with (EnvironmentEditingRules.swift).
+    /// `fontFamilies` are the installed families `\setmainfont{` offers
+    /// (`InstalledFonts.families`, listed by the job off-main and only when
+    /// the caret is in that argument).
+    /// `packageMode` says the author is writing a package or class — a
+    /// `.sty`/`.cls` buffer, or the caret inside `\makeatletter` — so the
+    /// kernel's authoring vocabulary (`EditorIntelligence.CommandDocs.kernel`)
+    /// leads the command list; `atLetter` (the same source) makes `@` part of
+    /// the typed token. `projectPackageFiles` are the project's `.sty`/`.cls`
+    /// paths, offered first after `\usepackage{` and `\documentclass{`.
     static func suggestions(in text: String, caretUTF16: Int, metadata: Metadata?,
                             supported: [String] = defaultSupported, projectFiles: [String] = [],
-                            mathMode: Bool = false,
+                            graphicsFiles: [String] = [], recentEnvironments: [String] = [],
+                            declaredElsewhere: [String] = [], mathMode: Bool? = nil,
+                            bibliographyEntries: [BibScanner.Entry] = [], projectClass: String? = nil,
+                            indentUnit: String = "", environmentRules: EnvironmentEditingRules = .conventional,
+                            fontFamilies: [String] = [],
+                            packageMode: Bool = false, atLetter: Bool = false, projectPackageFiles: [String] = [],
+                            packageDeclarations: [PackageDeclaration] = [],
                             cancelled: () -> Bool = { false }) -> [Suggestion] {
-        guard let token = token(in: text, caretUTF16: caretUTF16), !cancelled() else { return [] }
+        guard let token = token(in: text, caretUTF16: caretUTF16, atLetter: atLetter), !cancelled() else { return [] }
         let out: [Suggestion]
         switch token {
         case .command(let prefix, _, _):
-            out = commandSuggestions(prefix: prefix, tokenStart: token.start, text: text,
-                                     metadata: metadata, supported: supported, mathMode: mathMode, cancelled: cancelled)
+            out = commandSuggestions(prefix: prefix, tokenStart: token.start, text: text, metadata: metadata, supported: supported,
+                                     declaredElsewhere: declaredElsewhere, mathMode: mathMode, projectClass: projectClass,
+                                     packageMode: packageMode, packageDeclarations: packageDeclarations, cancelled: cancelled)
         case .word(let prefix, _, _, let context):
             guard prefix.unicodeScalars.count >= 2 || context != .none else { return [] }
             switch context {
             case .beginEnvironment, .endEnvironment:
                 out = environmentSuggestions(prefix: prefix, tokenStart: token.start, text: text,
-                                             closing: context == .endEnvironment, metadata: metadata)
+                                             closing: context == .endEnvironment, metadata: metadata, recent: recentEnvironments,
+                                             documentClass: documentClass(in: text) ?? projectClass,
+                                             indentUnit: indentUnit, rules: environmentRules,
+                                             packageEnvironments: packageDeclarations.filter { $0.declaration.kind == .environment })
             case .reference:
                 out = referenceSuggestions(prefix: prefix, text: text, metadata: metadata)
             case .citation:
-                out = citationSuggestions(prefix: prefix, text: text, metadata: metadata)
+                out = citationSuggestions(prefix: prefix, text: text, metadata: metadata, bibliographyEntries: bibliographyEntries)
             case .label:
                 out = labelSuggestions(prefix: prefix, tokenStart: token.start, text: text, metadata: metadata)
             case .package:
-                out = packageSuggestions(prefix: prefix)
+                out = packageSuggestions(prefix: prefix, projectPackageFiles: projectPackageFiles)
+            case .documentClass:
+                out = classSuggestions(prefix: prefix, projectPackageFiles: projectPackageFiles)
             case .file:
-                out = fileSuggestions(prefix: prefix, files: projectFiles)
+                out = fileSuggestions(prefix: prefix, files: projectFiles, detail: "project document")
+            case .graphics:
+                out = fileSuggestions(prefix: prefix, files: graphicsFiles, detail: "graphics file")
+            case .font:
+                out = fontSuggestions(prefix: prefix, families: fontFamilies)
             case .none:
                 out = wordSuggestions(prefix: prefix, tokenStart: token.start, text: text)
             }
@@ -555,11 +779,63 @@ enum Completion {
         return cancelled() ? [] : out
     }
 
+    /// `\setmainfont{` candidates: the installed families, matched on the
+    /// typed prefix. A family with spaces (`Times New Roman`) completes from
+    /// its first word; the whole name is inserted.
+    private static func fontSuggestions(prefix: String, families: [String]) -> [Suggestion] {
+        let names = fuzzyFilter(families, prefix: prefix) { $0 }
+        return names.prefix(maxSuggestions).map {
+            Suggestion(label: $0, insertText: $0, kind: .command, detail: "installed font family", sampleFamily: $0)
+        }
+    }
+
+    /// Text-mode commands of the inventory that LaTeX nevertheless takes
+    /// inside `equation`/`align`/`$…$`, so the math filter keeps them: the
+    /// label/reference family (`\label{eq:main}` lives inside the
+    /// environment it names) and `\\` (the row break of every math grid).
+    static let mathAllowedTextCommands: Set<String> = LaTeXVocabulary.mathAllowedTextCommands
+
+    /// Whether the vocabulary entry belongs in the list at the caret's mode:
+    /// in math (`true`) the text-only commands are out, in text (`false`) the
+    /// math-only ones are, and an unknown mode (nil) hides nothing. A command
+    /// the compiler accepts in both modes (`\textbf`, `\quad`) is one text
+    /// entry carrying a math description, so it stays either way.
+    static func allows(_ entry: Vocabulary.Entry, mathMode: Bool?) -> Bool {
+        LaTeXVocabulary.allows(name: entry.name, mode: entry.mode, acceptedInMath: entry.mathDescription != nil, mathMode: mathMode)
+    }
+
     private static func commandSuggestions(prefix: String, tokenStart: Int, text: String, metadata: Metadata?,
-                                           supported: [String], mathMode: Bool, cancelled: () -> Bool) -> [Suggestion] {
+                                           supported: [String], declaredElsewhere: [String], mathMode: Bool?,
+                                           projectClass: String?, packageMode: Bool = false,
+                                           packageDeclarations: [PackageDeclaration] = [], cancelled: () -> Bool) -> [Suggestion] {
         var out: [Suggestion] = []
         let scan = scanCommands(in: text, tokenStart: tokenStart, prefix: prefix)
         if cancelled() { return [] }
+        // Writing a package or class: the kernel's authoring vocabulary
+        // (`\ProvidesPackage`, `\DeclareOption`, `\@ifnextchar`, …) is what
+        // the author means by `\P` or `\@i` here, so it leads the list in
+        // its table order — the exact spelling still first. A name the
+        // compiler's vocabulary also has (`\newcommand`, `\RequirePackage`)
+        // takes the kernel row, with the authoring documentation. Only when
+        // `packageMode` is on: a document author never sees these rows
+        // above `\section`.
+        var kernelRows: [Suggestion] = []
+        if packageMode {
+            for k in EditorIntelligence.CommandDocs.kernel where k.name.hasPrefix(prefix) {
+                kernelRows.append(Suggestion(label: "\\" + k.name + k.arguments, insertText: "\\" + k.name, kind: .command,
+                                             detail: "package authoring (LaTeX kernel)",
+                                             snippet: argumentSnippet(name: k.name, arguments: k.arguments)))
+            }
+            // The exact spelling leads even here.
+            if let i = kernelRows.firstIndex(where: { $0.insertText == "\\" + prefix }), i > 0 { kernelRows.insert(kernelRows.remove(at: i), at: 0) }
+        }
+        // The author's own macros (`\newcommand{\foo}`, `\def\foo`, …; see
+        // `declaredCommands`), read from the buffer on every request so they
+        // are "declared" from the keystroke that defines them — never "not
+        // supported by the compiler" while the project index is still catching
+        // up (or absent: an unsaved buffer has no index at all).
+        let declaredHere = declarations(in: text).filter { $0.kind == .command }
+        let mathFirst = mathMode == true
         // 1. Close environments still open at the caret.
         for open in scan.open.reversed() where "end".hasPrefix(prefix) {
             out.append(Suggestion(label: "\\end{\(open.name)}", insertText: "\\end{\(open.name)}", kind: .environment,
@@ -576,56 +852,127 @@ enum Completion {
         //    while the table's text-first order buries them under `\\addvspace`.
         //    The exactly-typed spelling and the project's own declarations stay
         //    on top of both, and in text mode the order is untouched.
+        //    A known mode is also a filter (`allows`): inside `$…$` the
+        //    text-only commands are hidden, in text the math-only ones are.
+        //    The hidden rows are kept aside so a list the filter would empty
+        //    falls back to them (`\ite` in math still offers `\item`) —
+        //    something is always shown.
         var offered = Set<String>()
+        for row in kernelRows { offered.insert(String(row.insertText.dropFirst())) }
+        out += kernelRows
         let declared: [String: Metadata.Item] = Dictionary((metadata?.commands ?? []).filter { $0.definitions > 0 }.map { ($0.name, $0) },
                                                            uniquingKeysWith: { a, _ in a })
         let exact = supported.contains(prefix) ? [prefix] : []
+        //    A class-scoped command (`Entry.requiresClass`) is filtered out of
+        //    the vocabulary in a document of another class, so beamer's
+        //    `\frametitle` and `\alert` cannot bury `\frac` and `\alpha` in
+        //    an article — they lead on table order, being text entries, and
+        //    no ranking within the list can undo that. The class is the one
+        //    this text declares, else the project root's (`projectClass`: an
+        //    included chapter or slide file declares none, and its root
+        //    does), else unknown, which gates nothing (`Entry.offered`). The
+        //    gate has no exceptions: neither the name typed out in full nor
+        //    one the document already uses (3. below) brings `\email` back
+        //    into an article, where pdflatex has no such command.
+        let documentClass = documentClass(in: text) ?? projectClass
+        func inThisClass(_ name: String) -> Bool {
+            Vocabulary.byName[name]?.offered(inClass: documentClass) ?? true
+        }
         /// 0 the exact spelling, 1 a project declaration, 2 a math command,
         /// 3 everything else. Only consulted when `mathMode` is on.
         var vocabulary: [(suggestion: Suggestion, rank: Int)] = []
-        for name in exact + supported where name.hasPrefix(prefix) && offered.insert(name).inserted {
+        var hidden: [(suggestion: Suggestion, rank: Int)] = []
+        for name in exact + supported where name.hasPrefix(prefix) && inThisClass(name) && offered.insert(name).inserted {
             if let item = declared[name], let metadata {
                 vocabulary.append((Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command,
                                               detail: item.detail(noun: "declared", revision: metadata.revision) + " · overrides the builtin"),
                                    name == prefix ? 0 : 1))
             } else {
                 let entry = Vocabulary.byName[name] ?? Vocabulary.generic(name)
-                vocabulary.append((Suggestion(label: entry.label, insertText: "\\" + name, kind: .command, detail: entry.detail,
-                                              snippet: entry.snippet),
-                                   name == prefix ? 0 : entry.mode == .math ? 2 : 3))
+                let row = (Suggestion(label: entry.label, insertText: "\\" + name, kind: .command, detail: entry.detail,
+                                      snippet: entry.snippet),
+                           name == prefix ? 0 : entry.mode == .math ? 2 : 3)
+                if allows(entry, mathMode: mathMode) { vocabulary.append(row) } else { hidden.append(row) }
             }
         }
-        if mathMode {
+        // The buffer's own declarations (then the other open documents') sit
+        // right under the exact spelling and above the rest of the vocabulary:
+        // with the list capped at `maxSuggestions`, a `\foo` the author just
+        // defined must not be buried under the compiler's `\f…` entries. A
+        // name the vocabulary already offers keeps its entry (`offered`), so
+        // `\renewcommand{\vec}` still shows the compiler's `\vec` row.
+        var declaredRows: [(suggestion: Suggestion, rank: Int)] = []
+        // Rows: the buffer's own declarations (with their argument shape as
+        // the snippet), the other open documents' (names only: the
+        // scheduler hands the names), then the project's package and class
+        // files' ("declared in mystyle.sty", with the shape).
+        var rows: [(name: String, where_: String, snippet: Snippet?)] = declaredHere.map { ($0.name, "declared in this document", $0.snippet) }
+        rows += declaredElsewhere.map { ($0, "declared in an open document", nil) }
+        rows += packageDeclarations.filter { $0.declaration.kind == .command }.map { ($0.declaration.name, $0.detail, $0.declaration.snippet) }
+        for row in rows where row.name.hasPrefix(prefix) && offered.insert(row.name).inserted {
+            let name = row.name
+            // Once the index has answered for this revision its line is the
+            // richer one (file, use count); until then the buffer's.
+            var detail = declared[name].flatMap { item in metadata.map { item.detail(noun: "declared", revision: $0.revision) } } ?? row.where_
+            if let message = metadata?.diagnosticsByCommand[name] { detail += " — " + message }
+            declaredRows.append((Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command, detail: detail, snippet: row.snippet), 1))
+        }
+        vocabulary.insert(contentsOf: declaredRows, at: vocabulary.first?.rank == 0 ? 1 : 0)
+        func ordered(_ rows: [(suggestion: Suggestion, rank: Int)]) -> [Suggestion] {
+            guard mathFirst else { return rows.map(\.suggestion) }
             // Stable: equal ranks keep the table order they were filled in.
-            out += vocabulary.enumerated().sorted { a, b in
+            return rows.enumerated().sorted { a, b in
                 a.element.rank != b.element.rank ? a.element.rank < b.element.rank : a.offset < b.offset
             }.map(\.element.suggestion)
-        } else {
-            out += vocabulary.map(\.suggestion)
         }
+        out += ordered(vocabulary)
+        let documentRowsStart = out.count
         if let metadata {
             for item in metadata.commands where item.name.hasPrefix(prefix) && item.name != prefix && offered.insert(item.name).inserted {
                 out.append(Suggestion(label: "\\" + item.name, insertText: "\\" + item.name, kind: .command,
                                       detail: item.detail(noun: "declared", revision: metadata.revision)))
             }
         }
-        // 3. Commands typed in the document that neither the compiler nor the
-        //    project declares, with the compiler's own diagnostic when it
-        //    named the command at this revision.
-        for name in scan.commands where !offered.contains(name) {
+        // 3. Commands typed in the document that neither the compiler, the
+        //    document (`declaredHere`) nor the project declares, with the
+        //    compiler's own diagnostic when it named the command at this
+        //    revision.
+        for name in scan.commands where !offered.contains(name) && inThisClass(name) {
             var detail = "not supported by the compiler"
             if let message = metadata?.diagnosticsByCommand[name] { detail += " — " + message }
             out.append(Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command, detail: detail))
         }
+        // The project's and this text's own commands (2b and 3) come after
+        // the vocabulary, but the cap must not cut them all: a `\new`
+        // prefix alone matches a dozen vocabulary entries, and every new
+        // inventory entry (`\newgeometry`) would push the author's own
+        // `\newwidget` — with the compiler's diagnostic for it — out of
+        // the list. Up to `reservedDocumentRows` of them keep a place,
+        // taken from the end of the vocabulary.
+        if out.count > maxSuggestions, documentRowsStart < out.count {
+            let documentRows = out[documentRowsStart...]
+            let keep = min(documentRows.count, Self.reservedDocumentRows)
+            if documentRowsStart > maxSuggestions - keep {
+                out = Array(out[..<(maxSuggestions - keep)]) + Array(documentRows.prefix(keep))
+            }
+        }
+        // The mode filter must never leave the author with nothing: an
+        // otherwise empty list shows the commands it hid.
+        if out.isEmpty { out = ordered(hidden) }
         // 4. Fuzzy fallback: when nothing starts with the prefix, vocabulary
         //    commands whose name contains the typed characters in order
-        //    (`\sbs` → `\subsection`).
+        //    (`\sbs` → `\subsection`), under the same mode filter with the
+        //    same escape hatch.
         if out.isEmpty, prefix.utf8.count >= 2 {
-            for name in supported where out.count < maxSuggestions && !offered.contains(name) && matchRank(name, prefix: prefix) == 2 {
+            var fuzzyHidden: [Suggestion] = []
+            for name in supported where out.count < maxSuggestions && !offered.contains(name)
+                && inThisClass(name) && matchRank(name, prefix: prefix) == 2 {
                 offered.insert(name)
                 let entry = Vocabulary.byName[name] ?? Vocabulary.generic(name)
-                out.append(Suggestion(label: entry.label, insertText: "\\" + name, kind: .command, detail: entry.detail, snippet: entry.snippet))
+                let row = Suggestion(label: entry.label, insertText: "\\" + name, kind: .command, detail: entry.detail, snippet: entry.snippet)
+                if allows(entry, mathMode: mathMode) { out.append(row) } else if fuzzyHidden.count < maxSuggestions { fuzzyHidden.append(row) }
             }
+            if out.isEmpty { out = fuzzyHidden }
         }
         return Array(out.prefix(maxSuggestions))
     }
@@ -641,16 +988,51 @@ enum Completion {
         "textcomp", "wrapfig", "adjustbox", "pdfpages", "xspace", "etoolbox", "ifthen", "calc", "times", "mathptmx",
     ]
 
-    private static func packageSuggestions(prefix: String) -> [Suggestion] {
-        let names = fuzzyFilter(knownPackages, prefix: prefix) { $0 }
-        return names.prefix(maxSuggestions).map {
-            Suggestion(label: $0, insertText: $0, kind: .command, detail: "package (recognised, not implemented by this compiler)")
+    /// `\usepackage{`/`\RequirePackage{` candidates: the project's own
+    /// `.sty` files first (`projectPackageFiles`, the paths the compiler
+    /// resolves `\usepackage` against — a member, a file next to the entry,
+    /// a `texinputs` directory, a resolved package), then the CTAN names.
+    static func packageSuggestions(prefix: String, projectPackageFiles: [String] = []) -> [Suggestion] {
+        var seen = Set<String>()
+        let own = projectPackageFiles.filter { ($0 as NSString).pathExtension.lowercased() == "sty" }
+            .map { path in (name: (ProjectManifest.packageDisplayName(path) as NSString).deletingPathExtension, file: ProjectManifest.packageDisplayName(path)) }
+            .filter { seen.insert($0.name).inserted }
+        let ownRows = fuzzyFilter(own, prefix: prefix) { $0.name }.map {
+            Suggestion(label: $0.name, insertText: $0.name, kind: .command, detail: "package in this project · \($0.file)")
         }
+        let names = fuzzyFilter(knownPackages.filter { !seen.contains($0) }, prefix: prefix) { $0 }
+        return Array((ownRows + names.map {
+            Suggestion(label: $0, insertText: $0, kind: .command, detail: "package (recognised, not implemented by this compiler)")
+        }).prefix(maxSuggestions))
     }
 
-    /// `\input{`/`\include{`/`\includegraphics{` candidates: the project's
-    /// document paths, matched on the path or its basename.
-    private static func fileSuggestions(prefix: String, files: [String]) -> [Suggestion] {
+    /// `\documentclass{`/`\LoadClass{` candidates: the standard and common
+    /// CTAN classes (static, like `knownPackages`).
+    static let knownClasses = [
+        "article", "report", "book", "letter", "beamer", "memoir", "amsart", "amsbook", "amsproc", "scrartcl", "scrreprt", "scrbook",
+        "scrlttr2", "standalone", "IEEEtran", "acmart", "revtex4-2", "elsarticle", "llncs", "proc", "slides", "minimal", "exam",
+        "moderncv", "tufte-handout", "tufte-book", "subfiles",
+    ]
+
+    /// `\documentclass{`/`\LoadClass{` candidates: the project's own `.cls`
+    /// files first, then `knownClasses`.
+    static func classSuggestions(prefix: String, projectPackageFiles: [String] = []) -> [Suggestion] {
+        var seen = Set<String>()
+        let own = projectPackageFiles.filter { ($0 as NSString).pathExtension.lowercased() == "cls" }
+            .map { path in (name: (ProjectManifest.packageDisplayName(path) as NSString).deletingPathExtension, file: ProjectManifest.packageDisplayName(path)) }
+            .filter { seen.insert($0.name).inserted }
+        let ownRows = fuzzyFilter(own, prefix: prefix) { $0.name }.map {
+            Suggestion(label: $0.name, insertText: $0.name, kind: .command, detail: "class in this project · \($0.file)")
+        }
+        let names = fuzzyFilter(knownClasses.filter { !seen.contains($0) }, prefix: prefix) { $0 }
+        return Array((ownRows + names.map {
+            Suggestion(label: $0, insertText: $0, kind: .command, detail: "document class")
+        }).prefix(maxSuggestions))
+    }
+
+    /// `\input{`/`\include{` (project documents) and `\includegraphics{`
+    /// (image files) candidates, matched on the path or its basename.
+    private static func fileSuggestions(prefix: String, files: [String], detail: String) -> [Suggestion] {
         var seen = Set<String>()
         let unique = files.filter { seen.insert($0).inserted }
         let matched = fuzzyFilter(unique, prefix: prefix) { path in
@@ -658,17 +1040,63 @@ enum Completion {
             return matchRank(path, prefix: prefix) != nil ? path : base
         }
         return matched.prefix(maxSuggestions).map {
-            Suggestion(label: $0, insertText: $0, kind: .command, detail: "project document")
+            Suggestion(label: $0, insertText: $0, kind: .command, detail: detail)
         }
     }
 
+    /// Image files `\includegraphics{}` can read under `root`, as project-relative
+    /// paths in sorted order: graphicx's extensions (`graphicsExtensions`),
+    /// hidden entries and package contents skipped, at most `limit` files and
+    /// `visitLimit` directory entries walked so a root that is really a home
+    /// directory costs a bounded scan, not a crawl. Runs off-main (the
+    /// scheduler's job) and only when the caret is in a graphics argument.
+    static func graphicsFiles(under root: URL, limit: Int = 500, visitLimit: Int = 5000) -> [String] {
+        let extensions = Set(EditorIntelligence.graphicsExtensions)
+        guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey],
+                                                          options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return [] }
+        let base = root.standardizedFileURL.path
+        var out: [String] = []
+        var visited = 0
+        for case let url as URL in walker {
+            visited += 1
+            if visited > visitLimit || out.count >= limit { break }
+            guard extensions.contains(url.pathExtension.lowercased()),
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+            let path = url.standardizedFileURL.path
+            guard path.hasPrefix(base + "/") else { continue }
+            out.append(String(path.dropFirst(base.count + 1)))
+        }
+        return out.sorted()
+    }
+
+    /// `documentClass` is the class the gate on class-scoped environments
+    /// reads — the text's own `\documentclass`, else the project root's, else
+    /// nil (`commandSuggestions` resolves commands the same way): beamer's
+    /// `invisibleenv` is not offered in an article, and an unknown class
+    /// gates nothing. The escape hatches match the commands': the name typed
+    /// out in full, and an environment the document already opens or
+    /// declares, are never hidden.
     private static func environmentSuggestions(prefix: String, tokenStart: Int, text: String, closing: Bool,
-                                               metadata: Metadata?) -> [Suggestion] {
+                                               metadata: Metadata?, recent: [String], documentClass: String?,
+                                               indentUnit: String, rules: EnvironmentEditingRules,
+                                               packageEnvironments: [PackageDeclaration] = []) -> [Suggestion] {
         var names: [String] = []
         if closing {
             names += openEnvironments(in: text, beforeByte: tokenStart).reversed().map(\.name)
         }
-        names += knownEnvironments
+        let declared = declaredEnvironments(in: text)
+        // The project's package and class files' `\newenvironment`/`\newtheorem`s
+        // ("declared in mystyle.sty"), after the buffer's own.
+        let fromPackages = Dictionary(packageEnvironments.map { ($0.declaration.name, $0.detail) }, uniquingKeysWith: { a, _ in a })
+        let known = knownEnvironments.filter { $0 == prefix || Vocabulary.environmentOffered($0, inClass: documentClass) }
+        let offered = Set(known + declared + fromPackages.keys)
+        // Recently accepted names first (the environments this author keeps
+        // opening), then the compiler's table, the document's declarations and
+        // the names it already uses.
+        names += recent.filter { offered.contains($0) }
+        names += known
+        names += declared
+        names += packageEnvironments.map(\.declaration.name)
         names += documentEnvironments(in: text)
         var seen = Set<String>()
         var out: [Suggestion] = []
@@ -676,48 +1104,28 @@ enum Completion {
         // the (indented) middle line; closing stays the exact name.
         let indent = closing ? "" : lineIndent(in: text, beforeByte: tokenStart)
         for name in fuzzyFilter(names, prefix: prefix, key: { $0 }) where seen.insert(name).inserted {
-            var detail = knownEnvironments.contains(name) ? "supported by this compiler" : "seen in this document"
+            var detail = knownEnvironments.contains(name) ? "supported by this compiler"
+                : declared.contains(name) ? "declared in this document"
+                : fromPackages[name] ?? "seen in this document"
             if let message = metadata?.diagnosticsByEnvironment[name] { detail += " — " + message }
-            let snippet = closing ? nil : environmentSnippet(name, indent: indent)
+            let snippet = closing ? nil : environmentSnippet(name, indent: indent, unit: indentUnit, rules: rules)
             out.append(Suggestion(label: name, insertText: name + "}", kind: .environment, detail: detail, snippet: snippet))
         }
         return Array(out.prefix(maxSuggestions))
     }
 
     /// Body skeleton inserted after `\begin{` for `name`: the caret on the
-    /// (indented) middle line, or inside the first placeholder of a richer
-    /// template (`itemize`/`enumerate` with `\item`, `figure`/`table` with
-    /// `\centering`, `\caption{}` and `\label{}`), the later placeholders as
-    /// Tab stops. Offsets are UTF-16 into the inserted text, which starts
-    /// right after the `\begin{` the user typed.
-    static func environmentSnippet(_ name: String, indent: String) -> Snippet {
-        let nl = "\n" + indent
-        let base = name.hasSuffix("*") ? String(name.dropLast()) : name
-        var lines: [String]
-        switch base {
-        case "itemize", "enumerate": lines = ["\(name)}", "\\item ⟨⟩", "\\end{\(name)}"]
-        case "description": lines = ["\(name)}", "\\item[⟨⟩] ⟨⟩", "\\end{\(name)}"]
-        case "figure": lines = ["\(name)}", "\\centering", "\\includegraphics[width=0.8\\linewidth]{⟨⟩}", "\\caption{⟨⟩}", "\\label{fig:⟨⟩}", "\\end{\(name)}"]
-        case "table": lines = ["\(name)}", "\\centering", "\\begin{tabular}{⟨⟩}", "\\end{tabular}", "\\caption{⟨⟩}", "\\label{tab:⟨⟩}", "\\end{\(name)}"]
-        case "align", "gather", "equation", "multline", "flalign", "alignat":
-            lines = ["\(name)}", "⟨⟩", "\\end{\(name)}"]
-        default: lines = ["\(name)}", "⟨⟩", "\\end{\(name)}"]
-        }
-        // Placeholders `⟨⟩` become stops (removed from the text).
-        var out = ""
-        var stops: [Int] = []
-        for (i, line) in lines.enumerated() {
-            if i > 0 { out += nl }
-            var rest = Substring(line)
-            while let r = rest.range(of: "⟨⟩") {
-                out += rest[..<r.lowerBound]
-                stops.append((out as NSString).length)
-                rest = rest[r.upperBound...]
-            }
-            out += rest
-        }
-        let caret = stops.first ?? (out as NSString).length
-        return Snippet(text: out, caretUTF16: caret, stops: Array(stops.dropFirst()) + [(out as NSString).length])
+    /// middle line — indented one `unit` when `rules` indent that body — or
+    /// inside the first placeholder of a richer template (`figure`/`table`
+    /// with `\centering`, `\caption{}` and `\label{}`), the later
+    /// placeholders as Tab stops. The middle line starts with the rules'
+    /// line template for the environment (`\item ` in a list, with the
+    /// caret after it; `\item[] ` in a description, with the caret inside
+    /// the brackets and a stop after them). Offsets are UTF-16 into the
+    /// inserted text, which starts right after the `\begin{` the user typed.
+    /// The shared core's `LaTeXSnippets.environment`, as on the iPad.
+    static func environmentSnippet(_ name: String, indent: String, unit: String = "", rules: EnvironmentEditingRules = .conventional) -> Snippet {
+        LaTeXSnippets.environment(name, indent: indent, unit: unit, rules: rules)
     }
 
     /// One candidate for `\label{`: a key derived from the enclosing
@@ -796,7 +1204,12 @@ enum Completion {
     /// helper did not report a kind for, or a cited key with no definition
     /// (which says how to declare the .bib). Declared-bibliography records
     /// rank first among the index keys, unresolved keys last.
-    private static func citationSuggestions(prefix: String, text: String, metadata: Metadata?) -> [Suggestion] {
+    /// Then the records `BibScanner` read straight from the project's `.bib`
+    /// files (`@article · refs.bib`, the title as documentation line): with
+    /// no helper attached they are the only `.bib` keys there are; with one,
+    /// the helper's row for a key wins and only gains the record's line.
+    private static func citationSuggestions(prefix: String, text: String, metadata: Metadata?,
+                                            bibliographyEntries: [BibScanner.Entry] = []) -> [Suggestion] {
         var seen = Set<String>()
         var out: [Suggestion] = []
         for key in bibitems(in: text) where matchRank(key, prefix: prefix) != nil && seen.insert(key).inserted {
@@ -811,6 +1224,16 @@ enum Completion {
             // Stable: the index's own (sorted) order within a rank.
             out += ranked.enumerated().sorted { a, b in a.element.rank != b.element.rank ? a.element.rank < b.element.rank : a.offset < b.offset }
                 .map(\.element.suggestion)
+        }
+        if !bibliographyEntries.isEmpty {
+            let byKey = Dictionary(bibliographyEntries.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+            for i in out.indices where out[i].documentation == nil {
+                if let entry = byKey[out[i].label] { out[i].documentation = entry.documentation }
+            }
+            for entry in bibliographyEntries where matchRank(entry.key, prefix: prefix) != nil && seen.insert(entry.key).inserted {
+                out.append(Suggestion(label: entry.key, insertText: entry.key + "}", kind: .citation, detail: entry.detail,
+                                      documentation: entry.documentation))
+            }
         }
         return Array(fuzzyFilter(out, prefix: prefix, key: \.label).prefix(maxSuggestions))
     }
@@ -895,6 +1318,350 @@ enum Completion {
             }
         }
         return stack
+    }
+
+    /// The class of `\documentclass[options]{class}`, or nil when the text
+    /// declares none — a fragment `\input` into a root file, or a bare
+    /// snippet. Read from a document's own text, which is where this file
+    /// learns every other structural fact about it (`scanCommands`,
+    /// `openEnvironments`, `labels`). For an included file the project layer
+    /// runs the same scan over the root document
+    /// (`ProjectDocuments.entryDocumentClass`); the preview-controller's
+    /// `document_kinds` records `latex` vs `bibliography`, never the class.
+    ///
+    /// Scanning stops at the first `\begin`: `\documentclass` is a preamble
+    /// statement, so a later one is prose about LaTeX rather than this
+    /// document's own declaration, and the scan stays proportional to the
+    /// preamble rather than to the document. A `%` comment is skipped to the
+    /// end of its line, so a commented-out declaration does not count.
+    static func documentClass(in text: String) -> String? {
+        withBytes(text) { b -> String? in
+            guard let p = b.baseAddress else { return nil }
+            let n = b.count
+            let table = wordByteClass
+            var i = 0
+            while i < n {
+                if p[i] == UInt8(ascii: "%") {
+                    while i < n, p[i] != UInt8(ascii: "\n") { i += 1 }
+                    i += 1
+                    continue
+                }
+                guard p[i] == backslash else { i += 1; continue }
+                var j = i + 1
+                while j < n, table[Int(p[j])] == 1 { j += 1 }
+                guard j > i + 1 else { i = j + 1; continue } // `\\`, `\%`, `\{`
+                let name = UnsafeBufferPointer(start: p + i + 1, count: j - i - 1)
+                if bytes(name, equal: "begin") { return nil } // the preamble ended without one
+                guard bytes(name, equal: "documentclass") else { i = j; continue }
+                var k = j
+                func skipBlanks() {
+                    while k < n, p[k] == UInt8(ascii: " ") || p[k] == UInt8(ascii: "\t") || p[k] == UInt8(ascii: "\n") { k += 1 }
+                }
+                skipBlanks()
+                if k < n, p[k] == UInt8(ascii: "[") { // `[11pt,a4paper]` is optional
+                    while k < n, p[k] != UInt8(ascii: "]") { k += 1 }
+                    k += 1
+                    skipBlanks()
+                }
+                guard k < n, p[k] == UInt8(ascii: "{") else { i = j; continue }
+                let start = k + 1
+                var end = start
+                while end < n, p[end] != UInt8(ascii: "}"), p[end] != UInt8(ascii: "\n") { end += 1 }
+                guard end < n, p[end] == UInt8(ascii: "}") else { i = j; continue }
+                let cls = String(decoding: UnsafeBufferPointer(start: p + start, count: end - start), as: UTF8.self)
+                    .trimmingCharacters(in: .whitespaces)
+                return cls.isEmpty ? nil : cls
+            }
+            return nil
+        }
+    }
+
+    /// Environments the document defines, in order: the first argument of
+    /// `\newenvironment`, `\renewenvironment`, `\newtheorem` and `\newtheorem*`
+    /// (`\newtheorem{lemma}{Lemma}` makes `lemma` an environment before it is
+    /// ever used, which is when `\begin{lem` wants it).
+    static func declaredEnvironments(in text: String) -> [String] {
+        var out: [String] = []
+        withBytes(text) { b in
+            guard let p = b.baseAddress else { return }
+            forEachCommand(in: b, upTo: b.count) { name, nameStart, arg in
+                var group = arg
+                if group == nil, bytes(name, equal: "newtheorem") {
+                    // `\newtheorem*{name}`: the star sits between the name and the brace.
+                    var j = nameStart + name.count
+                    guard j + 1 < b.count, p[j] == UInt8(ascii: "*"), p[j + 1] == UInt8(ascii: "{") else { return }
+                    j += 2
+                    let start = j
+                    while j < b.count, p[j] != UInt8(ascii: "}"), p[j] != UInt8(ascii: "{"), p[j] != backslash, p[j] != UInt8(ascii: "\n") { j += 1 }
+                    guard j < b.count, p[j] == UInt8(ascii: "}") else { return }
+                    group = UnsafeBufferPointer(start: p + start, count: j - start)
+                }
+                guard let group, !group.isEmpty,
+                      bytes(name, equal: "newtheorem") || bytes(name, equal: "newenvironment") || bytes(name, equal: "renewenvironment")
+                else { return }
+                let env = String(decoding: group, as: UTF8.self)
+                if !out.contains(env) { out.append(env) }
+            }
+        }
+        return out
+    }
+
+    /// Commands the document defines, in order: the control sequence after
+    /// `\newcommand`, `\renewcommand`, `\providecommand` (braced or bare,
+    /// starred or not), `\DeclareMathOperator[*]`, `\DeclareRobustCommand`,
+    /// the xparse `\…DocumentCommand` family, `\DeclarePairedDelimiter`,
+    /// `\def`/`\gdef`/`\edef`/`\xdef` and `\let` — the same definers
+    /// go-to-definition follows (`EditorNavigation.commandDefiners`), matched
+    /// here on bytes so the scan costs what `declaredEnvironments` does.
+    /// `\newcommand{\foo}{x}` makes `\foo` the author's macro from the
+    /// keystroke that writes it: completion offers it as declared and never
+    /// as "not supported by the compiler", before any index reply.
+    /// The names of `declarations(in:)`'s commands.
+    static func declaredCommands(in text: String) -> [String] {
+        declarations(in: text).filter { $0.kind == .command }.map(\.name)
+    }
+
+    /// One macro or environment a source declares, with the argument shape
+    /// its definer states: `\newcommand{\emphx}[1]` is one mandatory
+    /// argument, `[2][x]` one optional then one mandatory, `\def\foo#1#2` two,
+    /// `\NewDocumentCommand{\x}{o m m}` one optional and two mandatory. The
+    /// shape is the completion snippet (`\emphx{|}`), so a macro from a
+    /// package completes like a command of the compiler's vocabulary.
+    struct Declaration: Equatable {
+        enum Kind: Equatable { case command, environment }
+        var name: String
+        var kind: Kind
+        /// Mandatory arguments (the optional one, when there is one, not counted).
+        var mandatory: Int
+        /// Whether the first argument is optional (`[…]`).
+        var optional: Bool
+        /// The defining command (`newcommand`, `def`, `newif`, `newtheorem`, …).
+        var definer: String
+
+        /// `\emphx{}` with the caret inside, Tab through the rest; nil for a
+        /// macro without mandatory arguments, or an environment.
+        var snippet: Completion.Snippet? {
+            guard kind == .command, mandatory > 0 else { return nil }
+            return Completion.argumentSnippet(name: name, arguments: String(repeating: "{}", count: mandatory))
+        }
+    }
+
+    /// Every declaration of `text`, in order, one per (kind, name): the
+    /// command definers of `declaredCommands`, `\newif\iffoo` (which
+    /// declares `\iffoo`, `\footrue` and `\foofalse`), and the environment
+    /// definers `\newenvironment`, `\renewenvironment`, `\newtheorem[*]` and
+    /// `\NewDocumentEnvironment`. Bytes only, like the rest of the scans.
+    static func declarations(in text: String) -> [Declaration] {
+        var out: [Declaration] = []
+        var seen = Set<String>()
+        func add(_ d: Declaration) {
+            if seen.insert((d.kind == .command ? "c:" : "e:") + d.name).inserted { out.append(d) }
+        }
+        withBytes(text) { b in
+            guard let p = b.baseAddress else { return }
+            let n = b.count
+            let table = wordByteClass
+            func skipSpaces(_ j: inout Int) { while j < n, p[j] == UInt8(ascii: " ") || p[j] == UInt8(ascii: "\t") { j += 1 } }
+            /// `[…]` at `j` on one line: the inner bytes and the index after `]`.
+            func bracket(at j: Int) -> (inner: Range<Int>, after: Int)? {
+                guard j < n, p[j] == UInt8(ascii: "[") else { return nil }
+                var k = j + 1
+                while k < n, p[k] != UInt8(ascii: "]"), p[k] != UInt8(ascii: "\n") { k += 1 }
+                guard k < n, p[k] == UInt8(ascii: "]") else { return nil }
+                return (j + 1 ..< k, k + 1)
+            }
+            /// A balanced `{…}` at `j` (may span lines; `\{` is an escape).
+            func group(at j: Int) -> (inner: Range<Int>, after: Int)? {
+                guard j < n, p[j] == UInt8(ascii: "{") else { return nil }
+                var k = j + 1, depth = 1
+                while k < n {
+                    if p[k] == backslash { k += 2; continue }
+                    if p[k] == UInt8(ascii: "{") { depth += 1 } else if p[k] == UInt8(ascii: "}") { depth -= 1; if depth == 0 { return (j + 1 ..< k, k + 1) } }
+                    k += 1
+                }
+                return nil
+            }
+            forEachCommand(in: b, upTo: n) { name, nameStart, _ in
+                let definesCmd = definesCommand(name)
+                let isNewif = bytes(name, equal: "newif")
+                let definesEnv = bytes(name, equal: "newenvironment") || bytes(name, equal: "renewenvironment")
+                    || bytes(name, equal: "newtheorem") || bytes(name, equal: "NewDocumentEnvironment")
+                guard definesCmd || isNewif || definesEnv else { return }
+                let definer = String(decoding: name, as: UTF8.self)
+                var j = nameStart + name.count
+                if j < n, p[j] == UInt8(ascii: "*") { j += 1 }
+                skipSpaces(&j)
+                let macro: String
+                if definesEnv {
+                    guard let g = group(at: j) else { return }
+                    let raw = String(decoding: UnsafeBufferPointer(rebasing: b[g.inner]), as: UTF8.self).trimmingCharacters(in: .whitespaces)
+                    guard !raw.isEmpty, !raw.contains("\\"), !raw.contains("\n"), !raw.contains("{") else { return }
+                    macro = raw
+                    j = g.after
+                } else {
+                    let braced = j < n && p[j] == UInt8(ascii: "{")
+                    if braced { j += 1; skipSpaces(&j) }
+                    guard j < n, p[j] == backslash else { return }
+                    let start = j + 1
+                    var k = start
+                    while k < n, table[Int(p[k])] == 1 { k += 1 }
+                    guard k > start else { return } // `\def\@x`, `\let\{`: not a completable control word
+                    if braced {
+                        var close = k
+                        skipSpaces(&close)
+                        guard close < n, p[close] == UInt8(ascii: "}") else { return }
+                        j = close + 1
+                    } else {
+                        j = k
+                    }
+                    macro = String(decoding: UnsafeBufferPointer(start: p + start, count: k - start), as: UTF8.self)
+                }
+                if isNewif {
+                    // `\newif\iffoo`: the switch and its two setters.
+                    guard macro.hasPrefix("if"), macro.count > 2 else { return }
+                    let base = String(macro.dropFirst(2))
+                    for switchName in [macro, base + "true", base + "false"] {
+                        add(Declaration(name: switchName, kind: .command, mandatory: 0, optional: false, definer: definer))
+                    }
+                    return
+                }
+                // The argument shape, by the definer's own syntax.
+                var mandatory = 0, optional = false
+                switch definer {
+                case "def", "gdef", "edef", "xdef":
+                    // The parameter text `#1#2` up to the body.
+                    var k = j
+                    while k < n, p[k] != UInt8(ascii: "{"), p[k] != UInt8(ascii: "\n") {
+                        if p[k] == UInt8(ascii: "#"), k + 1 < n, p[k + 1] >= 0x30, p[k + 1] <= 0x39 { mandatory += 1 }
+                        k += 1
+                    }
+                case _ where definer.hasSuffix("DocumentCommand") || definer == "NewDocumentEnvironment":
+                    // xparse: `{o m m}` — `m r R v b` mandatory, `o O s t d D e E` optional.
+                    skipSpaces(&j)
+                    if let spec = group(at: j) {
+                        for c in b[spec.inner] {
+                            switch c {
+                            case UInt8(ascii: "m"), UInt8(ascii: "r"), UInt8(ascii: "R"), UInt8(ascii: "v"), UInt8(ascii: "b"): mandatory += 1
+                            case UInt8(ascii: "o"), UInt8(ascii: "O"), UInt8(ascii: "s"), UInt8(ascii: "t"), UInt8(ascii: "d"), UInt8(ascii: "D"),
+                                 UInt8(ascii: "e"), UInt8(ascii: "E"): optional = true
+                            default: break
+                            }
+                        }
+                    }
+                case "let", "DeclareMathOperator", "DeclarePairedDelimiter":
+                    if definer == "DeclarePairedDelimiter" { mandatory = 1 } // `\abs{x}`
+                default:
+                    // `[n]` then an optional `[default]`.
+                    skipSpaces(&j)
+                    if let count = bracket(at: j) {
+                        let digits = String(decoding: UnsafeBufferPointer(rebasing: b[count.inner]), as: UTF8.self).trimmingCharacters(in: .whitespaces)
+                        if let value = Int(digits) {
+                            mandatory = max(0, value)
+                            j = count.after
+                            skipSpaces(&j)
+                            if bracket(at: j) != nil { optional = true; mandatory = max(0, mandatory - 1) }
+                        }
+                    }
+                }
+                add(Declaration(name: macro, kind: definesEnv ? .environment : .command, mandatory: mandatory, optional: optional, definer: definer))
+            }
+        }
+        return out
+    }
+
+    /// A source the editor is not editing but whose declarations it offers:
+    /// a package input (`ProjectDocuments.ImplicitDocument` shape) with its
+    /// project path.
+    struct SourceDocument: Equatable, Sendable {
+        var path: String
+        var text: String
+    }
+
+    /// One declaration of a package or class file, with the file it came
+    /// from (`ProjectManifest.packageDisplayName`: `mystyle.sty`) and, when
+    /// the engine reported the file's `\ProvidesPackage`, its description.
+    struct PackageDeclaration: Equatable {
+        var declaration: Declaration
+        var file: String
+        var path: String
+        var description: String? = nil
+
+        /// The completion row's detail: `declared in mystyle.sty — my macros`.
+        var detail: String { "declared in \(file)" + (description.map { " — \($0)" } ?? "") }
+    }
+
+    /// Every declaration of every package document, one per (kind, name)
+    /// across them all (the first file wins, as LaTeX's first definition
+    /// does for `\newcommand`).
+    ///
+    /// With `records` -- the compile result's `metadata.packages`
+    /// (`Metadata.packages`) -- the rows are the engine's own definitions,
+    /// in loading then definition order: a `macro`, `conditional`,
+    /// `math_operator`, `length` or `register` is a command, an
+    /// `environment` or `theorem` an environment (a `counter` names no
+    /// control sequence and is skipped); the argument shape is the engine's
+    /// `arity`, less the optional first parameter when the definer declared
+    /// one; `definer` is as given. Without records (a bare text view, an
+    /// older producer, no result yet) the documents are scanned lexically
+    /// (`declarations`), in document then source order.
+    static func packageDeclarations(in documents: [SourceDocument], records: [RuntimeV1.PackageRecord]? = nil) -> [PackageDeclaration] {
+        var seen = Set<String>()
+        var out: [PackageDeclaration] = []
+        func add(_ d: Declaration, file: String, path: String, description: String?) {
+            if seen.insert((d.kind == .command ? "c:" : "e:") + d.name).inserted {
+                out.append(PackageDeclaration(declaration: d, file: file, path: path, description: description))
+            }
+        }
+        if let records {
+            for record in records {
+                let file = ProjectManifest.packageDisplayName(record.path)
+                for d in record.definitions {
+                    guard let declaration = declaration(of: d) else { continue }
+                    add(declaration, file: file, path: record.path, description: record.provides?.description)
+                }
+            }
+            return out
+        }
+        for doc in documents {
+            let file = ProjectManifest.packageDisplayName(doc.path)
+            for d in declarations(in: doc.text) { add(d, file: file, path: doc.path, description: nil) }
+        }
+        return out
+    }
+
+    /// The engine's definition as a `Declaration`, or nil for a kind that
+    /// names no command or environment (`counter`) or an unknown one.
+    static func declaration(of d: RuntimeV1.PackageRecord.Definition) -> Declaration? {
+        let kind: Declaration.Kind
+        switch d.kind {
+        case "macro", "conditional", "math_operator", "length", "register": kind = .command
+        case "environment", "theorem": kind = .environment
+        default: return nil
+        }
+        // A LaTeX definer's `[default]`, or an xparse specification whose
+        // first argument is optional (`o m`, `O{x} m`): the first parameter
+        // is the optional one, not counted as mandatory.
+        let optional = d.optionalDefault != nil || d.signature.first.map { $0 == "o" || $0 == "O" } == true
+        return Declaration(name: d.name, kind: kind, mandatory: max(0, d.arity - (optional ? 1 : 0)), optional: optional, definer: d.definer)
+    }
+
+    /// Whether a control word is one of `EditorNavigation.commandDefiners`,
+    /// compared on bytes (length first, so most words cost one comparison).
+    @inline(__always) private static func definesCommand(_ name: UnsafeBufferPointer<UInt8>) -> Bool {
+        switch name.count {
+        case 3: return bytes(name, equal: "def") || bytes(name, equal: "let")
+        case 4: return bytes(name, equal: "gdef") || bytes(name, equal: "edef") || bytes(name, equal: "xdef")
+        case 10: return bytes(name, equal: "newcommand")
+        case 11: return bytes(name, equal: "newcommandx")
+        case 12: return bytes(name, equal: "renewcommand")
+        case 14: return bytes(name, equal: "providecommand")
+        case 18: return bytes(name, equal: "NewDocumentCommand")
+        case 19: return bytes(name, equal: "DeclareMathOperator")
+        case 20: return bytes(name, equal: "DeclareRobustCommand") || bytes(name, equal: "RenewDocumentCommand")
+        case 22: return bytes(name, equal: "ProvideDocumentCommand") || bytes(name, equal: "DeclareDocumentCommand")
+            || bytes(name, equal: "DeclarePairedDelimiter")
+        default: return false
+        }
     }
 
     /// Names of environments appearing in `\begin{…}` anywhere in the document.
@@ -1131,6 +1898,12 @@ enum Completion {
         var diagnosticsByEnvironment: [String: String] = [:]
         /// Keys from `undefined reference 'key'` diagnostics.
         var unresolvedReferences: Set<String> = []
+        /// The result's `metadata.packages`: what each project `.sty`/`.cls`
+        /// defined, with the engine's spans (`RuntimeV1.PackageRecord`).
+        /// Empty when the producer sent none (no package files, an older
+        /// producer): `packageDeclarations(in:records:)` then scans the
+        /// package texts instead.
+        var packages: [RuntimeV1.PackageRecord] = []
         /// Some cap in `Limits` dropped data.
         var truncated = false
         /// Document kinds exactly as the helper's `snapshot` reported them
@@ -1162,10 +1935,11 @@ enum Completion {
             return self
         }
 
-        /// Vocabulary from the compiler's own result: only the revision and its
-        /// diagnostics carry completion information in runtime-v1.
+        /// Vocabulary from the compiler's own result: the revision, its
+        /// diagnostics and its `metadata.packages`.
         static func from(_ result: RuntimeV1.CompileResult) -> Metadata {
             var m = Metadata(origin: .compileResult(projectId: result.projectId), revision: result.revision)
+            m.packages = result.metadata?.packages ?? []
             var used = 0
             for d in result.diagnostics {
                 guard used < Limits.maxDiagnostics else { m.truncated = true; break }
@@ -1256,6 +2030,7 @@ enum Completion {
             m.diagnosticsByCommand.merge(other.diagnosticsByCommand) { mine, _ in mine }
             m.diagnosticsByEnvironment.merge(other.diagnosticsByEnvironment) { mine, _ in mine }
             m.unresolvedReferences.formUnion(other.unresolvedReferences)
+            if m.packages.isEmpty { m.packages = other.packages } // only the compile result carries them
             m.truncated = truncated || other.truncated
             switch (documentKinds, other.documentKinds) {
             case (nil, let k?): m.documentKinds = k
@@ -1537,11 +2312,66 @@ final class CompletionScheduler {
         /// Already bound to the revision of `text` (`Metadata.bound(to:)`).
         var metadata: Completion.Metadata?
         var supported: [String] = Completion.defaultSupported
-        /// Project document paths offered after `\input{`, `\include{` and `\includegraphics{`.
+        /// Project document paths offered after `\input{` and `\include{`.
         var projectFiles: [String] = []
+        /// Directory whose image files `\includegraphics{` offers; walked by
+        /// the job, and only when the caret is in that argument.
+        var graphicsRoot: URL? = nil
+        /// Recently accepted commands and environments, most recent first
+        /// (`Completion.RecentlyUsed`); they rank first.
+        var recentCommands: [String] = []
+        var recentEnvironments: [String] = []
+        /// The project's other open documents, as text: their
+        /// `\newcommand`/`\def` macros are offered as declared
+        /// (`Completion.declaredCommands`; scanned by the job, and only when
+        /// the caret is on a command).
+        var otherDocuments: [String] = []
+        /// The project's `.bib` files (`BibScanner.Sources`): read and parsed
+        /// by the job, and only when the caret is in a `\cite{` argument.
+        /// Nil (a bare text view) reads nothing.
+        var bibliography: BibScanner.Sources? = nil
         /// Whether the caret is in math mode (`Completion.isMathMode`), decided
-        /// on the main thread where the editor's syntax model is in sync.
-        var mathMode = false
+        /// on the main thread where the editor's syntax model is in sync; nil
+        /// when no model answered (a bare text view), which filters nothing.
+        var mathMode: Bool? = nil
+        /// The `\documentclass` of the project's root document
+        /// (`ProjectDocuments.entryDocumentClass`), read on the main thread
+        /// when the list is requested: gates class-scoped commands in a
+        /// file that declares no class of its own. Nil (a bare text view, a
+        /// file with no project) gates nothing.
+        var projectClass: String? = nil
+        /// What one indent level is (`EditorPreferences.indentString`) and
+        /// the environment rules (`EditorPreferences.environmentRules`): the
+        /// environment skeletons are built with them.
+        var indentUnit: String = ""
+        var environmentRules: EnvironmentEditingRules = .conventional
+        /// The engine whose `--list-fonts` is what `\setmainfont{` offers
+        /// (`InstalledFonts.lister`), asked on the main thread and run by
+        /// the job off-main once per launch. Nil offers no families.
+        var fontLister: URL? = nil
+        /// The author is writing a package or class (a `.sty`/`.cls` buffer,
+        /// or the caret inside `\makeatletter`): the kernel vocabulary leads
+        /// (`Completion.suggestions(packageMode:)`). Decided on the main
+        /// thread from the editor's syntax model, like `mathMode`.
+        var packageMode = false
+        /// `@` is a letter of the token at the caret (the same source).
+        var atLetter = false
+        /// The project's `.sty`/`.cls` paths (`ShellModel.projectPackageFiles`):
+        /// offered first after `\usepackage{` and `\documentclass{`.
+        var projectPackageFiles: [String] = []
+        /// The project's package and class files with their text
+        /// (`ShellModel.packageDocumentsForEditor`): their `\newcommand`s,
+        /// `\def`s, `\newif`s and `\newenvironment`s are offered as declared
+        /// in that file (`Completion.packageDeclarations`; scanned by the
+        /// job, and only when the caret is on a command or an environment
+        /// name).
+        var packageDocuments: [Completion.SourceDocument] = []
+        /// The last compile result's `metadata.packages`
+        /// (`CompletingTextView.compileResult`): when present, the rows come
+        /// from the engine's own definitions and `packageDocuments` are not
+        /// scanned (`Completion.packageDeclarations(in:records:)`). Nil when
+        /// the result carried none.
+        var packageRecords: [RuntimeV1.PackageRecord]? = nil
     }
 
     struct Outcome: Equatable {
@@ -1611,10 +2441,42 @@ final class CompletionScheduler {
         let scheduledAt = MonotonicClock.nowNs()
         execute { [weak self] in
             let t0 = MonotonicClock.nowNs()
-            let range = Completion.completionRange(in: request.text, caretUTF16: request.caretUTF16)
+            let range = Completion.completionRange(in: request.text, caretUTF16: request.caretUTF16, atLetter: request.atLetter)
+            var graphics: [String] = []
+            var fontFamilies: [String] = []
+            var declaredElsewhere: [String] = []
+            var packageDeclarations: [Completion.PackageDeclaration] = []
+            var bibliographyEntries: [BibScanner.Entry] = []
+            if !job.isCancelled {
+                switch Completion.token(in: request.text, caretUTF16: request.caretUTF16, atLetter: request.atLetter) {
+                case .word(_, _, _, .graphics)?:
+                    if let root = request.graphicsRoot { graphics = Completion.graphicsFiles(under: root) }
+                case .word(_, _, _, .font)?:
+                    fontFamilies = InstalledFonts.families(tool: request.fontLister)
+                case .word(_, _, _, .citation)?:
+                    if let sources = request.bibliography { bibliographyEntries = BibScanner.entries(for: sources, cancelled: { job.isCancelled }) }
+                case .command?:
+                    declaredElsewhere = request.otherDocuments.flatMap(Completion.declaredCommands)
+                    packageDeclarations = Completion.packageDeclarations(in: request.packageDocuments, records: request.packageRecords)
+                case .word(_, _, _, .beginEnvironment)?, .word(_, _, _, .endEnvironment)?:
+                    packageDeclarations = Completion.packageDeclarations(in: request.packageDocuments, records: request.packageRecords)
+                default: break
+                }
+            }
             let items = job.isCancelled ? [] : Completion.suggestions(in: request.text, caretUTF16: request.caretUTF16,
-                                                                     metadata: request.metadata, supported: request.supported,
-                                                                     projectFiles: request.projectFiles, mathMode: request.mathMode,
+                                                                     metadata: request.metadata,
+                                                                     supported: Completion.prioritising(request.supported, recent: request.recentCommands),
+                                                                     projectFiles: request.projectFiles, graphicsFiles: graphics,
+                                                                     recentEnvironments: request.recentEnvironments,
+                                                                     declaredElsewhere: declaredElsewhere, mathMode: request.mathMode,
+                                                                     bibliographyEntries: bibliographyEntries,
+                                                                     projectClass: request.projectClass,
+                                                                     indentUnit: request.indentUnit,
+                                                                     environmentRules: request.environmentRules,
+                                                                     fontFamilies: fontFamilies,
+                                                                     packageMode: request.packageMode, atLetter: request.atLetter,
+                                                                     projectPackageFiles: request.projectPackageFiles,
+                                                                     packageDeclarations: packageDeclarations,
                                                                      cancelled: { job.isCancelled })
             let t1 = MonotonicClock.nowNs()
             let outcome = Outcome(generation: job.generation, caretUTF16: request.caretUTF16, range: range, items: items,
@@ -1649,7 +2511,7 @@ final class CompletionScheduler {
         pending = nil
     }
 
-    /// Head-of-run-loop delivery (see `WorkerClient.deliver`): a plain
+    /// Head-of-run-loop delivery: a plain
     /// `DispatchQueue.main.async` waits for AppKit to reach the dispatch port.
     nonisolated private static func onMain(_ block: @escaping @Sendable () -> Void) {
         CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue, block)
@@ -1817,6 +2679,16 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     /// The documentation pane's current title/body, for tests.
     var documentation: (title: String, body: String) { (docTitle.stringValue, docBody.stringValue) }
 
+    /// How many rows the list shows at once — what one Page Up/Down moves
+    /// by. Read from the table's visible height once the panel has been laid
+    /// out; before that (a session whose panel is not up yet) it is the
+    /// list's maximum, which is also its usual height.
+    var visibleRows: Int {
+        let height = table.enclosingScrollView?.documentVisibleRect.height ?? 0
+        let rows = Int(height / Self.rowHeight)
+        return rows > 0 ? rows : Completion.maxSuggestions
+    }
+
     /// Shows (or refreshes) the list under `caretRect`. While the panel is
     /// already on screen for the same parent, only what changed is touched:
     /// the rows reload only when the items differ, the frame moves only when
@@ -1937,7 +2809,7 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
 
     private func showDocumentation(for s: Completion.Suggestion) {
         var doc = Self.documentationPane(for: s)
-        if let line = Self.documentation(for: s) { doc.body = line + " " + doc.body } // CommandDocs (mac-syntax-highlight)
+        if let line = Self.displayedDocumentation(for: s) { doc.body = line + " " + doc.body } // CommandDocs (mac-syntax-highlight) or the inventory
         docTitle.stringValue = doc.title
         docBody.stringValue = doc.body
     }
@@ -1978,7 +2850,13 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         out.append(NSAttributedString(string: "  \(s.kind.badge) · \(s.detail)", attributes: [
             .font: DS.NSFonts.secondary, .foregroundColor: DS.Palette.textSecondary,
         ]))
-        if let doc = documentation(for: s) {
+        // A font family: the sample line in that family (ProjectFonts.swift).
+        if let family = s.sampleFamily, let font = FontSamples.nsFont(family: family, size: 12) {
+            out.append(NSAttributedString(string: " — " + ProjectFontsState.sampleText, attributes: [
+                .font: font, .foregroundColor: DS.Palette.textSecondary,
+            ]))
+        }
+        if let doc = displayedDocumentation(for: s) {
             out.append(NSAttributedString(string: " — \(doc)", attributes: [
                 .font: DS.NSFonts.secondary, .foregroundColor: DS.Palette.textTertiary,
             ]))
@@ -1986,19 +2864,99 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         return out
     }
 
-    /// One documentation line for a command or environment suggestion (nil when unknown).
+    /// One documentation line for a command or environment suggestion: the
+    /// hand-written `CommandDocs` line when there is one (it is the better
+    /// text), otherwise the compiler inventory's own description as a
+    /// sentence — so every implemented command has a line, not only the
+    /// ~90 written by hand. Nil for keys, words, and names neither knows.
     static func documentation(for s: Completion.Suggestion) -> String? {
+        handWrittenDocumentation(for: s) ?? inventoryDocumentation(for: s)
+    }
+
+    /// The same two tiers by name, for the hover (`EditorIntelligence.quickInfo`):
+    /// the hand-written line for `\name` when there is one, else the inventory's.
+    static func documentation(forCommand name: String) -> String? {
+        EditorIntelligence.CommandDocs.documentation(for: name) ?? inventoryLine(forCommand: name)?.line
+    }
+
+    /// `documentation(forCommand:)` for a `\begin{name}` (starred names included).
+    static func documentation(forEnvironment name: String) -> String? {
+        EditorIntelligence.CommandDocs.environmentDocumentation(for: name) ?? inventoryLine(forEnvironment: name)?.line
+    }
+
+    /// `documentation(for:)` unless it would only repeat the origin column:
+    /// a row/pane built from the vocabulary already carries the inventory
+    /// description as its `detail`, so the inventory line is shown only when
+    /// the detail does not (a caller-supplied suggestion, a declared name).
+    static func displayedDocumentation(for s: Completion.Suggestion) -> String? {
+        if let own = s.documentation { return own } // the origin's own line (a .bib record's title)
+        if let hand = handWrittenDocumentation(for: s) { return hand }
+        guard let (line, description) = inventoryLine(for: s), !s.detail.contains(description) else { return nil }
+        return line
+    }
+
+    /// The `CommandDocs` line (EditorIntelligence.swift), the hand-written tier.
+    static func handWrittenDocumentation(for s: Completion.Suggestion) -> String? {
         switch s.kind {
         case .command:
-            let name = s.label.hasPrefix("\\") ? String(s.label.dropFirst()) : s.label
-            return EditorIntelligence.CommandDocs.documentation(for: name)
+            return EditorIntelligence.CommandDocs.documentation(for: commandName(of: s))
         case .environment:
-            let name = s.label.replacingOccurrences(of: "\\begin{", with: "").replacingOccurrences(of: "\\end{", with: "")
-                .replacingOccurrences(of: "}", with: "")
-            return EditorIntelligence.CommandDocs.environmentDocumentation(for: name)
+            return EditorIntelligence.CommandDocs.environmentDocumentation(for: environmentName(of: s))
         case .reference, .citation, .word:
             return nil
         }
+    }
+
+    /// The inventory tier: `\section{...}: numbered section heading; starred
+    /// form unnumbered.` from the command's `description` (and, for a command
+    /// the compiler accepts in both modes, its math description), or the
+    /// environment's `description`.
+    static func inventoryDocumentation(for s: Completion.Suggestion) -> String? { inventoryLine(for: s)?.line }
+
+    private static func inventoryLine(for s: Completion.Suggestion) -> (line: String, description: String)? {
+        switch s.kind {
+        case .command: return inventoryLine(forCommand: commandName(of: s))
+        case .environment: return inventoryLine(forEnvironment: environmentName(of: s))
+        case .reference, .citation, .word: return nil
+        }
+    }
+
+    private static func inventoryLine(forCommand name: String) -> (line: String, description: String)? {
+        guard let entry = Completion.Vocabulary.byName[name] else { return nil }
+        var line = entry.label + ": " + entry.description
+        if let math = entry.mathDescription { line += "; in math: " + math }
+        return (sentence(line), entry.description)
+    }
+
+    /// The environment's own inventory entry, or — for a starred name the
+    /// inventory lists only unstarred — the base entry, marked unnumbered.
+    private static func inventoryLine(forEnvironment name: String) -> (line: String, description: String)? {
+        if let description = Completion.Vocabulary.environmentDescriptions[name] {
+            return (sentence("\\begin{\(name)}: " + description), description)
+        }
+        guard name.hasSuffix("*"), let description = Completion.Vocabulary.environmentDescriptions[String(name.dropLast())] else { return nil }
+        return (sentence("\\begin{\(name)}: " + description) + " Starred: unnumbered.", description)
+    }
+
+    private static func sentence(_ text: String) -> String {
+        text.last.map { ".!?".contains($0) } == true ? text : text + "."
+    }
+
+    /// The command a suggestion stands for, without its backslash. The label
+    /// carries the argument shape (`\section{...}`), which is why the lookup
+    /// goes through the insertion (`\section`) — a label-only suggestion (a
+    /// test's) is stripped of its shape instead.
+    private static func commandName(of s: Completion.Suggestion) -> String {
+        let bare = s.insertText.hasPrefix("\\") ? s.insertText : s.label
+        guard bare.hasPrefix("\\") else { return bare }
+        let name = String(bare.dropFirst())
+        let stem = name.prefix { $0 != "{" && $0 != "[" }
+        return stem.isEmpty ? name : String(stem) // `\{`'s name is `{`: a symbol stays whole
+    }
+
+    private static func environmentName(of s: Completion.Suggestion) -> String {
+        s.label.replacingOccurrences(of: "\\begin{", with: "").replacingOccurrences(of: "\\end{", with: "")
+            .replacingOccurrences(of: "}", with: "")
     }
 }
 
@@ -2041,8 +2999,20 @@ final class CompletionRowView: NSView {
     func configure(_ s: Completion.Suggestion) {
         icon.image = NSImage(systemSymbolName: s.kind.symbolName, accessibilityDescription: nil)
         icon.contentTintColor = s.kind.tint
-        label.stringValue = s.label
-        detail.stringValue = "\(s.kind.badge) · \(s.detail)"
+        // A font family draws its name and the sample in its own face
+        // (ProjectFonts.swift `FontSamples`); every other row keeps the
+        // editor's monospaced face. `stringValue` resets an attributed value.
+        if let family = s.sampleFamily, let font = FontSamples.nsFont(family: family, size: 12) {
+            label.attributedStringValue = NSAttributedString(string: s.label, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+            let sample = NSMutableAttributedString(string: ProjectFontsState.sampleText + "  ", attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor])
+            sample.append(NSAttributedString(string: "\(s.kind.badge) · \(s.detail)", attributes: [.font: DS.NSFonts.secondary, .foregroundColor: NSColor.secondaryLabelColor]))
+            detail.attributedStringValue = sample
+        } else {
+            label.font = DS.NSFonts.monoCandidate
+            label.stringValue = s.label
+            detail.font = DS.NSFonts.secondary
+            detail.stringValue = "\(s.kind.badge) · \(s.detail)"
+        }
         setAccessibilityLabel(CompletionPopup.spokenLabel(s)) // FlashTeXAccessibility
     }
 }
@@ -2114,19 +3084,136 @@ extension Completion.Kind {
 /// list. Rust metadata (`compileResult`, `accept(projectIndex:)`) is used only
 /// when bound to `editorRevision`, which the owner sets on every update.
 final class CompletingTextView: NSTextView {
+    /// Live Share: the session's typing undo step ends where AppKit's does
+    /// (a capture insertion, an auto-closed pair's own step).
+    override func breakUndoCoalescing() {
+        super.breakUndoCoalescing()
+        (delegate as? SourceEditorView.Coordinator)?.liveShareBreakUndoCoalescing()
+    }
+
+    /// Live Share: the session file's local-only undo stack. The text view's
+    /// own undo is off in a session (`allowsUndo`, which makes `undoManager`
+    /// nil, so AppKit registers no typing undo anywhere); ⌘Z and Edit ▸ Undo
+    /// reach the session's stack through `undo:`/`redo:` below. Outside a
+    /// session neither is answered here and everything is AppKit's.
+    var liveShareUndoManager: UndoManager? { (delegate as? SourceEditorView.Coordinator)?.liveShare.link?.undoManager }
+    @objc func undo(_ sender: Any?) { liveShareUndoManager?.undo() }
+    @objc func redo(_ sender: Any?) { liveShareUndoManager?.redo() }
+    /// Only a session answers `undo:`/`redo:` here; otherwise they travel
+    /// the responder chain as before.
+    override func responds(to aSelector: Selector!) -> Bool {
+        if aSelector == #selector(undo(_:)) || aSelector == #selector(redo(_:)) { return liveShareUndoManager != nil }
+        return super.responds(to: aSelector)
+    }
     var compileResult: RuntimeV1.CompileResult? {
         didSet { resultMetadata = compileResult.map(Completion.Metadata.from) }
     }
     var supportedCommands = Completion.defaultSupported
-    /// Project document paths for `\input{`/`\include{`/`\includegraphics{` (the owner sets them).
+    /// Project document paths for `\input{`/`\include{` (the owner sets them).
     var projectFiles: [String] = []
+    /// The project root whose image files `\includegraphics{` offers, asked
+    /// on the main thread when the list is requested; nil (a bare text view,
+    /// an unsaved buffer) offers none.
+    var graphicsRoot: () -> URL? = { nil }
+    /// The engine whose `--list-fonts` fills `\setmainfont{`
+    /// (`InstalledFonts.lister`), asked on the main thread when the list is
+    /// requested; nil (a bare text view) offers no families.
+    var fontLister: () -> URL? = { nil }
+    /// The project's other open documents, asked on the main thread when the
+    /// list is requested (`ShellModel.editorHoverContext`'s texts); their
+    /// macros are offered as declared. A bare text view has none.
+    var otherDocuments: () -> [String] = { [] }
+    /// The project's `.bib` files for `\cite{` (`ShellModel.bibliographySources`),
+    /// asked on the main thread when the list is requested and read by the
+    /// job off-main. A bare text view has none.
+    var bibliographySources: () -> BibScanner.Sources? = { nil }
+    /// The `\documentclass` of the project's root document
+    /// (`ProjectDocuments.entryDocumentClass`), asked on the main thread when
+    /// the list is requested: what gates beamer's and letter's commands in an
+    /// included file that declares no class itself. A bare text view has no
+    /// project, and nil gates nothing.
+    var projectDocumentClass: () -> String? = { nil }
+    /// The project for TeXpand (root file, packages, config); nil in a bare view.
+    var texpandProject: () -> TeXpandProject? = { nil }
+    /// Accepted commands and environments, ranked first on the next open. A
+    /// bare text view keeps its own; the hosted editor installs the shared one.
+    ///
+    /// `lazy`, as `folds` and `scheduler` are: `NSTextView.init(frame:)`
+    /// calls `init(frame:textContainer:)`, and each of the two Swift
+    /// initializers runs this class's property initializers, so an object
+    /// made by an initializer expression was made twice and the first one
+    /// was never released (leaks(1): one RecentlyUsed, EditorFoldStore and
+    /// CompletionScheduler with its dispatch queue per editor). A lazy
+    /// property's storage starts empty, so nothing is made until first use.
+    lazy var recentlyUsed = Completion.RecentlyUsed()
     /// Whether the caret is in math mode, answered by the owner from its
     /// in-sync `SyntaxHighlighter` (`SourceEditorView`), which costs one
-    /// line's lexing. Unwired — a bare text view in a test — it says no, and
-    /// the list keeps the plain text-mode order.
-    var mathModeAtCaret: (Int) -> Bool = { _ in false }
+    /// line's lexing. Unwired — a bare text view in a test — it answers nil:
+    /// the list keeps the plain text-mode order and hides nothing
+    /// (`Completion.allows`).
+    var mathModeAtCaret: (Int) -> Bool? = { _ in nil }
+    /// Whether the author is writing a package at the caret and whether `@`
+    /// is a control-word letter there, answered by the owner from the same
+    /// syntax model (`SyntaxHighlighter.atLetter(at:)`, `Language.package`).
+    /// Unwired: a document, where `\@` is a control symbol.
+    var packageContextAtCaret: (Int) -> (packageMode: Bool, atLetter: Bool) = { _ in (false, false) }
+    /// The project's `.sty`/`.cls` paths (`ShellModel.projectPackageFiles`),
+    /// asked on the main thread when the list is requested; what
+    /// `\usepackage{`/`\documentclass{` offer first. A bare text view has none.
+    var projectPackageFiles: () -> [String] = { [] }
+    /// The project's package and class files with their text
+    /// (`ShellModel.packageDocumentsForEditor`), asked on the main thread
+    /// when the list is requested and scanned by the job off-main; their
+    /// macros are offered as declared in that file. A bare text view has none.
+    var packageDocuments: () -> [Completion.SourceDocument] = { [] }
     /// Code folding (EditorFolding.swift): hidden ranges stay in the storage.
-    let folds = EditorFoldStore()
+    private(set) lazy var folds = EditorFoldStore() // lazy: see `recentlyUsed`
+
+    // MARK: paste an image (PasteImage.swift)
+
+    /// Handles Paste when the pasteboard holds an image rather than text:
+    /// the owner (`SourceEditorView.Coordinator.pasteImage`) saves it into
+    /// the project and inserts a figure, returning true. False (no image, the
+    /// feature off, an unsaved document) lets the ordinary paste run, so a
+    /// plain-text paste is exactly AppKit's. Unwired (a bare text view): nil.
+    var imagePasteHandler: ((NSPasteboard) -> Bool)?
+    /// The pasteboard Paste reads; tests substitute a private named one so a
+    /// run never touches the user's clipboard.
+    var imagePasteboard: () -> NSPasteboard = { .general }
+
+    override func paste(_ sender: Any?) {
+        if isEditable, let handler = imagePasteHandler, handler(imagePasteboard()) { return }
+        super.paste(sender)
+    }
+
+    /// Handles a drop of image files (from Finder) at a character index: the
+    /// owner (`SourceEditorView.Coordinator.dropImages`) saves and inserts
+    /// them like a paste, returning true. False — text, any non-image file,
+    /// the feature off — lets AppKit's ordinary drop run unchanged.
+    var imageDropHandler: ((NSPasteboard, Int) -> Bool)?
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        if isEditable, let handler = imageDropHandler, sender.draggingSource == nil,
+           PasteImage.droppedImageFiles(on: sender.draggingPasteboard) != nil {
+            let index = characterIndexForInsertion(at: convert(sender.draggingLocation, from: nil))
+            if handler(sender.draggingPasteboard, index) { return true }
+        }
+        return super.performDragOperation(sender)
+    }
+
+    /// A plain-text view disables Paste for a pasteboard with no text on it;
+    /// an image the image paste would take enables it.
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        // Live Share: Edit ▸ Undo/Redo name and enable the session's stack.
+        if let m = liveShareUndoManager, item.action == #selector(undo(_:)) || item.action == #selector(redo(_:)) {
+            let undo = item.action == #selector(undo(_:))
+            (item as? NSMenuItem)?.title = undo ? m.undoMenuItemTitle : m.redoMenuItemTitle
+            return undo ? m.canUndo : m.canRedo
+        }
+        if item.action == #selector(paste(_:)), isEditable, imagePasteHandler != nil,
+           PasteImage.wouldHandle(imagePasteboard()) { return true }
+        return super.validateUserInterfaceItem(item)
+    }
 
     /// Whether a mechanical fix hint is showing at the caret (the owner
     /// answers from `ShellModel.caretFix`). Only Esc is handled here; Tab
@@ -2142,11 +3229,17 @@ final class CompletingTextView: NSTextView {
     /// still being filled in, in Tab order (the last one is the snippet's
     /// end); empty when no snippet is active. Kept aligned with edits.
     private(set) var snippetStops: [Int] = []
+    /// Placeholder length at each stop (parallel to `snippetStops`): Tab
+    /// selects the placeholder so typing replaces it (TeXpand's defaults).
+    /// Kept aligned with edits: typing inside a placeholder grows it.
+    private(set) var snippetStopLengths: [Int] = []
     /// Index into `snippetStops` of the placeholder the caret last jumped to
     /// (-1: still at the snippet's caret position).
     private(set) var snippetStopIndex = -1
     /// Start of the active snippet (edits before it shift everything).
     private var snippetStart = 0
+    /// Length of the placeholder at the snippet's caret position.
+    private var snippetStartLength = 0
     var isSnippetActive: Bool { !snippetStops.isEmpty }
 
     /// Moves the caret to the next (`delta` 1) or previous (-1) placeholder;
@@ -2159,10 +3252,11 @@ final class CompletingTextView: NSTextView {
         guard next < snippetStops.count else { endSnippet(); return true }
         snippetStopIndex = next
         let target = next == -1 ? snippetStart : snippetStops[next]
+        let selected = next == -1 ? snippetStartLength : (next < snippetStopLengths.count ? snippetStopLengths[next] : 0)
         let length = (string as NSString).length
-        guard target <= length else { endSnippet(); return true }
+        guard target + selected <= length else { endSnippet(); return true }
         applyingCompletion = true
-        setSelectedRange(NSRange(location: target, length: 0))
+        setSelectedRange(NSRange(location: target, length: selected))
         lastCaret = selectedRange()
         applyingCompletion = false
         if next == snippetStops.count - 1 { endSnippet() } // the end stop: the snippet is done
@@ -2171,7 +3265,23 @@ final class CompletingTextView: NSTextView {
 
     func endSnippet() {
         snippetStops = []
+        snippetStopLengths = []
         snippetStopIndex = -1
+    }
+
+    /// Whether `selection` is exactly the placeholder of a snippet stop
+    /// (Tab selected it), which keeps the snippet going.
+    private func isSelectedPlaceholder(_ selection: NSRange) -> Bool {
+        if selection == NSRange(location: snippetStart, length: snippetStartLength) { return true }
+        return snippetStops.indices.contains { k in
+            selection == NSRange(location: snippetStops[k], length: k < snippetStopLengths.count ? snippetStopLengths[k] : 0)
+        }
+    }
+
+    /// TeXpand's commit (TeXpandEditor.swift): the expansion replaces the
+    /// literal abbreviation as one undo step and starts the snippet session.
+    func insertTeXpandSnippet(_ snippet: LaTeXSnippet, replacing range: NSRange) {
+        insertSnippet(snippet, replacing: range, kind: .command, actionName: "Expand Abbreviation")
     }
 
     /// Edits shift the stops after them (typing at a placeholder keeps the
@@ -2186,18 +3296,30 @@ final class CompletingTextView: NSTextView {
             return
         }
         if range.location < snippetStart { endSnippet(); return }
+        // An edit inside a placeholder (typing over its selection, or more
+        // after it) resizes it, so ⇧Tab selects what was typed there. A
+        // bare stop (length 0, the completion snippets') stays a caret.
+        func resized(_ stop: Int, _ length: Int) -> Int {
+            length > 0 && range.location >= stop && NSMaxRange(range) <= stop + length ? max(0, length + delta) : length
+        }
+        snippetStartLength = resized(snippetStart, snippetStartLength)
         var shifted: [Int] = []
-        for stop in snippetStops {
-            if NSMaxRange(range) < stop || (range.length > 0 && NSMaxRange(range) == stop) { shifted.append(stop + delta) }
-            else if range.location >= stop { shifted.append(stop) }
+        var lengths: [Int] = []
+        for (k, stop) in snippetStops.enumerated() {
+            let length = k < snippetStopLengths.count ? snippetStopLengths[k] : 0
+            if NSMaxRange(range) < stop || (range.length > 0 && NSMaxRange(range) == stop) { shifted.append(stop + delta); lengths.append(length) }
+            else if range.location >= stop { shifted.append(stop); lengths.append(resized(stop, length)) }
             else { endSnippet(); return }
         }
         snippetStops = shifted
+        snippetStopLengths = lengths
     }
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
         let ok = super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
         if ok { shiftSnippetStops(edit: affectedCharRange, replacementLength: (replacementString as NSString?)?.length ?? 0) }
+        if ok { texpandEditor?.willChange(affectedCharRange, replacement: replacementString) } // the exact edit TeXpand sees (TeXpandEditor.swift)
+        if ok { editTailWillChange(affectedCharRange, replacement: replacementString) } // EditorEditTail.swift
         return ok
     }
 
@@ -2314,7 +3436,7 @@ final class CompletingTextView: NSTextView {
     }
 
     /// Replaceable so tests can inject a manual executor.
-    var scheduler = CompletionScheduler()
+    lazy var scheduler = CompletionScheduler() // lazy: see `recentlyUsed`
     private(set) var session: CompletionSession?
     var isCompletionActive: Bool { session != nil }
 
@@ -2357,6 +3479,9 @@ final class CompletingTextView: NSTextView {
     /// A programmatic replacement (a document switch, the owner's paste) is
     /// not a key event and never opens the list.
     private var typingKey = false
+    /// Whether the text change in progress is a keystroke the user typed
+    /// (TeXpand arms only on typed characters).
+    var isTypingKeystroke: Bool { typingKey || typingThroughSession }
     /// UTF-16 start of the token Esc dismissed the list for. Typing more of
     /// that same token must not bring it back; any other token, or a caret
     /// move, re-arms the automatic open. ⌃Space and Esc always work.
@@ -2384,7 +3509,8 @@ final class CompletingTextView: NSTextView {
         let caret = selectedRange()
         guard caret.length == 0 else { return nil }
         // `mutableString` is the storage's own NSString, not a bridged copy.
-        return Completion.caretToken(in: storage.mutableString, caretUTF16: caret.location)
+        return Completion.caretToken(in: storage.mutableString, caretUTF16: caret.location,
+                                     atLetter: packageContextAtCaret(caret.location).atLetter)
     }
 
     /// Arms the automatic open after a typed character. Nothing is scanned
@@ -2392,6 +3518,7 @@ final class CompletingTextView: NSTextView {
     private func scheduleAutomaticCompletion() {
         cancelAutomaticCompletion()
         guard EditorPreferences.shared.completionPopup, !hasMarkedText() else { return }
+        guard texpandEditor?.isCapturing != true else { return } // TeXpand's preview replaces the list (PLAN §9.1)
         let token = caretToken
         if escapeSuppressedTokenStart != nil, escapeSuppressedTokenStart != token?.startUTF16 {
             escapeSuppressedTokenStart = nil // a different token: Esc's dismissal is spent
@@ -2470,13 +3597,18 @@ final class CompletingTextView: NSTextView {
         super.draw(dirtyRect)
         foregroundDecorator?(dirtyRect)
         folds.drawPlaceholders(in: dirtyRect, textView: self)
+        texpandEditor?.draw(dirtyRect) // capture region and expansion preview (TeXpandEditor.swift)
+        MainThreadProbe.editorDrew() // key → glyph drawn (EditorInstantTests); one Bool test when off
     }
 
     /// Scroll view + text view pair, like `NSTextView.scrollableTextView()`
     /// but with this subclass as the document view.
     static func scrollable() -> NSScrollView {
         let scroll = scrollableTextView()
-        if scroll.documentView is CompletingTextView { return scroll }
+        if let tv = scroll.documentView as? CompletingTextView {
+            EditTailLayoutManager.install(in: tv) // EditorEditTail.swift
+            return scroll
+        }
         // Fallback if AppKit did not instantiate the subclass.
         let tv = CompletingTextView(frame: scroll.contentView.bounds)
         tv.autoresizingMask = [.width]
@@ -2486,6 +3618,7 @@ final class CompletingTextView: NSTextView {
         tv.textContainer?.widthTracksTextView = true
         tv.textContainer?.containerSize = NSSize(width: scroll.contentView.bounds.width, height: CGFloat.greatestFiniteMagnitude)
         scroll.documentView = tv
+        EditTailLayoutManager.install(in: tv)
         return scroll
     }
 
@@ -2511,7 +3644,9 @@ final class CompletingTextView: NSTextView {
         guard charRange.location != NSNotFound, charRange.location >= 0, charRange.length >= 0,
               NSMaxRange(charRange) <= (text as NSString).length else { return nil }
         let items = Completion.suggestions(in: text, caretUTF16: NSMaxRange(charRange), metadata: boundMetadata,
-                                          supported: supportedCommands)
+                                          supported: supportedCommands, projectClass: projectDocumentClass(),
+                                          indentUnit: EditorPreferences.shared.indentString,
+                                          environmentRules: EditorPreferences.shared.environmentRules)
         return items.isEmpty ? nil : items.map(\.insertText)
     }
 
@@ -2539,9 +3674,21 @@ final class CompletingTextView: NSTextView {
         guard caret.length == 0, !hasMarkedText() else { return }
         lastCaret = caret
         let metadata = boundMetadata
-        let request = CompletionScheduler.Request(text: string, caretUTF16: caret.location, metadata: metadata,
+        let packageContext = packageContextAtCaret(caret.location)
+        var request = CompletionScheduler.Request(text: string, caretUTF16: caret.location, metadata: metadata,
                                                   supported: supportedCommands, projectFiles: projectFiles,
-                                                  mathMode: mathModeAtCaret(caret.location))
+                                                  graphicsRoot: graphicsRoot(), recentCommands: recentlyUsed.commands,
+                                                  recentEnvironments: recentlyUsed.environments, otherDocuments: otherDocuments(),
+                                                  bibliography: bibliographySources(), mathMode: mathModeAtCaret(caret.location),
+                                                  projectClass: projectDocumentClass(),
+                                                  indentUnit: EditorPreferences.shared.indentString,
+                                                  environmentRules: EditorPreferences.shared.environmentRules,
+                                                  fontLister: fontLister(),
+                                                  packageMode: packageContext.packageMode, atLetter: packageContext.atLetter,
+                                                  projectPackageFiles: projectPackageFiles(), packageDocuments: packageDocuments())
+        // The engine's definitions when the last result carried them, whatever
+        // its revision: names and shapes do not move with document edits.
+        request.packageRecords = compileResult?.metadata?.packages
         scheduler.schedule(request) { [weak self] outcome in
             self?.present(outcome, metadataRevision: metadata?.revision)
         }
@@ -2592,6 +3739,14 @@ final class CompletingTextView: NSTextView {
         selectCompletion(at: (s.selectedIndex + delta + s.items.count) % s.items.count)
     }
 
+    /// Page Up/Down: moves by the rows the list shows at once
+    /// (`CompletionPopup.visibleRows`), clamped to the ends — unlike ↑/↓, a
+    /// page never wraps, so a second Page Down at the bottom stays there.
+    func moveSelection(byPages pages: Int) {
+        guard let s = session, !s.items.isEmpty else { return }
+        selectCompletion(at: Completion.pagedSelection(from: s.selectedIndex, pages: pages, pageSize: popup.visibleRows, count: s.items.count))
+    }
+
     /// Drops the session's selection (to an index no item has) so tests can
     /// check that a list with nothing selected hands keys back to the editor
     /// instead of eating them. No app path produces this state today; the
@@ -2625,7 +3780,16 @@ final class CompletingTextView: NSTextView {
         }
         applyingCompletion = true
         let range = rangeConsumingStaleCloser(s.range, inserting: item.snippet?.text ?? item.insertText)
-        if let snippet = item.snippet {
+        if item.kind == .environment, let name = renamedEnvironmentSpan(for: s.range) {
+            // Inside the name of an existing `\begin{…}` … `\end{…}` pair: the
+            // accepted name replaces the whole name (not only the typed prefix),
+            // without the body skeleton or a second `}`; linked editing renames
+            // the partner in the same undo step (EditorChangeEnvironment.swift).
+            breakUndoCoalescing()
+            insertText(item.label, replacementRange: name)
+            undoManager?.setActionName("Rename Environment")
+            breakUndoCoalescing()
+        } else if let snippet = item.snippet {
             insertSnippet(snippet, replacing: range, kind: item.kind)
         } else if range.length != s.range.length {
             // AppKit's `insertCompletion` recomputes the range it replaces from
@@ -2638,8 +3802,21 @@ final class CompletingTextView: NSTextView {
             insertCompletion(item.insertText, forPartialWordRange: range, movement: NSReturnTextMovement, isFinal: true)
         }
         applyingCompletion = false
+        recentlyUsed.record(item)
         scheduler.cancel()
         close(.accepted)
+    }
+
+    /// The name span of a balanced `\begin{name}` … `\end{name}` pair that
+    /// holds the completion range `range`, when there is one: accepting an
+    /// environment there renames it rather than opening a new one. A name
+    /// whose `}` this editor auto-inserted is being typed right now (a nested
+    /// `\begin{itemize` can pair with the outer `\end{itemize}`): that one
+    /// still gets its skeleton.
+    private func renamedEnvironmentSpan(for range: NSRange) -> NSRange? {
+        LinkedEnvironmentEditing.completionRenameSpan(for: range, in: string as NSString) {
+            isPendingCloser?($0) == true
+        }
     }
 
     /// The session range, grown by one unit when an auto-inserted closer sits
@@ -2675,24 +3852,41 @@ final class CompletingTextView: NSTextView {
 
     /// One undo step: the typed partial token is closed off first so ⌘Z
     /// removes exactly the snippet and restores the token.
-    private func insertSnippet(_ snippet: Completion.Snippet, replacing range: NSRange, kind: Completion.Kind) {
+    private func insertSnippet(_ snippet: Completion.Snippet, replacing range: NSRange, kind: Completion.Kind, actionName: String? = nil) {
         breakUndoCoalescing()
         guard shouldChangeText(in: range, replacementString: snippet.text) else { return }
         textStorage?.replaceCharacters(in: range, with: snippet.text)
         didChangeText() // registers the undo step, fires textDidChange
-        undoManager?.setActionName(kind == .environment ? "Insert Environment" : "Insert Snippet")
+        undoManager?.setActionName(actionName ?? (kind == .environment ? "Insert Environment" : "Insert Snippet"))
         let caret = range.location + snippet.caretUTF16
-        setSelectedRange(NSRange(location: caret, length: 0))
-        breakUndoCoalescing()
-        // Tab stops (absolute) for the placeholders after the caret's.
-        snippetStart = range.location + snippet.caretUTF16
+        // Tab stops (absolute) for the placeholders after the caret's; set
+        // before the selection so a selected first placeholder keeps them.
+        snippetStart = caret
+        snippetStartLength = snippet.caretLength
         snippetStops = snippet.stops.map { range.location + $0 }
+        snippetStopLengths = snippet.stops.indices.map { snippet.stopLength($0) }
         snippetStopIndex = -1
+        let wasApplying = applyingCompletion
+        applyingCompletion = true
+        setSelectedRange(NSRange(location: caret, length: snippet.caretLength))
+        applyingCompletion = wasApplying
+        breakUndoCoalescing()
         lastCaret = selectedRange()
         refreshSignatureHelp(open: true) // `\frac{|}{}`: the argument pattern is useful right away
         if let offset = EditorKeyHandling.programmaticCloser(in: snippet.text, insertedAt: range.location, caretUTF16: caret) {
             onCloserInserted?(offset) // e.g. `\section{}`'s `}` overtypes instead of doubling
         }
+    }
+
+    // MARK: TeXpand (TeXpandEditor.swift)
+
+    /// Created on the first keystroke; nil in a view nobody has typed in.
+    private(set) var texpandEditor: TeXpandEditor?
+    var texpand: TeXpandEditor {
+        if let t = texpandEditor { return t }
+        let t = TeXpandEditor(textView: self)
+        texpandEditor = t
+        return t
     }
 
     // MARK: Vim keybindings (VimMode.swift)
@@ -2707,6 +3901,19 @@ final class CompletingTextView: NSTextView {
     var vimEnabledOverride: Bool? { didSet { applyVimPreference(isVimEnabled) } }
     var isVimEnabled: Bool { vimEnabledOverride ?? EditorPreferences.shared.vimKeybindings }
     private var vimActive = false
+    /// The edit in progress whose redraw below the edited paragraph is
+    /// deferred (EditorEditTail.swift).
+    var editTail: EditTailState?
+    /// Edits whose deferred redraw below the paragraph was dropped (tests, evidence).
+    var editTailDroppedCount = 0
+    /// Every rect passed on to be redrawn (tests).
+    var onInvalidate: ((NSRect) -> Void)?
+    /// The line-number gutter, redrawn when the edit in progress turns out to
+    /// have moved lines (SourceEditorView's textDidChange; EditorEditTail.swift).
+    weak var gutterAfterEdit: LineNumberGutter?
+    /// Depth of `needsDisplay`/`setNeedsDisplay(_:)` calls: invalidations
+    /// that did not come from the layout manager are never deferred.
+    private(set) var externalInvalidations = 0
 
     /// The preference changed (EditorPreferences.apply): enter normal mode, or drop back to plain editing.
     func applyVimPreference(_ on: Bool) {
@@ -2741,7 +3948,32 @@ final class CompletingTextView: NSTextView {
         }
     }
 
+    // MARK: edit tail (EditorEditTail.swift)
+
+    override var needsDisplay: Bool {
+        get { super.needsDisplay }
+        set {
+            externalInvalidations += 1
+            defer { externalInvalidations -= 1 }
+            super.needsDisplay = newValue
+        }
+    }
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        externalInvalidations += 1
+        defer { externalInvalidations -= 1 }
+        super.setNeedsDisplay(invalidRect)
+    }
+
+    override func viewWillDraw() {
+        editTailFlush() // an edit that never reached didChangeText: redraw what it deferred
+        super.viewWillDraw()
+    }
+
     override func setNeedsDisplay(_ rect: NSRect, avoidAdditionalLayout flag: Bool) {
+        let rect = editTailFilter(rect)
+        guard !rect.isNull else { return }
+        onInvalidate?(rect)
         var r = rect
         if vimActive, vim.wantsBlockCaret { r.size.width += vimBlockWidth() }
         super.setNeedsDisplay(r, avoidAdditionalLayout: flag)
@@ -2773,6 +4005,7 @@ final class CompletingTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        _ = texpand // TeXpand watches edits from the first keystroke (off: it only checks the switch)
         if hasMarkedText() { super.keyDown(with: event); return } // IME composition owns the keys (mac-editor-accessibility)
         if vimActive, let key = VimMode.Key(event: event), vim.handle(key) { return } // VimMode.swift: normal/visual keys, Esc in insert
         if event.modifierFlags.contains(.control), event.charactersIgnoringModifiers == " " {
@@ -2799,6 +4032,10 @@ final class CompletingTextView: NSTextView {
         }
         guard session != nil else {
             let plain = event.modifierFlags.intersection([.command, .option, .control]).isEmpty
+            // TeXpand (PLAN §9.5): a capture takes Tab before snippet stops,
+            // the caret fix and indentation; Esc ends a capture first.
+            if plain, event.keyCode == 48, !event.modifierFlags.contains(.shift), texpand.tab() { return }
+            if plain, event.keyCode == 53, texpand.escape() { return }
             if plain, event.keyCode == 48, isSnippetActive { // Tab / ⇧Tab between snippet placeholders
                 moveSnippetStop(by: event.modifierFlags.contains(.shift) ? -1 : 1)
                 return
@@ -2848,9 +4085,13 @@ final class CompletingTextView: NSTextView {
         case 125: moveSelection(by: 1) // ↓
         case 126: moveSelection(by: -1) // ↑
         case 48: moveSelection(by: event.modifierFlags.contains(.shift) ? -1 : 1) // Tab next, ⇧Tab previous (wrapping)
+        case 121: moveSelection(byPages: 1) // Page Down: a screenful of rows, stopping at the last
+        case 116: moveSelection(byPages: -1) // Page Up: a screenful up, stopping at the first
+        case 115: selectCompletion(at: 0) // Home: the first row
+        case 119: selectCompletion(at: (session?.items.count ?? 1) - 1) // End: the last row
         case 36, 76: acceptSelectedCompletion() // Return, Enter
         case 53: scheduler.cancel(); close(.escape) // Esc
-        case 123, 124, 115, 119, 116, 121: // ←, →, Home, End, Page Up/Down leave the token
+        case 123, 124: // ←, → leave the token
             close(.caretMoved)
             super.keyDown(with: event)
         default:
@@ -2859,7 +4100,9 @@ final class CompletingTextView: NSTextView {
             typingThroughSession = true
             super.keyDown(with: event)
             typingThroughSession = false
-            if session != nil { requestCompletion() }
+            if session != nil {
+                if texpandEditor?.isCapturing == true { close(.textChanged) } else { requestCompletion() }
+            }
         }
     }
 
@@ -2868,7 +4111,8 @@ final class CompletingTextView: NSTextView {
         if vimActive, !stillSelectingFlag { vim.selectionDidChange(selectedRange()) } // a mouse selection enters visual mode
         guard !typingThroughSession, !applyingCompletion else { return }
         let caret = selectedRange()
-        if isSnippetActive, caret.length != 0 || caret.location < snippetStart || caret.location > (snippetStops.last ?? 0) { endSnippet() }
+        if isSnippetActive, (caret.length != 0 && !isSelectedPlaceholder(caret)) || caret.location < snippetStart || caret.location > (snippetStops.last ?? 0) { endSnippet() }
+        if !stillSelectingFlag { texpandEditor?.selectionChanged() }
         if isSignatureHelpVisible { refreshSignatureHelp(open: false) }
         if !typingKey {
             // Moving the caret (click, arrow, Find) abandons a pending open and
@@ -2886,6 +4130,32 @@ final class CompletingTextView: NSTextView {
         super.didChangeText()
         textChanged()
         signatureHelpAfterTextChange()
+        texpandEditor?.applyPendingCommit() // an instant atom, ligature or auto fraction the keystroke completed
+        editTailDidChange() // EditorEditTail.swift: the text below the paragraph is redrawn only if it changed
+    }
+
+    /// TeXpand's auto-preamble (M6): `\usepackage` lines at `location`. The
+    /// caller groups it with the expansion's undo step.
+    func insertTeXpandPreamble(_ text: String, at location: Int) {
+        let range = NSRange(location: location, length: 0)
+        guard shouldChangeText(in: range, replacementString: text) else { return }
+        textStorage?.replaceCharacters(in: range, with: text)
+        didChangeText()
+    }
+
+    /// TeXpand's inline commit (instant atoms, ligatures): replace `range`
+    /// as its own undo step and keep the caret where it was, shifted.
+    func replaceTeXpandText(_ range: NSRange, with text: String, actionName: String) {
+        let caret = selectedRange()
+        breakUndoCoalescing()
+        guard shouldChangeText(in: range, replacementString: text) else { return }
+        textStorage?.replaceCharacters(in: range, with: text)
+        didChangeText()
+        undoManager?.setActionName(actionName)
+        let delta = (text as NSString).length - range.length
+        let location = caret.location >= NSMaxRange(range) ? caret.location + delta : min(caret.location, range.location + (text as NSString).length)
+        setSelectedRange(NSRange(location: location, length: 0))
+        breakUndoCoalescing()
     }
 
     /// A `{` or `[` just typed after a command name opens the help; any other
@@ -2904,12 +4174,19 @@ final class CompletingTextView: NSTextView {
 
     // MARK: VoiceOver rotor (EditorRotor.swift)
 
-    /// Headings/environments rotor search over this view's text; created on
-    /// first use so views that never reach VoiceOver pay nothing.
-    private(set) lazy var rotorSearch = EditorRotorSearch(textView: self)
+    /// The diagnostic marks the owner draws over this view, asked on the main
+    /// thread when the Diagnostics rotor is searched or the caret's custom
+    /// content is read (`SourceEditorView` wires its painter). A bare text
+    /// view has none.
+    var diagnosticMarks: () -> [EditorDiagnostics.Mark] = { [] }
+
+    /// Headings/environments/diagnostics rotor search over this view's text
+    /// and marks; created on first use so views that never reach VoiceOver
+    /// pay nothing.
+    private(set) lazy var rotorSearch = EditorRotorSearch(textView: self, marks: { [weak self] in self?.diagnosticMarks() ?? [] })
 
     override func accessibilityCustomRotors() -> [NSAccessibilityCustomRotor] {
-        rotorSearch.rotors + (super.accessibilityCustomRotors() ?? [])
+        rotorSearch.rotors + super.accessibilityCustomRotors()
     }
 
     /// Programmatic replacement (`string =`, the owner's `replaceCharacters`)
@@ -2935,7 +4212,79 @@ final class CompletingTextView: NSTextView {
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
         if ok, session != nil { scheduler.cancel(); close(.resignedFirstResponder) }
-        if ok { cancelAutomaticCompletion(); hideSignatureHelp() }
+        if ok { cancelAutomaticCompletion(); hideSignatureHelp(); texpandEditor?.focusLost() }
         return ok
+    }
+}
+
+/// The installed font families `\setmainfont{` completes with, as the
+/// new engine's own catalog sees them (`flashtex-host-unicode
+/// --list-fonts`, the catalog Unicode mode's `\setmainfont{…}` and
+/// `[fonts]` resolve against, crates/flashtex-xetex
+/// `FontCatalog::family_names`; app-parity row A9), so what the list offers
+/// is what the compile finds. AppKit's font panel would list Core Text's
+/// view of the machine instead, which differs for `FLASHTEX_FONT_DIRS` and
+/// a bundle's fonts. Listed once per launch by the completion job, off-main,
+/// the first time the caret is in a font argument; nil or a missing binary
+/// offers nothing.
+enum InstalledFonts {
+    /// The program that lists the families: Unicode mode's host.
+    @MainActor static func lister() -> URL? {
+        EngineV3.locateHost(mode: .unicode)
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cached: (URL, [String])?
+    nonisolated(unsafe) private static var cachedMath: (URL, [String])?
+
+    nonisolated static func families(tool: URL?) -> [String] {
+        guard let tool else { return [] }
+        lock.lock(); defer { lock.unlock() }
+        if let (url, names) = cached, url == tool { return names }
+        let names = list(tool: tool, flag: "--list-fonts")
+        cached = (tool, names)
+        return names
+    }
+
+    /// The families with a face carrying an OpenType `MATH` table
+    /// (`--list-math-fonts`): what the Fonts sheet's Math row offers
+    /// (ProjectFonts.swift). Same caching as `families`.
+    nonisolated static func mathFamilies(tool: URL?) -> [String] {
+        guard let tool else { return [] }
+        lock.lock(); defer { lock.unlock() }
+        if let (url, names) = cachedMath, url == tool { return names }
+        let names = list(tool: tool, flag: "--list-math-fonts")
+        cachedMath = (tool, names)
+        return names
+    }
+
+    /// Runs the tool with a bounded wait; an unresponsive or failing tool
+    /// yields an empty list (and is retried next time).
+    private nonisolated static func list(tool: URL, flag: String, timeout: TimeInterval = 10) -> [String] {
+        let p = Process()
+        p.executableURL = tool
+        p.arguments = [flag]
+        let stdout = Pipe()
+        p.standardOutput = stdout
+        p.standardError = FileHandle.nullDevice
+        // The drain publishes under a lock: the bounded waits below can
+        // expire while it is still reading.
+        let drained = Drained()
+        let group = DispatchGroup()
+        group.enter(); DispatchQueue.global().async { drained.put(stdout.fileHandleForReading.readDataToEndOfFile()); group.leave() }
+        do { try p.run() } catch { return [] }
+        let waiter = DispatchGroup()
+        waiter.enter(); DispatchQueue.global().async { p.waitUntilExit(); waiter.leave() }
+        if waiter.wait(timeout: .now() + timeout) == .timedOut { p.terminate() }
+        if group.wait(timeout: .now() + 5) == .timedOut, p.isRunning { kill(p.processIdentifier, SIGKILL) }
+        guard !p.isRunning, p.terminationStatus == 0 else { return [] }
+        return String(decoding: drained.read(), as: UTF8.self).split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+    }
+
+    private final class Drained: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        func put(_ d: Data) { lock.lock(); data = d; lock.unlock() }
+        func read() -> Data { lock.lock(); defer { lock.unlock() }; return data }
     }
 }

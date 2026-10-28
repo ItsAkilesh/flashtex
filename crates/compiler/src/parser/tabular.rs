@@ -85,7 +85,7 @@ fn row_is_blank(row: &[RawCell]) -> bool {
     row.len() == 1 && row[0].is_blank()
 }
 
-fn is_rule_command(name: &str, booktabs: bool) -> bool {
+fn is_rule_command(name: &str, booktabs: bool, hhline: bool) -> bool {
     matches!(name, "hline" | "cline")
         || (booktabs
             && matches!(
@@ -98,32 +98,16 @@ fn is_rule_command(name: &str, booktabs: bool) -> bool {
                     | "specialrule"
                     | "morecmidrules"
             ))
+        || (hhline && name == "hhline")
 }
 
-/// Whether this token is an escaped `\&` — a printed ampersand — rather
-/// than the `&` that opens the next entry. `\&` lexes as the one-character
-/// word `&` whose span covers the backslash too (two bytes).
-///
-/// The width is measured on the token's own source bytes, like
-/// `parser::control_symbol_kern`: text expanded from a macro body carries
-/// the invocation's span, so a `\&` inside `\newcommand{\am}{\&}` looks
-/// three bytes wide and would silently become a column break — output
-/// identical to an unescaped `a&b`, shifting every later cell in the row.
-/// Expanded text with no definition bytes (synthesised by the engine)
-/// cannot prove it is escaped, so it separates, as a bare `&` does.
+/// Whether this token is an escaped `\&` (a printed ampersand) rather than
+/// the `&` that opens the next entry. Identity comes from
+/// [`Token::control_symbol_char`](crate::lexer::Token::control_symbol_char),
+/// never span width: `\&` inside `\newcommand{\am}{\&}` carries the
+/// invocation's span and would otherwise become a column break (#760).
 fn is_escaped_ampersand(input: &InputToken) -> bool {
-    if !matches!(&input.token.kind, TokenKind::Word(word) if word == "&") {
-        return false;
-    }
-    let span = if input.maps_to_invocation {
-        match input.definition {
-            Some(definition) => definition,
-            None => return false,
-        }
-    } else {
-        input.token.span
-    };
-    span.end - span.start == 2
+    input.token.control_symbol_char() == Some('&')
 }
 
 /// Row-scanner state carried between rows.
@@ -133,6 +117,37 @@ struct RowState {
     row_color: Option<ColorFill>,
     /// A longtable `\caption` opened the current row.
     caption_pending: bool,
+}
+
+/// One `\hhline` column slot: `-` a single rule, `=` a double rule, `~` none.
+#[derive(Clone, Copy, PartialEq)]
+enum HhlineSlot {
+    Single,
+    Double,
+    Blank,
+}
+
+/// Maximal inclusive column ranges holding a rule on one `\hhline` pass:
+/// the single pass covers every ruled column, the second pass only `=`.
+fn hhline_runs(slots: &[HhlineSlot], second: bool) -> Vec<(usize, usize)> {
+    let mut runs = Vec::new();
+    let mut start: Option<usize> = None;
+    for (index, slot) in slots.iter().enumerate() {
+        let ruled = if second {
+            *slot == HhlineSlot::Double
+        } else {
+            *slot != HhlineSlot::Blank
+        };
+        if ruled {
+            start.get_or_insert(index);
+        } else if let Some(first) = start.take() {
+            runs.push((first, index - 1));
+        }
+    }
+    if let Some(first) = start.take() {
+        runs.push((first, slots.len() - 1));
+    }
+    runs
 }
 
 fn is_table_command(name: &str, features: TableFeatures) -> bool {
@@ -216,9 +231,22 @@ fn block_inlines(block: Block) -> Vec<Inline> {
         | Block::Rule { .. }
         | Block::PageBreak
         | Block::Verbatim { .. }
+        | Block::Alltt { .. }
         | Block::TableOfContents { .. }
         | Block::TitleBlock { .. }
-        | Block::VFill
+        | Block::BeamerFrameBegin { .. }
+        | Block::BeamerFrameEnd { .. }
+        | Block::BeamerSection { .. }
+        | Block::BeamerTitlePage { .. }
+        | Block::BeamerBlockBegin { .. }
+        | Block::BeamerBlockEnd { .. }
+        | Block::BeamerColumnsBegin { .. }
+        | Block::BeamerColumn { .. }
+        | Block::BeamerColumnsEnd { .. }
+        | Block::BeamerCaption { .. }
+        | Block::VFill { .. }
+        | Block::MinipageBegin { .. }
+        | Block::MinipageEnd { .. }
         | Block::Penalty { .. } => Vec::new(),
         // A `\opening`/`\closing` block inside a tabular cell cannot
         // happen: both flush the paragraph and push a block of their own,
@@ -405,28 +433,15 @@ impl P<'_> {
             .is_none_or(|index| preceded_by_space(&self.t, index));
         let style = self.style;
         let body = self.body_pt();
-        let width = if name == "tabular*" {
-            let (tokens, argument_span) = self.required_group(name, open);
-            let length = table_length(&tokens, body);
-            if length.is_none() {
-                self.diags.push(Diagnostic::error(
-                    format!(
-                        "tabular* width must be a dimension or a multiple of \\textwidth, got '{}'",
-                        token_text(&tokens).trim()
-                    ),
-                    Some(argument_span),
-                    Some("laid the table out at its natural width".into()),
-                ));
-            }
-            length
-        } else {
-            None
-        };
         let features = TableFeatures {
             longtable: name == "longtable",
             colortbl: self.colortbl(),
             multirow: self.packages.iter().any(|package| package == "multirow"),
         };
+        // The position argument comes before the width argument
+        // (`\begin{tabular*}[t]{width}{cols}`, likewise `tabularx`; latex.ltx
+        // `\@array`), so it is parsed first. (`tabular` and `longtable`
+        // take no width argument, for which this order is equivalent.)
         let mut longtable_align = None;
         let position = match self.optional_bracket_argument() {
             // longtable.sty 106/120-126: `[l]`/`[c]`/`[r]` set `\LTleft`/`\LTright`.
@@ -453,6 +468,25 @@ impl P<'_> {
             let number = self.counters.step("table");
             self.set_current_counter("table", number);
         }
+        // `tabular*` and `tabularx` both take a required total-width
+        // argument before the column specification (unlike `tabular`).
+        let width = if name == "tabular*" || name == "tabularx" {
+            let (tokens, argument_span) = self.required_group(name, open);
+            let length = table_length(&tokens, body);
+            if length.is_none() {
+                self.diags.push(Diagnostic::error(
+                    format!(
+                        "{name} width must be a dimension or a multiple of \\textwidth, got '{}'",
+                        token_text(&tokens).trim()
+                    ),
+                    Some(argument_span),
+                    Some("laid the table out at its natural width".into()),
+                ));
+            }
+            length
+        } else {
+            None
+        };
         let rule_color = self.table_rule_color.clone();
         let double_rule_sep_color = self.table_double_rule_sep_color.clone();
         let (spec_tokens, spec_span) = self.required_group(name, open);
@@ -473,6 +507,7 @@ impl P<'_> {
         }
         let n = columns.len();
         let booktabs = self.packages.iter().any(|package| package == "booktabs");
+        let hhline = self.packages.iter().any(|package| package == "hhline");
 
         let mut entries = Vec::new();
         let mut row = vec![RawCell::new(None)];
@@ -493,12 +528,12 @@ impl P<'_> {
             let span = input.token.span;
             end = span.end;
             match &input.token.kind {
-                TokenKind::Command(command) if depth == 0 && is_rule_command(command, booktabs) => {
+                TokenKind::Command(command) if depth == 0 && is_rule_command(command, booktabs, hhline) => {
                     self.i += 1;
-                    let entry = self.tabular_rule(command, span, n, body);
+                    let ruled = self.tabular_rule(command, span, n, body);
                     if row_is_blank(&row) {
                         row = vec![RawCell::new(None)];
-                        entries.extend(entry.map(RawEntry::Done));
+                        entries.extend(ruled.into_iter().map(RawEntry::Done));
                     } else {
                         self.diags.push(Diagnostic::error(
                             format!("\\{command} is only allowed at the start of a table row"),
@@ -708,6 +743,13 @@ impl P<'_> {
                     Some(column) => tokens.extend(siunitx_entry(raw.tokens, column)),
                     None => tokens.extend(raw.tokens),
                 }
+                // `\insert@column`'s `\unskip` after the entry: its trailing
+                // blank is no glue in front of the `<{}` tokens.
+                if !cell_decls.after.is_empty() {
+                    while matches!(tokens.last().map(|t| &t.token.kind), Some(TokenKind::Space | TokenKind::Comment)) {
+                        tokens.pop();
+                    }
+                }
                 tokens.extend(cell_decls.after);
                 let (tokens, cell_color, multirow) = self.strip_cell_commands(tokens, features);
                 let outer_alignment = self.declared_alignment.take();
@@ -718,7 +760,7 @@ impl P<'_> {
                     content,
                     columns: columns_spanned,
                     template,
-                    alignment: align.paragraph_width().and(alignment),
+                    alignment: align.is_paragraph().then_some(alignment).flatten(),
                     declarations,
                     color: cell_color,
                     multirow,
@@ -760,6 +802,10 @@ impl P<'_> {
     /// `\par`, then the table as a block of its own, a paragraph holding
     /// only the table). Without the package LaTeX has no such environment,
     /// so it stays diagnosed. Returns whether the environment was taken.
+    ///
+    /// `tabularx` likewise needs its package; unlike `longtable` it is
+    /// inline content (a `tabular*` of the requested width), so it is
+    /// parsed straight into the enclosing paragraph like `tabular`.
     pub(super) fn package_table_environment(
         &mut self,
         open: Span,
@@ -767,9 +813,15 @@ impl P<'_> {
         blocks: &mut Vec<Block>,
         para: &mut Vec<Inline>,
     ) -> bool {
-        const LONGTABLE: &str = "longtable";
-        if name != LONGTABLE || !self.packages.iter().any(|package| package == LONGTABLE) {
+        if name != "longtable" && name != "tabularx" {
             return false;
+        }
+        if !self.packages.iter().any(|package| package == name) {
+            return false;
+        }
+        if name == "tabularx" {
+            self.tabular_environment(open, name, para);
+            return true;
         }
         self.flush_paragraph(blocks, para);
         let mut table = Vec::new();
@@ -1291,16 +1343,21 @@ impl P<'_> {
         }
     }
 
-    /// A rule at the start of a row; `None` after a diagnosed malformed one.
-    fn tabular_rule(&mut self, command: &str, span: Span, n: usize, body: f64) -> Option<Entry> {
+    /// The entries a rule at the start of a row desugars to; empty after a
+    /// diagnosed malformed one, or when the rule paints nothing at all.
+    fn tabular_rule(&mut self, command: &str, span: Span, n: usize, body: f64) -> Vec<Entry> {
         match command {
-            "hline" => Some(Entry::HLine { span }),
+            "hline" => vec![Entry::HLine { span }],
             "cline" => {
                 let (tokens, argument_span) = self.required_group(command, span);
                 let span = span.merge(argument_span);
-                let (first, last) = self.column_range(command, &token_text(&tokens), n, span)?;
-                Some(Entry::CLine { first, last, span })
+                let Some((first, last)) = self.column_range(command, &token_text(&tokens), n, span)
+                else {
+                    return Vec::new();
+                };
+                vec![Entry::CLine { first, last, span }]
             }
+            "hhline" => self.hhline_entries(span, n),
             "toprule" | "midrule" | "bottomrule" => {
                 let (width_pt, span) = self.rule_width(command, span, body);
                 let kind = match command {
@@ -1308,11 +1365,11 @@ impl P<'_> {
                     "midrule" => BookRule::Mid,
                     _ => BookRule::Bottom,
                 };
-                Some(Entry::BookRule {
+                vec![Entry::BookRule {
                     kind,
                     width_pt,
                     span,
-                })
+                }]
             }
             // booktabs.sty 80-83: `\addlinespace[\defaultaddspace]`.
             "addlinespace" => {
@@ -1330,7 +1387,7 @@ impl P<'_> {
                     }
                     None => (None, span),
                 };
-                Some(Entry::AddLineSpace { space: pt, span })
+                vec![Entry::AddLineSpace { space: pt, span }]
             }
             // booktabs.sty 77-79: `\specialrule{width}{above}{below}`.
             "specialrule" => {
@@ -1349,21 +1406,24 @@ impl P<'_> {
                         0.0
                     });
                 }
-                Some(Entry::SpecialRule {
+                vec![Entry::SpecialRule {
                     width_pt: values[0],
                     above_pt: values[1],
                     below_pt: values[2],
                     span: whole,
-                })
+                }]
             }
-            "morecmidrules" => Some(Entry::MoreCmidRules { span }),
+            "morecmidrules" => vec![Entry::MoreCmidRules { span }],
             _ => {
                 let (width_pt, span) = self.rule_width(command, span, body);
                 let (trim_left, trim_right, kern_left, kern_right) = self.cmidrule_trim(body);
                 let (tokens, argument_span) = self.required_group(command, span);
                 let span = span.merge(argument_span);
-                let (first, last) = self.column_range(command, &token_text(&tokens), n, span)?;
-                Some(Entry::CMidRule {
+                let Some((first, last)) = self.column_range(command, &token_text(&tokens), n, span)
+                else {
+                    return Vec::new();
+                };
+                vec![Entry::CMidRule {
                     first,
                     last,
                     trim_left,
@@ -1372,9 +1432,158 @@ impl P<'_> {
                     kern_left,
                     kern_right,
                     span,
-                })
+                }]
             }
         }
+    }
+
+    /// `\hhline{...}` (hhline.sty): one slot per column — `-` a single
+    /// `\arrayrulewidth` rule, `=` a double one, `~` no rule — desugared
+    /// into `\cline`-style runs plus the `\noalign` space each pass takes,
+    /// with the `|` ties as `Entry::HTie` at their column boundaries:
+    ///
+    /// * the top pass covers the `=` columns in maximal runs; the bottom
+    ///   pass, `\arrayrulewidth` plus `\doublerulesep` below, covers every
+    ///   ruled column — so a `-` aligns with the `=` bottoms, exactly as
+    ///   hhline.sty stacks them (its `-` leaders sit on the row's
+    ///   baseline, under the 2.8pt `=` boxes);
+    /// * the block's full height comes from `\noalign` space, the way
+    ///   `\hline\hline` accounts its own;
+    /// * a full-width single pass is pixel-identical to `\hline` in both
+    ///   layouts (same span-wide rule, same vertical advance and
+    ///   `[t]`-reference height), and — unlike a desugar to `\hline` —
+    ///   stacks against a neighbouring `\hline` with no spurious
+    ///   `\doublerulesep`, the way `\@xhline` only merges real `\hline`s.
+    ///
+    /// A `|` takes no column of its own: it marks the boundary after the
+    /// slots so far (0 before any slot, `n` after the last), where the
+    /// tie joins the block's passes the way hhline.sty's
+    /// `\@tempc\vline\@tempc` does. hhline's other vertical joints (`:`),
+    /// double verticals (`#`) and `t`/`b` are not rendered yet — each one
+    /// present is diagnosed once (a warning, since the argument itself is
+    /// valid hhline.sty) instead of being dropped silently. Anything else
+    /// is an illegal character, diagnosed and ignored.
+    fn hhline_entries(&mut self, span: Span, n: usize) -> Vec<Entry> {
+        let (tokens, argument_span) = self.required_group("hhline", span);
+        let span = span.merge(argument_span);
+        let raw = token_text(&tokens);
+        let mut slots: Vec<HhlineSlot> = Vec::new();
+        let mut illegal: Option<char> = None;
+        let mut joints: Vec<char> = Vec::new();
+        let mut ties: Vec<usize> = Vec::new();
+        for ch in raw.chars() {
+            match ch {
+                '-' => slots.push(HhlineSlot::Single),
+                '=' => slots.push(HhlineSlot::Double),
+                '~' => slots.push(HhlineSlot::Blank),
+                '|' => {
+                    // Clamped here so a too-long spec's ties dedupe onto
+                    // the table's right edge with the truncation below.
+                    let boundary = slots.len().min(n);
+                    if !ties.contains(&boundary) {
+                        ties.push(boundary);
+                    }
+                }
+                ':' | '#' | 't' | 'b' => {
+                    if !joints.contains(&ch) {
+                        joints.push(ch);
+                    }
+                }
+                ch if ch.is_whitespace() => {}
+                ch => {
+                    illegal.get_or_insert(ch);
+                }
+            }
+        }
+        if let Some(ch) = illegal {
+            self.diags.push(Diagnostic::error(
+                format!("\\hhline{{{}}} has an illegal character '{ch}'", raw.trim()),
+                Some(span),
+                Some("ignored the character".into()),
+            ));
+        }
+        if !joints.is_empty() {
+            let named: Vec<String> = joints.iter().map(|ch| format!("'{ch}'")).collect();
+            let message = if joints.len() == 1 {
+                format!(
+                    "\\hhline{{{}}} has a vertical rule {} that is not rendered yet",
+                    raw.trim(),
+                    named[0]
+                )
+            } else {
+                format!(
+                    "\\hhline{{{}}} has vertical rules {} that are not rendered yet",
+                    raw.trim(),
+                    named.join(", ")
+                )
+            };
+            self.diags.push(Diagnostic::warning(
+                message,
+                Some(span),
+                Some("ignored the vertical rule".into()),
+            ));
+        }
+        if slots.len() > n {
+            self.diags.push(Diagnostic::error(
+                format!(
+                    "\\hhline{{{}}} has more entries than the {n} columns of the table",
+                    raw.trim()
+                ),
+                Some(span),
+                Some(format!("used the first {n} entries")),
+            ));
+            slots.truncate(n);
+        } else if slots.len() < n {
+            // Real hhline.sty only errors on too-long specs (the extra `&`
+            // misplaces: `Extra alignment tab has been changed to \cr`); a
+            // short spec silently rules just its leading columns (verified
+            // with pdflatex/TeX Live 2026: `\hhline{--}` in a 3-column
+            // table draws over columns 0-1 with no error, and `\hhline{}`
+            // is a silent no-op). The recovery below pads with blanks,
+            // which renders exactly that, but a short spec is almost
+            // always a miscounted spec, so diagnose it rather than
+            // padding silently.
+            self.diags.push(Diagnostic::error(
+                format!(
+                    "\\hhline{{{}}} has fewer entries than the {n} columns of the table",
+                    raw.trim()
+                ),
+                Some(span),
+                Some("left the missing columns blank".into()),
+            ));
+        }
+        slots.resize(n, HhlineSlot::Blank);
+        if slots.iter().all(|slot| *slot == HhlineSlot::Blank) {
+            return Vec::new();
+        }
+        // The ties join the block's passes, so they come first (they take
+        // no vertical space; the layout paints them over the block's
+        // height from the block top). Then the `=`-only top pass, the
+        // separation, and the full bottom pass the `-` rules sit on.
+        let double = slots.contains(&HhlineSlot::Double);
+        let mut out = Vec::new();
+        for boundary in ties {
+            out.push(Entry::HTie {
+                boundary: boundary.min(n),
+                double,
+                span,
+            });
+        }
+        if double {
+            for (first, last) in hhline_runs(&slots, true) {
+                out.push(Entry::CLine { first, last, span });
+            }
+            out.push(Entry::VSpace {
+                pt: ARRAYRULEWIDTH_PT + DOUBLERULESEP_PT,
+            });
+        }
+        for (first, last) in hhline_runs(&slots, false) {
+            out.push(Entry::CLine { first, last, span });
+        }
+        out.push(Entry::VSpace {
+            pt: ARRAYRULEWIDTH_PT,
+        });
+        out
     }
 
     fn rule_width(&mut self, command: &str, span: Span, body: f64) -> (Option<f64>, Span) {
@@ -1525,6 +1734,7 @@ impl P<'_> {
         let brace_depth = self.brace_stack.len();
         let dependency_count = self.block_dependencies.len();
         let par_leading_count = self.block_par_leading.len();
+        let outer_trivlist = self.trivlist_pending.take();
 
         let mut blocks = Vec::new();
         let mut para = Vec::new();
@@ -1532,6 +1742,8 @@ impl P<'_> {
         // The entry's blocks are folded into the enclosing paragraph, so they
         // must not leave leadings of their own behind.
         self.block_par_leading.truncate(par_leading_count);
+        self.block_par_starts.truncate(par_leading_count);
+        self.trivlist_pending = outer_trivlist;
 
         while self.brace_stack.len() > brace_depth {
             let open = self.brace_stack.pop().expect("length checked");
@@ -1549,11 +1761,21 @@ impl P<'_> {
         if blocks.is_empty() {
             return para;
         }
-        self.diags.push(Diagnostic::warning(
-            "block-level content (paragraphs, headings, lists, displays) is not supported inside a table entry",
-            first_span,
-            Some("kept its text inline in the entry".into()),
-        ));
+        if blocks.iter().any(|b| matches!(b, Block::MinipageBegin { .. })) {
+            // The box's body blocks cannot be set in an entry's hbox here.
+            self.diags.push(Diagnostic::environment_warning(
+                "minipage",
+                "a minipage inside a table entry is not implemented; its body is typeset as plain text".to_string(),
+                first_span,
+                Some("kept its text inline in the entry".into()),
+            ));
+        } else {
+            self.diags.push(Diagnostic::warning(
+                "block-level content (paragraphs, headings, lists, displays) is not supported inside a table entry",
+                first_span,
+                Some("kept its text inline in the entry".into()),
+            ));
+        }
         // The entry belongs to the enclosing paragraph block, so fold the
         // macro dependencies of the blocks it produced back into that block.
         for dependency in self.block_dependencies.drain(dependency_count..).flatten() {
@@ -1564,6 +1786,9 @@ impl P<'_> {
         }
         let mut content: Vec<Inline> = blocks.into_iter().flat_map(block_inlines).collect::<Vec<_>>().into();
         content.extend(para);
+        // A `minipage`'s body is flattened into the entry with the rest, so
+        // its box (whose body is gone) is dropped.
+        content.retain(|inline| !matches!(inline, Inline::Minipage(_)));
         content
     }
 
@@ -1906,6 +2131,16 @@ impl P<'_> {
                     };
                     last = 10;
                 }
+                // tabularx.sty's `X`: a bare letter with no `{width}` group,
+                // rewritten to `p{\TX@col@width}` at layout time. A user
+                // `\newcolumntype{X}` still wins: `spec_items` expands it
+                // before this dispatch ever sees the letter.
+                SpecItem::Char('X', _)
+                    if self.packages.iter().any(|package| package == "tabularx") =>
+                {
+                    pre.array_classz(last, Align::Flexible);
+                    last = 0;
+                }
                 SpecItem::Char(ch, span) => {
                     self.diags.push(Diagnostic::error(
                         format!("illegal character '{ch}' in the column specification"),
@@ -2144,9 +2379,117 @@ impl P<'_> {
             }
             index = group_end.max(index) + 1;
         }
-        if !blank(&rest) {
-            let content = self.tabular_cell_inlines(rest);
+        // Edge spaces are template glue, not paragraph edges: `@{ : }`
+        // centres the colon between two interword spaces in every row. The
+        // paragraph parse below folds a leading space into the first run's
+        // `space_before` — a no-op at the start of the detached box the
+        // template is laid out in — and drops a trailing one, so both are
+        // kept as explicit single-space runs instead. (Interior spaces
+        // already survive as `space_before` gaps between runs.)
+        let mut start = 0;
+        let mut leading_span = None;
+        while start < rest.len() {
+            match &rest[start].token.kind {
+                TokenKind::Space => {
+                    leading_span.get_or_insert(rest[start].token.span);
+                    start += 1;
+                }
+                TokenKind::Comment => start += 1,
+                _ => break,
+            }
+        }
+        let mut end = rest.len();
+        let mut trailing_span = None;
+        while end > start {
+            match &rest[end - 1].token.kind {
+                TokenKind::Space => {
+                    trailing_span.get_or_insert(rest[end - 1].token.span);
+                    end -= 1;
+                }
+                TokenKind::Comment => end -= 1,
+                _ => break,
+            }
+        }
+        let middle = rest[start..end].to_vec();
+        let mut content = if blank(&middle) {
+            Vec::new()
+        } else {
+            self.tabular_cell_inlines(middle)
+        };
+        if let Some(span) = leading_span {
+            // Paragraph-start `space_before` is a no-op inside the detached
+            // box, so clear it: the kept run below is the one space.
+            if let Some(first) = content.first_mut() {
+                Self::clear_first_space_before(first);
+            }
+            let style = content
+                .iter()
+                .find_map(|inline| match inline {
+                    Inline::Text { style, .. } => Some(*style),
+                    _ => None,
+                })
+                .unwrap_or(self.style);
+            content.insert(
+                0,
+                Inline::Text {
+                    text: " ".to_string(),
+                    span,
+                    style,
+                    space_before: true,
+                    glue_before: None,
+                    boundary_before: false,
+                },
+            );
+        }
+        if let Some(span) = trailing_span {
+            // Guard for a middle that parses to nothing (e.g. only a blank
+            // line, which the edge scans leave in place).
+            if !content.is_empty() {
+                let style = content
+                    .iter()
+                    .rev()
+                    .find_map(|inline| match inline {
+                        Inline::Text { style, .. } => Some(*style),
+                        _ => None,
+                    })
+                    .unwrap_or(self.style);
+                content.push(Inline::Text {
+                    text: " ".to_string(),
+                    span,
+                    style,
+                    space_before: false,
+                    glue_before: None,
+                    boundary_before: false,
+                });
+            }
+        }
+        if !content.is_empty() {
             pre.add(Material::Text(content));
+        }
+    }
+
+    /// Clears the `space_before` of an `@`-expression's first run after its
+    /// leading space has been kept as its own run (see `at_expression`).
+    /// Every other variant either carries no leading-space flag or advances
+    /// unconditionally, so both are left alone.
+    fn clear_first_space_before(inline: &mut Inline) {
+        match inline {
+            Inline::Text { space_before, .. }
+            | Inline::Math { space_before, .. }
+            | Inline::Reference { space_before, .. }
+            | Inline::CleverReference { space_before, .. }
+            | Inline::ThePage { space_before, .. }
+            | Inline::Footnote { space_before, .. }
+            | Inline::Marginpar { space_before, .. }
+            | Inline::Logo { space_before, .. }
+            | Inline::Rule { space_before, .. }
+            | Inline::Verbatim { space_before, .. } => *space_before = false,
+            Inline::Underline(underline) => underline.space_before = false,
+            Inline::Phantom(phantom) => phantom.space_before = false,
+            Inline::HBox(hbox) => hbox.space_before = false,
+            Inline::TextScript(script) => script.space_before = false,
+            Inline::ColorBox(color_box) => color_box.space_before = false,
+            _ => {}
         }
     }
 
@@ -2411,4 +2754,26 @@ fn substitute_parameters(body: &[InputToken], arguments: &[Vec<InputToken>]) -> 
         flush(&mut literal, &mut out);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HhlineSlot, hhline_runs};
+    use HhlineSlot::{Blank, Double, Single};
+
+    #[test]
+    fn hhline_runs_splits_discontiguous_rules_at_blanks() {
+        // `\hhline{-~-}`: the blank middle column ends the first run, so
+        // the two singles become separate `(first, last)` ranges.
+        let slots = [Single, Blank, Single];
+        assert_eq!(hhline_runs(&slots, false), vec![(0, 0), (2, 2)]);
+        assert_eq!(hhline_runs(&slots, true), Vec::new());
+    }
+
+    #[test]
+    fn hhline_runs_second_pass_covers_only_doubles() {
+        let slots = [Double, Single, Blank, Double];
+        assert_eq!(hhline_runs(&slots, false), vec![(0, 1), (3, 3)]);
+        assert_eq!(hhline_runs(&slots, true), vec![(0, 0), (3, 3)]);
+    }
 }

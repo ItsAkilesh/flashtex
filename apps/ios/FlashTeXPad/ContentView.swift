@@ -17,27 +17,65 @@ enum Panel: String, CaseIterable, Identifiable {
         case .review: return "checkmark.seal"
         }
     }
-    static let primary: [Panel] = [.capture, .mac]
-    static let reference: [Panel] = [.editor, .diagnostics, .review]
+    static let primary: [Panel] = [.capture, .mac, .editor]
+    static let reference: [Panel] = [.diagnostics, .review]
+}
+
+/// Which panel is showing and how the split view is laid out.
+///
+/// The capture canvas is full-screen: in a regular-width window the sidebar
+/// starts hidden there (`columns = .detailOnly`) and the canvas's floating
+/// sidebar button shows it (`.all`); other panels keep the system's default
+/// split. In compact width (Slide Over, 1/3 Split View, a narrow Stage
+/// Manager window) the split view collapses into a stack and ignores
+/// `columns`, so the same button pops back to the sidebar through
+/// `compactColumn`.
+@MainActor
+final class PadNavigation: ObservableObject {
+    @Published var panel: Panel? = .capture {
+        didSet {
+            guard panel != oldValue else { return }
+            columns = (panel ?? .capture) == .capture ? .detailOnly : .automatic
+            compactColumn = .detail
+        }
+    }
+    @Published var columns: NavigationSplitViewVisibility = .detailOnly
+    @Published var compactColumn: NavigationSplitViewColumn = .detail
+
+    /// The canvas's sidebar button. A collapsed split view keeps the detail
+    /// pushed while the list has a selection, whatever `compactColumn` says,
+    /// so in compact width the selection is cleared too (tapping Capture in
+    /// the list pushes it again).
+    func showSidebar(compact: Bool) {
+        if compact { panel = nil }
+        columns = .all
+        compactColumn = .sidebar
+    }
 }
 
 struct ContentView: View {
     @EnvironmentObject var model: PadModel
-    @State private var panel: Panel? = .capture
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @StateObject private var nav: PadNavigation
     @State private var importingTex = false
+    @State private var importingFolder = false
     @State private var importingResult = false
 
     static let texType = UTType(filenameExtension: "tex") ?? .plainText
 
+    init(navigation: PadNavigation? = nil) {
+        _nav = StateObject(wrappedValue: navigation ?? PadNavigation())
+    }
+
     var body: some View {
-        NavigationSplitView {
-            List(selection: $panel) {
+        NavigationSplitView(columnVisibility: $nav.columns, preferredCompactColumn: $nav.compactColumn) {
+            List(selection: $nav.panel) {
                 Section("Capture companion") {
                     ForEach(Panel.primary) { p in
                         Label(p.rawValue, systemImage: p.symbol).tag(p).accessibilityIdentifier("panel.\(p.rawValue)")
                     }
                 }
-                Section("Reference (.tex on the Mac; not the product)") {
+                Section("Reference (Mac contracts; not the product)") {
                     ForEach(Panel.reference) { p in
                         Label(p.rawValue, systemImage: p.symbol).tag(p).accessibilityIdentifier("panel.\(p.rawValue)")
                     }
@@ -46,8 +84,14 @@ struct ContentView: View {
             .navigationTitle("FlashTeXPad")
             .safeAreaInset(edge: .bottom) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Button { importingTex = true } label: { Label("Open .tex…", systemImage: "folder") }
+                    Button { importingTex = true } label: { Label("Open .tex…", systemImage: "doc") }
                         .accessibilityIdentifier("open.file")
+                    Button { importingFolder = true } label: { Label("Open folder…", systemImage: "folder") }
+                        .accessibilityIdentifier("open.folder")
+                        .accessibilityHint("Opens the folder's main .tex file and lets pasted images be saved in the folder")
+                        .fileImporter(isPresented: $importingFolder, allowedContentTypes: [.folder]) { r in
+                            if case .success(let url) = r { model.openFolder(url: url) }
+                        }
                     Button { model.openBundledSample() } label: { Label("Open bundled demo.tex", systemImage: "doc.badge.plus") }
                         .accessibilityIdentifier("open.sample")
                     Button { model.openReviewFixture() } label: { Label("Open review fixture", systemImage: "checkmark.seal") }
@@ -60,8 +104,8 @@ struct ContentView: View {
                 .background(.bar)
             }
         } detail: {
-            switch panel ?? .capture {
-            case .capture: CaptureView()
+            switch nav.panel ?? .capture {
+            case .capture: CaptureView(showSidebar: { withAnimation { nav.showSidebar(compact: sizeClass == .compact) } })
             case .editor: EditorPanel()
             case .diagnostics: DiagnosticsPanel(importing: $importingResult)
             case .review: ReviewPanel()
@@ -82,8 +126,13 @@ struct ContentView: View {
 
 // MARK: editor
 
+/// The LaTeX editor: `EditorView` (syntax colouring, auto-close, the Return
+/// key, bracket matching, key commands, the accessory bar) over the model's
+/// document, the completion list under it, and the diagnostics list beside
+/// it on ⌘E.
 struct EditorPanel: View {
     @EnvironmentObject var model: PadModel
+    @State private var pickingFolder = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -92,11 +141,35 @@ struct EditorPanel: View {
                     Text("\(d.path) · revision \(d.revision) · \(d.utf8Count) UTF-8 bytes · caret UTF-16 \(model.caretUTF16)")
                         .font(.footnote.monospaced()).foregroundStyle(.secondary)
                         .accessibilityIdentifier("editor.status")
+                    if let note = model.editorStatus {
+                        Text(note).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                            .accessibilityIdentifier("editor.note")
+                    }
+                    if let request = model.folderAccessRequest {
+                        Button { pickingFolder = true } label: {
+                            Label("Allow access to “\(request.folder.lastPathComponent)”", systemImage: "folder.badge.plus")
+                        }
+                        .buttonStyle(.borderedProminent).controlSize(.small)
+                        .accessibilityHint("Choose this folder in Files so pasted images can be saved in it")
+                        .accessibilityIdentifier("editor.allowFolderAccess")
+                    }
                     Spacer()
+                    Button { model.diagnosticsPanelVisible.toggle() } label: {
+                        Label("\(model.diagnostics.count)", systemImage: "exclamationmark.triangle")
+                    }
+                    .buttonStyle(.bordered).controlSize(.small)
+                    .help("Toggle diagnostics (⌘E)")
+                    .accessibilityIdentifier("editor.diagnosticsToggle")
                 }.padding(.horizontal).padding(.vertical, 6)
-                SourceTextView(text: Binding(get: { d.text }, set: { model.textChanged($0) }), caret: $model.caretUTF16,
-                               onCaret: { model.caretMoved($0) })
-                    .accessibilityIdentifier("editor.text")
+                HStack(spacing: 0) {
+                    EditorView(document: d)
+                        .accessibilityIdentifier("editor.text")
+                    if model.diagnosticsPanelVisible {
+                        Divider()
+                        DiagnosticsList().frame(width: 300)
+                            .accessibilityIdentifier("editor.diagnosticsPanel")
+                    }
+                }
                 Divider()
                 CompletionBar()
             } else {
@@ -105,26 +178,37 @@ struct EditorPanel: View {
             }
         }
         .navigationTitle(model.documentTitle)
+        .fileImporter(isPresented: $pickingFolder, allowedContentTypes: [.folder]) { r in
+            if case .success(let url) = r { model.grantFolderAccess(url) }
+        }
+        .onChange(of: model.editorStatus) { _, note in
+            // The status note is not focused: VoiceOver hears it here.
+            if let note { UIAccessibility.post(notification: .announcement, argument: note) }
+        }
     }
 }
 
+/// The completion list: rows with the shared vocabulary's one-line
+/// documentation; a tap or Tab inserts (snippets place the caret and leave
+/// Tab stops), Esc hides it, ⌃Space brings it back.
 struct CompletionBar: View {
     @EnvironmentObject var model: PadModel
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Completions — local, source-derived. Mac metadata-bound completion is not carried by transfer-v1.")
-                .font(.caption2).foregroundStyle(.secondary)
             if model.completions.isEmpty {
-                Text("Type \\ or an argument after \\begin{ \\end{ \\ref{ \\cite{ to see suggestions.").font(.caption).foregroundStyle(.tertiary)
+                Text(model.completionsDismissed ? "Completions hidden — ⌃Space shows them."
+                     : "Type \\ or an argument after \\begin{ \\end{ \\ref{ \\cite{ for suggestions; Tab accepts, Esc hides.")
+                    .font(.caption).foregroundStyle(.tertiary)
             } else {
                 ScrollView(.horizontal) {
-                    HStack {
+                    HStack(alignment: .top, spacing: 6) {
                         ForEach(model.completions) { s in
                             Button { model.accept(s) } label: {
-                                VStack(alignment: .leading) {
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(s.text).font(.body.monospaced())
-                                    Text(s.detail).font(.caption2).foregroundStyle(.secondary)
+                                    Text(s.detail).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                                 }
+                                .frame(maxWidth: 260, alignment: .leading)
                             }
                             .buttonStyle(.bordered)
                             .accessibilityIdentifier("completion.\(s.text)")
@@ -138,45 +222,29 @@ struct CompletionBar: View {
     }
 }
 
-/// UITextView wrapper: the caret is reported in UTF-16 units and converted to
-/// UTF-8 bytes by `PadDocument.byteOffset(ofUTF16:)` (FlashTeXProtocol
-/// `utf8ByteRange(of:)`), the Mac editor's discipline.
-struct SourceTextView: UIViewRepresentable {
-    @Binding var text: String
-    @Binding var caret: Int
-    var onCaret: (Int) -> Void
-
-    func makeUIView(context: Context) -> UITextView {
-        let v = UITextView()
-        v.font = .monospacedSystemFont(ofSize: 15, weight: .regular)
-        v.autocorrectionType = .no
-        v.autocapitalizationType = .none
-        v.smartQuotesType = .no
-        v.smartDashesType = .no
-        v.delegate = context.coordinator
-        v.text = text
-        v.accessibilityIdentifier = "editor.textview"
-        return v
-    }
-
-    func updateUIView(_ v: UITextView, context: Context) {
-        context.coordinator.parent = self
-        if v.text != text {
-            let sel = v.selectedRange
-            v.text = text
-            let loc = min(caret, (text as NSString).length)
-            v.selectedRange = NSRange(location: loc, length: 0)
-            _ = sel
+/// The diagnostics beside the editor (⌘E): the same rows as the
+/// Diagnostics panel, without its source controls.
+struct DiagnosticsList: View {
+    @EnvironmentObject var model: PadModel
+    var body: some View {
+        List {
+            Section("\(model.diagnostics.count) diagnostic\(model.diagnostics.count == 1 ? "" : "s") — \(model.diagnosticsSource.label)") {
+                if model.diagnostics.isEmpty { Text("none").foregroundStyle(.secondary) }
+                ForEach(model.diagnostics) { d in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(d.severity == .error ? .red : .orange)
+                            Text(d.message).font(.footnote)
+                        }
+                        if let r = d.range {
+                            Text("bytes \(r.startByte)..<\(r.endByte)").font(.caption2.monospaced()).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
         }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: SourceTextView
-        init(_ p: SourceTextView) { parent = p }
-        func textViewDidChange(_ v: UITextView) { parent.text = v.text; parent.onCaret(v.selectedRange.location) }
-        func textViewDidChangeSelection(_ v: UITextView) { parent.onCaret(v.selectedRange.location) }
+        .listStyle(.plain)
     }
 }
 

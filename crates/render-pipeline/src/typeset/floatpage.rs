@@ -125,7 +125,7 @@ pub enum Placeholder {
 }
 
 /// TeX's default `\vrule`/`\hrule` thickness (`\p@` / 2.5), in TeX points.
-const RULE_PT: f64 = 0.4;
+pub(crate) const RULE_PT: f64 = 0.4;
 
 #[derive(Clone, Copy)]
 struct Skip {
@@ -231,14 +231,14 @@ fn build_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, 
             FloatPart::Caption { items } => {
                 flush!();
                 minipage = false;
-                let Some(mut block) = ctx.paragraph_block(items, false, true, false, ParaStyle::Plain, None, None, None) else { continue };
+                let Some(mut block) = ctx.paragraph_block(items, false, true, false, ParaStyle::Plain, None, None, None, None) else { continue };
                 let lines = &block.block.lines.lines;
                 // `\@caption` runs `\@parboxrestore` before `\@makecaption`, so
                 // `\centering` does not reach a caption set as a paragraph:
                 // only the one-line `\hbox to\hsize{\hfil...\hfil}` is centred.
                 let fits = lines.len() == 1 && lines[0].natural_width <= tw + 1e-6;
                 if fits {
-                    if let Some(b) = ctx.paragraph_block(items, false, true, false, ParaStyle::Center, None, None, None) {
+                    if let Some(b) = ctx.paragraph_block(items, false, true, false, ParaStyle::Center, None, None, None, None) {
                         block = b;
                     }
                 }
@@ -294,6 +294,7 @@ fn build_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, 
 /// already takes for a column's own `\hsize` (`multicol::adopt`).
 fn build_wide_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, fp: &FloatParams, p: &PageParams, wide: &crate::style::Stylesheet) -> FloatBox {
     let mut sub = Context::with_texts(ctx.fonts, wide, ctx.paths, ctx.texts);
+    sub.set_sources(ctx.sources);
     let mut sub_blocks: Vec<BuiltBlock> = Vec::new();
     let mut fb = build_box(&mut sub, &mut sub_blocks, spec, fp, p);
     let block_off = super::absorb(ctx, sub, sub_blocks, blocks);
@@ -850,6 +851,10 @@ fn block_source(ctx: &Context, b: &BuiltBlock, items: impl Iterator<Item = usize
             BoxRec::Leader { .. } => None,
             BoxRec::Underline(u) => Some(u.span),
             BoxRec::TextScript(t) => Some(t.span),
+            BoxRec::HBox(b) => Some(b.span),
+            BoxRec::Graphic(g) => Some(g.span),
+            BoxRec::Paths(p) => Some(p.span),
+            BoxRec::Discretionary { .. } => None,
         })
         .collect()
 }
@@ -973,7 +978,7 @@ pub fn paginate(
         if i < list.len() {
             nodes.push(match list[i] {
                 VItem::Box { .. } => N::V(i),
-                VItem::Glue { width, stretch, shrink, .. } if !matches!(list[i], VItem::Glue { fil: true, .. }) => N::Glue(width, stretch, shrink),
+                VItem::Glue { width, stretch, shrink, fil } if fil.is_none() => N::Glue(width, stretch, shrink),
                 VItem::Glue { .. } => N::V(i),
                 VItem::Penalty(pen) => N::Penalty(pen),
             });
@@ -1217,7 +1222,7 @@ pub fn paginate(
                                 total += depth + width;
                                 depth = 0.0;
                                 stretch += st;
-                                fil |= fl;
+                                fil |= !fl.is_none();
                                 shrink += sh;
                             }
                         }
@@ -1300,7 +1305,7 @@ pub fn paginate(
             match n {
                 N::FBox(f) => body.push(VItem::Box { height: boxes[*f].height, depth: 0.0, payload: (usize::MAX, *f) }),
                 N::V(j) => body.push(list[*j].clone()),
-                N::Glue(w, st, sh) => body.push(VItem::Glue { width: *w, stretch: *st, shrink: *sh, fil: false }),
+                N::Glue(w, st, sh) => body.push(VItem::Glue { width: *w, stretch: *st, shrink: *sh, fil: crate::pagebuild::Fil::NONE }),
                 N::Penalty(pen) => body.push(VItem::Penalty(*pen)),
                 N::Marker(_) => {}
             }

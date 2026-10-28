@@ -90,6 +90,14 @@ impl FootnoteParams {
     }
 }
 
+/// `\@alph`: `a`..`z` for 1..26 (LaTeX errors beyond; the number is kept).
+pub fn alph(n: usize) -> String {
+    match n {
+        1..=26 => char::from(b'a' + (n as u8 - 1)).to_string(),
+        _ => n.to_string(),
+    }
+}
+
 /// `\sf@size` for a text size: fontmath.ltx's `\DeclareMathSizes` table
 /// (the nearest entry; 70% of other sizes).
 pub fn script_size(size: f64) -> f64 {
@@ -217,6 +225,75 @@ mod tests {
     use super::*;
 
     #[test]
+    fn makefntext_spec_reads_the_three_renewal_shapes() {
+        let doc = |pre: &str| {
+            format!("\\documentclass[12pt]{{article}}{pre}\\begin{{document}}x\\end{{document}}")
+        };
+        // No renewal: the class default.
+        assert_eq!(makefntext_spec(&[&doc("")], 10.0), MakefnSpec::Default);
+        // The task's renewal: 1.5em, mark kept.
+        let renew = "\\makeatletter\\renewcommand\\@makefntext[1]{\\noindent\\makebox[1.5em][r]{\\@makefnmark}#1}\\makeatother";
+        assert_eq!(
+            makefntext_spec(&[&doc(renew)], 10.0),
+            MakefnSpec::Renewed {
+                indent_em: 1.5,
+                mark: true
+            }
+        );
+        // The class default written out longhand agrees too.
+        let longhand = "\\makeatletter\\renewcommand\\@makefntext[1]{\\noindent\\hb@xt@1.8em{\\hss\\@makefnmark}#1}\\makeatother";
+        assert_eq!(
+            makefntext_spec(&[&doc(longhand)], 10.0),
+            MakefnSpec::Renewed {
+                indent_em: 1.8,
+                mark: true
+            }
+        );
+        // The identity renewal: margin, no mark.
+        let ident = "\\makeatletter\\renewcommand\\@makefntext[1]{#1}\\makeatother";
+        assert_eq!(
+            makefntext_spec(&[&doc(ident)], 10.0),
+            MakefnSpec::Renewed {
+                indent_em: 0.0,
+                mark: false
+            }
+        );
+        // Absolute units resolve against `\footnotesize` (10pt here).
+        let pts = "\\makeatletter\\renewcommand\\@makefntext[1]{\\noindent\\makebox[18pt][r]{\\@makefnmark}#1}\\makeatother";
+        assert_eq!(
+            makefntext_spec(&[&doc(pts)], 10.0),
+            MakefnSpec::Renewed {
+                indent_em: 1.8,
+                mark: true
+            }
+        );
+        // Last renewal wins; a body that never takes `#1` is not one.
+        let fixed = "\\makeatletter\\renewcommand\\@makefntext[1]{fixed}\\makeatother";
+        assert_eq!(
+            makefntext_spec(&[&doc(&format!("{renew}{fixed}"))], 10.0),
+            MakefnSpec::Default
+        );
+    }
+
+    #[test]
+    fn makefntext_spec_is_gated_on_the_defining_class() {
+        let renew = "\\makeatletter\\renewcommand\\@makefntext[1]{\\noindent\\makebox[1.5em][r]{\\@makefnmark}#1}\\makeatother";
+        let doc = |class: &str| {
+            format!("\\documentclass{{{class}}}{renew}\\begin{{document}}x\\end{{document}}")
+        };
+        assert_eq!(
+            makefntext_spec(&[&doc("report")], 10.0),
+            MakefnSpec::Renewed {
+                indent_em: 1.5,
+                mark: true
+            }
+        );
+        // `minimal` never defines `\@makefntext`: ignored.
+        assert_eq!(makefntext_spec(&[&doc("minimal")], 10.0), MakefnSpec::Default);
+        assert_eq!(makefntext_spec(&[&doc("beamer")], 10.0), MakefnSpec::Default);
+    }
+
+    #[test]
     fn sub_drop_dominates_the_drop_for_a_synthetic_tall_font() {
         // Real CM/LM `sub_drop` never exceeds `sub1` at any size this
         // compiler renders, so this proves the three-way max picks
@@ -249,15 +326,250 @@ pub struct MinipageNotes {
     pub depth: f64,
 }
 
+/// How a note opens: the class default, or what the preamble's last
+/// `\renewcommand\@makefntext` says. Read from the source bytes (the
+/// `abstract_name(texts)` pattern) because the pinned compiler does not
+/// carry the renewal: without it every PDF keeps the 1.8em box no matter
+/// what the preamble says.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum MakefnSpec {
+    /// `\noindent\hb@xt@1.8em{\hss\@makefnmark}` then the text.
+    Default,
+    /// A recognised renewal: `indent_em` ems of `\footnotesize` for the
+    /// mark box (`0` when the renewal sets no box at all, as `[1]{#1}`),
+    /// `mark` when its body sets `\@makefnmark`.
+    Renewed { indent_em: f64, mark: bool },
+}
+
+/// The class named by the first `\documentclass` in the sources, if any.
+fn document_class(texts: &[&str]) -> Option<String> {
+    for text in texts {
+        let mut from = 0;
+        while let Some(at) = adapter::find_command(&text[from..], "documentclass") {
+            let abs = from + at;
+            from = abs + 1;
+            let mut rest = text[abs + "\\documentclass".len()..].trim_start();
+            if let Some(inner) = rest.strip_prefix('[') {
+                let Some(end) = inner.find(']') else { continue };
+                rest = inner[end + 1..].trim_start();
+            }
+            let Some(inner) = rest.strip_prefix('{') else { continue };
+            let Some(end) = inner.find('}') else { continue };
+            return Some(inner[..end].trim().to_string());
+        }
+    }
+    None
+}
+
+/// The last `\renewcommand\@makefntext[<n>]{<body>}` in the sources, as
+/// its raw body. Both the braced (`{\@makefntext}`) and the bare command
+/// form count, and `[...]` argument specs are skipped; `\def` is not a
+/// recognised renewal shape.
+fn makefntext_body(texts: &[&str]) -> Option<String> {
+    let mut body = None;
+    for text in texts {
+        let mut from = 0;
+        while let Some(at) = adapter::find_command(&text[from..], "renewcommand") {
+            let abs = from + at;
+            from = abs + 1;
+            let mut rest = text[abs + "\\renewcommand".len()..].trim_start();
+            // `\renewcommand*` only changes argument parsing.
+            if let Some(stripped) = rest.strip_prefix('*') {
+                rest = stripped.trim_start();
+            }
+            let after = if let Some(inner) = rest.strip_prefix('{') {
+                let Some(end) = inner.find('}') else { continue };
+                if inner[..end].trim() != "\\@makefntext" {
+                    continue;
+                }
+                inner[end + 1..].trim_start()
+            } else if let Some(after) = rest.strip_prefix("\\@makefntext") {
+                if after.as_bytes().first().is_some_and(|b| b.is_ascii_alphabetic()) {
+                    continue;
+                }
+                after.trim_start()
+            } else {
+                continue;
+            };
+            let mut r = after;
+            while let Some(inner) = r.strip_prefix('[') {
+                let Some(end) = inner.find(']') else { break };
+                r = inner[end + 1..].trim_start();
+            }
+            let Some(inner) = r.strip_prefix('{') else { continue };
+            let mut depth = 0u32;
+            let mut end = None;
+            for (i, c) in inner.char_indices() {
+                match c {
+                    '{' => depth += 1,
+                    '}' if depth == 0 => {
+                        end = Some(i);
+                        break;
+                    }
+                    '}' => depth -= 1,
+                    _ => {}
+                }
+            }
+            let Some(end) = end else { continue };
+            body = Some(inner[..end].to_string());
+        }
+    }
+    body
+}
+
+/// Whether `body` sets `\@makefnmark` (as a whole control word).
+fn sets_makefnmark(body: &str) -> bool {
+    let mut from = 0;
+    while let Some(at) = body[from..].find("\\@makefnmark") {
+        let abs = from + at;
+        from = abs + 1;
+        if body[abs + "\\@makefnmark".len()..]
+            .as_bytes()
+            .first()
+            .is_some_and(|b| b.is_ascii_alphabetic())
+        {
+            continue;
+        }
+        return true;
+    }
+    false
+}
+
+/// A `<dimen>` at the head of `s` in ems of `footnote_pt`
+/// (`\footnotesize`): `em` and the absolute units (`pt`, `pc`, `in`,
+/// `bp`, `cm`, `mm`, `dd`, `cc`, `sp`). `ex` and anything else is `None`.
+fn dimen_em(s: &str, footnote_pt: f64) -> Option<f64> {
+    let s = s.trim_start();
+    let mut num_end = 0;
+    for (i, c) in s.char_indices() {
+        if c.is_ascii_digit() || c == '.' || (i == 0 && (c == '-' || c == '+')) {
+            num_end = i + c.len_utf8();
+        } else {
+            break;
+        }
+    }
+    let value: f64 = s[..num_end].parse().ok()?;
+    let unit: String = s[num_end..]
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .collect();
+    let pt = match unit.as_str() {
+        "em" => return Some(value),
+        "pt" => value,
+        "pc" => value * 12.0,
+        "in" => value * 72.27,
+        "bp" => value * 72.27 / 72.0,
+        "cm" => value * 72.27 / 2.54,
+        "mm" => value * 72.27 / 25.4,
+        "dd" => value * 1238.0 / 1157.0,
+        "cc" => value * 12.0 * 1238.0 / 1157.0,
+        "sp" => value / 65536.0,
+        _ => return None,
+    };
+    Some(pt / footnote_pt)
+}
+
+/// The mark-box width of a `\@makefntext` body in ems of `\footnotesize`:
+/// `\makebox[<dimen>]`, `\hb@xt@<dimen>` or `\hbox to <dimen>`. `None`
+/// when the body sets no box (the identity renewal `[1]{#1}`).
+fn mark_box_em(body: &str, footnote_pt: f64) -> Option<f64> {
+    let mut from = 0;
+    while let Some(at) = body[from..].find("\\makebox") {
+        let abs = from + at;
+        from = abs + 1;
+        if body[abs + "\\makebox".len()..]
+            .as_bytes()
+            .first()
+            .is_some_and(|b| b.is_ascii_alphabetic())
+        {
+            continue;
+        }
+        let rest = body[abs + "\\makebox".len()..].trim_start();
+        // A bare `\makebox{...}` (no width) sets no box.
+        if let Some(inner) = rest.strip_prefix('[') {
+            let Some(end) = inner.find(']') else { return None };
+            return dimen_em(&inner[..end], footnote_pt);
+        }
+        return None;
+    }
+    if let Some(at) = body.find("\\hb@xt@") {
+        return dimen_em(&body[at + "\\hb@xt@".len()..], footnote_pt);
+    }
+    let mut from = 0;
+    while let Some(at) = body[from..].find("\\hbox") {
+        let abs = from + at;
+        from = abs + 1;
+        if body[abs + "\\hbox".len()..]
+            .as_bytes()
+            .first()
+            .is_some_and(|b| b.is_ascii_alphabetic())
+        {
+            continue;
+        }
+        let rest = body[abs + "\\hbox".len()..].trim_start();
+        let Some(after_to) = rest.strip_prefix("to") else { continue };
+        if after_to.as_bytes().first().is_some_and(|b| b.is_ascii_alphabetic()) {
+            continue;
+        }
+        return dimen_em(after_to, footnote_pt);
+    }
+    None
+}
+
+/// The `\@makefntext` in force: the class default, or the preamble's last
+/// recognised `\renewcommand\@makefntext`, but only when a class that
+/// defines the command is loaded (`article`, `report`, `book` — whose
+/// default is the 1.8em box this file models). Anything else keeps the
+/// default, as does a body that never takes `#1` (not a `\@makefntext`).
+fn makefntext_spec(texts: &[&str], footnote_pt: f64) -> MakefnSpec {
+    if !matches!(
+        document_class(texts).as_deref(),
+        Some("article" | "report" | "book")
+    ) {
+        return MakefnSpec::Default;
+    }
+    let Some(body) = makefntext_body(texts) else {
+        return MakefnSpec::Default;
+    };
+    let mark = sets_makefnmark(&body);
+    match mark_box_em(&body, footnote_pt) {
+        Some(indent_em) => MakefnSpec::Renewed {
+            indent_em: indent_em.max(0.0),
+            mark,
+        },
+        None if mark => MakefnSpec::Renewed {
+            indent_em: 0.0,
+            mark,
+        },
+        None => {
+            if body.contains("#1") {
+                MakefnSpec::Renewed {
+                    indent_em: 0.0,
+                    mark: false,
+                }
+            } else {
+                MakefnSpec::Default
+            }
+        }
+    }
+}
+
 impl<'a> Context<'a> {
     /// `\@makefnmark` for `number` in text of `size`: the raised script-size
     /// box, `\scriptspace` included in its width.
     pub(super) fn footnote_mark(&mut self, number: &str, span: Span, size: f64) -> Option<(pl::GlyphRun, usize)> {
         let sf = script_size(size);
+        // A minipage's mark is `{\itshape\@alph\c@mpfootnote}`. Measured
+        // (probe deck `beamer-polish` p13, a column's `\footnote`): the
+        // mark `a` in CMSSI8 at 7.97pt in the text, at 5.98pt in the note.
+        // `\footnotemark` in a minipage uses `footnote` (`\thefootnote`,
+        // upright digits).
+        let italic = self.minipage_notes && number.chars().all(|c| c.is_ascii_alphabetic());
         let seg = adapter::Segment {
             text: number.to_string(),
             chars: number.chars().map(|_| adapter::CharSrc { document: span.document, start: span.start, end: span.end }).collect(),
-            style: TextStyle { size_cpt: (sf * 100.0).round() as u16, ..TextStyle::default() },
+            style: TextStyle { size_cpt: (sf * 100.0).round() as u16, italic, ..TextStyle::default() },
         };
         let (mut run, rec) = self.text_box(&seg, sf)?;
         if let Some((w, h, d)) = ts1_mark_box(number, sf) {
@@ -297,15 +609,30 @@ impl<'a> Context<'a> {
         let note = self.notes.get(n)?.clone();
         let (mut list, mut recs, labels, mut skips) = self.hlist(&note.items, fp.size, TextStyle::default(), ParaStyle::Plain);
         let _ = drop_trailing_break(&mut list, &mut recs, &mut skips, ParaStyle::Plain);
-        // `\noindent\hb@xt@1.8em{\hss\@makefnmark}`.
+        // `\noindent\hb@xt@1.8em{\hss\@makefnmark}`, or the preamble's
+        // own `\@makefntext` renewal when one is recognised (gated on the
+        // class that defines the command; see [`MakefnSpec`]).
         let em = self.text_params(TextStyle::default(), fp.size).quad;
+        let (indent_em, want_mark) = match makefntext_spec(self.texts, fp.size) {
+            MakefnSpec::Default => (1.8, true),
+            MakefnSpec::Renewed { indent_em, mark } => (indent_em, mark),
+        };
+        let indent_pt = indent_em * em;
         let mut lead: Vec<(pl::Item, Option<usize>)> = Vec::new();
-        match self.footnote_mark(&note.number, note.span, fp.size) {
-            Some((run, rec)) => {
-                lead.push((pl::Item::kern(1.8 * em - run.width), None));
+        match (
+            want_mark,
+            self.footnote_mark(&note.number, note.span, fp.size),
+        ) {
+            (true, Some((run, rec))) => {
+                // Right-aligned in the box; a box narrower than the mark
+                // overflows to the right, as `\hb@xt@` does (the default
+                // 1.8em box always dwarfs the mark, so it is unchanged).
+                lead.push((pl::Item::kern((indent_pt - run.width).max(0.0)), None));
                 lead.push((pl::Item::Box(run), Some(rec)));
             }
-            None => lead.push((pl::Item::kern(1.8 * em), None)),
+            (true, None) => lead.push((pl::Item::kern(indent_pt), None)),
+            (false, _) if indent_pt > 0.0 => lead.push((pl::Item::kern(indent_pt), None)),
+            (false, _) => {}
         }
         let shift = lead.len();
         for (i, (item, rec)) in lead.into_iter().enumerate() {
@@ -346,8 +673,56 @@ impl<'a> Context<'a> {
             contributed: None,
             line_penalty: Vec::new(),
             depth_after: pagebuild::DepthAfter::default(),
+            fill_before: crate::pagebuild::InfGlue::NONE,
+            fill_after: crate::pagebuild::InfGlue::NONE,
         };
         Some(BuiltBlock { block: pl::ParagraphBlock::body(lines), items: list, recs, vertical, labels, cache_key: None })
+    }
+
+    /// `\endminipage`'s foot (latex.ltx): `\vskip\skip\@mpfootins` (=
+    /// `\skip\footins`, `beamerbasemisc.sty` 132), `\footnoterule`
+    /// (`\kern-3pt \hrule width .4\columnwidth \kern2.6pt`; beamer's
+    /// `beamerbaseframecomponents.sty` 388 is the same) and the notes,
+    /// appended to `blocks` as the box's last material. An `\hrule` takes
+    /// no interline glue and leaves `\prevdepth` ignored, so the first
+    /// note's line follows the `\kern2.6pt` directly, its height at least
+    /// `\footnotesep`. Measured (probe deck `beamer-polish` p13, a
+    /// `\footnote` in a `.5\textwidth` column at an 11pt base): the note's
+    /// baseline 17.634bp = 17.70pt under the column's last line, which has
+    /// no depth: 10 − 3 + 0.4 + 2.6 + 7.7.
+    /// `notes` are `(note, \hsize it is set at)`: a note the enclosing
+    /// minipage raised keeps that box's `\columnwidth` (`\@mpfootnotetext`
+    /// builds its `\vbox` when the note is read).
+    pub fn minipage_foot(&mut self, blocks: &mut Vec<BuiltBlock>, notes: &[(usize, f64)], width: f64, span: Span) {
+        let fp = FootnoteParams::of(self.style);
+        let mut rule = self.rule_block_sized(span, RULE_WIDTH_FRACTION * width, RULE.1, 0.0);
+        rule.vertical.no_interline_first = true;
+        rule.vertical.space_before = Some((fp.skip.0 + RULE.0, fp.skip.1, fp.skip.2));
+        rule.vertical.no_interline_after = true;
+        rule.vertical.space_after = Some((RULE.2, 0.0, 0.0));
+        rule.vertical.penalty_before = Some(pagebuild::INF_PENALTY);
+        rule.vertical.penalty_after = Some(pagebuild::INF_PENALTY);
+        let mut built: Vec<BuiltBlock> = Vec::new();
+        for &(n, note_width) in notes {
+            if let Some(b) = self.footnote_block(n, note_width) {
+                built.push(b);
+            }
+        }
+        if built.is_empty() {
+            return;
+        }
+        blocks.push(rule);
+        // `\@mpfootnotetext` is `\global\setbox\@mpfootins\vbox{\unvbox
+        // \@mpfootins ... #1}`: each note starts a fresh `\vbox`, whose
+        // `\prevdepth` is `ignore_depth`, so no interline glue ever comes
+        // between two notes -- the previous note's last depth and the
+        // next one's first height (its `\footnotesep` strut, or a taller
+        // mark) touch (pdflatex, TeX Live 2026: `b`-marked notes 9.84pt
+        // apart, `c`-marked 9.5pt, at 10pt).
+        for b in &mut built {
+            b.vertical.no_interline_first = true;
+        }
+        blocks.extend(built);
     }
 
     /// The notes of a `minipage` `width` wide (see [`MinipageNotes`]): the
@@ -403,7 +778,37 @@ fn note_vlist(page: &PageParams, fp: &FootnoteParams, b: &BuiltBlock, bi: usize)
 /// builder, or `None` when the document has no footnotes. Marks whose line
 /// is not in the body's vertical list (headings, captions, cells) are
 /// reported and their notes dropped.
-pub(super) fn prepare(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, page: &PageParams) -> Option<Insertions> {
+/// The height the notes anchored in the built blocks `range` take at the
+/// foot of their column: `\skip\footins`, the `\footnoterule` kerns and
+/// rule, and every note's natural vertical list down to its last baseline
+/// (the last line's depth hangs below the column, as `\vbox to\@colht`
+/// leaves it). 0 without notes.
+pub(super) fn insert_height(ins: &Insertions, page: &PageParams, range: std::ops::RangeInclusive<usize>) -> f64 {
+    let mut notes = 0.0;
+    let mut any = false;
+    for ((bi, _), list) in &ins.after {
+        if !range.contains(bi) {
+            continue;
+        }
+        for &n in list {
+            if let Some(v) = ins.notes.get(n) {
+                let (_, h) = pagebuild::natural_layout(page, v, false);
+                notes += h;
+                any = true;
+            }
+        }
+    }
+    if !any {
+        return 0.0;
+    }
+    ins.skip.0 + ins.rule.0 + ins.rule.1 + ins.rule.2 + notes
+}
+
+///
+/// `post` is a laid-out column switch as `(first post-switch built-block
+/// index, post-switch text width)`: a note anchored at or after the split
+/// is set at the post width, like the column that carries it.
+pub(super) fn prepare(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, page: &PageParams, post: Option<(usize, f64)>) -> Option<Insertions> {
     let anchors = std::mem::take(&mut ctx.note_anchors);
     if anchors.is_empty() {
         return None;
@@ -419,8 +824,15 @@ pub(super) fn prepare(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, page: &Pa
         }
     }
     let fp = FootnoteParams::of(ctx.style);
+    // beamer sets a frame's notes itself (`beamerbaseframesize.sty` 242-256:
+    // `\vskip\beamer@framebottomskip \footnoterule \unvbox\beamer@footins`
+    // inside the frame's `\vbox to\textheight`): no `\skip\footins` above
+    // the rule, the fill glue is all there is (measured: note text at
+    // baseline 268.14bp = `\textheight`, body at the `[c]` position the
+    // notes' height alone leaves).
+    let skip = if ctx.style.is_beamer() { (0.0, 0.0, 0.0) } else { fp.skip };
     let mut ins = Insertions {
-        skip: fp.skip,
+        skip,
         max: FOOTINS_MAX,
         split_top_skip: fp.sep,
         split_max_depth: fp.strut_depth(),
@@ -428,7 +840,7 @@ pub(super) fn prepare(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, page: &Pa
         rule: RULE,
         ..Insertions::default()
     };
-    let width = ctx.style.text_width_pt;
+    let pre_width = ctx.style.text_width_pt;
     let mut seen = std::collections::HashSet::new();
     for (rec, n) in anchors {
         if !seen.insert(n) {
@@ -444,6 +856,10 @@ pub(super) fn prepare(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, page: &Pa
             ));
             continue;
         };
+        let width = match post {
+            Some((split, post_width)) if bi >= split => post_width,
+            _ => pre_width,
+        };
         let Some(b) = ctx.footnote_block(n, width) else { continue };
         let nb = blocks.len();
         let v = note_vlist(page, &fp, &b, nb);
@@ -458,10 +874,27 @@ pub(super) fn prepare(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, page: &Pa
 
 /// Adds each column's `\footnoterule` (a rule block per column) and note
 /// lines to the built pages.
-pub(super) fn place(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, pages: &mut [pagebuild::BuiltPage], areas: Vec<Option<InsertArea>>) {
-    let width = RULE_WIDTH_FRACTION * ctx.style.text_width_pt;
+///
+/// `post` is [`prepare`]'s switch: the rule of a column whose body lies
+/// at or after the split spans the post width's fraction. The side comes
+/// from the column's own first line (a built-block index, which column
+/// padding never moves), not from its position.
+pub(super) fn place(
+    ctx: &mut Context,
+    blocks: &mut Vec<BuiltBlock>,
+    pages: &mut [pagebuild::BuiltPage],
+    areas: Vec<Option<InsertArea>>,
+    post: Option<(usize, f64)>,
+) {
+    let pre_width = RULE_WIDTH_FRACTION * ctx.style.text_width_pt;
     for (page, area) in pages.iter_mut().zip(areas) {
         let Some(area) = area else { continue };
+        let width = match post {
+            Some((split, post_width)) if page.lines.first().is_some_and(|l| l.payload.0 >= split) => {
+                RULE_WIDTH_FRACTION * post_width
+            }
+            _ => pre_width,
+        };
         let span = area.lines.first().and_then(|l| blocks.get(l.payload.0)).and_then(|b| b.recs.iter().flatten().next().copied()).and_then(|r| match &ctx.recs[r] {
             BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
             _ => None,

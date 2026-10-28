@@ -14,6 +14,9 @@
 //! `no_two_item_kinds_share_a_tag` and `no_two_math_nucleus_kinds_share_a_tag`
 //! fail if any two kinds ever map to the same value.
 
+// Clippy debt in frozen old-engine code (D13): allowed, not refactored.
+#![allow(clippy::redundant_closure, reason = "frozen old engine (D13): fixes only; clippy debt is allowed rather than refactored")]
+
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -119,7 +122,7 @@ fn one_of_every_item_kind() -> Vec<(&'static str, Item)> {
         ("Space", Item::Space { style, factor: 1000, no_break: false }),
         ("Math", item_from("$x$", |i| matches!(i, Item::Math { .. }))),
         ("LineBreak", Item::LineBreak { skip_pt: 0.0 }),
-        ("Quad", Item::Quad { em: 1.0, style }),
+        ("Quad", Item::Quad { em: 1.0, plus_em: 0.0, minus_em: 0.0, style }),
         ("Label", Item::Label { key: "k".into() }),
         ("ItalicCorrection", Item::ItalicCorrection),
         ("NoteParBreak", Item::NoteParBreak),
@@ -205,6 +208,10 @@ fn no_two_math_nucleus_kinds_share_a_tag() {
         ("Phantom", "$\\phantom{a}$"),
         ("Operator", "$\\operatorname{ab}$"),
         ("ExtArrow", "$\\xrightarrow{a}$"),
+        ("Strut", "$\\strut a$"),
+        ("Kern", "$\\cfrac{a}{b}$"),
+        ("Pmb", "$\\pmb{a}$"),
+        ("Smash", "$\\smash{a}$"),
     ];
     let mut seen: HashMap<u64, &'static str> = HashMap::new();
     for (name, src) in sources {
@@ -243,10 +250,14 @@ fn nucleus_name(n: &flashtex_compiler::math::Nucleus) -> &'static str {
         N::Accent { .. } => "Accent",
         N::SizedDelimiter { .. } => "SizedDelimiter",
         N::Group(_) => "Group",
+        N::Pmb { .. } => "Pmb",
+        N::Smash { .. } => "Smash",
         N::GenFraction { .. } => "GenFraction",
         N::Phantom { .. } => "Phantom",
         N::Operator { .. } => "Operator",
         N::ExtArrow { .. } => "ExtArrow",
+        N::Strut => "Strut",
+        N::Kern(_) => "Kern",
         #[cfg(feature = "compiler-node-surface")]
         N::TextRun(_) => "TextRun",
         #[cfg(feature = "compiler-node-surface")]

@@ -38,6 +38,9 @@ pub struct CompileOutput {
     pub blocks: Vec<Block>,
     pub diagnostics: Vec<Diagnostic>,
     pub pages: Vec<Page>,
+    /// What each project `.sty`/`.cls` defined
+    /// (`crate::package_definitions`; the runtime-v1 `metadata.packages`).
+    pub packages: Vec<crate::package_definitions::PackageRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -239,10 +242,11 @@ impl Session {
         };
 
         if parsed.document_global_state {
-            let (pages, layout_diagnostics) = layout::layout_converged_with_options(
+            let (pages, layout_diagnostics) = layout::layout_converged_with_fancy(
                 &parsed.blocks,
                 constraints,
                 &parsed.cleveref,
+                &parsed.fancy,
             );
             let mut diagnostics = parsed.diagnostics;
             diagnostics.append(&mut limit_repeats(layout_diagnostics));
@@ -252,6 +256,7 @@ impl Session {
                 blocks: parsed.blocks,
                 diagnostics,
                 pages,
+                packages: parsed.package_definitions,
             };
             let revision = self.previous.insert(Revision {
                 options: *options,
@@ -379,6 +384,7 @@ impl Session {
             blocks: parsed.blocks,
             diagnostics,
             pages,
+            packages: parsed.package_definitions,
         };
         let revision = self.previous.insert(Revision {
             options: *options,
@@ -423,10 +429,11 @@ pub fn compile_full_project_with(
 ) -> CompileOutput {
     let parsed = parser::parse_project_with(documents, entry_path, options);
     let constraints = parsed.preamble_constraints(constraints);
-    let (pages, layout_diagnostics) = layout::layout_converged_with_options(
+    let (pages, layout_diagnostics) = layout::layout_converged_with_fancy(
         &parsed.blocks,
         constraints,
         &parsed.cleveref,
+        &parsed.fancy,
     );
     // Parser diagnostics are already bounded (`parse_project_with`); the
     // layout's are bounded on their own, so a summary is never re-counted.
@@ -436,6 +443,7 @@ pub fn compile_full_project_with(
         blocks: parsed.blocks,
         diagnostics,
         pages,
+        packages: parsed.package_definitions,
     }
 }
 
@@ -481,6 +489,7 @@ fn shift_block(block: &mut Block, changes: &[ChangedBytes], deltas: &[isize]) ->
             number: _,
             number_span,
             content,
+            style: _,
         } => {
             map_span(number_span, changes, deltas)?;
             shift_inlines(content, changes, deltas)
@@ -508,6 +517,7 @@ fn shift_block(block: &mut Block, changes: &[ChangedBytes], deltas: &[isize]) ->
             extra_gap_after_pt: _,
             leftmargin: _,
             widest_label: _,
+            labelsep_pt: _,
             lists,
             item,
         } => {
@@ -532,25 +542,79 @@ fn shift_block(block: &mut Block, changes: &[ChangedBytes], deltas: &[isize]) ->
             }
             map_span(span, changes, deltas)
         }
-        Block::TableOfContents { span } => map_span(span, changes, deltas),
+        Block::Alltt { lines, span, .. } => {
+            for line in lines.iter_mut() {
+                shift_inlines(line, changes, deltas)?;
+            }
+            map_span(span, changes, deltas)
+        }
+        Block::TableOfContents { span, .. } => map_span(span, changes, deltas),
         Block::TitleBlock {
             title,
             authors,
             date,
         } => {
             shift_inlines(title, changes, deltas)?;
-            shift_inlines(authors, changes, deltas)?;
+            for group in authors.iter_mut() {
+                shift_inlines(group, changes, deltas)?;
+            }
             if let Some(date) = date {
                 shift_inlines(date, changes, deltas)?;
             }
             Some(())
         }
-        Block::VFill => Some(()),
+        Block::VFill { .. } => Some(()),
         Block::Penalty {
             value: _,
             fil: _,
             span,
         } => map_span(span, changes, deltas),
+        Block::BeamerFrameBegin {
+            options: _,
+            spec: _,
+            title,
+            subtitle,
+            slides: _,
+            span,
+        } => {
+            shift_inlines(title, changes, deltas)?;
+            shift_inlines(subtitle, changes, deltas)?;
+            map_span(span, changes, deltas)
+        }
+        Block::BeamerFrameEnd { span } => map_span(span, changes, deltas),
+        Block::BeamerSection { level: _, number: _, title, span } => {
+            shift_inlines(title, changes, deltas)?;
+            map_span(span, changes, deltas)
+        }
+        Block::BeamerBlockBegin { kind: _, title, span } => {
+            shift_inlines(title, changes, deltas)?;
+            map_span(span, changes, deltas)
+        }
+        Block::BeamerCaption { kind: _, content, span } => {
+            shift_inlines(content, changes, deltas)?;
+            map_span(span, changes, deltas)
+        }
+        Block::BeamerBlockEnd { span }
+        | Block::BeamerColumnsBegin { options: _, span }
+        | Block::BeamerColumn { width: _, align: _, span }
+        | Block::BeamerColumnsEnd { span }
+        | Block::MinipageBegin { span }
+        | Block::MinipageEnd { span } => map_span(span, changes, deltas),
+        Block::BeamerTitlePage {
+            title,
+            subtitle,
+            authors,
+            institute,
+            date,
+            span,
+        } => {
+            shift_inlines(title, changes, deltas)?;
+            shift_inlines(subtitle, changes, deltas)?;
+            shift_inlines(authors, changes, deltas)?;
+            shift_inlines(institute, changes, deltas)?;
+            shift_inlines(date, changes, deltas)?;
+            map_span(span, changes, deltas)
+        }
         Block::LetterBlock {
             part: _,
             lines,
@@ -582,9 +646,11 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 span,
                 style: _,
                 space_before: _,
+                glue_before: _,
+                boundary_before: _,
             } => map_span(span, changes, deltas)?,
             Inline::LineBreak { span, skip_pt: _ } => map_span(span, changes, deltas)?,
-            Inline::TextGlue { em: _, span } => map_span(span, changes, deltas)?,
+            Inline::TextGlue { em: _, span, plus_em: _, minus_em: _, style: _ } => map_span(span, changes, deltas)?,
             Inline::Math {
                 list,
                 display: _,
@@ -593,7 +659,9 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 span,
                 space_before: _,
                 color: _,
+                size: _,
                 color_ranges,
+                glue_before: _,
             } => {
                 shift_math_list(list, changes, deltas)?;
                 for (range, _) in color_ranges.iter_mut() {
@@ -640,10 +708,20 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 equation: _,
                 span,
                 space_before: _,
+                style: _,
+                glue_before: _,
             } => map_span(span, changes, deltas)?,
             Inline::CleverReference { span, .. } => map_span(span, changes, deltas)?,
             Inline::ThePage { span, .. } => map_span(span, changes, deltas)?,
             Inline::PageNumbering { span, .. } => map_span(span, changes, deltas)?,
+            Inline::PageStyle { span, .. } => map_span(span, changes, deltas)?,
+            Inline::Mark { span, .. } => map_span(span, changes, deltas)?,
+            Inline::FancyFields { fields, span } => {
+                map_span(span, changes, deltas)?;
+                for field in fields.head.iter_mut().chain(fields.foot.iter_mut()) {
+                    shift_inlines(field, changes, deltas)?;
+                }
+            }
             Inline::HFill { span, .. } => map_span(span, changes, deltas)?,
             Inline::HSpace { span, .. } => map_span(span, changes, deltas)?,
             Inline::Footnote {
@@ -682,6 +760,9 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
             Inline::TabStop { span } | Inline::TabJump { span } => {
                 map_span(span, changes, deltas)?
             }
+            Inline::OverlayBegin { spec: _, kind: _, span }
+            | Inline::OverlayEnd { span }
+            | Inline::Onslide { spec: _, span } => map_span(span, changes, deltas)?,
             Inline::Tabular(table) => {
                 // `Tabular` only offers a mapping copy; its nested inlines are
                 // shifted through the same in-place walk.
@@ -699,6 +780,8 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 text: _,
                 span,
                 space_before: _,
+                style: _,
+                glue_before: _,
             } => map_span(span, changes, deltas)?,
             Inline::ColorBox(b) => {
                 map_span(&mut b.span, changes, deltas)?;
@@ -707,6 +790,18 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
             Inline::Underline(u) => {
                 map_span(&mut u.span, changes, deltas)?;
                 shift_inlines(&mut u.content, changes, deltas)?;
+            }
+            Inline::Phantom(p) => {
+                map_span(&mut p.span, changes, deltas)?;
+                shift_inlines(&mut p.content, changes, deltas)?;
+            }
+            Inline::HBox(b) => {
+                map_span(&mut b.span, changes, deltas)?;
+                shift_inlines(&mut b.content, changes, deltas)?;
+            }
+            Inline::Minipage(m) => {
+                map_span(&mut m.span, changes, deltas)?;
+                map_span(&mut m.end, changes, deltas)?;
             }
             Inline::TextScript(t) => {
                 map_span(&mut t.span, changes, deltas)?;
@@ -738,6 +833,7 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
         class_override: _,
         width_em: _,
         ams_symbol: _,
+        limits: _,
     } in &mut list.atoms
     {
         match nucleus {
@@ -751,7 +847,7 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
             }
             Nucleus::SizedDelimiter { .. } => {}
             Nucleus::Space { .. } => {}
-            Nucleus::Rule(_) => {}
+            Nucleus::Rule(_) | Nucleus::Strut | Nucleus::Kern(_) => {}
             Nucleus::Fraction {
                 numerator,
                 denominator,
@@ -775,6 +871,7 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
                 columns: _,
                 left: _,
                 right: _,
+                rules: _,
             } => {
                 for cell in rows.iter_mut().flatten() {
                     shift_math_list(cell, changes, deltas)?;
@@ -792,7 +889,9 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
             }
             Nucleus::Phantom { body, .. }
             | Nucleus::Operator { body, .. }
-            | Nucleus::Lap { body, .. } => shift_math_list(body, changes, deltas)?,
+            | Nucleus::Lap { body, .. }
+            | Nucleus::Pmb { body }
+            | Nucleus::Smash { body, .. } => shift_math_list(body, changes, deltas)?,
             Nucleus::ExtArrow { above, below, .. } => {
                 shift_math_list(above, changes, deltas)?;
                 shift_math_list(below, changes, deltas)?;
@@ -901,7 +1000,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         | Block::PageBreak
         | Block::Verbatim { .. }
         | Block::TableOfContents { .. }
-        | Block::VFill
+        | Block::VFill { .. }
         | Block::Penalty { .. } => &[],
         // Signature only (see the doc comment above): the first line is
         // enough to narrow the candidate set, and `shift_block`'s full
@@ -913,11 +1012,26 @@ fn block_signature(block: &Block) -> BlockSignature {
         Block::Tabbing { lines, .. } => lines
             .first()
             .map_or(&[][..], |line| &line.content[..]),
+        Block::Alltt { lines, .. } => lines.first().map_or(&[][..], |line| &line[..]),
         // Signature only, not identity (see the doc comment above): using
         // just `title` here (never `authors`/`date`) can only widen the
         // candidate set on an author/date-only edit, never produce a wrong
         // reuse, since `shift_block`'s full equality check still gates that.
         Block::TitleBlock { title, .. } => title,
+        // Signature only (see `TitleBlock`): the title narrows the
+        // candidate set, `shift_block`'s equality check gates reuse.
+        Block::BeamerFrameBegin { title, .. } => title,
+        Block::BeamerFrameEnd { .. } => &[],
+        Block::BeamerSection { title, .. } => title,
+        Block::BeamerTitlePage { title, .. } => title,
+        Block::BeamerBlockBegin { title, .. } => title,
+        Block::BeamerCaption { content, .. } => content,
+        Block::BeamerBlockEnd { .. }
+        | Block::BeamerColumnsBegin { .. }
+        | Block::BeamerColumn { .. }
+        | Block::BeamerColumnsEnd { .. }
+        | Block::MinipageBegin { .. }
+        | Block::MinipageEnd { .. } => &[],
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -930,6 +1044,9 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::CleverReference { span, .. } => *span,
         Inline::ThePage { span, .. } => *span,
         Inline::PageNumbering { span, .. } => *span,
+        Inline::PageStyle { span, .. } => *span,
+        Inline::Mark { span, .. } => *span,
+        Inline::FancyFields { span, .. } => *span,
         Inline::HFill { span, .. } => *span,
         Inline::HSpace { span, .. } => *span,
         Inline::Footnote { span, .. } => *span,
@@ -939,6 +1056,9 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::ColorBox(b) => b.span,
         Inline::Underline(u) => u.span,
         Inline::TextScript(t) => t.span,
+        Inline::Phantom(p) => p.span,
+        Inline::HBox(b) => b.span,
+        Inline::Minipage(m) => m.span,
         Inline::Graphic(graphic) => graphic.span,
         Inline::Transform(transform) => transform.span,
         Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } => *span,
@@ -946,6 +1066,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         | Inline::PagePenalty { span, .. }
         | Inline::Discretionary { span, .. } => *span,
         Inline::TabStop { span } | Inline::TabJump { span } => *span,
+        Inline::OverlayBegin { span, .. } | Inline::OverlayEnd { span } | Inline::Onslide { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -1146,6 +1267,7 @@ mod tests {
             font_size_pt: 13.0,
             measure_pt: 320.0,
             parskip_pt: None,
+            ams_sizes: false,
         };
         let result = session.compile(text, constraints);
         eprintln!("constraint ReuseStats: {:?}", result.stats);

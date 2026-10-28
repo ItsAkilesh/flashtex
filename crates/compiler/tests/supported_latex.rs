@@ -93,7 +93,10 @@ fn arm_line(line: &str) -> Option<ArmLine> {
         rest = rest.strip_prefix('"')?;
         let end = rest.find('"')?;
         let name = &rest[..end];
-        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphabetic()) {
+        // A control-word arm is letters only; a package arm may carry a
+        // digit (`CJKutf8`, `\usepackage{CJKutf8}`), never as its first
+        // character.
+        if name.is_empty() || !name.starts_with(|c: char| c.is_ascii_alphabetic()) || !name.chars().all(|c| c.is_ascii_alphanumeric()) {
             return None;
         }
         names.push(name.to_string());
@@ -131,6 +134,51 @@ fn arms(text: &str) -> BTreeSet<String> {
             }
             Some(ArmLine::Part(names)) => pending.extend(names),
             None => pending.clear(),
+        }
+    }
+    out
+}
+
+/// Command names the tabular row scanner (`src/parser/tabular.rs`) handles
+/// itself, outside `Parser::command`: the rule arms (`is_rule_command`),
+/// the longtable/colortbl arms (`is_table_command`), the cell strippers
+/// (`strip_cell_commands`, `extract_column_color`) and the `command == ".."`
+/// guards of the row loop (`\multicolumn`, `\tabularnewline`; `\begin` and
+/// `\end` only track nesting depth there and are inventoried with the
+/// parser arms). Scanned from the source like the parser arms above, so a
+/// new row-scanner command without an inventory entry fails here.
+fn table_commands(text: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    // `is_rule_command` and the `is_table_command` gate are free functions;
+    // the cell strippers are methods, whose own closing brace is indented
+    // one level. (The gate's arms mirror `table_command`, which consumes
+    // what the gate admits, so scanning the gate covers both.)
+    for (start, end) in [
+        ("fn is_rule_command(", "\n}\n"),
+        ("fn is_table_command(", "\n}\n"),
+        ("fn strip_cell_commands(", "\n    }\n"),
+        ("fn extract_column_color(", "\n    }\n"),
+    ] {
+        out.extend(quoted(region(text, start, end), false));
+    }
+    // `command == "multicolumn"` guards of the row loop. (`begin`/`end`
+    // only track nesting depth there and are inventoried with the parser
+    // arms, as are the other guards this scan picks up.) Only the row
+    // loop names its token `command`; the `name == ".."` checks elsewhere
+    // (environment and column-spec dispatch) are inventoried separately.
+    for line in text.lines() {
+        let mut rest = line;
+        while let Some(found) = rest.find("command == \"") {
+            rest = &rest[found + "command == \"".len()..];
+            if let Some(end) = rest.find('"') {
+                let name = &rest[..end];
+                if !name.is_empty() && name.chars().all(|c| c.is_ascii_alphabetic()) {
+                    out.insert(name.to_string());
+                }
+                rest = &rest[end..];
+            } else {
+                break;
+            }
         }
     }
     out
@@ -178,6 +226,13 @@ fn text_inventory_equals_the_parser_arms() {
             "{diagnostic_only} arm moved"
         );
     }
+    // Table rules, spans and colours never reach `Parser::command`: the
+    // tabular row scanner (`src/parser/tabular.rs`) consumes them first.
+    // They are inventoried with the text commands (see `TEXT_EXTRA_ARMS`),
+    // so the expected set scans those arms too.
+    expected.extend(table_commands(&read(
+        crate_dir().join("src/parser/tabular.rs"),
+    )));
     // Expansion-pass commands are executed by `crate::expansion`'s engine and
     // never reach a parser arm; the behaviour probes below still compile each
     // one and require that it is not diagnosed as unsupported.
@@ -225,6 +280,16 @@ fn environment_and_package_inventory_equals_the_parser_arms() {
     // `thebibliography`'s arm sets its heading text, not an environment name.
     expected.remove("References");
     expected.extend(arms(region(&parser, "fn paragraph_style(", "\n}\n")));
+    // `longtable` has no arm in `environment`: `package_table_environment`
+    // in `src/parser/tabular.rs` takes it when the package is loaded.
+    expected.extend(quoted(
+        region(
+            &read(crate_dir().join("src/parser/tabular.rs")),
+            "fn package_table_environment(",
+            "\n    }\n",
+        ),
+        true,
+    ));
     let inventory = supported::inventory();
     let actual: BTreeSet<String> = inventory
         .environments
@@ -286,6 +351,7 @@ fn diagnostics(text: &str) -> Vec<String> {
 fn not_supported(messages: &[String], name: &str) -> Option<String> {
     let needle = format!("\\{name} is not supported");
     let wrong_class = format!("\\{name} is defined by the letter");
+    let beamer_class = format!("\\{name} is defined by the beamer");
     messages
         .iter()
         // letter.cls commands are refused by their own message when the
@@ -293,7 +359,9 @@ fn not_supported(messages: &[String], name: &str) -> Option<String> {
         // not fail for any of them: an `\opening` diagnosed as "defined by
         // the letter document class" sails past a match on "\opening is not
         // supported", and the inventory row keeps claiming `renders: true`.
-        .find(|m| m.starts_with(&needle) || m.starts_with(&wrong_class))
+        .find(|m| {
+            m.starts_with(&needle) || m.starts_with(&wrong_class) || m.starts_with(&beamer_class)
+        })
         .cloned()
 }
 
@@ -322,10 +390,72 @@ fn letter_probe(name: &str, arguments: &str) -> Option<String> {
     Some(source.replace('#', ""))
 }
 
+/// A minimal beamer deck: `#` marks where a probe's own command goes.
+/// `\frametitle`/`\framesubtitle`/`\alert` exist only under beamer, so like
+/// the letter.cls commands above they are exercised under their own class.
+const BEAMER_DOCUMENT: &str = "\\documentclass{beamer}\n\\begin{document}\n\\begin{frame}{Probe}\n#\n\\end{frame}\n\\end{document}\n";
+
+/// A minimal exam paper: `#` marks where a probe's own command goes.
+/// `\question`/`\part`/`\subpart`/`\subsubpart` exist only under exam, so
+/// like the beamer commands above they are exercised under their own class.
+const EXAM_DOCUMENT: &str = "\\documentclass{exam}\n\\begin{document}\n#\n\\end{document}\n";
+
+/// Where an exam.cls command has to sit to be exercised for real: inside
+/// its own list in an exam paper, the way exam.cls scopes each item command
+/// to its list. `None` for anything that is not exam-gated.
+fn exam_probe(name: &str, arguments: &str) -> Option<String> {
+    let env = match name {
+        "question" => "questions",
+        "part" => "parts",
+        "subpart" => "subparts",
+        "subsubpart" => "subsubparts",
+        _ => return None,
+    };
+    Some(EXAM_DOCUMENT.replace(
+        '#',
+        &format!(
+            "\\begin{{{env}}}{} x\\end{{{env}}}",
+            with_arguments(name, arguments, "1pt")
+        ),
+    ))
+}
+
+/// Where a beamer command has to sit to be exercised for real: inside a
+/// frame of a beamer deck. `None` for anything that is not beamer-gated.
+fn beamer_probe(name: &str, arguments: &str) -> Option<String> {
+    match name {
+        n if supported::BEAMER_CLASS_COMMANDS.contains(&n) => {
+            Some(BEAMER_DOCUMENT.replace('#', &with_arguments(name, arguments, "1pt")))
+        }
+        _ => None,
+    }
+}
+
+/// The AMS classes' top-matter commands exist only under amsart/amsbook/
+/// amsproc: exercised in a minimal amsart document, before `\maketitle`.
+fn ams_probe(name: &str, arguments: &str) -> Option<String> {
+    match name {
+        "curraddr" | "email" | "urladdr" | "subjclass" | "keywords" | "dedicatory" => Some(format!(
+            "\\documentclass{{amsart}}\n\\title{{T}}\\author{{A}}\n{}\n\\begin{{document}}\n\\maketitle\nBody.\n\\end{{document}}\n",
+            with_arguments(name, arguments, "1pt")
+        )),
+        _ => None,
+    }
+}
+
 /// A compilable use of `\name` built from its argument shape.
 fn text_probe(name: &str, arguments: &str) -> String {
     if let Some(letter) = letter_probe(name, arguments) {
         return letter;
+    }
+    if let Some(ams) = ams_probe(name, arguments) {
+        return ams;
+    }
+    if let Some(beamer) = beamer_probe(name, arguments) {
+        return beamer;
+    }
+    if let Some(exam) = exam_probe(name, arguments) {
+        return exam;
     }
     match name {
         "\\" => "a\\\\b".into(),
@@ -345,14 +475,65 @@ fn text_probe(name: &str, arguments: &str) -> String {
             with_arguments(n, arguments, "1pt")
         ),
         "caption" => "\\begin{figure}\\caption{x}\\end{figure}".into(),
+        "newfloat" => "\\usepackage{float}\\newfloat{program}{htbp}{lop}".into(),
+        "floatname" => "\\usepackage{float}\\floatname{program}{Program}".into(),
+        "floatstyle" => "\\usepackage{float}\\floatstyle{ruled}".into(),
+        "floatplacement" => "\\usepackage{float}\\floatplacement{figure}{tbp}".into(),
         // A bare `{x}` test is not a valid `\ifthenelse` test (the engine
         // reports "Missing test"), so probe the real form instead.
         "ifthenelse" => "\\ifthenelse{\\equal{a}{a}}{yes}{no}".into(),
+        // `\iftoggle` needs a declared toggle; probing it bare would
+        // report the undefined-toggle marker instead of rendering.
+        "iftoggle" => "\\newtoggle{x}\\toggletrue{x}\\iftoggle{x}{yes}{no}".into(),
         "captionof" => "\\captionof{figure}{x}".into(),
         "uline" => "\\usepackage{ulem}\\uline{x}".into(),
         "sout" => "\\usepackage{ulem}\\sout{x}".into(),
         "so" => "\\usepackage{soul}\\so{x}".into(),
         "hl" => "\\usepackage{soul}\\hl{x}".into(),
+        // tcolorbox's box definers exist only once the package is loaded;
+        // probe the defining path, then a real use of the box.
+        "newtcolorbox" => {
+            "\\usepackage{tcolorbox}\\newtcolorbox{mybox}{colback=white}\\begin{mybox}body\\end{mybox}".into()
+        }
+        "renewtcolorbox" => {
+            "\\usepackage{tcolorbox}\\newtcolorbox{mybox}{colback=white}\\renewtcolorbox{mybox}{colframe=red}\\begin{mybox}body\\end{mybox}".into()
+        }
+        // Table rules, spans and colours only exist inside a table: probe
+        // each where TeX allows it, with the package that defines it.
+        "hline" => "\\begin{tabular}{cc}a&b\\\\\\hline c&d\\end{tabular}".into(),
+        "cline" => "\\begin{tabular}{cc}a&b\\\\\\cline{1-2}c&d\\end{tabular}".into(),
+        "multicolumn" => "\\begin{tabular}{cc}\\multicolumn{2}{c}{x}\\\\a&b\\end{tabular}".into(),
+        "hhline" => "\\usepackage{hhline}\\begin{tabular}{cc}\\hhline{--}a&b\\\\c&d\\end{tabular}".into(),
+        "tabularnewline" => "\\begin{tabular}{cc}a&b\\tabularnewline c&d\\end{tabular}".into(),
+        "toprule" | "midrule" | "bottomrule" => format!(
+            "\\usepackage{{booktabs}}\\begin{{tabular}}{{cc}}\\{name} a&b\\\\c&d\\\\\\bottomrule\\end{{tabular}}"
+        ),
+        "cmidrule" => "\\usepackage{booktabs}\\begin{tabular}{cc}\\toprule a&b\\\\\\cmidrule{1-1}c&d\\end{tabular}".into(),
+        "addlinespace" => "\\usepackage{booktabs}\\begin{tabular}{cc}a&b\\\\\\addlinespace c&d\\end{tabular}".into(),
+        "specialrule" => "\\usepackage{booktabs}\\begin{tabular}{cc}a&b\\\\\\specialrule{1pt}{0pt}{0pt}c&d\\end{tabular}".into(),
+        "morecmidrules" => "\\usepackage{booktabs}\\begin{tabular}{cc}a&b\\\\\\cmidrule{1-1}\\morecmidrules\\cmidrule{2-2}c&d\\end{tabular}".into(),
+        "multirow" => "\\usepackage{multirow}\\begin{tabular}{cc}\\multirow{2}{*}{x}&b\\\\c&d\\end{tabular}".into(),
+        "rowcolor" => "\\usepackage{colortbl}\\begin{tabular}{cc}\\rowcolor{red}a&b\\\\c&d\\end{tabular}".into(),
+        "cellcolor" => "\\usepackage{colortbl}\\begin{tabular}{cc}\\cellcolor{red}x&b\\\\c&d\\end{tabular}".into(),
+        "columncolor" => "\\usepackage{colortbl}\\begin{tabular}{>{\\columncolor{red}}cc}a&b\\\\c&d\\end{tabular}".into(),
+        "kill" => "\\usepackage{longtable}\\begin{longtable}{cc}a&b\\\\\\kill c&d\\end{longtable}".into(),
+        "endfirsthead" | "endhead" | "endfoot" | "endlastfoot" => format!(
+            "\\usepackage{{longtable}}\\begin{{longtable}}{{cc}}a&b\\\\\\{name}c&d\\end{{longtable}}"
+        ),
+        // Expansion-pass commands need their real argument shape.
+        "arabic" | "roman" | "Roman" | "alph" => {
+            format!("\\section{{S}}\\{name}{{section}}")
+        }
+        "newif" => "\\newif\\iffoo\\footrue\\iffoo x\\fi".into(),
+        "verb" => "x\\verb|y|z".into(),
+        // A text-command default needs a command to declare it for; probing
+        // it bare would leave an unconsumed argument instead of rendering.
+        "DeclareTextCommandDefault" => {
+            "\\DeclareTextCommandDefault{\\textfoo}{FOO}A \\textfoo{} B".into()
+        }
+        "ProvideTextCommandDefault" => {
+            "\\ProvideTextCommandDefault{\\textbaz}{BAZ}A \\textbaz{} B".into()
+        }
         _ => with_arguments(name, arguments, "1pt"),
     }
 }
@@ -394,7 +575,9 @@ fn math_probe(name: &str, arguments: &str) -> String {
         "left" => "\\left( a \\right)".to_string(),
         "right" => "\\left( a \\right)".to_string(),
         "limits" | "nolimits" => format!("\\sum\\{name}_a"),
-        "choose" | "over" => format!("{{a \\{name} b}}"),
+        "choose" | "over" | "atop" => format!("{{a \\{name} b}}"),
+        "above" => r"{a \above 1pt b}".to_string(),
+        "overwithdelims" | "atopwithdelims" | "abovewithdelims" => format!("{{a \\{name}() b}}"),
         n if n.starts_with("big") || n.starts_with("Big") => format!("\\{n}( a"),
         n if n.len() == 1 && !n.chars().all(|c| c.is_ascii_alphabetic()) => format!("a\\{n}b"),
         _ => with_arguments(name, arguments, "1pt"),
@@ -430,6 +613,61 @@ fn every_inventory_entry_compiles_without_an_unsupported_diagnostic() {
             Mode::Text if e.name == "letter" => (
                 LETTER_DOCUMENT.replace('#', ""),
                 "environment 'letter' is not implemented".to_string(),
+            ),
+            // beamer's blocks and columns exist only under beamer, like the
+            // class's commands: exercised inside a frame of a deck.
+            Mode::Text if supported::BEAMER_CLASS_ENVIRONMENTS.contains(&e.name) => (
+                BEAMER_DOCUMENT.replace(
+                    '#',
+                    &match e.name {
+                        "columns" => "\\begin{columns}\\column{.5\\textwidth}a\\end{columns}".to_string(),
+                        "column" => "\\begin{columns}\\begin{column}{.5\\textwidth}a\\end{column}\\end{columns}".to_string(),
+                        name => format!("\\begin{{{name}}}{{T}}a\\end{{{name}}}"),
+                    },
+                ),
+                format!("environment '{}' is", e.name),
+            ),
+            // beamer's overlay environments exist only inside a frame of a
+            // beamer deck, like the class's commands (`beamer_probe`).
+            Mode::Text if supported::BEAMER_OVERLAY_ENVIRONMENTS.contains(&e.name) => (
+                BEAMER_DOCUMENT.replace('#', &format!("\\begin{{{0}}}<2>a\\end{{{0}}}", e.name)),
+                format!("environment '{}' is not implemented", e.name),
+            ),
+            // exam.cls question lists exist only under exam, like beamer's
+            // blocks under beamer: exercised with their item command inside.
+            Mode::Text if supported::EXAM_CLASS_ENVIRONMENTS.contains(&e.name) => {
+                let item = match e.name {
+                    "questions" => "question",
+                    "parts" => "part",
+                    "subparts" => "subpart",
+                    "subsubparts" => "subsubpart",
+                    _ => unreachable!("exam env without an item command: {}", e.name),
+                };
+                (
+                    format!(
+                        "\\documentclass{{exam}}\\begin{{document}}\\begin{{{0}}}\\{item} a\\end{{{0}}}\\end{{document}}",
+                        e.name
+                    ),
+                    format!("environment '{}' is not implemented", e.name),
+                )
+            }
+            // `longtable` exists only with its package and takes a column
+            // specification, like `tabular`.
+            Mode::Text if e.name == "longtable" => (
+                "\\usepackage{longtable}\\begin{longtable}{cc}a&b\\end{longtable}".into(),
+                "environment 'longtable' is not implemented".to_string(),
+            ),
+            // `CJK`/`CJK*` exist only with CJKutf8 and take the encoding
+            // and family arguments.
+            Mode::Text if e.name == "CJK" || e.name == "CJK*" => (
+                format!("\\usepackage{{CJKutf8}}\\begin{{{0}}}{{UTF8}}{{min}}a\\end{{{0}}}", e.name),
+                format!("environment '{}' ", e.name),
+            ),
+            // `tabularx` likewise exists only with its package, and takes a
+            // target width before the column specification (#901).
+            Mode::Text if e.name == "tabularx" => (
+                "\\usepackage{tabularx}\\begin{tabularx}{\\linewidth}{cX}a&b\\end{tabularx}".into(),
+                "environment 'tabularx' is not implemented".to_string(),
             ),
             Mode::Text => (
                 format!(
@@ -552,4 +790,322 @@ fn canonical_list_is_well_formed_and_sourced() {
         );
         assert!(!name.contains('@'), "{name}");
     }
+}
+
+// ---- class scope (completion gating) --------------------------------------
+// Adding a class-scoped family to the inventory (beamer's `\frametitle`,
+// `\alert`, ...) changed completion for every document: `\fra` offered
+// `\frametitle` ahead of `\frac`, `\a` offered `\alert` ahead of `\alpha`.
+// The inventory records the dependency (`requires_class`); completion has to
+// respect it. These tests pin the data that gate reads.
+
+/// The scope list is exactly the parser's real gate: every name here is
+/// diagnosed outside `\documentclass{letter}` (`letter_probe` builds its
+/// document for the same set), and the kernel neighbour `hangfrom` — which
+/// sits beside them in `BUILT_INS` — stays universal.
+#[test]
+fn class_scope_matches_the_parser_gate() {
+    let inventory = supported::inventory();
+    let scoped: BTreeSet<String> = inventory
+        .commands
+        .iter()
+        .filter(|c| c.requires_class.is_some())
+        .map(|c| c.name.to_string())
+        .collect();
+    let listed: BTreeSet<String> = supported::LETTER_CLASS_COMMANDS
+        .iter()
+        .chain(supported::BEAMER_CLASS_COMMANDS)
+        .chain(supported::AMS_CLASS_COMMANDS)
+        .chain(supported::EXAM_CLASS_COMMANDS)
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        scoped, listed,
+        "scope must be exactly the letter, beamer, AMS and exam gates"
+    );
+    // The AMS top matter (and `\address`, which the AMS classes share with
+    // letter.cls) is offered under amsart/amsbook/amsproc and nowhere else.
+    for name in supported::AMS_CLASS_COMMANDS.iter().chain(&["address"]) {
+        let command = inventory
+            .commands
+            .iter()
+            .find(|c| c.name == *name)
+            .unwrap_or_else(|| panic!("\\{name} is not in the inventory"));
+        for class in ["amsart", "amsbook", "amsproc"] {
+            assert!(command.offered_in_class(Some(class)), "\\{name} is offered under {class}");
+        }
+        for class in ["article", "book", "beamer"] {
+            assert!(!command.offered_in_class(Some(class)), "\\{name} is not offered under {class}");
+        }
+        assert!(command.offered_in_class(None), "an unknown class gates nothing");
+    }
+    // A class list's tokens are trimmed (`"letter, amsart"`).
+    let mut spaced = inventory.commands.iter().find(|c| c.name == "address").unwrap().clone();
+    spaced.requires_class = Some("letter, amsart");
+    assert!(spaced.offered_in_class(Some("amsart")) && spaced.offered_in_class(Some("letter")));
+    assert!(!spaced.offered_in_class(Some("article")));
+    for name in supported::BEAMER_CLASS_COMMANDS {
+        let command = inventory
+            .commands
+            .iter()
+            .find(|c| c.name == *name)
+            .unwrap_or_else(|| panic!("\\{name} is not in the inventory"));
+        assert_eq!(
+            command.requires_class,
+            Some("beamer"),
+            "\\{name} is gated on the beamer class"
+        );
+        assert!(
+            beamer_probe(name, "{}").is_some(),
+            "\\{name} must go through the parser's beamer gate"
+        );
+    }
+    for name in supported::LETTER_CLASS_COMMANDS {
+        let command = inventory
+            .commands
+            .iter()
+            .find(|c| c.name == *name)
+            .unwrap_or_else(|| panic!("\\{name} is not in the inventory"));
+        assert!(
+            command.offered_in_class(Some("letter")) && !command.offered_in_class(Some("article")),
+            "\\{name} is gated on the letter class"
+        );
+        assert!(
+            letter_probe(name, "{}").is_some(),
+            "\\{name} must go through the parser's letter gate"
+        );
+    }
+    for name in supported::EXAM_CLASS_COMMANDS {
+        let command = inventory
+            .commands
+            .iter()
+            .find(|c| c.name == *name)
+            .unwrap_or_else(|| panic!("\\{name} is not in the inventory"));
+        assert_eq!(
+            command.requires_class,
+            Some("exam"),
+            "\\{name} is gated on the exam class"
+        );
+        assert!(
+            exam_probe(name, "{}").is_some(),
+            "\\{name} must go through the parser's exam gate"
+        );
+    }
+    // The everyday commands — and the kernel neighbour — stay universal.
+    for name in [
+        "frac",
+        "alpha",
+        "aleph",
+        "allowdisplaybreaks",
+        "allowbreak",
+        "section",
+        "hangfrom",
+        "today",
+    ] {
+        let command = inventory
+            .commands
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("\\{name} is not in the inventory"));
+        assert_eq!(command.requires_class, None, "\\{name} is universal");
+    }
+}
+
+/// The offer rule completion mirrors: a scoped command is hidden only when
+/// the document class is known and different. An unknown class (a fragment
+/// with no `\documentclass`, as in the editor's prefix tests) keeps today's
+/// table order untouched.
+#[test]
+fn offer_rule_hides_scoped_commands_only_under_another_class() {
+    let inventory = supported::inventory();
+    let by_name = |name: &str| {
+        inventory
+            .commands
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("\\{name} is not in the inventory"))
+    };
+    let (frac, opening) = (by_name("frac"), by_name("opening"));
+    assert!(frac.offered_in_class(None));
+    assert!(frac.offered_in_class(Some("article")));
+    assert!(frac.offered_in_class(Some("letter")));
+    assert!(opening.offered_in_class(None), "unknown class gates nothing");
+    assert!(
+        !opening.offered_in_class(Some("article")),
+        "\\opening must not be offered in an article"
+    );
+    assert!(opening.offered_in_class(Some("letter")));
+}
+
+/// Environments scope the same way, on the same probes: `letter` is
+/// letter.cls's, the blocks, columns and overlay environments are beamer's,
+/// and the ones that merely behave differently under beamer (`frame`,
+/// `figure`, `table`) stay universal. Same offer rule as the commands.
+#[test]
+fn environment_class_scope_matches_the_parser_gate() {
+    let inventory = supported::inventory();
+    let scoped: BTreeSet<String> = inventory
+        .environments
+        .iter()
+        .filter(|e| e.requires_class.is_some())
+        .map(|e| e.name.to_string())
+        .collect();
+    let listed: BTreeSet<String> = ["letter"]
+        .iter()
+        .chain(supported::BEAMER_CLASS_ENVIRONMENTS)
+        .chain(supported::BEAMER_OVERLAY_ENVIRONMENTS)
+        .chain(supported::EXAM_CLASS_ENVIRONMENTS)
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        scoped, listed,
+        "scope must be exactly the letter, beamer and exam gates"
+    );
+    let by_name = |name: &str| {
+        inventory
+            .environments
+            .iter()
+            .find(|e| e.name == name)
+            .unwrap_or_else(|| panic!("environment {name} is not in the inventory"))
+    };
+    assert_eq!(by_name("letter").requires_class, Some("letter"));
+    for name in supported::BEAMER_CLASS_ENVIRONMENTS
+        .iter()
+        .chain(supported::BEAMER_OVERLAY_ENVIRONMENTS)
+    {
+        assert_eq!(by_name(name).requires_class, Some("beamer"), "{name} is gated on the beamer class");
+    }
+    for name in supported::EXAM_CLASS_ENVIRONMENTS {
+        assert_eq!(by_name(name).requires_class, Some("exam"), "{name} is gated on the exam class");
+    }
+    for name in ["frame", "figure", "table", "itemize", "equation"] {
+        assert_eq!(by_name(name).requires_class, None, "{name} is universal");
+    }
+    let (itemize, invisibleenv) = (by_name("itemize"), by_name("invisibleenv"));
+    for class in [None, Some("article"), Some("beamer")] {
+        assert!(itemize.offered_in_class(class), "itemize is universal: offered under {class:?}");
+    }
+    assert!(invisibleenv.offered_in_class(None), "unknown class gates nothing");
+    assert!(!invisibleenv.offered_in_class(Some("article")));
+    assert!(invisibleenv.offered_in_class(Some("beamer")));
+}
+
+/// The `requires_class` field reaches `--supported json`, the Mac completion
+/// vocabulary's data source, without moving anything else: the schema marker
+/// stays `flashtex-supported-latex/1` (the sync script greps for it and the
+/// Swift decoder asserts it), universal entries gain no key, and every scoped
+/// entry carries its class.
+#[test]
+fn requires_class_is_emitted_in_supported_json() {
+    let inventory = supported::inventory();
+    let parsed =
+        json::parse(&supported::render_json(&inventory)).expect("--supported json is valid JSON");
+    assert_eq!(
+        parsed.get("schema").and_then(|v| v.as_str()),
+        Some("flashtex-supported-latex/1"),
+        "schema bump would break the Swift decoder and the sync script"
+    );
+    let commands = parsed
+        .get("commands")
+        .and_then(|v| v.as_arr())
+        .expect("commands array");
+    assert_eq!(commands.len(), inventory.commands.len());
+    for entry in commands {
+        let name = entry
+            .get("name")
+            .and_then(|v| v.as_str())
+            .expect("command name");
+        let model = inventory
+            .commands
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("JSON-only command \\{name}"));
+        match model.requires_class {
+            Some(class) => assert_eq!(
+                entry.get("requires_class").and_then(|v| v.as_str()),
+                Some(class),
+                "\\{name} must carry its class in JSON"
+            ),
+            None => assert!(
+                entry.get("requires_class").is_none(),
+                "\\{name} is universal and must not gain the key"
+            ),
+        }
+    }
+    let environments = parsed
+        .get("environments")
+        .and_then(|v| v.as_arr())
+        .expect("environments array");
+    assert_eq!(environments.len(), inventory.environments.len());
+    for entry in environments {
+        let name = entry
+            .get("name")
+            .and_then(|v| v.as_str())
+            .expect("environment name");
+        let model = inventory
+            .environments
+            .iter()
+            .find(|e| e.name == name)
+            .unwrap_or_else(|| panic!("JSON-only environment {name}"));
+        match model.requires_class {
+            Some(class) => assert_eq!(
+                entry.get("requires_class").and_then(|v| v.as_str()),
+                Some(class),
+                "environment {name} must carry its class in JSON"
+            ),
+            None => assert!(
+                entry.get("requires_class").is_none(),
+                "environment {name} is universal and must not gain the key"
+            ),
+        }
+    }
+}
+
+/// The article-visibility contract the completion gate implements: under
+/// `article`, every prefix-visible name is universal, so a future
+/// class-scoped family can never outrank `\frac` on `\fra` or `\alpha` on
+/// `\a` again. (`\address` is the letter-scoped witness for the `\a`
+/// prefix; beamer's `\alert`/`\frametitle` register the same way.)
+#[test]
+fn article_prefix_completion_has_no_class_scoped_command() {
+    let inventory = supported::inventory();
+    let visible = |class: Option<&str>, prefix: &str| -> Vec<&str> {
+        inventory
+            .commands
+            .iter()
+            .filter(|c| c.renders && c.offered_in_class(class))
+            .map(|c| c.name)
+            .filter(|name| name.starts_with(prefix))
+            .collect()
+    };
+    for prefix in ["a", "c", "o", "s", "fra", "al"] {
+        assert!(
+            visible(Some("article"), prefix)
+                .iter()
+                .all(|name| visible(None, prefix).contains(name)),
+            "gating only removes, never adds, for prefix {prefix:?}"
+        );
+        assert!(
+            !visible(Some("article"), prefix).contains(&"opening"),
+            "prefix {prefix:?}"
+        );
+    }
+    assert!(
+        !visible(Some("article"), "a").contains(&"address"),
+        "the letter-scoped \\address must not be offered in an article"
+    );
+    for name in ["allowdisplaybreaks", "allowbreak", "alpha", "aleph"] {
+        assert!(
+            visible(Some("article"), "a").contains(&name),
+            "\\{name} stays offered in an article"
+        );
+    }
+    assert!(
+        visible(Some("article"), "fra").contains(&"frac"),
+        "\\frac stays offered in an article"
+    );
+    assert!(
+        visible(Some("letter"), "o").contains(&"opening"),
+        "the gate opens under the owning class"
+    );
 }

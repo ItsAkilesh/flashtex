@@ -66,6 +66,8 @@ final class DocumentFilesState {
     }
 
     var policy: HelperPolicy = .discover
+    /// How long an `offline` `resolve_packages` may take (tests shorten it).
+    var packagesOfflineTimeout: TimeInterval = 10
     /// Backend of the most recent file operation (nil before any).
     private(set) var backend: Backend?
     private(set) var status = "no file operation yet"
@@ -81,9 +83,19 @@ final class DocumentFilesState {
     private(set) var lateReplies: [String] = []
     private(set) var helperExits = 0
     private(set) var helperRestarts = 0
+    /// Runs on the main actor after a save's *late* reply (receipt, conflict or
+    /// failure) has been reconciled, i.e. once the request that kept
+    /// `helperBusy` true is no longer outstanding. The shell uses it to re-run
+    /// a file-watcher check it had to drop while the save was in flight (#831).
+    @ObservationIgnored var onSaveSettledLate: (@MainActor () -> Void)?
 
     @ObservationIgnored fileprivate var client: ProjectFilesClient?
     @ObservationIgnored private let replyQueue = DispatchQueue(label: "flashtex.project-files.replies")
+    /// A second helper process for package resolution (ProjectPackages.swift),
+    /// bound to the same root but never shared with reads and saves: the
+    /// helper answers in request order and a fetch may take seconds, so it
+    /// must never sit in front of a save. Launched on first use.
+    @ObservationIgnored private var packagesClient: ProjectFilesClient?
 
     enum Outcome<T> {
         case reply(T)
@@ -114,8 +126,8 @@ final class DocumentFilesState {
         case unavailable(String)
     }
 
-    /// Records a disk state observed through another route (the preview
-    /// controller's `file_status`) so the UI sees one field either way.
+    /// Records a disk state observed outside a probe (an open, a reload) so
+    /// the UI sees one field either way.
     func noteDiskState(_ state: ProjectFilesV1.DiskState?) { lastDiskState = state }
 
     var helperRunning: Bool { client?.isRunning == true }
@@ -271,6 +283,172 @@ final class DocumentFilesState {
         }
     }
 
+    /// The `flashtex.toml` governing `root` (ProjectManifest.swift), through
+    /// the helper only: the shell has no TOML parser of its own, so without
+    /// the helper there is no manifest — the reason is returned, and the
+    /// caller falls back to what a directory says by itself.
+    /// The helper's `set_fonts`: the manifest text with its `[fonts]` table
+    /// replaced (ProjectFonts.swift saves it through `save`). Same helper
+    /// binding and bounded wait as `manifest(for:entry:)`.
+    /// `resolve_packages` on the dedicated packages helper (see
+    /// `packagesClient`), awaited off the main thread: up to 30 s for a
+    /// description, 120 s when `consent` fetches, 10 s `offline` (the
+    /// library and the cache only; `libraries` lists every library too).
+    func resolvePackages(for root: URL, names: [String], consent: Bool, entry: String, offline: Bool = false,
+                         libraries: Bool = false) async -> Result<ProjectFilesV1.ResolvePackages, ProjectManifest.Failure> {
+        switch acquirePackagesClient(for: root) {
+        case .direct(let reason):
+            note(reason)
+            return .failure(.init("packages are resolved by the project-files helper, which is not available: \(reason)"))
+        case .unavailable(let reason):
+            return .failure(.init(reason))
+        case .client(let client):
+            do {
+                return .success(try await client.resolvePackages(names: names, consent: consent, entry: entry, offline: offline, libraries: libraries,
+                                                                 timeout: offline ? packagesOfflineTimeout : consent ? 120 : 30))
+            } catch let f as LineProcessFailure {
+                note("helper resolve_packages failed: \(f.text)")
+                return .failure(.init(f.text))
+            } catch {
+                return .failure(.init(error.localizedDescription))
+            }
+        }
+    }
+
+    /// `set_packages`: the manifest's text with `fetch` and/or `pin`
+    /// rewritten, for the caller to `save` (like `setFonts`).
+    func setPackages(for root: URL, entry: String, fetch: String?, pin: [String: String]?) -> Result<ProjectFilesV1.SetPackages, ProjectManifest.Failure> {
+        switch acquire(for: root.appendingPathComponent(ProjectManifest.fileName)) {
+        case .direct(let reason):
+            note(reason)
+            return .failure(.init("flashtex.toml is written by the project-files helper, which is not available: \(reason)"))
+        case .unavailable(let reason):
+            return .failure(.init(reason))
+        case .client(let client):
+            let outcome: Outcome<ProjectFilesV1.SetPackages> = roundTrip({ done in
+                client.send({ ProjectFilesV1.SetPackagesRequest(id: $0, entry: entry, fetch: fetch, pin: pin) }, as: ProjectFilesV1.SetPackages.self, completion: done)
+            }, late: { [weak self] result in
+                self?.lateReplies.append("set_packages: \(Self.describe(result))")
+                self?.note("late reply to set_packages arrived after \(String(format: "%.1f", self?.helperTimeout ?? 0)) s; ignored")
+            })
+            switch outcome {
+            case .reply(let m): return .success(m)
+            case .failed(let f):
+                note("helper set_packages failed: \(f.text)")
+                return .failure(.init(f.text))
+            case .timedOut(let t):
+                note("helper did not answer set_packages within \(String(format: "%.1f", t)) s")
+                return .failure(.init("no reply from the project-files helper within \(String(format: "%.1f", t)) s"))
+            }
+        }
+    }
+
+    /// `acquire` for the packages helper: the same binary and root rules,
+    /// its own process, restarted only when the binary or root changed or
+    /// it exited (an outstanding request is a fetch still running).
+    private func acquirePackagesClient(for root: URL) -> Acquired {
+        if case .disabled(let reason) = policy { return .direct(reason) }
+        guard let (exe, args) = executable() else {
+            return .direct("no flashtex-project-files helper (set FLASHTEX_PROJECT_FILES or build crates/project-files)")
+        }
+        let bound = Self.root(for: root.appendingPathComponent(ProjectManifest.fileName))
+        if let packagesClient {
+            if packagesClient.isRunning, packagesClient.executable == exe, packagesClient.arguments == args, packagesClient.root == bound { return .client(packagesClient) }
+            packagesClient.terminate()
+            self.packagesClient = nil
+        }
+        do {
+            let client = try ProjectFilesClient(executable: exe, arguments: args, root: bound, queue: replyQueue) { event in
+                if case .stderr(let s) = event { FlashTeXLog.write("packages helper stderr: " + s.trimmingCharacters(in: .newlines)) }
+            }
+            packagesClient = client
+            return .client(client)
+        } catch {
+            return .unavailable("helper \(exe.lastPathComponent) failed to launch: \(error.localizedDescription)")
+        }
+    }
+
+    func setFonts(for root: URL, entry: String, fonts: [String: String]) -> Result<ProjectFilesV1.SetFonts, ProjectManifest.Failure> {
+        switch acquire(for: root.appendingPathComponent(ProjectManifest.fileName)) {
+        case .direct(let reason):
+            note(reason)
+            return .failure(.init("flashtex.toml is written by the project-files helper, which is not available: \(reason)"))
+        case .unavailable(let reason):
+            return .failure(.init(reason))
+        case .client(let client):
+            let outcome: Outcome<ProjectFilesV1.SetFonts> = roundTrip({ done in
+                client.send({ ProjectFilesV1.SetFontsRequest(id: $0, entry: entry, fonts: fonts) }, as: ProjectFilesV1.SetFonts.self, completion: done)
+            }, late: { [weak self] result in
+                self?.lateReplies.append("set_fonts: \(Self.describe(result))")
+                self?.note("late reply to set_fonts arrived after \(String(format: "%.1f", self?.helperTimeout ?? 0)) s; ignored")
+            })
+            switch outcome {
+            case .reply(let m): return .success(m)
+            case .failed(let f):
+                note("helper set_fonts failed: \(f.text)")
+                return .failure(.init(f.text))
+            case .timedOut(let t):
+                note("helper did not answer set_fonts within \(String(format: "%.1f", t)) s")
+                return .failure(.init("no reply from the project-files helper within \(String(format: "%.1f", t)) s"))
+            }
+        }
+    }
+
+    /// The governing manifest's text with `[project] mode` set (the helper's
+    /// `set_mode`), for the caller to `save` (like `setFonts`).
+    func setMode(for root: URL, entry: String, mode: String) -> Result<ProjectFilesV1.SetFonts, ProjectManifest.Failure> {
+        switch acquire(for: root.appendingPathComponent(ProjectManifest.fileName)) {
+        case .direct(let reason):
+            note(reason)
+            return .failure(.init("flashtex.toml is written by the project-files helper, which is not available: \(reason)"))
+        case .unavailable(let reason):
+            return .failure(.init(reason))
+        case .client(let client):
+            let outcome: Outcome<ProjectFilesV1.SetFonts> = roundTrip({ done in
+                client.send({ ProjectFilesV1.SetModeRequest(id: $0, entry: entry, mode: mode) }, as: ProjectFilesV1.SetFonts.self, completion: done)
+            }, late: { [weak self] result in
+                self?.lateReplies.append("set_mode: \(Self.describe(result))")
+                self?.note("late reply to set_mode arrived after \(String(format: "%.1f", self?.helperTimeout ?? 0)) s; ignored")
+            })
+            switch outcome {
+            case .reply(let m): return .success(m)
+            case .failed(let f):
+                note("helper set_mode failed: \(f.text)")
+                return .failure(.init(f.text))
+            case .timedOut(let t):
+                note("helper did not answer set_mode within \(String(format: "%.1f", t)) s")
+                return .failure(.init("no reply from the project-files helper within \(String(format: "%.1f", t)) s"))
+            }
+        }
+    }
+
+    func manifest(for root: URL, entry: String) -> Result<ProjectFilesV1.Manifest, ProjectManifest.Failure> {
+        // `acquire` binds the helper to the directory of the URL it is given.
+        switch acquire(for: root.appendingPathComponent(ProjectManifest.fileName)) {
+        case .direct(let reason):
+            note(reason)
+            return .failure(.init("flashtex.toml is read by the project-files helper, which is not available: \(reason)"))
+        case .unavailable(let reason):
+            return .failure(.init(reason))
+        case .client(let client):
+            let outcome: Outcome<ProjectFilesV1.Manifest> = roundTrip({ done in
+                client.send({ ProjectFilesV1.ManifestRequest(id: $0, entry: entry) }, as: ProjectFilesV1.Manifest.self, completion: done)
+            }, late: { [weak self] result in
+                self?.lateReplies.append("manifest: \(Self.describe(result))")
+                self?.note("late reply to manifest arrived after \(String(format: "%.1f", self?.helperTimeout ?? 0)) s; ignored")
+            })
+            switch outcome {
+            case .reply(let m): return .success(m)
+            case .failed(let f):
+                note("helper manifest read failed: \(f.text)")
+                return .failure(.init(f.text))
+            case .timedOut(let t):
+                note("helper did not answer the manifest read within \(String(format: "%.1f", t)) s")
+                return .failure(.init("no reply from the project-files helper within \(String(format: "%.1f", t)) s"))
+            }
+        }
+    }
+
     /// Compare-and-replace save. `expected` is what the editor last saw on disk;
     /// `force` overwrites regardless (only after an explicit user decision).
     /// `conflict`/`lastDiskState` describe the *entry* document: a project
@@ -306,6 +484,7 @@ final class DocumentFilesState {
                 case .failure(let f):
                     note("late reply for \(name): \(f.text); buffer kept unsaved")
                 }
+                onSaveSettledLate?()
             })
             switch outcome {
             case .reply(.saved(let receipt)):
@@ -513,7 +692,8 @@ extension ShellModel {
     func openTexPanel() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [Self.texType, .plainText]
-        panel.message = "Open a LaTeX source file as the entry document"
+        panel.canChooseDirectories = true // a project folder: its flashtex.toml names the entry (ProjectManifest.swift)
+        panel.message = "Open a LaTeX source file as the entry document, or a project folder (its flashtex.toml names the entry)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         guard hasUnsavedDocuments else { openTex(at: url); return }
         let alert = NSAlert()
@@ -553,13 +733,28 @@ extension ShellModel {
 
     /// Where each dirty document's text goes on a discard (#806): the entry's
     /// buffer to Edit > Restore Discarded Buffer (this session), each member's
-    /// snapshot to File > Restore Unsaved Snapshot….
+    /// snapshot to File > Restore Unsaved Snapshot…. That item is enabled only
+    /// once the member is open again under its project, so the hint says so
+    /// (#811). A buffer with no file (and so no project folder) is kept for
+    /// the session only, and the hint says that too rather than promising a
+    /// snapshot that was never written.
     var discardRecoveryRoutes: String {
         let dirty = project.listing.filter(\.isDirty).map(\.path)
         var routes: [String] = []
-        if dirty.contains(project.entryPath) { routes.append("\(project.entryPath) via Edit > Restore Discarded Buffer (this session)") }
-        let members = dirty.filter { $0 != project.entryPath }
-        if !members.isEmpty { routes.append("\(members.joined(separator: ", ")) via File > Restore Unsaved Snapshot…") }
+        let entry = project.entryPath
+        if dirty.contains(entry) {
+            routes.append("\(entry) via Edit > Restore Discarded Buffer (this session"
+                + (documentURL == nil ? " only: it has no file, so no snapshot is kept)" : ")"))
+        }
+        let members = dirty.filter { $0 != entry }
+        if !members.isEmpty {
+            let names = members.joined(separator: ", ")
+            if project.projectRoot != nil {
+                routes.append("\(names) via File > Restore Unsaved Snapshot… once \(entry) and \(names) are open again")
+            } else {
+                routes.append("\(names) discarded without a snapshot (no project folder)")
+            }
+        }
         return routes.joined(separator: "; ")
     }
 
@@ -603,18 +798,33 @@ extension ShellModel {
     /// A member's snapshot is its only copy once the project is replaced: if
     /// one cannot be written, nothing is kept or replaced and this returns
     /// false with a `captureNote` (#806).
+    /// A failure after earlier members were kept withdraws their snapshots
+    /// again (`rollBackSnapshots`, #811): nothing was discarded, so nothing
+    /// may be offered as discarded later.
     func keepDiscarded(_ discarding: RecoverableBuffer, reason: String, before action: String) -> Bool {
         if let root = project.projectRoot {
+            var touched: [SnapshotRollback] = []
+            var kept: [String] = []
             for doc in documents where doc.path != project.entryPath && project.isDirty(doc.path) {
-                guard preserveDiscardedText(doc.text, at: root.appendingPathComponent(doc.path), reason: reason) else {
-                    captureNote = "Could not keep the unsaved edits of \(doc.path) (\(dirtySnapshots.lastError ?? "snapshot store not writable")); nothing replaced before \(action). The text is still open in the editor."
+                let url = root.appendingPathComponent(doc.path)
+                let previous = dirtySnapshots.read(for: url)
+                switch preserveDiscardedText(doc.text, at: url, reason: reason) {
+                case .kept:
+                    touched.append(.init(url: url, previous: previous))
+                    kept.append(doc.path)
+                case .clean:
+                    touched.append(.init(url: url, previous: previous))
+                case .failed(let why):
+                    rollBackSnapshots(touched)
+                    captureNote = "Could not keep the unsaved edits of \(doc.path) (\(why)); nothing replaced before \(action)"
+                        + (kept.isEmpty ? "" : ", and the snapshots just kept for \(kept.joined(separator: ", ")) were withdrawn")
+                        + ". The text is still open in the editor."
                     return false
                 }
             }
         }
         // Session memory is one slot; the store keeps one per file across
-        // sessions (the ledger route keeps it in undo history instead). A
-        // clean entry (only members dirty) replaces neither.
+        // sessions. A clean entry (only members dirty) replaces neither.
         if project.isDirty(project.entryPath) {
             recoverableBuffer = discarding
             if let from = discarding.url { preserveDirtyText(discarding.text, at: from, reason: reason) }
@@ -628,6 +838,17 @@ extension ShellModel {
     /// document (or refuses), `.discard` replaces them but keeps their text.
     @discardableResult
     func openTex(at url: URL, dirty: DirtyDisposition = .none) -> OpenOutcome {
+        // A folder opens as the document its manifest names — or its only
+        // `.tex` file — resolved before anything is replaced (ProjectManifest.swift).
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+            switch manifest.resolveEntry(in: url) {
+            case .success(let entry): return openTex(at: entry, dirty: dirty)
+            case .failure(let f):
+                captureNote = "Could not open \(url.lastPathComponent): \(f.why)"
+                return .readFailed
+            }
+        }
         let discarding: RecoverableBuffer?
         switch authorizeProjectReplacement(dirty, before: "opening \(url.lastPathComponent)") {
         case .refused(let outcome): return outcome
@@ -665,13 +886,22 @@ extension ShellModel {
             guard keepDiscarded(discarding, reason: reload ? "discarded by a reload from disk" : "discarded when \(url.lastPathComponent) was opened",
                                 before: (reload ? "reloading " : "opening ") + url.lastPathComponent) else { return false }
         }
+        // The project's manifest is read before the engine session hears of
+        // the new project (its mode depends on it: UnicodeFonts.swift).
+        engineChoicePending = true
         replaceProject(entryText: text, named: url.lastPathComponent)
         documentURL = url
         savedText = text
         files.conflict = nil
         files.noteDiskState(.unchanged)
         watchOpenDocument() // DocumentWatcher.swift: live external-change detection
-        if workerAttached { compile() }
+        manifest.refresh() // ProjectManifest.swift: the flashtex.toml governing this project, before the first compile
+        engineHostNeedsUnicode = nil // the new engine's report on the document before this open (UnicodeFonts.swift)
+        unicodeFontsScan = nil
+        resolveEngineForOpenedDocument() // the record, the previous-engine notice, the `engine:` line (EngineChoice.swift)
+        engineChoicePending = false
+        // Now the engine opens the project (stored pages, compile).
+        if engineV3Enabled, let at = engineV3OpenedAt { engineV3.projectChanged(model: self, openedAt: at) }
         return true
     }
 
@@ -697,7 +927,6 @@ extension ShellModel {
         recoverableBuffer = nil
         watchOpenDocument()
         captureNote = "Restored the discarded buffer (\(kept.text.utf8.count) bytes, unsaved)."
-        if workerAttached { compile() }
         return true
     }
 
@@ -739,7 +968,7 @@ extension ShellModel {
     func saveDocumentInteractive(_ path: String) async {
         await enqueueSave(path) { [weak self] in // after any autosave of `path` still in flight
             guard let self else { return }
-            switch await project.saveDocument(path) {
+            switch project.saveDocumentNow(path) {
             case .saved(let p, _): captureNote = "Saved \(p)"
             case .conflict(let c): captureNote = c.summary
             case .failed(let why): captureNote = "Save of \(path) failed: \(why)"
@@ -757,32 +986,14 @@ extension ShellModel {
 
     /// Menu-driven save: on a conflict, asks the user how to resolve it.
     func saveTexInteractive() {
+        projectPackages.explicitRequest(compiling: false) // ProjectPackages.swift: ⌘S ends the typing grace period
         // A non-entry document saves to its own rooted file (never to the
-        // entry URL): ProjectDocuments.saveDocument, helper export or rooted
+        // entry URL): ProjectDocuments.saveDocumentNow, the rooted
         // compare-and-replace, conflicts reported the same way.
         if activePath != project.entryPath {
             let path = activePath
             Task { @MainActor [weak self] in
                 await self?.saveDocumentInteractive(path)
-            }
-            return
-        }
-        // With the durable helper rooted in the open file's project the export
-        // goes through its rooted, locked save so the ledger text and the .tex
-        // never diverge; the result is reported asynchronously (never blocks
-        // the UI). A helper rooted elsewhere (a session copy of a buffer whose
-        // file is not named `main.tex`) would export that copy, not the file.
-        if controllerRoutesFiles {
-            enqueueSave(project.entryPath) { [weak self] in // coalesced with an autosave still in flight
-                guard let self else { return }
-                switch await saveEntryRouted() {
-                case .saved?: break
-                // The panel only opens while the entry is still active; after a
-                // tab switch the conflict lands in the footer note instead.
-                case .conflict?: resolveConflictPanel()
-                case .failed(let why)?: captureNote = "Save through the preview controller failed: \(why)"
-                case nil: if files.conflict != nil { resolveConflictPanel() } // switched away meanwhile: saved directly
-                }
             }
             return
         }
@@ -803,8 +1014,7 @@ extension ShellModel {
     /// one of their files (the entry text would replace that member on disk) or
     /// lies in another directory (the project root, which the open members'
     /// paths resolve against, would move out from under them). The entry keeps
-    /// its tab path, as for any Save As (`controllerRoutesFiles` already treats
-    /// a file name that differs from the tab path as not helper-routed).
+    /// its tab path, as for any Save As.
     @discardableResult
     func saveTexAs(to url: URL) -> Bool {
         let members = documents.map(\.path).filter { $0 != project.entryPath }
@@ -855,7 +1065,6 @@ extension ShellModel {
     /// a file that changes again between review and confirmation is refused
     /// rather than silently imported. Built by `prepareReload()`.
     struct ReloadReview: Equatable {
-        struct DurableIdentity: Equatable { var revision: Int; var sha256: String }
         var url: URL
         var currentText: String
         var diskText: String
@@ -866,10 +1075,6 @@ extension ShellModel {
         /// project); named in the prompt (#806).
         var discardedMembers: [String] = []
         var bufferDirty: Bool { entryDirty || !discardedMembers.isEmpty }
-        /// The durable (ledger) identity the helper's `reload` must still see;
-        /// nil for the direct path (no preview controller attached).
-        var durable: DurableIdentity?
-        var viaController: Bool { durable != nil }
         var identical: Bool { currentText.sameBytes(as: diskText) }
         var bytesBefore: Int { currentText.utf8.count }
         var bytesAfter: Int { diskText.utf8.count }
@@ -882,14 +1087,11 @@ extension ShellModel {
             let name = url.lastPathComponent
             if identical { return "\(name) on disk is identical to the buffer (\(bytesAfter) bytes); reloading changes nothing." }
             let change = ShellModel.lineChanges(from: currentText, to: diskText)
-            let route = viaController
-                ? "through the preview controller (the current text stays in durable undo history)"
-                : "directly"
             var edits = entryDirty ? "Your unsaved edits are replaced (recoverable this session via Edit > Restore Discarded Buffer). " : ""
             if !discardedMembers.isEmpty {
-                edits += "Unsaved edits to \(discardedMembers.joined(separator: ", ")) are discarded too (recoverable via File > Restore Unsaved Snapshot…). "
+                edits += "Unsaved edits to \(discardedMembers.joined(separator: ", ")) are discarded too (recoverable via File > Restore Unsaved Snapshot… once they are open again). "
             }
-            return "Reload \(name) \(route): \(bytesBefore) → \(bytesAfter) bytes, +\(change.added) / −\(change.removed) lines. \(edits)"
+            return "Reload \(name) directly: \(bytesBefore) → \(bytesAfter) bytes, +\(change.added) / −\(change.removed) lines. \(edits)"
                 + "The reload is pinned to the reviewed snapshot (sha256 \(diskSha256.prefix(12))) and refused if the file changes again."
         }
     }
@@ -920,42 +1122,26 @@ extension ShellModel {
             captureNote = "Could not read \(url.lastPathComponent) for reload: \(reason)"
             return nil
         case .text(let diskText):
-            var durable: ReloadReview.DurableIdentity?
-            if controllerRoutesFiles(for: url), let d = controllerState.durable[activePath] {
-                durable = .init(revision: d.revision, sha256: d.sha256)
-            }
-            // A direct reload replaces the whole project (every dirty member);
-            // the controller's reload changes only the entry's buffer.
-            let members = durable == nil ? project.listing.filter { $0.isDirty && $0.path != project.entryPath }.map(\.path) : []
+            // A reload replaces the whole project (every dirty member).
+            let members = project.listing.filter { $0.isDirty && $0.path != project.entryPath }.map(\.path)
             return ReloadReview(url: url, currentText: activeText, diskText: diskText, diskSha256: SourceDigest.sha256Hex(diskText),
-                                entryDirty: durable == nil ? project.isDirty(project.entryPath) : isDirty,
-                                discardedMembers: members, durable: durable)
+                                entryDirty: project.isDirty(project.entryPath), discardedMembers: members)
         }
-    }
-
-    /// Whether file operations on `url` belong to the attached preview
-    /// controller: it is ready and names the open document by `activePath`.
-    var controllerRoutesFiles: Bool { documentURL.map(controllerRoutesFiles(for:)) ?? false }
-    private func controllerRoutesFiles(for url: URL) -> Bool {
-        controllerAttached && controllerState.ready && url == documentURL && url.lastPathComponent == activePath
     }
 
     /// Applies a reviewed reload. A dirty buffer is replaced only with
     /// `.discard` (kept in `recoverableBuffer`); `.saveFirst` is refused
-    /// because a file you are about to reload is not one to save over. With the
-    /// preview controller attached the import goes through its `reload`
-    /// (durable identity + reviewed disk hash must both still match; the prior
-    /// source stays in undo history); otherwise the file is re-read directly
-    /// and refused if it no longer hashes to the reviewed snapshot.
+    /// because a file you are about to reload is not one to save over. The
+    /// file is re-read directly and refused if it no longer hashes to the
+    /// reviewed snapshot.
     @discardableResult
     func confirmReload(_ review: ReloadReview, dirty: DirtyDisposition = .none) async -> OpenOutcome {
         var discarding: RecoverableBuffer?
-        // A direct reload replaces the whole project (every member's edits);
-        // the controller's reload changes only the entry's buffer.
-        if review.viaController ? isDirty : hasUnsavedDocuments {
+        // A reload replaces the whole project (every member's edits).
+        if hasUnsavedDocuments {
             switch dirty {
             case .none:
-                captureNote = "\(review.viaController ? review.url.lastPathComponent : unsavedDocumentsDescription) has unsaved edits; discard them explicitly to reload."
+                captureNote = "\(unsavedDocumentsDescription) has unsaved edits; discard them explicitly to reload."
                 return .blockedByUnsavedEdits
             case .saveFirst:
                 captureNote = "Cannot save over \(review.url.lastPathComponent) while reloading it; overwrite or discard instead."
@@ -964,7 +1150,6 @@ extension ShellModel {
                 discarding = RecoverableBuffer(url: documentURL, text: entryText)
             }
         }
-        if review.viaController { return await controllerReload(review, discarding: discarding) }
         return directReload(review, discarding: discarding)
     }
 
@@ -975,16 +1160,10 @@ extension ShellModel {
         return await confirmReload(review, dirty: dirty)
     }
 
-    /// Synchronous reviewed reload for the direct path (no preview controller).
-    /// With a controller attached the import must go through its `reload`,
-    /// which is asynchronous: use `reloadFromDiskReviewed` / `confirmReload`.
+    /// Synchronous reviewed reload (`prepareReload()` then the direct reload).
     @discardableResult
     func reloadFromDisk(dirty: DirtyDisposition = .none) -> OpenOutcome {
         guard let review = prepareReload() else { return .readFailed }
-        if review.viaController {
-            captureNote = "\(review.url.lastPathComponent) is held by the preview controller; use the reviewed reload (Resolve On-Disk Conflict…)."
-            return .readFailed
-        }
         let dirtyNow = hasUnsavedDocuments // a direct reload replaces the whole project
         if dirtyNow {
             switch dirty {
@@ -1023,81 +1202,6 @@ extension ShellModel {
         }
     }
 
-    /// `reload {path, expected_revision, expected_sha256, expected_disk_sha256,
-    /// user_approved:true}` through the preview controller (STDIO.md). The
-    /// helper re-reads the file under the project lock and refuses a stale
-    /// durable identity or a disk hash other than the reviewed one; a reply
-    /// carries the new durable document, adopted as one editor revision. A
-    /// lost reply leaves the buffer untouched (the helper may have imported:
-    /// the next `document`/`file_status` shows it).
-    private func controllerReload(_ review: ReloadReview, discarding: RecoverableBuffer?) async -> OpenOutcome {
-        let name = review.url.lastPathComponent
-        guard let controller, controller.isRunning, controllerState.ready, review.url == documentURL else {
-            captureNote = "Preview controller is no longer attached to \(name); review the reload again."
-            return .readFailed
-        }
-        let path = activePath
-        guard let expected = review.durable, let durable = controllerState.durable[path],
-              durable.revision == expected.revision, durable.sha256 == expected.sha256 else {
-            captureNote = "The durable source of \(name) changed since the reload was reviewed; review again."
-            return .readFailed
-        }
-        let id: String
-        do {
-            id = try controller.send("reload", ["path": path, "expected_revision": expected.revision, "expected_sha256": expected.sha256,
-                                                "expected_disk_sha256": review.diskSha256, "user_approved": true])
-        } catch {
-            captureNote = "Reload of \(name) failed to send: \(error.localizedDescription)"
-            return .readFailed
-        }
-        let reply: Result<[String: Any], ControllerError> = await withCheckedContinuation { cont in
-            // Adopt inside the waiter, on the helper's own delivery turn, so the
-            // preview the helper sends for the new revision already finds its
-            // editor-revision mapping.
-            controllerState.awaiting[id] = { [weak self] result in
-                if let self, case .success(let payload) = result {
-                    MainActor.assumeIsolated { self.adoptReloadedDocument(payload, review: review, discarding: discarding) }
-                }
-                cont.resume(returning: result)
-            }
-        }
-        switch reply {
-        case .success(let payload):
-            guard payload["document"] is [String: Any] else {
-                captureNote = "Reload reply for \(name) carried no document; buffer untouched."
-                return .readFailed
-            }
-            return .opened
-        case .failure(let e):
-            captureNote = "Reload of \(name) refused by the preview controller: \(e.message). Nothing replaced."
-            FlashTeXLog.write("files: controller reload refused: \(e.message)")
-            return .readFailed
-        }
-    }
-
-    /// Records the reloaded durable document and shows it in the editor as one
-    /// revision (no edit is submitted back: the ledger already holds it).
-    private func adoptReloadedDocument(_ payload: [String: Any], review: ReloadReview, discarding: RecoverableBuffer?) {
-        guard let doc = payload["document"] as? [String: Any], let path = doc["path"] as? String,
-              let revision = doc["revision"] as? Int, let sha = doc["source_sha256"] as? String,
-              let text = doc["text"] as? String else {
-            FlashTeXLog.write("files: controller reload reply is missing document fields")
-            return
-        }
-        controllerState.durable[path] = (revision, sha)
-        controllerState.textByDurable[path, default: [:]][revision] = text
-        if let discarding { recoverableBuffer = discarding }
-        if path == activePath { updateActiveText(text) }
-        controllerState.editorRevisionByDurable[path, default: [:]][revision] = editorRevision
-        savedText = text
-        files.conflict = nil
-        files.noteDiskState(.unchanged)
-        watchOpenDocument()
-        captureNote = "Reloaded \(review.url.lastPathComponent) through the preview controller (durable r\(revision); previous text in undo history"
-            + (recoverableBuffer == nil ? ")." : " and Edit > Restore Discarded Buffer).")
-        if let e = payload["preview_error"] as? String { FlashTeXLog.write("files: reload preview_error: \(e)") }
-    }
-
     /// Reviewed reload behind a modal: shows the change summary, then imports
     /// only on "Reload". Never automatic.
     func reloadFromDiskInteractive() {
@@ -1116,14 +1220,13 @@ extension ShellModel {
 
     /// Asks the file layer (project-files helper or direct) whether the open
     /// document still matches its baseline and records an explicit conflict if
-    /// not (before any save is attempted). With a preview controller attached
-    /// use `refreshDiskStatus()`, which asks the controller's `file_status`.
+    /// not (before any save is attempted).
     @discardableResult
     func checkDiskStatus() -> ProjectFilesV1.DiskState? {
         guard let url = documentURL else { return nil }
         switch files.diskStatus(url, expectedSha256: baselineSha256) {
         case .failure(let failure):
-            captureNote = "Could not check \(url.lastPathComponent) on disk: \(failure.reason)"
+            noteProbeFailure(url, failure.reason)
             return nil
         case .success(let s):
             applyDiskState(s.state, url: url, sha256: s.sha256, bytes: s.bytes, mtimeUnixMs: s.mtimeUnixMs, viaHelper: files.usesHelper)
@@ -1131,42 +1234,41 @@ extension ShellModel {
         }
     }
 
-    /// `checkDiskStatus()` routed through the preview controller's `file_status`
-    /// when one is attached (it rereads the disk under the project lock and
-    /// never reloads), else the file layer. The helper compares disk with its
-    /// durable source; the editor compares with its own baseline (the hash it
-    /// last opened, saved or reloaded), so typed-but-unexported edits do not
-    /// read as an external change.
+    /// `checkDiskStatus()` for the watcher and app activation, which call it
+    /// from a task.
     @discardableResult
     func refreshDiskStatus() async -> ProjectFilesV1.DiskState? {
-        guard let url = documentURL else { return nil }
-        guard controllerRoutesFiles(for: url) else { return checkDiskStatus() }
-        guard let status = await controllerFileStatus(path: activePath) else {
-            captureNote = "Could not check \(url.lastPathComponent) on disk: the preview controller did not answer."
-            return nil
-        }
-        let state: ProjectFilesV1.DiskState
-        var diskSha: String? = status.diskSHA256
-        switch status.state {
-        case "missing":
-            state = baselineSha256 == nil ? .unchanged : .deleted
-        case "matches_source", "differs_from_source":
-            // `matches_source` reports the hash as the source's; the parent
-            // client exposes only `disk_sha256`, so fall back to the durable hash.
-            if diskSha == nil, status.state == "matches_source" { diskSha = controllerState.durable[activePath]?.sha256 }
-            guard let sha = diskSha else {
-                captureNote = "Could not check \(url.lastPathComponent) on disk: file_status carried no hash."
-                return nil
-            }
-            state = baselineSha256 == nil ? .created : (sha == baselineSha256 ? .unchanged : .modified)
-        default:
-            captureNote = "Could not check \(url.lastPathComponent) on disk: \(status.reason ?? status.state)"
-            return nil
-        }
-        applyDiskState(state, url: url, sha256: diskSha, bytes: nil, mtimeUnixMs: nil, viaHelper: true)
-        files.noteDiskState(state)
-        return state
+        checkDiskStatus()
     }
+
+    /// Shows a save confirmation and remembers it (see `lastSaveConfirmation`).
+    func noteSaveConfirmation(_ note: String, for url: URL) {
+        captureNote = note
+        lastSaveConfirmation = (url, note, Date())
+    }
+
+    /// A disk-status probe of `url` failed (helper timeout, unreadable file…).
+    /// Normally that is the footer note; but when the note still shows the
+    /// confirmation of a save of the same file that landed moments ago, the
+    /// failure is only logged — the probe usually *was* that save's own write
+    /// firing the watcher, and "Could not check paper.tex on disk" would tell
+    /// the user the opposite of what happened (#831). One guard, no priorities:
+    /// any other note, another file, or a probe long after the save shows the
+    /// failure as before.
+    func noteProbeFailure(_ url: URL, _ reason: String) {
+        let failure = "Could not check \(url.lastPathComponent) on disk: \(reason)"
+        if let last = lastSaveConfirmation, last.url == url, captureNote == last.note,
+           Date().timeIntervalSince(last.at) < saveConfirmationGrace {
+            FlashTeXLog.write("files: \(failure) (keeping the save confirmation shown \(String(format: "%.1f", Date().timeIntervalSince(last.at))) s ago)")
+            return
+        }
+        captureNote = failure
+    }
+
+    /// How long after a save confirmation a failed probe of the same file stays
+    /// out of the footer: the probe itself may block for `helperTimeout`, and
+    /// the watcher retries once after `max(helperTimeout, 0.5)` s.
+    private var saveConfirmationGrace: TimeInterval { 2 * max(files.helperTimeout, 0.5) + 5 }
 
     private func applyDiskState(_ state: ProjectFilesV1.DiskState, url: URL, sha256: String?, bytes: Int?, mtimeUnixMs: Int?, viaHelper: Bool) {
         switch state {
@@ -1187,8 +1289,8 @@ extension ShellModel {
                                               size: bytes, mtimeUnixMs: mtimeUnixMs, viaHelper: viaHelper)
             captureNote = files.conflict?.summary
             // Both texts are now recoverable: the disk text through the reviewed
-            // reload, the unsaved buffer durably (unless the ledger holds it).
-            if url == documentURL, project.isDirty(project.entryPath), !controllerRoutesFiles(for: url) {
+            // reload, the unsaved buffer durably.
+            if url == documentURL, project.isDirty(project.entryPath) {
                 preserveDirtyText(entryText, at: url, reason: "file changed on disk while the buffer was unsaved")
             }
         }
@@ -1237,7 +1339,7 @@ extension ShellModel {
             // meanwhile keep the buffer dirty; a different open file is untouched.
             guard let self, self.documentURL == url, SourceDigest.sha256Hex(text) == sha else { return }
             self.savedText = text
-            self.captureNote = "Late confirmation: \(url.lastPathComponent) was saved" + (self.isDirty ? " (buffer edited since; still unsaved)." : ".")
+            self.noteSaveConfirmation("Late confirmation: \(url.lastPathComponent) was saved" + (self.isDirty ? " (buffer edited since; still unsaved)." : "."), for: url)
             self.bridgeSourceSaved(url: url, text: text)
         }
         var result = files.save(url, text: text, expected: expected, force: force, lateReceipt: lateReceipt)
@@ -1251,9 +1353,14 @@ extension ShellModel {
         }
         switch result {
         case .saved:
+            let before = documentURL
+            // Save As / a first save: no engine open of the new path before
+            // its manifest is read (cleared by engineDocumentSaved).
+            if before?.standardizedFileURL != url.standardizedFileURL { engineChoicePending = true }
             documentURL = url
+            engineDocumentSaved(from: before) // EngineChoice.swift: Save As / first save reads the new project's manifest, records the file
             savedText = text
-            captureNote = "Saved \(url.lastPathComponent)" + (recreated ? " (recreated; it had been deleted on disk)" : "")
+            noteSaveConfirmation("Saved \(url.lastPathComponent)" + (recreated ? " (recreated; it had been deleted on disk)" : ""), for: url)
             bridgeSourceSaved(url: url, text: text)
             snapshotSaved(url: url, text: text)
             watchOpenDocument() // Save As moves the watch; a replaced inode is re-opened

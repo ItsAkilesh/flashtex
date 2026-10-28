@@ -75,6 +75,39 @@ A missing Latin Modern face is an **error
 diagnostic** with Times metrics substituted, never a silent fallback; a
 missing math face reports `math_font_unavailable` and typesets no math.
 
+### Named families (`\setmainfont`, the manifest's `[fonts]`)
+
+Any font installed on the machine or shipped in the project's `fonts/`
+directory can be the text, sans or mono family (`fonts::Family::Named`,
+`fontspec.rs`; `docs/proposals/packages-fonts-manifest.md` §S4). The
+document says so with fontspec's commands, read from the source bytes —
+`\setmainfont[opts]{Family}`, `\setsansfont`, `\setmonofont`,
+`\newfontfamily\cmd[opts]{Family}`, `\fontspec[opts]{Family}` (local to its
+group), `\defaultfontfeatures`, `\addfontfeature` — or the caller does with
+`RenderOptions::fonts` (`FontSettings { text, sans, mono, math }`, the
+`flashtex.toml` `[fonts]` table). Precedence: a local `\fontspec`/switch
+group, then a document `\setmainfont`, then the manifest, then the class
+font. Families are found through `flashtex-font-discovery` (a zero-dependency
+sibling by path, like class-geometry): `FLASHTEX_FONT_DIRS`, the project's
+`fonts/`, then the OS font directories, scanned lazily on the first named
+lookup — a document naming no font never scans anything and renders
+byte-identically to before (`scripts/render-corpus-v2.sh`). Matching is
+typst's: case-insensitive family, nearest weight, nearest style; a missing
+weight or style takes the nearest face with a `font_face_substituted`
+warning, a missing family takes Latin Modern with `font_family_unavailable`.
+Metrics come from the face's own tables (advances, `GPOS`/`kern`, `GSUB`
+`liga`; interword glue as XeTeX sets it from the space glyph), never a TFM;
+`glyf` (TrueType, `.ttc` members by face index) and `CFF ` faces both load.
+A character the named face lacks is set in Latin Modern for that run with
+one `missing_glyph` note per (font, character). Options honoured: `Scale=`
+(factor, `MatchLowercase`, `MatchUppercase`), `BoldFont`/`ItalicFont`/
+`BoldItalicFont`/`UprightFont`, `Ligatures=TeX`, `Numbers=OldStyle` (the
+face's GSUB `onum`, applied after shaping); `\scshape` applies the face's
+`smcp` the same way, or notes once that the face has none. Math
+under a named family stays Latin Modern Math: `\setmathfont` is read and
+noted, and specified in `docs/proposals/font-system-math.md`.
+`flashtex-render --list-fonts` prints the families the index offers.
+
 ## `flashtex-render` (runtime-v1 worker)
 
 Reads `compile` envelopes on stdin (JSON Lines), answers one `compile_result`
@@ -155,9 +188,9 @@ ligatures (`ffi` is one glyph), kerns, braces at their T1 slots, interword
 glue `\fontdimen2`(+7) with TeX's space factor at natural width — and laid
 out as an Ord atom. The compiler side (`Nucleus::Text`) is an isolated
 candidate (`crates/preview-controller/docs/handoffs/hw1-text-candidate/`), so
-the conversion arm is behind the `compiler-text-nucleus` feature until the
-compiler adopts it and `vendor/compiler` is re-pinned; without it `\text` is
-still the compiler's "not supported in math mode" error.
+the conversion arm is behind the `compiler-text-nucleus` feature until
+`crates/compiler` adopts it; without it `\text` is still the compiler's "not
+supported in math mode" error.
 
 Math symbols (`src/mathtex.rs`, `tests/math_symbols.rs`,
 `fixtures/math-symbols/`, `docs/evidence/math-symbols/`): every control word
@@ -284,11 +317,14 @@ and explicit `\cleardoublepage` commands, two-column `\chapter`
 `\input` files, macros inside mark/chapter titles (their source text is
 used).
 
-## Sibling pins and requested API changes
+## Requested sibling API changes
 
-The crate builds against vendored copies of the sibling crates (see
-`vendor/VENDORING.md`; each directory has a `PIN` file). Requested changes,
-also listed in `docs/proposals/rendering-abi.md`:
+The crate builds against the **live** sibling crates by path (`../compiler`,
+`../math-layout`, ...) like every other workspace member: there are no pins and
+nothing is ever re-pinned. `crates/render-pipeline/vendor/` was retired under
+engine-v2 `DESIGN.md` §9.4, so a sibling change reaches this crate, the CLI and
+the perf harness the moment it merges. Requested changes, also listed in
+`docs/proposals/rendering-abi.md`:
 
 - **compiler**: expose style scopes (`\textbf`/`\emph`), interword gaps,
   class options, `\parindent`, `secnumdepth` and page-break commands in the
@@ -307,17 +343,18 @@ also listed in `docs/proposals/rendering-abi.md`:
   (TeX §1076, `\hbox` in math is an Ord). `mathtext.rs` currently passes a
   placeholder through `Nucleus::Text` + `text_glyph` and substitutes the hbox
   after layout; the variant removes that indirection.
-- **math-layout**: re-pin `vendor/math-layout` to PR #161 (`SourceTag` on
-  atoms and placed glyphs/rules), then enable the `math-glyph-spans` feature
-  (and promote it to `default`, as `amsmath-inline` was): math clusters and
+- **math-layout**: PR #161 (`SourceTag` on atoms and placed glyphs/rules);
+  with it merged, enable the `math-glyph-spans` feature and promote it to
+  `default`, as `amsmath-inline` was -- that promotion changes output, so it
+  needs its own parity and perf evidence. Math clusters and
   rules then carry the source range of the atom that produced them (scripts,
   fraction parts, `\left`/`\right` each to its own command, radical signs,
   accents, `\text` runs, grid fences) instead of the whole formula, and
   `MathRec::span_paints` paints leaves per source range (the hook for xcolor
   ranges from #150/#158). Positions are unchanged; `tests/math_glyph_spans.rs`.
 - **compiler**: adopt the `Nucleus::Text` candidate (hw1-text-candidate +
-  comment-fix) so `\text{...}` reaches the pipeline; then re-pin
-  `vendor/compiler` and drop the `compiler-text-nucleus` feature gate.
+  comment-fix) so `\text{...}` reaches the pipeline; the
+  `compiler-text-nucleus` feature gate can then go.
 - **pdf**: a glyph-run entry point (font id + original GIDs + tick
   positions) so `--pdf` stops re-encoding text by character.
 - **font-engine**: none new; the preview JSON export overlaps with `--v2`.

@@ -74,19 +74,65 @@ as guidance (`ShellModel.conversionFailureNote`): `provider_disabled` /
 `provider_timeout` (90 s), `provider_transport_error`. Re-attach the bridge
 after changing the provider or key.
 
+## Destination and wrapping (lane lane-capture-flow)
+
+**The destination is the caret unless pinned.** When the iPad asks where to
+insert, the Mac pins the caret for it in the bridge's caret mode
+(`destination_pin.mode: "caret"`, transfer-v1 additive) under a stable
+automatic id (`mac-caret-N`, `ShellModel.isAutomaticDestinationId`). That
+anchor follows typing like a caret and is never invalidated by it, and the
+Mac re-pins it at the caret when the iPad asks, when the capture arrives
+(`forwardNearbyCapture` → `rebindAutomaticDestination`) and when it is
+approved (`approveBridgeProposal`): the capture lands where the caret is when
+**Insert at caret** is clicked, and an id the iPad still holds from an earlier
+query or from before a bridge restart is re-bound, not refused. *Edit › Pin
+Insertion Point* (⌘⌥P, `mac-anchor-N`, fixed mode) is the explicit override
+with the strict contract: an edit that overlaps it drops it and Insert is
+refused with `destination_reselection_required` — the note says what to do
+(`insertionRefusalNote`), and the inspector's failed rows offer **Insert at
+caret** (`recoverCaptureAtCaret`: re-pin the capture's own id at the caret,
+resubmit from the inspector's bytes if the bridge never journaled it,
+convert, insert after review).
+
+**Wrapping happens at approval, from the caret's context**
+(`CaretContext.wrapping(for:in:atByte:)`, sent as
+`capture_prepare_insert.wrap {prefix, suffix, kind}` and journaled by the
+bridge with the prepared edit; the applied text is
+`prefix + proposal + suffix`, the proposal itself is never edited): a formula
+on its own line → `\[ … \]` on its own lines; inside a sentence or a
+tabular cell → `$ … $`; caret already in math → bare (a proposal carrying its
+own delimiters there is refused with "move the caret"); already delimited or
+an environment → never wrapped again (a block gets its own lines; display
+math mid-sentence or in a cell is refused with "put the caret on its own
+line"); `tikzpicture` → bare on its own lines, no automatic `figure`; text →
+bare; verbatim/comment → literal. An undelimited `x = 2y + 1` counts as a
+formula (`looksLikeFormula`, mirrored in the bridge's `caret::shape`). The
+Captures inspector and the review sheet show exactly the wrapped text with an
+"as display math / inline math / as is" indicator; the bridge gates the whole
+replacement against the same context (`unsupported_construct_requires_confirmation`).
+The bridge still normalises the proposal at conversion for the caret it was
+received at (`caret::normalize`), so the two never disagree on delimiters.
+
+Evidence: `CaptureFlowAcceptanceTests` (real bridge + real edit ledger + a
+loopback OpenAI-compatible stub, no key, nothing leaves the machine): typing
+after the iPad connected → inserted at the new caret; bridge restart with the
+iPad's old id → accepted and inserted, TikZ on its own lines; explicit pin
+overlapped → refused with the actionable note, Insert at caret recovers.
+
 ## `supported_features` (demo gate, issue #2)
 
 `CaptureFeatures.swift` is the checked-in list sent with every
-`capture_convert`: what the compiler renders at
-origin/agent/claude/compiler-foundation `49e6eb43` (`COMMAND_GLYPHS` — 60
-symbols, re-derived by `CaptureFeaturesTests` from `git show` when the commit
-is present — plus `$…$`, `\[…\]`/`equation`, `\frac`, `\sqrt`, `^`/`_`,
-`\left…\right`, `\section`/`\subsection`, `\textbf`/`\emph`/`\textit`,
-`itemize`/`enumerate`, `\label`/`\ref`), an explicit NOT-supported list
-(amsmath/amssymb environments, `\mathbb`, `\text`, `\bigl`, `\quad`, TikZ,
-tables, macros), the OUTPUT rule (every formula wrapped in `$…$` or `\[…\]`)
-and the RULE that unsupported constructs are reported in `ambiguities`, never
-substituted. 20 entries, each ≤128 bytes (the bridge's limits).
+`capture_convert`. The bridge does not forward it: it gives the provider its
+own list for the document's engine (`crates/bridge/src/features.rs`). The
+Mac's list is still sent for wire compatibility, and it is the bridge's
+new-engine list byte for byte (`NEW_ENGINE_FEATURES`; `CaptureFeaturesTests`
+pins the two together): four POLICY entries, because the engine typesets what
+pdfLaTeX does with the document's own packages — any construct pdfLaTeX
+typesets with the packages the document loads, math in `$…$`, `\[…\]` or
+`equation`, amsmath environments and `\mathbb`-like commands only when the
+document loads their package, and never a new `\usepackage` or macro (such
+a construct is reported as unsupported). The bridge accepts at most 64
+entries of at most 128 bytes each (`crates/bridge/src/context.rs`).
 
 ## Tests
 
@@ -97,7 +143,9 @@ environment stripping, and the bridge launch against `Fixtures/fake_bridge.py`
 with and without a key); `PanelAccessibilityTests.testConversionPreferences…`
 (the Preferences section's controls take keyboard focus);
 `CaptureAcceptanceTests` / `RealBridgeTests` (the capture flow with the real
-bridge and no provider).
+bridge and no provider); `CaptureFlowAcceptanceTests` (the caret destination
+and wrap end to end with the real bridge, real ledger and a loopback provider
+stub); `CaretContextTests` (the wrap rules).
 
 Live, opt-in: `CaptureConversionLiveTests` runs one real conversion through
 the real bridge only when `FLASHTEX_CONVERSION_LIVE=1` and a key resolves for
@@ -132,5 +180,8 @@ markers) stays exact; its controls are keyboard-walked by
   as an external extension (`docs/extensibility.md`); the reviewed-proposal
   shapes the iPad reference view reads from `examples/review-workflow.json`
   are unaffected.
-- **`crates/diagnostic-explanations` (`flashtex-explain`):** unchanged; it is
-  rule-based (no model, no network) and stays bundled (`make-app.sh --explain`).
+- **`crates/diagnostic-explanations` (`flashtex-explain`):** rule-based (no
+  model, no network). The crate is no longer in this repository and the app
+  does not bundle it (`make-app.sh --explain` left in retirement stage S6);
+  the Problems panel's explanations of TeX's messages come from the app's own
+  table (`EngineV3Explain.swift`).

@@ -8,7 +8,7 @@ use std::time::Instant;
 use flashtex_compiler::json::{self, Value};
 use flashtex_compiler::parser::SourceDocument;
 use flashtex_render_pipeline::display::Severity;
-use flashtex_render_pipeline::{pdf, FontSet, RenderOptions};
+use flashtex_render_pipeline::{pdf, FontSet, FontSettings, RenderOptions};
 
 use crate::project::Project;
 
@@ -75,6 +75,15 @@ impl Outcome {
     }
 }
 
+/// The manifest's `[fonts]` as the render takes it; `None` when the table
+/// names nothing, so a project without one renders exactly as before.
+pub fn manifest_fonts(fonts: &flashtex_project_manifest::Fonts) -> Option<FontSettings> {
+    if fonts.is_empty() {
+        return None;
+    }
+    Some(FontSettings { text: fonts.text.clone(), sans: fonts.sans.clone(), mono: fonts.mono.clone(), math: fonts.math.clone() })
+}
+
 /// Renders the project. `revision` is echoed into the display list (`watch`
 /// counts rebuilds).
 pub fn compile(project: &Project, fonts: &FontSet, options: &RenderOptions, revision: u64) -> Outcome {
@@ -84,7 +93,11 @@ pub fn compile(project: &Project, fonts: &FontSet, options: &RenderOptions, revi
         .map(|d| SourceDocument { path: d.path.as_str(), text: d.text.as_str() })
         .collect();
     let project_id = Path::new(&project.entry).file_stem().and_then(|s| s.to_str()).unwrap_or("main");
-    let opts = RenderOptions { project_root: Some(project.root.clone()), ..options.clone() };
+    // `[fonts]` from the manifest unless `--font` named the slots on the
+    // command line (`RenderOptions::fonts`; a document's own `\setmainfont`
+    // still wins inside the render).
+    let families = options.fonts.clone().or_else(|| manifest_fonts(&project.fonts));
+    let opts = RenderOptions { project_root: Some(project.root.clone()), fonts: families, ..options.clone() };
     let started = Instant::now();
     let rendered = flashtex_render_pipeline::render(&sources, &project.entry, revision, project_id, fonts, &opts);
     let render_ms = started.elapsed().as_secs_f64() * 1000.0;
@@ -176,8 +189,15 @@ pub fn line_col(text: &str, byte: usize) -> (usize, usize) {
 
 /// Writes `bytes` to `path` through a sibling temporary file and a rename,
 /// so a reader (a PDF viewer, `watch`'s Ctrl-C) never sees a torn file.
+/// Missing parent directories are created on demand (`mkdir -p`), so `-o
+/// newdir/out.pdf` writes `newdir/out.pdf`; `build` pre-flights this and
+/// reports an uncreatable directory as a usage error, this covers every
+/// other writer (`--v2`, `worker --pdf`).
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        return Err(format!("cannot create output directory {}: {e}", dir.display()));
+    }
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("out");
     let tmp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
     std::fs::write(&tmp, bytes).map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
@@ -206,6 +226,8 @@ pub fn report_json(project: &Project, outcome: &Outcome, outputs: &[(&str, &Path
     o.set("schema", json::str_("flashtex-check/1"));
     o.set("entry", json::str_(project.entry.clone()));
     o.set("project_root", json::str_(project.root.display().to_string()));
+    // The `flashtex.toml` that governed the build, `null` without one.
+    o.set("manifest", project.manifest.as_ref().map_or(Value::Null, |p| json::str_(p.display().to_string())));
     o.set("status", json::str_(outcome.status));
     o.set("pages", json::num(outcome.pages as f64));
     o.set("documents", Value::Arr(project.documents.iter().map(|d| json::str_(d.path.clone())).collect()));
@@ -284,6 +306,16 @@ mod tests {
             recovery: None,
             suggestion: None,
         }
+    }
+
+    #[test]
+    fn write_atomic_creates_missing_parent_directories() {
+        let dir = std::env::temp_dir().join(format!("flashtex-write-atomic-{}-mkdir", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let target = dir.join("newdir").join("nested").join("out.bin");
+        write_atomic(&target, b"bytes").unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"bytes");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

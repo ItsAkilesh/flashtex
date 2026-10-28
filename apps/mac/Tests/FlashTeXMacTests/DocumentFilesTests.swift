@@ -65,7 +65,7 @@ final class DocumentFilesTests: XCTestCase {
     /// helper delays by wall-clock time arrives whenever a loaded machine gets
     /// round to it, so any fixed wait is either flaky or needlessly slow (GH-800;
     /// widening it is worse, because a wider window lets *extra* helper round
-    /// trips through). Same shape as `NavigationMultiFileV2Tests.waitUntil`
+    /// trips through). The usual bounded wait of these suites
     /// (GH-799/809): the bound fails and throws, so the test stops here instead
     /// of cascading into follow-on failures.
     private func waitUntil(_ what: String, timeout: TimeInterval = 30, state: () -> String = { "" },
@@ -193,10 +193,13 @@ final class DocumentFilesTests: XCTestCase {
     func testDroppedClientKillsAndReapsItsHelperWithoutExplicitTeardown() async throws {
         let helper = try requireRealHelper()
 
+        // Only this test process's own children: a machine-wide count also saw
+        // helpers of other test runs and lanes come and go mid-test (6 against
+        // an expected 5 at load 138).
         func liveHelperCount() -> Int {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/bin/sh")
-            p.arguments = ["-c", "ps aux | grep -c '[f]lashtex-project-files'"]
+            p.arguments = ["-c", "ps -ax -o ppid=,command= | awk '$1 == \(ProcessInfo.processInfo.processIdentifier)' | grep -c '[f]lashtex-project-files'"]
             let pipe = Pipe()
             p.standardOutput = pipe
             try? p.run()
@@ -304,7 +307,7 @@ final class DocumentFilesTests: XCTestCase {
 
     // MARK: fixtures never inherit a real document's identity (#72)
 
-    /// Reload Fixture / Open Compile Result Fixture… must never let Save write
+    /// A fixture loaded over an opened file must never let Save write
     /// fixture content over a real file: `loadFixtures` detaches `documentURL`
     /// (and `savedText`) the moment a fixture replaces the project, so a later
     /// `saveTex()` falls back to Save As instead of overwriting the old file.
@@ -381,7 +384,9 @@ final class DocumentFilesTests: XCTestCase {
         model.files.policy = fake(["--mode", "hang"])
         let started = Date()
         XCTAssertFalse(model.saveTex())
-        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "bounded wait")
+        // Bounded by the 0.5 s deadline plus a Python spawn, which a loaded
+        // runner can stretch by seconds; a missing deadline would hang forever.
+        XCTAssertLessThan(Date().timeIntervalSince(started), 15, "bounded wait")
         XCTAssertTrue(model.isDirty)
         XCTAssertEqual(model.activeText, "edited\n")
         XCTAssertEqual(try disk(url), "base\n")
@@ -410,14 +415,16 @@ final class DocumentFilesTests: XCTestCase {
 
         let model = ShellModel()
         model.files.policy = fake([])
-        model.files.helperTimeout = 5
+        // A deadline far beyond any spawn delay, so "at once" stays
+        // distinguishable from "at the deadline" on a loaded runner.
+        model.files.helperTimeout = 30
         XCTAssertEqual(model.openTex(at: url), .opened)
         model.updateActiveText("edited\n")
 
         model.files.policy = fake(["--mode", "exit", "--exit", "7"])
         let started = Date()
         XCTAssertFalse(model.saveTex())
-        XCTAssertLessThan(Date().timeIntervalSince(started), 4, "an exit fails the request at once, not at the deadline")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 15, "an exit fails the request at once, not at the 30 s deadline")
         XCTAssertTrue(model.isDirty)
         XCTAssertEqual(model.activeText, "edited\n")
         XCTAssertEqual(try disk(url), "base\n")
@@ -503,6 +510,126 @@ final class DocumentFilesTests: XCTestCase {
         XCTAssertEqual(model.files.lateReplies.count, 3, "three saves, three late replies: \(model.files.lateReplies)")
     }
 
+    /// GH-831 (1): a save that landed is confirmed in the footer; the status
+    /// probe its own write triggers (through the watcher) then also answers
+    /// late. That probe's failure used to replace the confirmation with "Could
+    /// not check paper.tex on disk: no status reply …" — the opposite of what
+    /// happened. Both replies are slow here (the fake delays every operation),
+    /// so the probe times out after `helperTimeout` and its late reply is
+    /// ignored; the confirmation stays. A prompt save followed by a probe that
+    /// cannot even launch the helper is guarded the same way.
+    func testSlowStatusProbeAfterASlowSaveDoesNotReplaceTheSaveConfirmation() async throws {
+        let dir = try tempDir("probe-note")
+        let url = dir.appendingPathComponent("paper.tex")
+        try "base\n".write(to: url, atomically: true, encoding: .utf8)
+
+        let model = ShellModel()
+        model.files.policy = fake([])
+        model.files.helperTimeout = 0.4
+        model.documentWatcher.debounce = 0.05
+        XCTAssertEqual(model.openTex(at: url), .opened)
+
+        // Slow save: the fake writes, then answers 1.2 s later (a late receipt).
+        model.files.policy = fake(["--mode", "late", "--delay", "1.2"])
+        model.updateActiveText("edited\n")
+        XCTAssertFalse(model.saveTex())
+        try await waitUntil("the late receipt to be reconciled",
+                            state: { "note=\(model.captureNote ?? "nil") late=\(model.files.lateReplies)" }) {
+            model.savedText == "edited\n"
+        }
+        XCTAssertTrue(model.captureNote?.hasPrefix("Late confirmation") == true, model.captureNote ?? "")
+        // Slow probe: the watcher saw the fake's write; its re-armed check runs
+        // after the receipt and goes to the same slow fake, so it times out and
+        // only then (1.2 s later) answers late. Wait for that late status reply:
+        // it proves the probe ran and failed.
+        try await waitUntil("the probe's late status reply",
+                            state: { "note=\(model.captureNote ?? "nil") late=\(model.files.lateReplies)" }) {
+            model.files.lateReplies.count >= 2
+        }
+        XCTAssertTrue(model.files.lateReplies.contains { $0.hasPrefix("status paper.tex") }, "\(model.files.lateReplies)")
+        XCTAssertTrue(model.captureNote?.hasPrefix("Late confirmation") == true,
+                      "the probe failure replaced the save confirmation: \(model.captureNote ?? "nil")")
+        XCTAssertFalse(model.isDirty)
+        XCTAssertNil(model.files.conflict)
+
+        // Prompt save, then a probe that fails outright (helper cannot launch).
+        model.files.policy = fake([])
+        model.updateActiveText("edited again\n")
+        XCTAssertTrue(model.saveTex())
+        XCTAssertEqual(model.captureNote, "Saved paper.tex")
+        model.files.policy = .executable(URL(fileURLWithPath: "/nonexistent/flashtex-\(UUID().uuidString)"), arguments: [])
+        XCTAssertNil(model.checkDiskStatus())
+        XCTAssertEqual(model.captureNote, "Saved paper.tex", "a failed probe right after a confirmed save keeps the confirmation")
+        // Any other note is replaced by the failure as before.
+        model.captureNote = "something else"
+        XCTAssertNil(model.checkDiskStatus())
+        XCTAssertTrue(model.captureNote?.hasPrefix("Could not check paper.tex on disk") == true, model.captureNote ?? "nil")
+        model.documentWatcher.stop()
+    }
+
+    /// GH-831 (2): an external change made while a save's reply is still
+    /// outstanding fires the watcher, whose single retry (after
+    /// `max(helperTimeout, 0.5)` s) still finds the helper busy. The event used
+    /// to be dropped there — deliberately, because a status request then would
+    /// restart the helper and lose the late receipt. Now the check is re-armed
+    /// once and runs when the late reply has settled: no request is sent while
+    /// the save is in flight, and the change is still detected without waiting
+    /// for another filesystem event. `--once` delays only the save, so the
+    /// re-armed probe answers promptly.
+    func testExternalChangeDuringAnInFlightSaveIsCheckedOnceTheSaveSettles() async throws {
+        let dir = try tempDir("inflight")
+        let url = dir.appendingPathComponent("paper.tex")
+        try "base\n".write(to: url, atomically: true, encoding: .utf8)
+        // The receipt is outstanding for 3 s, longer than the autosave idle
+        // time: a live autosave would *itself* send a second save, restart the
+        // busy helper and lose the receipt — a different (pre-existing) path,
+        // not what this pins.
+        let originalAutosave = EditorPreferences.shared.autosave
+        EditorPreferences.shared.autosave = false
+        addTeardownBlock { @MainActor in EditorPreferences.shared.autosave = originalAutosave }
+
+        let model = ShellModel()
+        model.files.policy = fake([])
+        model.files.helperTimeout = 0.4
+        model.documentWatcher.debounce = 0.05
+        XCTAssertEqual(model.openTex(at: url), .opened)
+
+        model.files.policy = fake(["--mode", "late", "--delay", "3", "--once"])
+        model.updateActiveText("edited\n")
+        XCTAssertFalse(model.saveTex(), "no receipt within the wait")
+        XCTAssertTrue(model.files.helperBusy, "the save's reply is still outstanding")
+        XCTAssertEqual(try disk(url), "edited\n", "the fake did write before sleeping")
+        // Someone else replaces the file while the receipt is outstanding.
+        try "external\n".write(to: url, atomically: true, encoding: .utf8)
+
+        // The watcher's retry (~0.5 s) lands well before the receipt (3 s):
+        // nothing is probed, the check is parked instead of dropped.
+        try await waitUntil("the watcher's retry to park its check",
+                            state: { "busy=\(model.files.helperBusy) note=\(model.captureNote ?? "nil")" }) {
+            model.pendingWatcherRecheck
+        }
+        XCTAssertTrue(model.files.helperBusy, "no status request was sent while the save was in flight")
+        XCTAssertNil(model.files.conflict)
+        XCTAssertEqual(model.files.helperRestarts, 1, "only the policy switch restarted the helper")
+
+        // The late receipt makes "edited" the baseline; the parked check then
+        // sees "external" on disk.
+        try await waitUntil("the late receipt to be reconciled",
+                            state: { "savedText=\(model.savedText ?? "nil") late=\(model.files.lateReplies)" }) {
+            model.savedText == "edited\n"
+        }
+        try await waitUntil("the parked check to report the external change",
+                            state: { "conflict=\(model.files.conflict?.kind.rawValue ?? "nil") pending=\(model.pendingWatcherRecheck) note=\(model.captureNote ?? "nil")" }) {
+            model.files.conflict?.kind == .modifiedExternally
+        }
+        XCTAssertFalse(model.pendingWatcherRecheck, "consumed exactly once")
+        XCTAssertEqual(model.files.conflict?.theirs, SourceDigest.sha256Hex("external\n"))
+        XCTAssertEqual(model.files.helperRestarts, 1, "the parked check reused the helper; no late receipt was lost")
+        XCTAssertEqual(model.files.lateReplies.count, 1, "only the save answered late: \(model.files.lateReplies)")
+        XCTAssertEqual(model.activeText, "edited\n", "the buffer is untouched")
+        model.documentWatcher.stop()
+    }
+
     func testGarbageReplyIsAProtocolFailureNotASave() throws {
         let dir = try tempDir("garbage")
         let url = dir.appendingPathComponent("paper.tex")
@@ -550,7 +677,6 @@ final class DocumentFilesTests: XCTestCase {
         try "line 1\nline 3\nline 4\nline 5\n".write(to: url, atomically: true, encoding: .utf8)
         XCTAssertEqual(model.checkDiskStatus(), .modified)
         let review = try XCTUnwrap(model.prepareReload())
-        XCTAssertFalse(review.viaController)
         XCTAssertTrue(review.bufferDirty)
         XCTAssertEqual(review.diskText, "line 1\nline 3\nline 4\nline 5\n")
         XCTAssertEqual(review.diskSha256, SourceDigest.sha256Hex(review.diskText))
@@ -649,109 +775,5 @@ final class DocumentFilesTests: XCTestCase {
         XCTAssertEqual(try disk(a), "A3b\n")
         XCTAssertFalse(model.isDirty)
         XCTAssertEqual(try disk(b), "B3\n")
-    }
-}
-
-/// The reviewed reload and disk status through the real
-/// `flashtex-preview-controller` (`reload {…, user_approved:true}` and
-/// `file_status`, STDIO.md) with the real compiler. Skipped unless
-/// `FLASHTEX_PREVIEW_CONTROLLER` and `FLASHTEX_COMPILER` point at built binaries.
-@MainActor
-final class DocumentFilesControllerTests: XCTestCase {
-    static var helper: URL? {
-        ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_CONTROLLER"].map { URL(fileURLWithPath: $0) }
-    }
-
-    private func waitUntil(_ what: String, timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
-        let start = Date()
-        while !cond() {
-            if Date().timeIntervalSince(start) > timeout { XCTFail("timed out waiting for \(what)"); throw XCTSkip("timeout: \(what)") }
-            try await Task.sleep(nanoseconds: 30_000_000)
-        }
-    }
-
-    func testControllerReloadIsReviewedPinnedAndImportedIntoTheDurableSource() async throws {
-        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
-              ShellModel.locateCompiler() != nil else {
-            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
-        }
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pc-reload-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let tex = root.appendingPathComponent("project/main.tex")
-        let v1 = "\\begin{document}\nReload me.\n\\end{document}\n"
-        try v1.write(to: tex, atomically: true, encoding: .utf8)
-        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
-        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
-        let model = ShellModel()
-        model.autoCompile = true
-        XCTAssertEqual(model.openTex(at: tex), .opened)
-        model.attachController(at: helper)
-        try await waitUntil("initial preview") { model.result?.revision == model.editorRevision && model.controllerState.durable["main.tex"] != nil }
-        XCTAssertTrue(model.controllerRoutesFiles)
-
-        // Disk status through the helper: unchanged, then an external write is a conflict.
-        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .unchanged) }
-        let v2 = "\\begin{document}\nReloaded from disk.\nSecond line.\n\\end{document}\n"
-        try v2.write(to: tex, atomically: true, encoding: .utf8)
-        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .modified) }
-        let conflict = try XCTUnwrap(model.files.conflict)
-        XCTAssertTrue(conflict.viaHelper)
-        XCTAssertEqual(conflict.kind, .modifiedExternally)
-        XCTAssertEqual(conflict.theirs, SourceDigest.sha256Hex(v2))
-
-        // Typed edits are durable in the ledger but not on disk: still not an external change.
-        model.updateActiveText("\\begin{document}\nReload me, edited.\n\\end{document}\n")
-        try await waitUntil("edit durable") { model.inFlightRevision == nil && model.controllerState.textByDurable["main.tex"]?.values.contains { $0 == model.activeText } == true }
-        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .modified, "disk still differs from the baseline, not from the typed text") }
-
-        // Review: pinned to the durable identity and the disk hash; nothing changes yet.
-        let review = try XCTUnwrap(model.prepareReload())
-        XCTAssertTrue(review.viaController)
-        XCTAssertEqual(review.durable?.revision, model.controllerState.durable["main.tex"]?.revision)
-        XCTAssertEqual(review.diskText, v2)
-        XCTAssertTrue(review.bufferDirty)
-        XCTAssertTrue(review.summary.contains("preview controller") && review.summary.contains("lines"), review.summary)
-        XCTAssertEqual(model.activeText, "\\begin{document}\nReload me, edited.\n\\end{document}\n")
-
-        // The file changes again after the review: the helper refuses, nothing replaced.
-        let v3 = "\\begin{document}\nChanged after review.\n\\end{document}\n"
-        try v3.write(to: tex, atomically: true, encoding: .utf8)
-        do { let got = await model.confirmReload(review, dirty: .discard); XCTAssertEqual(got, .readFailed) }
-        XCTAssertTrue(model.captureNote?.contains("refused") == true, model.captureNote ?? "")
-        XCTAssertEqual(model.activeText, "\\begin{document}\nReload me, edited.\n\\end{document}\n")
-        XCTAssertTrue(model.isDirty)
-        XCTAssertNil(model.recoverableBuffer)
-        XCTAssertEqual(model.reloadFromDisk(dirty: .discard), .readFailed, "the synchronous direct reload never bypasses the controller")
-
-        // Reviewed again and confirmed: the ledger holds v3, the buffer shows it, the
-        // preview binds to the new revision, and the previous text stays recoverable.
-        let before = model.activeText
-        let durableBefore = try XCTUnwrap(model.controllerState.durable["main.tex"]).revision
-        let fresh = try XCTUnwrap(model.prepareReload())
-        XCTAssertEqual(fresh.diskText, v3)
-        do { let got = await model.confirmReload(fresh); XCTAssertEqual(got, .blockedByUnsavedEdits) }
-        do { let got = await model.confirmReload(fresh, dirty: .discard); XCTAssertEqual(got, .opened) }
-        XCTAssertEqual(model.activeText, v3)
-        XCTAssertEqual(model.savedText, v3)
-        XCTAssertFalse(model.isDirty)
-        XCTAssertNil(model.files.conflict)
-        XCTAssertEqual(model.files.lastDiskState, .unchanged)
-        XCTAssertEqual(model.recoverableBuffer, .init(url: tex, text: before))
-        let durableAfter = try XCTUnwrap(model.controllerState.durable["main.tex"]).revision
-        XCTAssertGreaterThan(durableAfter, durableBefore)
-        XCTAssertEqual(model.controllerState.textByDurable["main.tex"]?[durableAfter], v3)
-        XCTAssertEqual(try String(contentsOf: tex, encoding: .utf8), v3, "reload never writes disk")
-        try await waitUntil("preview for the reloaded revision") { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
-        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .unchanged) }
-        let status = await model.controllerFileStatus(path: "main.tex")
-        XCTAssertEqual(status?.state, "matches_source")
-
-        // Deleted on disk: a notice through the helper, and nothing to review.
-        try FileManager.default.removeItem(at: tex)
-        do { let got = await model.refreshDiskStatus(); XCTAssertEqual(got, .deleted) }
-        XCTAssertNil(model.files.conflict)
-        XCTAssertNil(model.prepareReload())
-        model.detachController()
     }
 }

@@ -9,21 +9,27 @@
 //! TeX engine is invoked at any point. See README.md for scope, sibling
 //! pins and limitations.
 
+// Clippy debt in frozen old-engine code (D13): allowed, not refactored.
+#![allow(clippy::assign_op_pattern, clippy::chunks_exact_to_as_chunks, clippy::clone_on_copy, clippy::collapsible_match, clippy::doc_lazy_continuation, clippy::double_ended_iterator_last, clippy::eq_op, clippy::explicit_auto_deref, clippy::large_enum_variant, clippy::manual_clamp, clippy::manual_flatten, clippy::manual_is_multiple_of, clippy::manual_range_patterns, clippy::manual_slice_size_calculation, clippy::map_identity, clippy::needless_borrow, clippy::needless_borrows_for_generic_args, clippy::needless_range_loop, clippy::only_used_in_recursion, clippy::ptr_arg, clippy::question_mark, clippy::redundant_closure, clippy::redundant_comparisons, clippy::redundant_guards, clippy::single_char_add_str, clippy::sliced_string_as_bytes, clippy::some_filter, clippy::too_many_arguments, clippy::type_complexity, clippy::unnecessary_lazy_evaluations, clippy::unnecessary_map_or, clippy::unnecessary_option_map_or_else, clippy::unnecessary_sort_by, clippy::useless_conversion, clippy::vec_init_then_push, clippy::while_let_loop, dead_code, unreachable_patterns, unused_assignments, unused_must_use, unused_mut, unused_variables, reason = "frozen old engine (D13): fixes only; clippy debt is allowed rather than refactored")]
+
 pub mod date;
 pub use date::TodayDate;
 pub mod abstractenv;
 pub mod adapter;
 pub(crate) mod amsthm;
 pub mod cff;
+pub mod cjk;
 pub mod columns;
 pub mod delta;
 pub mod display;
 pub mod floats;
 pub mod fonts;
+pub mod fontspec;
 pub mod graphics;
 pub mod ids;
 pub mod incremental;
 pub mod inputenc;
+pub mod links;
 pub mod listings;
 pub mod longtable;
 pub mod mathalpha;
@@ -34,6 +40,7 @@ pub mod mathtex;
 pub mod mathtext;
 pub mod nfss;
 pub mod packages;
+pub mod overlay;
 pub mod pagebuild;
 pub mod params;
 pub mod pdf;
@@ -68,6 +75,11 @@ pub struct Rendered {
     pub elapsed_ms: f64,
     /// Layout passes run (1 unless `\pageref` needed page numbers).
     pub passes: u32,
+    /// What each project `.sty`/`.cls` the expansion pass read defined
+    /// (`flashtex_compiler::package_definitions`), in loading order: the
+    /// runtime-v1 `metadata.packages` section of the `compile_result`
+    /// (`v1::metadata_json`). Empty for a project without package files.
+    pub package_definitions: Vec<flashtex_compiler::package_definitions::PackageRecord>,
 }
 
 /// `\pageref` values converge in two passes in practice; the cap bounds a
@@ -110,6 +122,36 @@ pub struct RenderOptions {
     /// `amsmath-inline`, which went default after its own re-pin.
     /// `--no-default-features` still builds against the epoch-only path.
     pub today: TodayDate,
+    /// The project manifest's `[fonts]` table (`flashtex.toml`,
+    /// `docs/proposals/packages-fonts-manifest.md` §S2): the named families
+    /// the text, sans and mono slots default to when the document itself
+    /// sets none (`fontspec::apply`: a document `\setmainfont` overrides
+    /// `text`, a local `\fontspec` group overrides both). `math` is carried
+    /// for the math half (`docs/proposals/font-system-math.md`) and is not
+    /// read yet. `None`, the default, changes nothing: the class fonts
+    /// apply exactly as before the field existed. Filled per request from
+    /// the runtime-v1 payload's optional `fonts` object (`protocol.rs`:
+    /// `{"text","math","mono","sans"}`, sent by the Mac app, the preview
+    /// controller and `flashtex build` from `flashtex.toml`); a request
+    /// without it keeps the value the worker was started with.
+    /// `flashtex-render` has no flag for it.
+    pub fonts: Option<FontSettings>,
+}
+
+/// The manifest's `[fonts]` table, family names as the index matches them
+/// (`flashtex_font_discovery::FontIndex::find`: case-insensitive, by
+/// typographic family, then legacy family, full or PostScript name).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FontSettings {
+    /// `text = "Libertinus Serif"`: `\rmdefault`.
+    pub text: Option<String>,
+    /// `sans = "..."`: `\sfdefault`.
+    pub sans: Option<String>,
+    /// `mono = "JetBrains Mono"`: `\ttdefault`.
+    pub mono: Option<String>,
+    /// `math = "Libertinus Math"`: reserved for `math-layout`'s OpenType
+    /// `MATH` path; ignored by this crate today.
+    pub math: Option<String>,
 }
 
 impl Default for RenderOptions {
@@ -120,6 +162,7 @@ impl Default for RenderOptions {
             default_secnumdepth: 2,
             project_root: None,
             today: TodayDate::EPOCH,
+            fonts: None,
         }
     }
 }
@@ -177,9 +220,19 @@ pub fn render_windowed(
     window: Option<PageWindow>,
 ) -> Rendered {
     let started = std::time::Instant::now();
+    // Named families are discovered in the project's `fonts/` directory
+    // before the machine's (`fontspec`); a change of project drops the
+    // index. No directory is read until a document names a font.
+    fonts.set_project_root(options.project_root.as_deref());
     // FT-063: float environments are blanked (same byte length) before the
     // compiler parses the document and are laid out by `typeset::floatpage`.
-    let float_envs: Vec<Vec<floats::FloatEnv>> = documents.iter().enumerate().map(|(i, d)| floats::scan(d.text, flashtex_compiler::DocumentId(i))).collect();
+    // beamer's `figure`/`table` are not floats (`beamerbaselocalstructure.sty`
+    // 550-560: `\par\nobreak\begin{center}\nobreak ... \end{center}`): the
+    // compiler parses them as centred in-flow material with an unnumbered
+    // caption (issue #944, Tier 3), so nothing is masked in a deck.
+    let entry_doc = documents.iter().find(|d| d.path == entry_path).or(documents.first());
+    let is_beamer = entry_doc.and_then(|d| flashtex_class_geometry::DocumentSetup::from_preamble(d.text)).is_some_and(|s| s.class == flashtex_class_geometry::ClassKind::Beamer);
+    let float_envs: Vec<Vec<floats::FloatEnv>> = documents.iter().enumerate().map(|(i, d)| if is_beamer { Vec::new() } else { floats::scan(d.text, flashtex_compiler::DocumentId(i)) }).collect();
     let any_floats = float_envs.iter().any(|e| !e.is_empty());
     let masked: Vec<String> = documents.iter().zip(&float_envs).map(|(d, e)| if e.is_empty() { String::new() } else { floats::mask(d.text, e) }).collect();
     let texts: Vec<&str> = documents.iter().zip(&float_envs).zip(&masked).map(|((d, e), m)| if e.is_empty() { d.text } else { m.as_str() }).collect();
@@ -216,12 +269,14 @@ pub fn render_windowed(
         _ => None,
     });
     let paths: Vec<&str> = documents.iter().map(|d| d.path).collect();
+    // The sources as read, before the float and multicol masks.
+    let sources: Vec<&str> = documents.iter().map(|d| d.text).collect();
     let entry_index = documents.iter().position(|d| d.path == entry_path).unwrap_or(0);
     // Floats are numbered, and listed, in the order the `\input`/`\include`
     // tree is read, not in `documents` order.
     let reading_order = adapter::reading_order(&texts, &paths, entry_index);
     let (float_numbers, float_label_values) = floats::number(&float_envs, &texts, &reading_order, float_chapters);
-    let mut image_cache = floats::ImageCache::default();
+    let image_cache = std::cell::RefCell::new(floats::ImageCache::default());
     // The compiler does not know `tikzpicture`: it reports the environment
     // and every TikZ command inside it, and the pipeline typesets the
     // picture itself (`adapter` / `tikz`). Those compiler diagnostics are
@@ -232,12 +287,13 @@ pub fn render_windowed(
         .collect();
     let in_picture = |s: &flashtex_compiler::Span| picture_ranges.get(s.document.0).is_some_and(|r| r.iter().any(|(a, b)| s.start >= *a && s.start < *b));
     let mut labels = adapter::Labels::from_parsed(&parsed);
+    labels.collect_rich_tags(&texts, &parsed);
     labels.values.extend(float_label_values);
     // `\label` given inside an `lstlisting`'s keys (`crate::listings`).
     labels.values.extend(listings::label_values(&texts));
     // Contents lists: entry pages come from the previous pass (`toc`).
     let entry_text = texts.get(entry_index).copied().unwrap_or("");
-    let has_lists = toc::has_lists(entry_text);
+    let has_lists = toc::has_lists(&parsed.blocks, flashtex_compiler::DocumentId(entry_index));
     let has_class = adapter::class_options(entry_text).is_some();
     labels.floats = toc::float_entries(&float_envs, &documents.iter().map(|d| d.text).collect::<Vec<_>>(), &float_numbers);
     if has_lists && listings::present(&texts) {
@@ -320,7 +376,7 @@ pub fn render_windowed(
             )
         }));
         let (mut float_specs, float_diagnostics) = if any_floats {
-            floats::prepare(&float_envs, &float_numbers, documents, entry_index, &texts, &doc.style, options, &labels, &mut image_cache)
+            floats::prepare(&float_envs, &float_numbers, documents, entry_index, &texts, &doc.style, options, &labels, &mut image_cache.borrow_mut())
         } else {
             (Vec::new(), Vec::new())
         };
@@ -334,6 +390,26 @@ pub fn render_windowed(
         }
         diagnostics.extend(float_diagnostics);
         let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, &texts);
+        // A float body's `tikzpicture` is compiled from the unmasked bytes
+        // (`typeset::Context::sources`, #884).
+        ctx.set_sources(&sources);
+        // The typesetter re-reads source bytes at the spans its blocks
+        // carry: `picture_block` compiles the `tikzpicture` body, math
+        // re-reads its atoms, `\verb` checks its typed characters. Those
+        // spans reach inside float bodies (and `multicols` bodies), whose
+        // bytes the masked `texts` above blanked -- so an in-float picture
+        // compiled to empty, rendering nothing and reserving no height
+        // (#884). The mask exists only for the compiler parse and the
+        // adapter; the typesetter needs the original bytes (same length,
+        // so every span still indexes them).
+        let original: Vec<&str> = documents.iter().map(|d| d.text).collect();
+        let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, &original);
+        // One laid-out `\twocolumn`/`\onecolumn` switch: the post-switch
+        // stylesheet the page builder swaps to (`adapter::Doc::post_style`).
+        ctx.set_alt_style(doc.post_style.as_deref());
+        // `\includegraphics` in running text reads its file the way a float's
+        // graphic does (issue #944, Tier 3).
+        ctx.set_images(options, &image_cache);
         ctx.set_math_colors(doc.math_colors.clone());
         ctx.set_reading_order(labels.reading_order.clone());
         typeset::multicol::attach(&mut ctx, &multicol_scans);
@@ -368,6 +444,7 @@ pub fn render_windowed(
             v2,
             elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
             passes,
+            package_definitions: parsed.package_definitions.clone(),
         };
     }
 }

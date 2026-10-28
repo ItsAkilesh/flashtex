@@ -186,17 +186,14 @@ fn thanks_is_a_symbol_footnote_not_title_text() {
 }
 
 #[test]
-fn and_separated_authors_are_stacked_vertically_with_a_warning() {
+fn and_separated_authors_are_joined_with_a_separator_and_warn_nothing() {
+    // The old expectation (one `LineBreak` per `\and` *plus* a "typeset one
+    // per line" warning) was wrong: the separator `LineBreak` is the `\and`
+    // boundary marker the title-page layout splits into side-by-side
+    // `tabular[t]{c}` columns on, so there is no limitation to warn about.
     let source = doc("\\title{T}\\author{Zzzone \\and Zzztwo}", "\\maketitle");
     let parsed = parse(&source);
-    assert!(
-        parsed
-            .diagnostics
-            .iter()
-            .any(|d| d.message.contains("side by side")),
-        "{:?}",
-        parsed.diagnostics
-    );
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
     let Block::TitleBlock { authors, .. } = parsed
         .blocks
         .into_iter()
@@ -205,13 +202,13 @@ fn and_separated_authors_are_stacked_vertically_with_a_warning() {
     else {
         unreachable!()
     };
-    assert_eq!(
-        authors
-            .iter()
-            .filter(|inline| matches!(inline, Inline::LineBreak { .. }))
-            .count(),
-        1,
-        "{authors:?}"
+    // Two `\and` groups, one per author (PLAN1 site 38). They used to be
+    // one flat run joined by an `Inline::LineBreak` carrying the whole
+    // `\author{...}` span; the same fact, now in the block's own shape.
+    assert_eq!(authors.len(), 2, "{authors:?}");
+    assert!(
+        authors.iter().flatten().all(|inline| !matches!(inline, Inline::LineBreak { .. })),
+        "no `\\\\` in either group: {authors:?}"
     );
     let text = format!("{authors:?}");
     assert!(text.contains("Zzzone") && text.contains("Zzztwo"));
@@ -248,13 +245,10 @@ fn without_the_titlepage_option_there_is_no_titlepage_diagnostic() {
 }
 
 #[test]
-fn single_author_gets_no_side_by_side_warning() {
+fn single_author_warns_nothing() {
     let source = doc("\\title{T}\\author{Solo Author}", "\\maketitle");
     let parsed = parse(&source);
-    assert!(!parsed
-        .diagnostics
-        .iter()
-        .any(|d| d.message.contains("side by side")));
+    assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
 }
 
 #[test]

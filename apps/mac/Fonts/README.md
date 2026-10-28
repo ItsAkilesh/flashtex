@@ -12,6 +12,24 @@ and `latinmodern-math.otf` (LM Math 1.959, 733,736 bytes, sha256
 MacTeX 2026 ships at texmf-dist/fonts/opentype/public/lm-math/). Nothing else in
 the repository embeds proprietary fonts.
 
+## TeX Gyre: the Core 14 faces' programs
+
+`texgyretermes-{regular,bold,italic,bolditalic}.otf`, `texgyreheros-regular.otf`
+and `texgyrecursor-regular.otf` (785,624 bytes with the licence) are TeX Gyre
+Termes, Heros and Cursor, copied byte-for-byte from MacTeX 2026
+(`texmf-dist/fonts/opentype/public/tex-gyre`, TeX Live package `tex-gyre`
+revision 68624, catalogue version 2.501) and redistributed under the GUST Font
+License (`TEX-GYRE-GUST-FONT-LICENSE.TXT`, the text TeX Gyre ships; the
+`README-TeX-Gyre-*.txt` statements say the fonts "can be freely used and
+distributed under the GUST Font License"). `SUPPLEMENTARY-FACES.json` pins them
+(`tex_gyre_provenance`). The render pipeline lays out `\usepackage{times}`
+documents (and mathptmx, txfonts, newtxtext, revtex, IEEEtran...) with the Adobe
+Core 14 AFM metrics, which are the widths and kerns of psnfss's `ptmr8t`/`ptmr7t`
+TFMs, and draws the glyphs from these files (`fonts.rs` `core14_program_file`),
+so the exact PDF route embeds a real program where it used to refuse a
+program-less base-14 font. pdfTeX embeds URW's Nimbus Roman/Sans/Mono for the same
+names; TeX Gyre is GUST's extension of those URW designs.
+
 ## Rooted TeX metrics (`texmf/`)
 
 `texmf/fonts/tfm/public/lm/{ec-lmr10,ec-lmr12,rm-lmr12,rm-lmr8,rm-lmr6}.tfm` and
@@ -22,16 +40,20 @@ metrics (GUST `lm2.004bas.zip`, archive sha256
 fixtures, laid out exactly as a `texmf-dist` root so the producer can derive the
 root and the license. They were copied byte-for-byte from MacTeX 2026
 (`/usr/local/texlive/2026/texmf-dist`) only after their SHA-256 matched the
-pinned manifest in `crates/rendering-core/docs/handoffs/native-assets/manifest.json`
+pinned manifest in `apps/mac/scripts/native-assets-manifest.json`
 (ec-lmr10 cd13479f…, ec-lmr12 29902112…, rm-lmr12 9d4e3d8e…, rm-lmr6 eb0bfdf8…,
 rm-lmr8 80bcbfd8…, license 49ea6cb9…); `scripts/bundle-texmf.py check Fonts/texmf`
 re-verifies them and `make-app.sh` refuses to package on any mismatch. Bold,
 italic and the other design sizes have no metrics here yet.
 
-`texmf/SUPPLEMENTARY-METRICS.json` pins 23 further text TFMs in the same
+`texmf/SUPPLEMENTARY-METRICS.json` pins 24 further text TFMs in the same
 directory (`ec-lmr{5,6,7,8,9,17}`, `ec-lmbx{5,6,7,8,9,10,12}`,
-`ec-lmri{7,8,9,10,12}`, `ec-lmbxi10`, `rm-lmr{5,7,9,10}`) for the other design
-sizes and the bold/italic faces. They are not in the Commander's manifest: copied
+`ec-lmri{7,8,9,10,12}`, `ec-lmbxi10`, `rm-lmr{5,7,9,10,17}`) for the other design
+sizes and the bold/italic faces. `rm-lmr17` is the cmr17-design roman of math at
+`\Large` and above (fontmath.ltx 81-83, a 12 pt `\section` title's formula);
+without it that math fell back to the body's 12 pt metrics. It was added later
+than the rest, from the same MacTeX 2026 tree (whose `rm-lmr10.tfm` matches this
+pin byte-for-byte), without the CTAN `lm.zip` cross-check. They are not in the Commander's manifest: copied
 from the same MacTeX 2026 tree (TeX Live `lm` rev 77682, catalogue 2.005,
 MANIFEST 2.004) and byte-identical to the CTAN `lm.zip` copy on the build
 machine, but not verified against the pinned 2.004 archive hash; see the
@@ -275,7 +297,8 @@ registered source directory's missing-face list remains visible to consumers.
 
 Acceptance evidence and app-only export reproduction commands are in
 [the temporary continuation report](../../../docs/evidence/opus-fonts-takeover-20260912T1800Z/README.md).
-`apps/mac/scripts/faces-acceptance.py` drives the actual app producer and exact
-exporter with host TeX and repository font reads denied. Use `--require-optical`
-with an optical-capable producer to require Roman8/Roman6 and refusal after
-Roman8 removal. A producer lacking these emitted faces is not optical coverage.
+`apps/mac/scripts/faces-acceptance.py`, which drove the app's bundled producer
+and exact exporter with host TeX and repository font reads denied, was deleted
+in retirement stage S6 with those helpers: the app no longer bundles
+`flashtex-render` or `flashtex-pdf-exact`, and its engine reads the fonts of
+TeX Live or the TeX bundle.

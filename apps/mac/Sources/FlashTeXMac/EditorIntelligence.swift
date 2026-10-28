@@ -167,7 +167,10 @@ enum EditorIntelligence {
         switch token {
         case .command(let name, let range)?:
             let user = userDefinition(name)
-            let doc = [CommandDocs.documentation(for: name), user.map { "Defined: " + $0 + " — ⌘-click to go there." }].compactMap { $0 }
+            // The completion popover's resolver (CompletionPopup.documentation):
+            // the hand-written line where one exists, else the compiler
+            // inventory's, so every implemented command has a hover line.
+            let doc = [CompletionPopup.documentation(forCommand: name), user.map { "Defined: " + $0 + " — ⌘-click to go there." }].compactMap { $0 }
             return QuickInfo(title: "\\" + name, detail: user != nil ? "User command" : CommandDocs.category(for: name),
                              documentation: doc.isEmpty ? nil : doc.joined(separator: "\n"), diagnostics: diagnostics, range: range)
         case .reference(let command, let key, let range)?:
@@ -209,7 +212,7 @@ enum EditorIntelligence {
             }
             return QuickInfo(title: path, detail: detail, documentation: doc, diagnostics: diagnostics, range: range)
         case .environment(let name, let range)?:
-            return QuickInfo(title: name, detail: "Environment", documentation: CommandDocs.environmentDocumentation(for: name),
+            return QuickInfo(title: name, detail: "Environment", documentation: CompletionPopup.documentation(forEnvironment: name),
                              diagnostics: diagnostics, range: range)
         case nil:
             guard let first = hits.first else { return nil }
@@ -246,156 +249,40 @@ enum EditorIntelligence {
         }
     }
 
-    // MARK: Return key
+    // MARK: Return key (shared: FlashTeXEditorCore/LaTeXEditing.swift)
 
-    struct NewlineInsertion: Equatable {
-        /// Text replacing the caret.
-        var text: String
-        /// Caret position after the insertion, relative to its start.
-        var caretOffset: Int
-        /// The environment closed by this insertion, if any.
-        var closedEnvironment: String?
+    typealias NewlineInsertion = LaTeXEditing.NewlineInsertion
+    typealias CommentToggle = LaTeXEditing.CommentToggle
+
+    /// The Return-key insertion at `caret`; see `LaTeXEditing.newline`.
+    static func newline(in text: NSString, caret: Int, indentUnit: String, closeEnvironments: Bool,
+                        rules: EnvironmentEditingRules = .conventional) -> NewlineInsertion {
+        LaTeXEditing.newline(in: text, caret: caret, indentUnit: indentUnit, closeEnvironments: closeEnvironments, rules: rules)
     }
 
-    /// The Return-key insertion at `caret` (an empty selection): a newline
-    /// plus the current line's leading whitespace; one more `indentUnit`
-    /// after a line that opens an environment (`\begin{env}` with optional
-    /// arguments and nothing else after it), and — when `closeEnvironments`
-    /// and the buffer has fewer `\end{env}` than `\begin{env}` — the
-    /// matching `\end{env}` on the line after the caret.
-    static func newline(in text: NSString, caret: Int, indentUnit: String, closeEnvironments: Bool) -> NewlineInsertion {
-        let caret = max(0, min(caret, text.length))
-        var lineStart = caret
-        while lineStart > 0, text.character(at: lineStart - 1) != 0x0A { lineStart -= 1 }
-        var lineEnd = caret
-        while lineEnd < text.length, text.character(at: lineEnd) != 0x0A { lineEnd += 1 }
-        let prefix = text.substring(with: NSRange(location: lineStart, length: caret - lineStart))
-        let suffix = text.substring(with: NSRange(location: caret, length: lineEnd - caret))
-        let indent = String(prefix.prefix { $0 == " " || $0 == "\t" })
-        // `\item …` Return inside a list continues it with a new `\item `; a
-        // bare `\item` line (nothing typed) just breaks the line.
-        if suffix.allSatisfy({ $0 == " " || $0 == "\t" || $0 == "\r" }), let item = itemContinuation(inLinePrefix: prefix) {
-            let insertion = "\n" + indent + item
-            return NewlineInsertion(text: insertion, caretOffset: insertion.utf16.count, closedEnvironment: nil)
-        }
-        guard let env = openingEnvironment(inLinePrefix: prefix) else {
-            return NewlineInsertion(text: "\n" + indent, caretOffset: 1 + indent.utf16.count, closedEnvironment: nil)
-        }
-        var insertion = "\n" + indent + indentUnit
-        let caretOffset = insertion.utf16.count
-        var closed: String?
-        if closeEnvironments, suffix.allSatisfy({ $0 == " " || $0 == "\t" || $0 == "\r" }),
-           occurrences(of: "\\begin{\(env)}", in: text) > occurrences(of: "\\end{\(env)}", in: text) {
-            insertion += "\n" + indent + "\\end{\(env)}"
-            closed = env
-        }
-        return NewlineInsertion(text: insertion, caretOffset: caretOffset, closedEnvironment: closed)
+    static func templateContinuation(in text: NSString, caret: Int, linePrefix prefix: String,
+                                     rules: EnvironmentEditingRules) -> String? {
+        LaTeXEditing.templateContinuation(in: text, caret: caret, linePrefix: prefix, rules: rules)
     }
 
-    /// The environment a line prefix opens: its last `\begin{name}` followed
-    /// only by optional `[...]`/`{...}` arguments and whitespace, unless the
-    /// same prefix also closes it or is a comment.
-    static func openingEnvironment(inLinePrefix prefix: String) -> String? {
-        guard let beginRange = prefix.range(of: "\\begin{", options: .backwards) else { return nil }
-        let head = prefix[..<beginRange.lowerBound]
-        if head.contains("%") && !head.contains("\\%") { return nil } // crude: a comment before \begin
-        guard let close = prefix[beginRange.upperBound...].firstIndex(of: "}") else { return nil }
-        let name = String(prefix[beginRange.upperBound..<close])
-        guard !name.isEmpty, !name.contains("\n"), !name.contains("\\") else { return nil }
-        if SyntaxHighlighter.verbatimEnvironments.contains(name) || name == "document" { return nil }
-        // After the name: optional argument groups then whitespace only.
-        var rest = Substring(prefix[prefix.index(after: close)...])
-        while true {
-            rest = rest.drop { $0 == " " || $0 == "\t" }
-            guard let open = rest.first, open == "[" || open == "{" else { break }
-            let closer: Character = open == "[" ? "]" : "}"
-            var depth = 0
-            var i = rest.startIndex
-            var endIndex: Substring.Index?
-            while i < rest.endIndex {
-                let c = rest[i]
-                if c == "\\" { i = rest.index(i, offsetBy: 2, limitedBy: rest.endIndex) ?? rest.endIndex; continue }
-                if c == open { depth += 1 } else if c == closer { depth -= 1; if depth == 0 { endIndex = i; break } }
-                i = rest.index(after: i)
-            }
-            guard let endIndex else { return nil }
-            rest = rest[rest.index(after: endIndex)...]
-        }
-        guard rest.allSatisfy({ $0 == " " || $0 == "\t" || $0 == "\r" }) else { return nil }
-        if prefix.contains("\\end{\(name)}") { return nil }
-        return name
-    }
-
-    /// `\item ` (or `\item[…] ` for a description entry) when the line prefix
-    /// is a list entry with content after the `\item`; nil for a bare `\item`
-    /// (the user is leaving the list) or any other line.
     static func itemContinuation(inLinePrefix prefix: String) -> String? {
-        let body = prefix.drop { $0 == " " || $0 == "\t" }
-        guard body.hasPrefix("\\item") else { return nil }
-        var rest = body.dropFirst(5)
-        if rest.first == "[" {
-            guard let close = rest.firstIndex(of: "]") else { return nil }
-            rest = rest[rest.index(after: close)...]
-        } else if let c = rest.first, c.isLetter { return nil } // `\itemize`, `\items`: not an item
-        guard rest.contains(where: { $0 != " " && $0 != "\t" }) else { return nil }
-        return body.dropFirst(5).first == "[" ? "\\item[] " : "\\item "
+        LaTeXEditing.itemContinuation(inLinePrefix: prefix)
     }
 
-    // MARK: ⌘/ line comment
-
-    struct CommentToggle: Equatable {
-        var range: NSRange
-        var replacement: String
-        var selection: NSRange
+    static func openingEnvironment(inLinePrefix prefix: String) -> String? {
+        LaTeXEditing.openingEnvironment(inLinePrefix: prefix)
     }
 
-    /// Toggles `% ` at the indentation of every line the selection touches:
-    /// when every non-blank touched line is already commented the markers are
-    /// removed (`% ` or `%`), otherwise each non-blank line gets `% ` after
-    /// its leading whitespace. Blank lines are left alone; the selection is
-    /// moved to cover the same lines. Nil when nothing would change.
+    // MARK: ⌘/ line comment (shared)
+
     static func toggleComment(in text: NSString, selection: NSRange) -> CommentToggle? {
-        let sel = NSRange(location: max(0, min(selection.location, text.length)),
-                          length: max(0, min(selection.length, text.length - min(selection.location, text.length))))
-        var start = sel.location
-        while start > 0, text.character(at: start - 1) != 0x0A { start -= 1 }
-        var end = NSMaxRange(sel)
-        if sel.length > 0, end > start, text.character(at: end - 1) == 0x0A { end -= 1 } // a selection ending at a line start excludes that line
-        while end < text.length, text.character(at: end) != 0x0A { end += 1 }
-        let block = text.substring(with: NSRange(location: start, length: end - start))
-        let lines = block.components(separatedBy: "\n")
-        let nonBlank = lines.filter { $0.contains { $0 != " " && $0 != "\t" } }
-        guard !nonBlank.isEmpty else { return nil }
-        let allCommented = nonBlank.allSatisfy { $0.drop { $0 == " " || $0 == "\t" }.hasPrefix("%") }
-        let out = lines.map { line -> String in
-            let indent = line.prefix { $0 == " " || $0 == "\t" }
-            let body = line.dropFirst(indent.count)
-            if !body.contains(where: { $0 != " " && $0 != "\t" }) { return line }
-            if allCommented {
-                let stripped = body.hasPrefix("% ") ? body.dropFirst(2) : body.dropFirst(1)
-                return String(indent) + String(stripped)
-            }
-            return String(indent) + "% " + String(body)
-        }.joined(separator: "\n")
-        let range = NSRange(location: start, length: end - start)
-        let newLength = (out as NSString).length
-        // A caret stays on its line (shifted by that line's change); a selection covers the toggled lines.
-        let selection = sel.length == 0
-            ? NSRange(location: min(max(start, sel.location + newLength - range.length), start + newLength), length: 0)
-            : NSRange(location: start, length: newLength)
-        return CommentToggle(range: range, replacement: out, selection: selection)
+        LaTeXEditing.toggleComment(in: text, selection: selection)
     }
 
     static func occurrences(of needle: String, in text: NSString) -> Int {
-        var count = 0
-        var search = NSRange(location: 0, length: text.length)
-        while true {
-            let r = text.range(of: needle, options: .literal, range: search)
-            guard r.location != NSNotFound else { return count }
-            count += 1
-            search = NSRange(location: NSMaxRange(r), length: text.length - NSMaxRange(r))
-        }
+        LaTeXEditing.occurrences(of: needle, in: text)
     }
+
 
     // MARK: command documentation
 
@@ -408,13 +295,103 @@ enum EditorIntelligence {
         static func category(for name: String) -> String {
             if citationCommands.contains(name) { return "Citation command" }
             if SyntaxHighlighter.referenceCommands.contains(name) { return name == "label" ? "Label command" : "Reference command" }
+            if kernelByName[name] != nil { return "Package-authoring command" }
             if SyntaxHighlighter.fileCommands.contains(name) { return "File command" }
             if SyntaxHighlighter.definitionCommands.contains(name) { return "Definition" }
             if name.count == 1, !(name.first?.isLetter ?? true) { return "Control symbol" }
             return "Command"
         }
 
-        static func documentation(for name: String) -> String? { table[name] }
+        /// The hand-written line for `\name`: the document vocabulary first,
+        /// then the package-authoring vocabulary (`kernel`).
+        static func documentation(for name: String) -> String? { table[name] ?? kernelByName[name]?.documentation }
+
+        /// One command of the package-authoring vocabulary (`kernel`).
+        struct KernelCommand: Equatable {
+            let name: String
+            /// The argument shape as typed (`{package}[date]`), the source of
+            /// the completion snippet (`Completion.argumentSnippet`).
+            let arguments: String
+            let documentation: String
+        }
+
+        /// What a `.sty`/`.cls` author types that a document author does not
+        /// (ltclass.dtx, the `\makeatletter` kernel and the TeX primitives
+        /// packages are written in), in the order completion offers them
+        /// inside a package buffer: the file-level declarations, options,
+        /// loading, conditionals, definitions, then messages. Each line is
+        /// the hover's and the completion row's documentation. Kept apart
+        /// from `table`: these are not in the compiler's inventory (it reads
+        /// package files with its own expansion) and the drift gate on
+        /// `table` must not see them.
+        static let kernel: [KernelCommand] = [
+            .init(name: "NeedsTeXFormat", arguments: "{LaTeX2e}", documentation: "\\NeedsTeXFormat{LaTeX2e}[date]: the format this file needs; the first line of a package or class."),
+            .init(name: "ProvidesPackage", arguments: "{name}[date]", documentation: "\\ProvidesPackage{name}[yyyy/mm/dd vX.Y info]: names the package (must match the file) and its version line."),
+            .init(name: "ProvidesClass", arguments: "{name}[date]", documentation: "\\ProvidesClass{name}[yyyy/mm/dd vX.Y info]: names the class (must match the file) and its version line."),
+            .init(name: "ProvidesFile", arguments: "{name}[date]", documentation: "\\ProvidesFile{name}[info]: names any other file LaTeX loads (a .def, a .cfg)."),
+            .init(name: "DeclareOption", arguments: "{option}{code}", documentation: "\\DeclareOption{option}{code}: what \\usepackage[option] runs; \\DeclareOption*{code} handles every other option (\\CurrentOption)."),
+            .init(name: "CurrentOption", arguments: "", documentation: "The option being processed inside \\DeclareOption*{…}."),
+            .init(name: "ExecuteOptions", arguments: "{options}", documentation: "\\ExecuteOptions{a,b}: runs the declared options' code as defaults, before \\ProcessOptions."),
+            .init(name: "ProcessOptions", arguments: "", documentation: "\\ProcessOptions\\relax: runs the code of every option the user passed, in declaration order (\\ProcessOptions* in the order passed)."),
+            .init(name: "OptionNotUsed", arguments: "", documentation: "Inside \\DeclareOption*: leaves the option unused so a later class can take it."),
+            .init(name: "RequirePackage", arguments: "[options]{package}", documentation: "\\RequirePackage[options]{package}[date]: loads another package from inside a package or class (\\usepackage is for documents)."),
+            .init(name: "RequirePackageWithOptions", arguments: "{package}", documentation: "\\RequirePackageWithOptions{package}: loads it with the options this package was given."),
+            .init(name: "LoadClass", arguments: "[options]{class}", documentation: "\\LoadClass[options]{class}[date]: a class built on another one loads it here, after \\ProcessOptions."),
+            .init(name: "LoadClassWithOptions", arguments: "{class}", documentation: "\\LoadClassWithOptions{class}: loads the parent class with every option this class was given."),
+            .init(name: "PassOptionsToPackage", arguments: "{options}{package}", documentation: "\\PassOptionsToPackage{options}{package}: adds options for a package loaded later (avoids an option clash)."),
+            .init(name: "PassOptionsToClass", arguments: "{options}{class}", documentation: "\\PassOptionsToClass{options}{class}: adds options for the class loaded by \\LoadClass."),
+            .init(name: "@ifpackageloaded", arguments: "{package}{yes}{no}", documentation: "\\@ifpackageloaded{package}{yes}{no}: branches on whether the package is loaded (after \\begin{document}: \\AtBeginDocument)."),
+            .init(name: "@ifclassloaded", arguments: "{class}{yes}{no}", documentation: "\\@ifclassloaded{class}{yes}{no}: branches on the document class."),
+            .init(name: "@ifpackagewith", arguments: "{package}{options}{yes}{no}", documentation: "\\@ifpackagewith{package}{options}{yes}{no}: whether the package was loaded with those options."),
+            .init(name: "IfFileExists", arguments: "{file}{yes}{no}", documentation: "\\IfFileExists{file}{yes}{no}: branches on whether LaTeX can find the file."),
+            .init(name: "InputIfFileExists", arguments: "{file}{yes}{no}", documentation: "\\InputIfFileExists{file}{then}{else}: inputs the file when it exists (a .cfg override)."),
+            .init(name: "AtEndOfPackage", arguments: "{code}", documentation: "\\AtEndOfPackage{code}: runs the code when the package finishes loading."),
+            .init(name: "AtEndOfClass", arguments: "{code}", documentation: "\\AtEndOfClass{code}: runs the code when the class finishes loading."),
+            .init(name: "AtBeginDocument", arguments: "{code}", documentation: "\\AtBeginDocument{code}: runs the code at \\begin{document}, after every package is loaded."),
+            .init(name: "AtEndDocument", arguments: "{code}", documentation: "\\AtEndDocument{code}: runs the code at \\end{document}."),
+            .init(name: "newcommand", arguments: "{\\name}[n]{body}", documentation: "\\newcommand{\\name}[n]{body}: defines a macro with n arguments (#1 … #n); an error if it exists."),
+            .init(name: "DeclareRobustCommand", arguments: "{\\name}[n]{body}", documentation: "\\DeclareRobustCommand{\\name}[n]{body}: a macro safe in moving arguments (captions, headings); redefines silently."),
+            .init(name: "def", arguments: "\\name{body}", documentation: "\\def\\name#1#2{body}: TeX's primitive definition with a parameter text; no check that \\name is free."),
+            .init(name: "edef", arguments: "\\name{body}", documentation: "\\edef\\name{body}: defines \\name as the full expansion of body now."),
+            .init(name: "gdef", arguments: "\\name{body}", documentation: "\\gdef\\name{body}: \\def, global."),
+            .init(name: "xdef", arguments: "\\name{body}", documentation: "\\xdef\\name{body}: \\edef, global."),
+            .init(name: "let", arguments: "\\name=\\other", documentation: "\\let\\name=\\other: \\name becomes what \\other is now (a copy, not a call)."),
+            .init(name: "csname", arguments: "", documentation: "\\csname name\\endcsname: the control sequence built from the text in between (\\relax if undefined)."),
+            .init(name: "endcsname", arguments: "", documentation: "Closes \\csname."),
+            .init(name: "@namedef", arguments: "{name}{body}", documentation: "\\@namedef{name}{body}: \\def of the control sequence called name (built with \\csname)."),
+            .init(name: "@nameuse", arguments: "{name}", documentation: "\\@nameuse{name}: calls the control sequence called name."),
+            .init(name: "@ifundefined", arguments: "{name}{yes}{no}", documentation: "\\@ifundefined{name}{yes}{no}: branches on whether \\name is undefined (or \\relax)."),
+            .init(name: "@ifnextchar", arguments: "x{yes}{no}", documentation: "\\@ifnextchar x{yes}{no}: peeks at the next token — how optional arguments are parsed."),
+            .init(name: "@ifstar", arguments: "{starred}{plain}", documentation: "\\@ifstar{starred}{plain}: branches on a following * (a starred command variant)."),
+            .init(name: "expandafter", arguments: "", documentation: "\\expandafter\\a\\b: expands \\b one step before \\a is read."),
+            .init(name: "noexpand", arguments: "", documentation: "\\noexpand\\x: inside \\edef, keeps \\x unexpanded."),
+            .init(name: "newif", arguments: "\\ifname", documentation: "\\newif\\ifname: declares a switch with \\nametrue, \\namefalse and \\ifname … \\else … \\fi."),
+            .init(name: "ifx", arguments: "", documentation: "\\ifx\\a\\b … \\else … \\fi: true when the two tokens are the same (macros: same expansion)."),
+            .init(name: "ifdefined", arguments: "", documentation: "\\ifdefined\\x … \\fi: true when \\x is defined (e-TeX)."),
+            .init(name: "fi", arguments: "", documentation: "Closes an \\if…."),
+            .init(name: "else", arguments: "", documentation: "The else branch of an \\if…."),
+            .init(name: "relax", arguments: "", documentation: "Does nothing; ends a number or an argument scan (\\ProcessOptions\\relax)."),
+            .init(name: "newtoks", arguments: "\\name", documentation: "\\newtoks\\name: a token register (\\name={…}, \\the\\name)."),
+            .init(name: "newdimen", arguments: "\\name", documentation: "\\newdimen\\name: a dimension register."),
+            .init(name: "newskip", arguments: "\\name", documentation: "\\newskip\\name: a glue register."),
+            .init(name: "newcount", arguments: "\\name", documentation: "\\newcount\\name: a count register."),
+            .init(name: "@tempdima", arguments: "", documentation: "Scratch dimension register (with \\@tempdimb, \\@tempdimc); never rely on it across macros."),
+            .init(name: "@tempcnta", arguments: "", documentation: "Scratch count register (with \\@tempcntb)."),
+            .init(name: "@tempboxa", arguments: "", documentation: "Scratch box register."),
+            .init(name: "@empty", arguments: "", documentation: "The empty macro; compare with \\ifx\\x\\@empty."),
+            .init(name: "@gobble", arguments: "", documentation: "\\@gobble{x}: discards one argument (\\@gobbletwo two)."),
+            .init(name: "@firstofone", arguments: "", documentation: "\\@firstofone{x}: x (\\@firstoftwo, \\@secondoftwo pick one of two)."),
+            .init(name: "PackageWarning", arguments: "{package}{text}", documentation: "\\PackageWarning{package}{text}: a warning on the terminal and in the log, with the line number (\\PackageWarningNoLine without)."),
+            .init(name: "PackageError", arguments: "{package}{text}{help}", documentation: "\\PackageError{package}{text}{help}: stops with an error; help is shown on ?."),
+            .init(name: "PackageInfo", arguments: "{package}{text}", documentation: "\\PackageInfo{package}{text}: a note in the log only."),
+            .init(name: "ClassWarning", arguments: "{class}{text}", documentation: "\\ClassWarning{class}{text}: a warning with the line number (\\ClassWarningNoLine without)."),
+            .init(name: "ClassError", arguments: "{class}{text}{help}", documentation: "\\ClassError{class}{text}{help}: stops with an error."),
+            .init(name: "ClassInfo", arguments: "{class}{text}", documentation: "\\ClassInfo{class}{text}: a note in the log only."),
+            .init(name: "typeout", arguments: "{text}", documentation: "\\typeout{text}: writes the text to the terminal and the log."),
+            .init(name: "MessageBreak", arguments: "", documentation: "A line break inside a \\PackageWarning/\\PackageError text."),
+        ]
+
+        static let kernelByName: [String: KernelCommand] = Dictionary(kernel.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
 
         /// Standard LaTeX commands and environments the hover documents
         /// although the compiler does not render them (it diagnoses them, so
@@ -424,13 +401,12 @@ enum EditorIntelligence {
         /// `CompletionTests.testCommandDocsNameOnlyKnownCommands`), and a
         /// name listed here must leave the list once the compiler renders it.
         static let beyondCompiler: Set<String> = [
-            "chapter", "part", "autoref",
-            "def", "newline", "hline", "toprule", "midrule",
-            "bottomrule", "multicolumn", "verb", "%", "$", "&", "#", "_", "{", "}",
+            "chapter", "autoref",
+            "def", "newline", "%", "$", "&", "#", "_", "{", "}",
             "geometry", "onehalfspacing", "doublespacing",
         ]
         static let environmentsBeyondCompiler: Set<String> = [
-            "table", "abstract", "minted", "theorem", "tikzpicture", "minipage",
+            "abstract", "minted", "theorem", "tikzpicture",
         ]
 
         static func environmentDocumentation(for name: String) -> String? {
@@ -614,6 +590,14 @@ final class LineNumberGutter: NSRulerView {
         needsDisplay = true
     }
 
+    /// Redraws after an edit that moved lines (SourceEditorView's
+    /// textDidChange, CompletingTextView's edit tail); counted for tests.
+    private(set) var editRedraws = 0
+    func redrawAfterEdit() {
+        editRedraws += 1
+        needsDisplay = true
+    }
+
     init(scrollView: NSScrollView) {
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clientView = scrollView.documentView
@@ -639,7 +623,7 @@ final class LineNumberGutter: NSRulerView {
             guard mark.nsRange.location >= 0, mark.nsRange.location <= table.length else { continue }
             let line = table.line(at: mark.nsRange.location)
             if mark.hasFix { fixes.insert(line) }
-            if EditorDiagnostics.isGap(mark.message) { gaps.insert(line); continue }
+            if mark.isGap { gaps.insert(line); continue }
             if result[line] != .error { result[line] = mark.severity }
         }
         if result != severities || gaps != gapLines || fixes != fixLines {
@@ -680,7 +664,7 @@ final class LineNumberGutter: NSRulerView {
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
         guard let tv = textView, let lm = tv.layoutManager, let container = tv.textContainer, let table = lineTable?() else { return }
-        (tv.backgroundColor).setFill()
+        SyntaxTheme.gutterBackground.setFill() // the editor theme's gutter ground (EditorThemes.swift)
         bounds.fill()
         // Hairline separator.
         DS.NSColors.gutterHairline.setFill()
@@ -786,10 +770,10 @@ final class LineNumberGutter: NSRulerView {
 final class HoverController: NSResponder {
     static let delay: TimeInterval = 0.45
     var info: (Int) -> EditorIntelligence.QuickInfo? = { _ in nil }
-    /// Inline math preview (MathHoverPreview.swift): the formula's cropped
+    /// Inline math preview (EngineV3MathHover.swift): the formula's cropped
     /// bitmap and its range, when `index` is inside one. Tried before `info`,
     /// so a formula's crop wins over a command's quick info inside it (e.g.
-    /// `\alpha`); the owner's closure already applies `previewIsStale` and
+    /// `\alpha`); the owner's closure already applies the staleness and
     /// the "reads only the current bitmap" rule, so nil here just means "no
     /// preview" — hover falls back to `info`.
     var mathPreview: (Int) -> (image: CGImage, range: NSRange)? = { _ in nil }
@@ -881,7 +865,7 @@ final class HoverController: NSResponder {
 
     /// Records a presented math preview for `presentedMathPreviews` (evidence
     /// for tests); `presentedMathPreviews`'s setter is file-private, so
-    /// `presentMathPreview(_:range:in:)` (MathHoverPreview.swift) goes through this.
+    /// `presentMathPreview(_:range:in:)` (EngineV3MathHover.swift) goes through this.
     func recordMathPreview(_ range: NSRange) {
         presentedMathPreviews.append(range)
         if presentedMathPreviews.count > 32 { presentedMathPreviews.removeFirst(presentedMathPreviews.count - 32) }

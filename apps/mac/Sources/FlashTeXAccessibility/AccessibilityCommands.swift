@@ -5,22 +5,23 @@ import Foundation
 /// lives in, and a discoverable description. The UI can render this as an
 /// "Accessibility help" list; the test target checks it against the README.
 public enum AccessibilityCommand: String, CaseIterable, Equatable {
-    case editorPreferences
-    case openLaTeXFile, newProject, newFile, save, saveAs, openFixture, reloadFixture
-    case attachBuiltCompiler, attachRenderPipeline, attachWorker, compile
+    case editorPreferences, checkForUpdates
+    case openLaTeXFile, newProject, newFile, moveFile, projectFonts, save, saveAs, showInFinder
+    case compile, stopCompile
     case exportPDF, printDocument, printSource
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case restoreDiscardedBuffer
     case undo
     case commandPalette, toggleProblems, toggleCaptures
     case zoomIn, zoomOut, actualSize, fitWidth, fitPage, increaseEditorFontSize, decreaseEditorFontSize, resetEditorFontSize
+    case texpandCommand
     case completion, completionList, toggleComment, duplicateLine, duplicateLineUp, moveLineUp, moveLineDown, deleteLine, joinLines, sortLinesAscending, sortLinesDescending, trimTrailingWhitespace, reindentLines, reindentDocument, signatureHelp, toggleVimKeybindings
     case fold, unfold, foldAll, unfoldAll
     case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
     case goToDefinition, goToSymbol, goToLine, selectEnvironment, wrapInEnvironment, changeEnvironment, renameSymbol
+    case boldSelection, emphasizeSelection, underlineSelection, wrapInCommand
     case selectPreviewItemSource
     case accessibilityHelp
-    case durableHistory, findInProject, nextSearchMatch, renameCitation
     case find, findAndReplace, findNext, findPrevious, useSelectionForFind, jumpToSelection
 
     public struct Entry: Equatable {
@@ -55,7 +56,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
         switch self {
         case .openLaTeXFile:
             return Entry(command: self, title: "Open LaTeX file", shortcuts: ["⌘O"], menu: "File",
-                         description: "Opens a .tex file as the main.tex entry document and compiles it when a worker is attached.",
+                         description: "Opens a .tex file as the main.tex entry document; the engine compiles it.",
                          menuItem: "Open LaTeX File…")
         case .newProject:
             return Entry(command: self, title: "New Project", shortcuts: ["⌘⌥N"], menu: "File",
@@ -66,6 +67,16 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          description: "Opens the New File sheet (also the sidebar's + button and the project row's context menu): a rooted .tex name, subfolders allowed, never above the project root; “Insert \\input at the caret” (on by default while the entry document is active) posts one undoable edit, then the new file opens in a tab.",
                          requires: "a saved entry document (a project root)",
                          menuItem: "New File…")
+        case .moveFile:
+            return Entry(command: self, title: "Move file", shortcuts: ["File > Move To…"], menu: "File",
+                         description: "Opens the Move to… sheet for the active document (also “Move to…” in a project row's context menu; dragging a row onto another row moves it into that row's folder, onto the tree's empty space to the project root): a rooted folder, never above the project root; every \\input, \\include, \\includegraphics, \\bibliography, \\addbibresource and \\lstinputlisting that resolved to the file is rewritten — one undoable edit per open document, closed documents of the include tree on disk. Refused for the entry document, with unsaved edits, or onto an existing file.",
+                         requires: "a saved entry document (a project root) and an active document that is not the entry",
+                         menuItem: "Move To…")
+        case .projectFonts:
+            return Entry(command: self, title: "Project fonts", shortcuts: ["File > Project Fonts…"], menu: "File",
+                         description: "Opens the Project Fonts sheet: the manifest's [fonts] table as four rows — Text, Math, Sans, Mono — each a searchable picker over the installed families the engine's own index finds (the Math row lists the families with an OpenType MATH table), with a sample line in the chosen family and “Class default” first. Apply writes the table into flashtex.toml (created from the template when absent; nothing is written for “Class default” everywhere without a manifest) and the preview recompiles. The document's own \\setmainfont, \\setmathfont, \\setsansfont and \\setmonofont still win.",
+                         requires: "a saved entry document (a project root)",
+                         menuItem: "Project Fonts…")
         case .save:
             return Entry(command: self, title: "Save", shortcuts: ["⌘S"], menu: "File",
                          description: "Saves the entry document as UTF-8; the editor header says “edited” while unsaved.",
@@ -74,40 +85,30 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Save As", shortcuts: ["⌘⇧S"], menu: "File",
                          description: "Saves the entry document under a new name.",
                          menuItem: "Save As…")
-        case .openFixture:
-            return Entry(command: self, title: "Open compile result fixture", shortcuts: ["⌘⇧O"], menu: "File",
-                         description: "Loads a runtime v1 compile_result JSON into the preview; a sibling -request.json seeds the editor.",
-                         menuItem: "Open Compile Result Fixture…")
-        case .reloadFixture:
-            return Entry(command: self, title: "Reload fixture", shortcuts: ["File > Reload Fixture"], menu: "File",
-                         description: "Reloads the current fixture from disk (developer-only; confirms via Save/Discard/Cancel before replacing a real or unsaved document).",
-                         menuItem: "Reload Fixture")
-        case .attachBuiltCompiler:
-            return Entry(command: self, title: "Attach built compiler", shortcuts: ["⌘⇧K"], menu: "File",
-                         description: "Attaches the FlashTeX compiler found via $FLASHTEX_COMPILER or crates/compiler/target.",
-                         menuItem: "Attach Built Compiler")
-        case .attachRenderPipeline:
-            return Entry(command: self, title: "Attach render pipeline", shortcuts: ["⌘⇧R"], menu: "File",
-                         description: "Attaches flashtex-render (crates/render-pipeline) found via $FLASHTEX_RENDER, the app bundle, or crates/render-pipeline/target: the producer measured with Latin Modern metrics, so the preview shows Computer Modern-style text.",
-                         menuItem: "Attach Render Pipeline (Latin Modern)")
-        case .attachWorker:
-            return Entry(command: self, title: "Attach worker executable", shortcuts: ["⌘K"], menu: "File",
-                         description: "Chooses any executable speaking runtime v1 JSON Lines and attaches it as the compiler.",
-                         menuItem: "Attach Worker Executable…")
+        case .showInFinder:
+            return Entry(command: self, title: "Show in Finder", shortcuts: ["⌘⌥R"], menu: "File",
+                         description: "Reveals the active document's file in Finder, selected (also “Reveal in Finder” in a sidebar row's context menu; right-click the project tree's empty space for the project folder itself). Nothing happens for a file that is not on disk.",
+                         requires: "a saved entry document (a project root)",
+                         menuItem: "Show in Finder")
         case .compile:
             return Entry(command: self, title: "Compile now", shortcuts: ["⌘B"], menu: "File / toolbar",
-                         description: "Sends the current buffers to the attached worker; auto-compile also runs 250 ms after edits.",
-                         requires: "an attached worker",
+                         description: "Compiles the current buffers now (and restarts the engine after it stopped); with auto-compile on, edits also compile as they are typed.",
+                         requires: "the engine running",
                          menuItem: "Compile")
+        case .stopCompile:
+            return Entry(command: self, title: "Stop compile", shortcuts: ["⌘."], menu: "File",
+                         description: "Ends a compile that runs too long under the engine-v3 preview (an endless macro loop, say); the next edit or ⌘B compiles again.",
+                         requires: "the engine-v3 preview and a compile running",
+                         menuItem: "Stop Compile")
         case .exportPDF:
             return Entry(command: self, title: "Export PDF", shortcuts: ["⌘⇧E"], menu: "File",
-                         description: "Hands the loaded v2 display list to flashtex-pdf-exact from-v2: glyphs by original GID, embedded font programs, typed rules, images and device colour; refuses what it cannot express exactly instead of approximating it.",
-                         requires: "a complete v2 display list and a built flashtex-pdf-exact",
+                         description: "Writes the PDF pdflatex would write for the editor's text, from the engine's export run; the destination is replaced atomically, and a file changed on disk since you chose it is kept.",
+                         requires: "the engine ready with pages",
                          menuItem: "Export PDF…")
         case .printDocument:
             return Entry(command: self, title: "Print", shortcuts: ["⌘P"], menu: "File",
                          description: "Prints the compiled document PDF — the same exact bytes Export PDF… writes — through the system print panel; page size follows the PDF.",
-                         requires: "a complete v2 display list and a built flashtex-pdf-exact",
+                         requires: "the engine ready with pages",
                          menuItem: "Print…")
         case .printSource:
             return Entry(command: self, title: "Print Source", shortcuts: ["File > Print Source…"], menu: "File",
@@ -187,8 +188,8 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Completion popup", shortcuts: ["Esc", "⌃Space"], menu: "Editor",
                          description: "Lists supported commands, \\end{…} for open environments, labels, citation keys and document words for the token at the caret; the list never takes the keyboard from the editor.")
         case .completionList:
-            return Entry(command: self, title: "Completion list keys", shortcuts: ["↑", "↓", "Tab", "⇧Tab", "Return"], menu: "Editor",
-                         description: "While the completion list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return or Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list and any other caret move closes it.",
+            return Entry(command: self, title: "Completion list keys", shortcuts: ["↑", "↓", "Tab", "⇧Tab", "Page Up", "Page Down", "Home", "End", "Return"], menu: "Editor",
+                         description: "While the completion list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Page Up/Page Down move by a screenful of rows and Home/End go to the first/last row (never wrapping), Return or Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list and any other caret move closes it.",
                          requires: "an open completion list")
         case .signatureHelp:
             return Entry(command: self, title: "Signature help", shortcuts: ["⌘⇧Space"], menu: "Editor",
@@ -218,7 +219,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          menuItem: "Move Line Down")
         case .deleteLine:
             return Entry(command: self, title: "Delete Line", shortcuts: ["⌃⌘K"], menu: "Editor",
-                         description: "Deletes every full line the selection touches as one undo step. ⌃⌘K avoids File ▸ Attach Built Compiler (⇧⌘K).",
+                         description: "Deletes every full line the selection touches as one undo step.",
                          menuItem: "Delete Line")
         case .joinLines:
             return Entry(command: self, title: "Join Lines", shortcuts: ["⌃J"], menu: "Editor",
@@ -284,13 +285,33 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Wrap selection in environment", shortcuts: ["⌘⇧W"], menu: "Navigate",
                          description: "Asks for an environment name (suggestions: common ones, then those the document uses) and wraps the selection in \\begin{X}…\\end{X} — whole lines as an indented block, otherwise inline — as one undoable edit with the caret at the body.",
                          menuItem: "Wrap Selection in Environment…")
+        case .boldSelection:
+            return Entry(command: self, title: "Bold selection", shortcuts: ["⌘⇧B"], menu: "Edit",
+                         description: "Wraps the selection in \\textbf{…} (\\mathbf{…} when the caret is in math mode) as one undoable edit, the caret after the closing brace; with nothing selected the caret lands between the braces and the } is typed over. ⌘B is Compile.",
+                         menuItem: "Bold")
+        case .emphasizeSelection:
+            return Entry(command: self, title: "Emphasize selection", shortcuts: ["⌘I"], menu: "Edit",
+                         description: "Wraps the selection in \\emph{…} (\\mathit{…} when the caret is in math mode) as one undoable edit, the caret after the closing brace; with nothing selected the caret lands between the braces.",
+                         menuItem: "Emphasize")
+        case .underlineSelection:
+            return Entry(command: self, title: "Underline selection", shortcuts: ["⌘U"], menu: "Edit",
+                         description: "Wraps the selection in \\underline{…} as one undoable edit, the caret after the closing brace; with nothing selected the caret lands between the braces.",
+                         menuItem: "Underline")
+        case .wrapInCommand:
+            return Entry(command: self, title: "Wrap selection in command", shortcuts: ["⌘⌥W"], menu: "Edit",
+                         description: "Asks for a command name (suggestions: common text and math commands, then the macros the document defines) and wraps the selection in \\name{…} as one undoable edit; the caret lands after the closing brace, or between the braces when nothing was selected.",
+                         menuItem: "Wrap Selection in Command…")
         case .changeEnvironment:
             return Entry(command: self, title: "Change environment", shortcuts: ["⌃⌘E"], menu: "Editor",
                          description: "Opens a field prefilled with the innermost environment name around the caret; Return rewrites both the \\begin{name} and matching \\end{name} as one undoable edit, preserving a trailing star, optional arguments and any following arguments. Typing inside either name updates the partner live. Refused (beep and VoiceOver) in a verbatim body or when the pair is unbalanced.",
                          menuItem: "Change Environment…")
+        case .texpandCommand:
+            return Entry(command: self, title: "Expand abbreviation or edit structure", shortcuts: ["⌃⌘T"], menu: "Editor",
+                         description: "Inside a matrix, tabular, cases or align environment, toggles TeXpand's grid editor over it; elsewhere opens the abbreviation prompt at the caret (type enum3 or fig>img+cap and press Return). With a selection the prompt wraps it; a bare * makes one item per selected line. Needs TeXpand on in Settings › Abbreviations.",
+                         menuItem: "Expand Abbreviation or Edit Structure…")
         case .renameSymbol:
             return Entry(command: self, title: "Rename symbol", shortcuts: ["⌥⇧R"], menu: "Navigate",
-                         description: "Renames the \\label key (every \\ref/\\eqref/\\pageref/\\autoref/\\cref use) or the user command (every \\foo, word-boundary aware, comments and verbatim skipped) under the caret across the open documents: Plan shows the per-file counts, Apply is one undoable edit per document (one guarded apply_group per file when the durable helper is attached).",
+                         description: "Renames the \\label key (every \\ref/\\eqref/\\pageref/\\autoref/\\cref use) or the user command (every \\foo, word-boundary aware, comments and verbatim skipped) under the caret across the open documents: Plan shows the per-file counts, Apply is one undoable edit per document.",
                          menuItem: "Rename Symbol…")
         case .nextDiagnostic:
             return Entry(command: self, title: "Next diagnostic", shortcuts: ["⌘⇧]"], menu: "Navigate",
@@ -338,22 +359,10 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
         case .editorPreferences:
             return Entry(command: self, title: "Settings window", shortcuts: ["⌘,"], menu: "FlashTeX",
                          description: "Opens the editor preferences (the system Settings item): font family and size, wrapping, tab width and indent style, appearance, auto-close braces, completion list, Restore Defaults; Tab walks the controls top to bottom, ⌘W closes and the editor keeps the keyboard.")
-        case .durableHistory:
-            return Entry(command: self, title: "Durable History window", shortcuts: ["Edit > Durable History…"], menu: "Edit",
-                         description: "Opens the durable undo/redo history on the helper's edit ledger: Refresh, Undo, Redo (Retry/Discard after an uncertain reply), retention gauge, then the undo and redo stacks as a list; ⌘W closes and the editor keeps the keyboard.",
-                         menuItem: "Durable History…")
-        case .findInProject:
-            return Entry(command: self, title: "Find in Project window", shortcuts: ["⌘⇧F"], menu: "Edit",
-                         description: "Opens the project search: the literal field takes the keyboard, Return searches or goes to the selected match, ↑/↓ move the selection, then Search, Go to Match, Next Match, scope, match limit, results, the replacement field, Plan Replacement and Apply; Esc closes and the editor keeps the keyboard.",
-                         menuItem: "Find in Project…")
-        case .nextSearchMatch:
-            return Entry(command: self, title: "Next match", shortcuts: ["⌘G"], menu: "Find in Project window",
-                         description: "Selects the next search match (wrapping) and goes to it in the editor; only while the Find in Project window is key.",
-                         requires: "a search with matches")
-        case .renameCitation:
-            return Entry(command: self, title: "Rename citation window", shortcuts: ["Edit > Rename Citation…"], menu: "Edit",
-                         description: "Opens the reviewed citation rename: the helper plans every \\cite occurrence across the project (plan_citation_rename), the plan is shown for review, and Apply sends one apply_group.",
-                         menuItem: "Rename Citation…")
+        case .checkForUpdates:
+            return Entry(command: self, title: "Check for updates", shortcuts: ["FlashTeX > Check for Updates…"], menu: "FlashTeX",
+                         description: "Asks GitHub Releases for the newest FlashTeX and shows the installed and available versions with the release notes; Download opens the release page in the browser, Skip This Version silences the background check for that version. Nothing is downloaded or installed by the app. The background check is Settings > Updates (off by default, at most once a day).",
+                         menuItem: "Check for Updates…")
         case .find:
             return Entry(command: self, title: "Find", shortcuts: ["⌘F"], menu: "Edit",
                          description: "Opens the source editor's find bar (AppKit's built-in incremental search) over the focused document.",
@@ -364,7 +373,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          menuItem: "Find and Replace…")
         case .findNext:
             return Entry(command: self, title: "Find Next", shortcuts: ["Edit > Find Next"], menu: "Edit",
-                         description: "Selects the next find-bar match in the focused editor. No key equivalent: ⌘G is Find in Project's Next match and ⇧⌘G is Convert Capture, so Return in the find bar's search field is the keyboard way to find next.",
+                         description: "Selects the next find-bar match in the focused editor. No key equivalent: ⇧⌘G is Convert Capture, so Return in the find bar's search field is the keyboard way to find next.",
                          menuItem: "Find Next")
         case .findPrevious:
             return Entry(command: self, title: "Find Previous", shortcuts: ["Edit > Find Previous"], menu: "Edit",
@@ -446,9 +455,9 @@ public enum FocusOrder {
              rationale: "Status text with at most one button; it follows the capture bar because a received capture is converted, then reviewed, from the same place.",
              container: "EditorPane", sourceMarker: "BridgeBar()"),
         Pane(name: "Preview",
-             contents: "A header line (source badge, compile status, freshness, layout capabilities), then pages in reading order; each page is a landmark (“Page n of m, k lines”), each line a group, each item static text with a “Go to source” action.",
+             contents: "The “PDF preview” group (value: the page under the top of the view), then pages in reading order; each page is a landmark (“Page n of m, k lines”) whose value is its text, each line a group or static text with a “Go to source” action; the Pages rotor lists every page of the document, built or not. Page Down / Page Up step pages when the pane has focus; a completed compile is announced.",
              rationale: "Follows the editor column so a user can check what the last edit produced, page by page, without leaving the keyboard.",
-             container: "PreviewPane", sourceMarker: "PreviewView("),
+             container: "PreviewPane", sourceMarker: "PreviewV3Pane("),
         Pane(name: "Problems",
              contents: "Header with counts, a severity filter (All / Errors / Warnings) and Hide; then the list of the compile result's diagnostics, identical ones folded into one row: “Diagnostic n of m: Error/Warning: message, 12 places, 3 of 12, main.tex line 41”, the recovery note as the value, “Go to source” when it has a source. ↑/↓ select a row, Return jumps to its current occurrence, Esc returns the keyboard to the editor, ⌘C copies the selection as path:line: message lines.",
              rationale: "Comes after the preview because the preview is still shown when errors exist; diagnostics refine, not replace, it. View > Toggle Problems (⌘⇧M) hides and shows it.",
@@ -458,9 +467,9 @@ public enum FocusOrder {
     /// Non-focusable status text around the panes, in view order, so the help
     /// can say what VoiceOver reads when it walks the whole window.
     public static let statusLines: [String] = [
-        "Toolbar: three chips — Compile (⌘B; its menu attaches the built compiler ⌘⇧K, the Latin Modern render pipeline ⌘⇧R, any executable ⌘K, toggles auto-compile, detaches), the Export menu (⌘⇧E, ⌘⌥E, exact v2) and Commands (the palette, ⌘⇧P) — plus the Captures inspector toggle. Everything else lives in its menu, its shortcut and the palette; the v2 pane and Dark preview switches are in the preview header. Every tooltip names the menu shortcut.",
-        "Preview header: the page indicator and zoom percentage (always visible, dimmed); a quiet compile spinner, a FIXTURE or HISTORICAL badge, staleness and capability warnings when they apply; on pointer-over, zoom −/+, Fit Width (⌘9), Fit Page (⌘⇧9) and the v2/dark switches. Producer and layout-capability detail are in the header tooltip.",
-        "Status bar (bottom): editor revision, the active document's durable revision, compile latency, the route (fixture / worker / controller), error and warning counts (a button that shows the Problems panel), then the last navigation note, the stale-diagnostics note, or the preview-click hint; capture notes and the exact-export progress on the right.",
+        "Toolbar: in the title bar, Compile (⌘B) and the command palette (⌘⇧P) leading; then the preview controls — chapter focus, dark pages, Fit Width (⌘9), Fit Page (⌘⇧9), Zoom Out (⌘-), Zoom In (⌘=) — Export PDF (⌘⇧E) and the Captures inspector toggle. Every tooltip names the menu shortcut.",
+        "Preview HUD (over the pages): a quiet compile spinner and the engine's state line (preparing the format, stale pages, a failure) when they apply; the page indicator on pointer-over and briefly after scrolling. The engine's route is in the HUD tooltip.",
+        "Status bar (bottom): the breadcrumb, then the last navigation note, the stale-diagnostics note, or the preview-click hint; the word count, the keystroke-to-page latency, the Classic/Unicode mode, the editor revision (with View > Show Preview Debug Status), error and warning counts (a button that shows the Problems panel); capture notes and the export progress on the right.",
     ]
 
     /// "Sidebar → Tabs → Editor → Capture bar → Bridge bar → Preview → Problems"
@@ -528,38 +537,10 @@ public enum PanelFocusOrder {
                 Control(name: "Vim keybindings", sourceMarker: "Toggle(\"Vim keybindings\""),
                 Control(name: "Preview follows the caret", sourceMarker: "Toggle(\"Preview follows the caret\""),
                 Control(name: "Autosave", sourceMarker: "Toggle(\"Autosave\""),
+                Control(name: "Check for updates automatically", sourceMarker: "Toggle(\"Check for updates automatically\""),
                 Control(name: "Restore Defaults", sourceMarker: "Button(\"Restore Defaults\""),
               ],
               sourceFile: "EditorPreferences.swift"),
-        Panel(name: "Durable History", windowTitle: "Durable History", command: .durableHistory,
-              initialFocus: "the undo/redo list (every button is disabled until a preview controller is attached)",
-              closing: "⌘W closes the window; the editor text view is first responder again.",
-              controls: [
-                Control(name: "Refresh history", sourceMarker: "accessibilityIdentifier(\"history.refresh\")", when: "controller attached"),
-                Control(name: "Undo, n steps available", sourceMarker: "accessibilityIdentifier(\"history.undo\")", when: "controller attached"),
-                Control(name: "Redo, n steps available", sourceMarker: "accessibilityIdentifier(\"history.redo\")", when: "controller attached"),
-                Control(name: "Retry the uncertain undo/redo", sourceMarker: "accessibilityIdentifier(\"history.retry\")", when: "after an uncertain reply"),
-                Control(name: "Discard the uncertain undo/redo", sourceMarker: "accessibilityIdentifier(\"history.discard\")", when: "after an uncertain reply"),
-                Control(name: "Undo and redo stacks (list)", sourceMarker: "accessibilityIdentifier(\"history.stacks\")"),
-              ],
-              sourceFile: "EditHistoryPanel.swift"),
-        Panel(name: "Find in Project", windowTitle: "Find in Project", command: .findInProject,
-              initialFocus: "the literal field",
-              closing: "Esc or ⌘W closes the window; the editor text view is first responder again.",
-              controls: [
-                Control(name: "Literal to find in the project, case-sensitive", sourceMarker: "TextField(\"Find in project"),
-                Control(name: "Search", sourceMarker: "Button(\"Search\")", when: "non-empty literal"),
-                Control(name: "Go to Match", sourceMarker: "Button(\"Go to Match\")", when: "a match is selected"),
-                Control(name: "Next Match", sourceMarker: "Button(\"Next Match\")", when: "matches"),
-                Control(name: "Search scope", sourceMarker: "Picker(\"Scope\""),
-                Control(name: "Max matches", sourceMarker: "Stepper(\"Max matches"),
-                Control(name: "Search results, n matches (table)", sourceMarker: "SearchResultsTable(matches: results.matches", when: "after a search"),
-                Control(name: "Replacement text", sourceMarker: "TextField(\"Replace with"),
-                Control(name: "Plan Replacement", sourceMarker: "Button(\"Plan Replacement\")", when: "complete search with matches"),
-                Control(name: "Apply n replacements", sourceMarker: "Button(\"Apply \\(plan.summary)\")", when: "a planned proposal"),
-                Control(name: "Retry path", sourceMarker: "Button(\"Retry \\(outcome.path)\")", when: "an uncertain apply"),
-              ],
-              sourceFile: "ProjectSearchPanel.swift"),
         Panel(name: "Nearby Companion", windowTitle: "Nearby Companion", command: .nearbyCompanion,
               initialFocus: "Show Pairing Code (Return); focus follows the pairing state: the code while it is shown or verified, Resume when interrupted, Dismiss on paired/error, Cancel while receiving",
               closing: "Esc cancels the current pairing step (or dismisses a banner); ⌘W closes the window; the editor text view is first responder again. The whole pairing is keyboard-only: Return shows or resumes a code, Esc cancels it.",

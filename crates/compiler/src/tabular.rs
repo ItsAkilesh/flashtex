@@ -28,6 +28,11 @@
 //! * `tabular*` distributes the leftover width over `\extracolsep{\fill}`
 //!   glue; the glue after the last column is always zero (`\tabskip\z@skip`
 //!   precedes the preamble's `\cr`).
+//! * `tabularx` (tabularx.sty) rewrites every `X` to `p{\TX@col@width}`, one
+//!   shared width for all `X` columns, then lays the table out as
+//!   `tabular*`: the `X` columns split the leftover width (the width
+//!   argument minus the fixed columns, rules and intercolumn spacing)
+//!   evenly, each wrapping like `p` (`\tabularxcolumn` defaults to `p{#1}`).
 //!
 //! The compiler's `\baselineskip` is `LINE_SPACING` times the font size (14.4pt
 //! at 12pt, where LaTeX's `size12.clo` uses 14.5pt), so the strut follows that
@@ -234,6 +239,11 @@ pub enum Align {
     Bottom(Length),
     /// array's `w{align}{width}`/`W`: the entry in `\makebox[width][align]`.
     Fixed(Length, BoxAlign),
+    /// tabularx's `X`: a top-aligned paragraph box like `p`, whose width is
+    /// the even-split share of the leftover table width computed at layout
+    /// time (a single `Align` cannot hold it: it depends on the other
+    /// columns' natural widths, known only after every entry is laid out).
+    Flexible,
 }
 
 impl Align {
@@ -243,6 +253,12 @@ impl Align {
             Align::Paragraph(w) | Align::Middle(w) | Align::Bottom(w) => Some(w),
             _ => None,
         }
+    }
+
+    /// Whether entries wrap in a paragraph box: `p`/`m`/`b`, or an `X`
+    /// whose share is fixed up at layout time.
+    pub fn is_paragraph(self) -> bool {
+        self.paragraph_width().is_some() || matches!(self, Align::Flexible)
     }
 }
 
@@ -271,6 +287,21 @@ pub enum Entry {
     CLine {
         first: usize,
         last: usize,
+        span: Span,
+    },
+    /// `\hhline` `|` vertical tie at a column boundary: hhline.sty's
+    /// `\@tempc\vline\@tempc`, the short rule joining the block's passes
+    /// (this is hhline's whole point over `\cline`: the ties bridge the
+    /// gap the preamble verticals leave at the rule block, giving the
+    /// continuous grid look). Takes no vertical space, like `CLine`;
+    /// painted over the block's height at layout time.
+    HTie {
+        /// Column boundary: 0 is the table's left edge, `n` its right edge
+        /// (`n` the column count; clamped there).
+        boundary: usize,
+        /// Whether the block holds a double rule: the tie then spans both
+        /// passes (`2\arrayrulewidth + \doublerulesep`), else one rule.
+        double: bool,
         span: Span,
     },
     BookRule {
@@ -475,6 +506,15 @@ impl Tabular {
                 } => Entry::CLine {
                     first: *first,
                     last: *last,
+                    span: span(*s)?,
+                },
+                Entry::HTie {
+                    boundary,
+                    double,
+                    span: s,
+                } => Entry::HTie {
+                    boundary: *boundary,
+                    double: *double,
                     span: span(*s)?,
                 },
                 Entry::BookRule {
@@ -710,6 +750,10 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                 Align::Paragraph(width) | Align::Middle(width) | Align::Bottom(width) => {
                     Some(resolve(width, measure).max(0.0))
                 }
+                // An `X` entry is laid out at its natural width here; its
+                // share of the leftover width is unknown until every fixed
+                // column is measured, so `X` entries are re-laid out once
+                // the share is known (below).
                 _ => None,
             };
             let (mut content, last_baseline) = c.inline_box(&cell.content, size, measure_box);
@@ -738,7 +782,15 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
     let mut w = vec![vec![f64::NEG_INFINITY; n]; n];
     for cell in laid_rows.iter().flatten() {
         let last = cell.column + cell.columns - 1;
-        w[cell.column][last] = w[cell.column][last].max(cell.natural());
+        // An `X` entry takes the computed share, not its natural width, so
+        // only its `u`/`v` material (`\tabcolsep`, rules) reserves space.
+        let natural = if cell.columns == 1 && matches!(cell.align, Align::Flexible) {
+            cell.before.iter().map(Piece::width).sum::<f64>()
+                + cell.after.iter().map(Piece::width).sum::<f64>()
+        } else {
+            cell.natural()
+        };
+        w[cell.column][last] = w[cell.column][last].max(natural);
     }
     let mut widths = vec![0.0f64; n];
     let mut tabskip = vec![0.0f64; n];
@@ -757,10 +809,50 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
             }
         }
     }
-    let natural_width: f64 = widths.iter().sum::<f64>() + tabskip.iter().sum::<f64>();
+    let mut natural_width: f64 = widths.iter().sum::<f64>() + tabskip.iter().sum::<f64>();
     let box_width = match table.width {
         Some(width) => {
             let target = resolve(width, measure);
+            // tabularx: the `X` columns split the leftover width evenly.
+            // Real tabularx gives every `X` the one shared `\TX@col@width`
+            // (verified against pdflatex/TeX Live 2026 `\showbox`: equal
+            // shares even with very different `X` contents), so no content
+            // measurement enters here.
+            let flexible: Vec<usize> = (0..n)
+                .filter(|&k| {
+                    table
+                        .columns
+                        .get(k)
+                        .is_some_and(|t| matches!(t.align, Align::Flexible))
+                })
+                .collect();
+            if !flexible.is_empty() && target > natural_width {
+                let share = (target - natural_width) / flexible.len() as f64;
+                for &k in &flexible {
+                    widths[k] += share;
+                }
+                natural_width = target;
+                // Re-lay the `X` entries at the share so they wrap exactly
+                // like `p{share}` entries.
+                let mut laid = laid_rows.iter_mut();
+                for entry in &table.entries {
+                    let Entry::Row(row) = entry else {
+                        continue;
+                    };
+                    let Some(cells) = laid.next() else {
+                        break;
+                    };
+                    for (laid_cell, raw_cell) in cells.iter_mut().zip(row.cells.iter()) {
+                        if laid_cell.columns == 1 && matches!(laid_cell.align, Align::Flexible) {
+                            let (mut content, last_baseline) =
+                                c.inline_box(&raw_cell.content, size, Some(share));
+                            content.width = share;
+                            laid_cell.content = content;
+                            laid_cell.last_baseline = last_baseline;
+                        }
+                    }
+                }
+            }
             let fills = fill.iter().filter(|f| **f).count();
             if fills > 0 && target > natural_width {
                 let share = (target - natural_width) / fills as f64;
@@ -808,7 +900,7 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                 for cell in &cells {
                     height = height.max(cell.content.ascent);
                     depth = depth.max(cell.content.descent);
-                    if cell.align.paragraph_width().is_some() {
+                    if cell.align.is_paragraph() {
                         depth = depth.max(cell.last_baseline + strut_depth);
                     }
                     for piece in cell.before.iter().chain(&cell.after) {
@@ -851,6 +943,7 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                         | Align::Paragraph(_)
                         | Align::Middle(_)
                         | Align::Bottom(_)
+                        | Align::Flexible
                         | Align::Fixed(..) => x,
                         Align::Right => right - after_width - cell.content.width,
                         Align::Center => x + (right - after_width - x - cell.content.width) / 2.0,
@@ -902,6 +995,37 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
             Entry::VSpace { pt } => {
                 first_height.get_or_insert(0.0);
                 y += pt;
+            }
+            Entry::HTie {
+                boundary,
+                double,
+                span,
+            } => {
+                // hhline.sty's `\@tempc\vline\@tempc`: centred on the
+                // column boundary like a preamble `|` (its `\@arrayrule`
+                // is the same `\hskip-.5\arrayrulewidth\vrule` shape), and
+                // running the block's full height — top of the top rule to
+                // bottom of the bottom rule — bridging the gap the row
+                // verticals leave at the block (pdflatex/TeX Live 2026).
+                first_height.get_or_insert(ARRAYRULEWIDTH_PT);
+                let b = (*boundary).min(n);
+                let center = if b == 0 {
+                    column_x[0]
+                } else {
+                    column_right(b - 1)
+                };
+                let height = if *double {
+                    2.0 * ARRAYRULEWIDTH_PT + DOUBLERULESEP_PT
+                } else {
+                    ARRAYRULEWIDTH_PT
+                };
+                vrules.push((
+                    center - ARRAYRULEWIDTH_PT / 2.0,
+                    ARRAYRULEWIDTH_PT,
+                    y,
+                    y + height,
+                    *span,
+                ));
             }
             Entry::BookRule {
                 kind,
@@ -1089,6 +1213,7 @@ mod tests {
     use crate::diagnostics::Diagnostic;
     use crate::layout::{self, TextItem};
     use crate::parser::parse;
+    use super::{ARRAYRULEWIDTH_PT, DOUBLERULESEP_PT};
 
     fn laid_out(source: &str) -> (Vec<TextItem>, Vec<Diagnostic>) {
         let parsed = parse(source);
@@ -1215,6 +1340,330 @@ mod tests {
     }
 
     #[test]
+    fn hhline_double_single_and_blank_segments() {
+        // hhline.sty: `=` is two `\arrayrulewidth` rules `\doublerulesep`
+        // apart, `-` is one, `~` is none for that column. No pdflatex here
+        // (no TeX Live in this lane), so the tops below are derived from
+        // that contract plus this file's own strut model (12pt body:
+        // `\baselineskip` 14.4pt, strut 10.08pt + 4.32pt, which dominates
+        // the single letters): the `==` block is 2*0.4 + 2.0 tall, each
+        // later row pitches 14.4.
+        use crate::diagnostics::Severity;
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{cc}\\hhline{==}a&b\\\\\\hhline{--}c&d\\\\\\hhline{~~}e&f\\end{tabular}\\end{document}",
+        );
+        let errors: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert!(errors.is_empty(), "{diagnostics:?}");
+        let rules = rules(&items);
+        assert_eq!(rules.len(), 3, "{rules:?}");
+        let (x0, y0, w0, h0) = rules[0];
+        for (x, _, w, h) in &rules {
+            close(*x, x0);
+            close(*w, w0);
+            close(*h, ARRAYRULEWIDTH_PT);
+        }
+        close(h0, ARRAYRULEWIDTH_PT);
+        // The `=` pair: tops one rule plus the separation apart.
+        close(rules[1].1 - y0, ARRAYRULEWIDTH_PT + DOUBLERULESEP_PT);
+        // Then the second rule, one row pitch and one rule later, the `-`
+        // rule sits one row below the pair's second rule.
+        close(
+            rules[2].1 - rules[1].1,
+            ARRAYRULEWIDTH_PT + 10.08 + 4.32,
+        );
+        // The `~~` row leaves no rule: its text still typesets.
+        text(&items, "e");
+    }
+
+    #[test]
+    fn hhline_mixed_segments_cover_only_their_columns() {
+        // pdflatex (TeX Live 2026) for `\hhline{=-}` in `{cc}` strokes the
+        // `=` top over column 0 only (y 125.101bp) and the full-width rule
+        // 2.391bp below (y 127.492bp: 2.4pt); the `-` sits on the bottom
+        // pass with the `=` bottom, not on top. (An earlier revision had
+        // the passes backwards — full on top — which this locks against:
+        // the FIRST rule must be the partial one.)
+        use crate::diagnostics::Severity;
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{cc}\\hhline{=-}a&b\\\\\\hhline{-~}c&d\\end{tabular}\\end{document}",
+        );
+        let errors: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert!(errors.is_empty(), "{diagnostics:?}");
+        let rules = rules(&items);
+        // `=-`: partial `=` top over column 0, then the full bottom rule
+        // carrying the `-`. `-~`: one rule over column 0 only.
+        assert_eq!(rules.len(), 3, "{rules:?}");
+        let full = rules[1].2;
+        assert!(
+            rules[0].2 < full,
+            "top rule covers the `=` column only: {rules:?}"
+        );
+        close(rules[1].1 - rules[0].1, ARRAYRULEWIDTH_PT + DOUBLERULESEP_PT);
+        assert!(
+            rules[2].2 < full,
+            "blank column stays blank: {rules:?}"
+        );
+        close(rules[0].0, rules[1].0);
+        close(rules[2].0, rules[1].0);
+    }
+
+    #[test]
+    fn hhline_discontiguous_singles_render_as_two_separate_rules() {
+        // `\hhline{-~-}` desugars to one `CLine` per maximal run, so the
+        // blank middle column leaves a real gap between two rules.
+        use crate::diagnostics::Severity;
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{ccc}\\hhline{-~-}a&b&c\\end{tabular}\\end{document}",
+        );
+        let errors: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert!(errors.is_empty(), "{diagnostics:?}");
+        let rules = rules(&items);
+        assert_eq!(rules.len(), 2, "{rules:?}");
+        let (x0, _, w0, _) = rules[0];
+        let (x1, _, w1, _) = rules[1];
+        assert!(x1 > x0 + w0, "blank column leaves a gap: {rules:?}");
+        assert!(w0 < x1 - x0 + w1, "neither rule spans the gap: {rules:?}");
+        close(w0, w1);
+        text(&items, "b");
+    }
+
+    #[test]
+    fn hhline_vertical_joints_warn_instead_of_dropping_silently() {
+        // hhline.sty's remaining joints (`:`, `#`, `t`, `b`) take no
+        // column: the horizontal rules still render, but each joint
+        // present warns that its vertical tick is not rendered yet. (`|`
+        // is rendered now — see the tie tests below — so it stays quiet.)
+        use crate::diagnostics::Severity;
+        for joint in [':', '#', 't', 'b'] {
+            let source = format!(
+                "\\documentclass{{article}}\\usepackage{{hhline}}\\begin{{document}}\\begin{{tabular}}{{cc}}\\hhline{{{joint}--}}a&b\\\\\\end{{tabular}}\\end{{document}}"
+            );
+            let (items, diagnostics) = laid_out(&source);
+            let warnings: Vec<_> = diagnostics
+                .iter()
+                .filter(|d| d.severity == Severity::Warning)
+                .collect();
+            assert_eq!(warnings.len(), 1, "{joint}: {diagnostics:?}");
+            assert!(
+                warnings[0].message.contains(&format!("'{joint}'"))
+                    && warnings[0].message.contains("not rendered yet"),
+                "{joint}: {}",
+                warnings[0].message
+            );
+            assert_eq!(rules(&items).len(), 1, "{joint}: rules still render");
+        }
+        // No joints, no warning: the plain horizontal path stays quiet.
+        let (_, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{cc}\\hhline{--}a&b\\\\\\end{tabular}\\end{document}",
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    #[test]
+    fn hhline_vertical_ties_span_the_block_at_each_pipe_boundary() {
+        // pdflatex (TeX Live 2026) for `\hhline{|=|=|-|}` in `{|c|c|c|}`
+        // strokes a vertical tie at each of the 4 column boundaries
+        // (x 148.712/166.202/183.692/200.075bp, the preamble `|` lines),
+        // each running the block's full 2.8pt height (y 137.155-139.945bp:
+        // top of the `=` tops to bottom of the full bottom rule), with the
+        // partial `=` tops over columns 0-1 and the full rule 2.4pt below.
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{|c|c|c|}\\hline a&b&c\\\\\\hhline{|=|=|-|}d&e&f\\\\\\hline\\end{tabular}\\end{document}",
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let rules = rules(&items);
+        // 2 hlines + 2 hhline passes horizontal, 4 row-verticals per data
+        // row + 4 ties vertical.
+        let horizontal: Vec<_> = rules.iter().filter(|rule| rule.2 > 1.0).collect();
+        assert_eq!(horizontal.len(), 4, "{rules:?}");
+        let vertical: Vec<_> = rules.iter().filter(|rule| rule.2 < 1.0).collect();
+        assert_eq!(vertical.len(), 12, "{rules:?}");
+        let (block_top, block_height) = (horizontal[1].1, 2.0 * ARRAYRULEWIDTH_PT + DOUBLERULESEP_PT);
+        // The `=` tops cover columns 0-1; the full bottom rule sits one
+        // separation below and spans the table.
+        assert!(
+            horizontal[1].2 < horizontal[2].2,
+            "top pass is the partial `=` one: {rules:?}"
+        );
+        close(horizontal[2].1 - horizontal[1].1, ARRAYRULEWIDTH_PT + DOUBLERULESEP_PT);
+        close(horizontal[2].2, horizontal[0].2);
+        // One tie per boundary, each running the whole block height.
+        let ties: Vec<_> = vertical
+            .iter()
+            .filter(|rule| (rule.1 - block_top).abs() <= 0.011)
+            .collect();
+        assert_eq!(ties.len(), 4, "{rules:?}");
+        for tie in &ties {
+            close(tie.3, block_height);
+        }
+        // The ties sit exactly on the preamble `|` grid lines: the row
+        // verticals above the block mark the same four x positions, and
+        // the outer ties meet the table's edges.
+        let row_top = horizontal[0].1 + ARRAYRULEWIDTH_PT;
+        let grid: Vec<f64> = vertical
+            .iter()
+            .filter(|rule| (rule.1 - row_top).abs() <= 0.011)
+            .map(|rule| rule.0)
+            .collect();
+        assert_eq!(grid.len(), 4, "{rules:?}");
+        for (tie, x) in ties.iter().zip(grid.iter()) {
+            close(tie.0, *x);
+        }
+        close(ties[0].0, horizontal[0].0 - ARRAYRULEWIDTH_PT / 2.0);
+        close(
+            ties[3].0,
+            horizontal[0].0 + horizontal[0].2 - ARRAYRULEWIDTH_PT / 2.0,
+        );
+    }
+
+    #[test]
+    fn hhline_ties_follow_pipe_positions_not_adjacent_slots() {
+        // pdflatex (TeX Live 2026) for `\hhline{=|-|~}` in `{|c|c|c|}`:
+        // ties only at boundaries 1 and 2 (x 166.202/183.692bp) spanning
+        // the 2.8pt block — the `~` column neither rules nor suppresses
+        // its neighbour tie — with the `=` top over column 0 and the
+        // bottom rule over columns 0-1.
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{|c|c|c|}\\hline a&b&c\\\\\\hhline{=|-|~}d&e&f\\\\\\hline\\end{tabular}\\end{document}",
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let rules = rules(&items);
+        let horizontal: Vec<_> = rules.iter().filter(|rule| rule.2 > 1.0).collect();
+        assert_eq!(horizontal.len(), 4, "{rules:?}");
+        assert!(
+            horizontal[1].2 < horizontal[0].2,
+            "top pass covers the `=` column only: {rules:?}"
+        );
+        close(horizontal[2].1 - horizontal[1].1, ARRAYRULEWIDTH_PT + DOUBLERULESEP_PT);
+        assert!(
+            horizontal[2].2 < horizontal[0].2,
+            "`~` column stays blank: {rules:?}"
+        );
+        close(horizontal[1].0, horizontal[2].0);
+        let vertical: Vec<_> = rules.iter().filter(|rule| rule.2 < 1.0).collect();
+        let ties: Vec<_> = vertical
+            .iter()
+            .filter(|rule| (rule.1 - horizontal[1].1).abs() <= 0.011)
+            .collect();
+        assert_eq!(ties.len(), 2, "{rules:?}");
+        for tie in &ties {
+            close(tie.3, 2.0 * ARRAYRULEWIDTH_PT + DOUBLERULESEP_PT);
+        }
+        close(ties[0].0, horizontal[1].0 + horizontal[1].2 - ARRAYRULEWIDTH_PT / 2.0);
+        close(ties[1].0, horizontal[2].0 + horizontal[2].2 - ARRAYRULEWIDTH_PT / 2.0);
+    }
+
+    #[test]
+    fn hhline_column_count_mismatch_is_diagnosed() {
+        use crate::diagnostics::Severity;
+        // Too short: padded with blanks (which is also what pdflatex
+        // renders — `\hhline{--}` in a 3-column table rules columns 0-1
+        // with no error), but diagnosed instead of silent.
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{ccc}\\hhline{--}a&b&c\\end{tabular}\\end{document}",
+        );
+        let errors: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert_eq!(errors.len(), 1, "{diagnostics:?}");
+        assert!(
+            errors[0].message.contains("fewer entries than the 3 columns"),
+            "{}",
+            errors[0].message
+        );
+        let short = rules(&items);
+        assert_eq!(short.len(), 1, "{short:?}");
+        // Too long: truncated (pdflatex errors here too: `Extra alignment
+        // tab has been changed to \cr`).
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{cc}\\hhline{----}a&b\\end{tabular}\\end{document}",
+        );
+        let errors: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert_eq!(errors.len(), 1, "{diagnostics:?}");
+        assert!(
+            errors[0].message.contains("more entries than the 2 columns"),
+            "{}",
+            errors[0].message
+        );
+        let truncated = rules(&items);
+        assert_eq!(truncated.len(), 1, "truncated spec still rules");
+        // Empty (pdflatex: a silent no-op row): diagnosed, paints nothing.
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{cc}\\hhline{}a&b\\end{tabular}\\end{document}",
+        );
+        let errors: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert_eq!(errors.len(), 1, "{diagnostics:?}");
+        assert!(
+            errors[0].message.contains("fewer entries than the 2 columns"),
+            "{}",
+            errors[0].message
+        );
+        let empty = rules(&items);
+        assert!(empty.is_empty(), "{empty:?}");
+        text(&items, "a");
+    }
+
+    #[test]
+    fn hhline_and_hline_share_rule_spacing() {
+        // pdflatex (TeX Live 2026) tops for this exact table: 668.70,
+        // 653.80, 638.90, 624.00, 621.60, 606.70 — every row-to-rule pitch
+        // is one rule plus one row (14.90pt at 12pt: 0.4 + 14.5 strut) and
+        // the `==` pair is 2.40 apart, i.e. an `\hhline` block advances
+        // exactly like the `\hline`(s) it stands in for, with no
+        // `\@xhline` gap either way. Here the 12pt strut is 10.08 + 4.32,
+        // so the pitches are 14.80 and the pair 2.40.
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{cc}\\hline a&b\\\\\\hhline{--}c&d\\\\\\hline e&f\\\\\\hhline{==}g&h\\\\\\hline\\end{tabular}\\end{document}",
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let rules = rules(&items);
+        assert_eq!(rules.len(), 6, "{rules:?}");
+        let width = rules[0].2;
+        for (_, _, w, h) in &rules {
+            close(*w, width);
+            close(*h, ARRAYRULEWIDTH_PT);
+        }
+        let tops: Vec<f64> = rules.iter().map(|rule| rule.1).collect();
+        for (actual, expected) in tops.windows(2).zip([14.8, 14.8, 14.8, 2.4, 14.8]) {
+            close(actual[1] - actual[0], expected);
+        }
+    }
+
+    #[test]
+    fn hline_hhline_adjacency_has_no_doublerulesep() {
+        // pdflatex (TeX Live 2026) for this exact table merges each
+        // `\hline`+`\hhline` pair into one 0.8pt rule (touching, no gap —
+        // `\@xhline` only separates real `\hline`s) while `\hline\hline`
+        // stays 2.0 apart (kernel tabular, no array package).
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{hhline}\\begin{document}\\begin{tabular}{cc}\\hline\\hhline{--}a&b\\\\\\hhline{--}\\hline c&d\\\\\\hline\\hline e&f\\end{tabular}\\end{document}",
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let rules = rules(&items);
+        assert_eq!(rules.len(), 6, "{rules:?}");
+        let tops: Vec<f64> = rules.iter().map(|rule| rule.1).collect();
+        for (actual, expected) in tops.windows(2).zip([0.4, 14.8, 0.4, 14.8, 2.0]) {
+            close(actual[1] - actual[0], expected);
+        }
+    }
+
+    #[test]
     fn tabular_star_fill_pushes_later_columns_to_the_requested_width() {
         let (items, diagnostics) = laid_out(
             "\\begin{tabular*}{200pt}{@{\\extracolsep{\\fill}}ll|}\\hline \\hspace{10pt}&X\\end{tabular*}",
@@ -1224,6 +1673,88 @@ mod tests {
         let (x0, _, width, _) = rules[0];
         close(width, 200.0);
         close(rules[1].0, x0 + 200.0 - 0.2);
+    }
+
+    #[test]
+    fn tabularx_single_x_column_takes_the_leftover_width() {
+        // pdflatex (TeX Live 2026) `\showbox` for this table: total
+        // `\hbox x200.0`, the `l` column `\hbox x22.8`, the `X` entry
+        // `\vbox x164.8` — the leftover 200 - (22.8 + 12.4) goes whole to
+        // the one `X` column. Rules take their 0.4pt (`array` package `|`);
+        // the leading rule starts at the table edge, the middle and
+        // trailing rules end at their boundaries.
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{tabularx}\\begin{document}\\begin{tabularx}{200pt}{|l|X|}\\hline\\hspace{10pt}&\\hspace{30pt}\\\\\\hline\\end{tabularx}\\end{document}",
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let rules = rules(&items);
+        let (x0, _, width, _) = rules[0];
+        close(width, 200.0);
+        close(rules[1].2, 200.0);
+        let verticals: Vec<_> = rules[2..].to_vec();
+        assert_eq!(verticals.len(), 3);
+        for ((x, _, w, _), edge) in verticals.into_iter().zip([0.0, 22.4, 199.6]) {
+            close(x, x0 + edge);
+            close(w, 0.4);
+        }
+    }
+
+    #[test]
+    fn tabularx_two_x_columns_split_the_leftover_evenly() {
+        // pdflatex `\showbox`: total `\hbox x200.0`, column boxes `x100.2`
+        // and `x99.8`, both `X` entries `\vbox x87.40001` — equal shares of
+        // 200 - (12.8 + 12.4), the intercolumn material included.
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{tabularx}\\begin{document}\\begin{tabularx}{200pt}{|X|X|}\\hline\\hspace{10pt}&\\hspace{30pt}\\\\\\hline\\end{tabularx}\\end{document}",
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let rules = rules(&items);
+        let (x0, _, width, _) = rules[0];
+        close(width, 200.0);
+        let verticals: Vec<_> = rules[2..].to_vec();
+        assert_eq!(verticals.len(), 3);
+        for ((x, _, w, _), edge) in verticals.into_iter().zip([0.0, 99.8, 199.6]) {
+            close(x, x0 + edge);
+            close(w, 0.4);
+        }
+    }
+
+    #[test]
+    fn tabularx_x_column_wraps_like_a_p_column() {
+        // pdflatex wraps the long entry (first-row box 10.15pt + 62.35pt
+        // in the `\showbox` oracle versus 10.15pt + 4.35pt single-line);
+        // here the share is (200 - 24) / 2 = 88pt, which must wrap the
+        // twelve-word entry while the one-word entry stays top-aligned.
+        let (items, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{tabularx}\\begin{document}\\begin{tabularx}[t]{200pt}{XX}a & one two three four five six seven eight nine ten eleven twelve\\end{tabularx}\\end{document}",
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let one = text(&items, "one");
+        let twelve = text(&items, "twelve");
+        assert!(twelve.baseline_y_pt > one.baseline_y_pt, "X entry wrapped");
+        close(text(&items, "a").baseline_y_pt, one.baseline_y_pt);
+    }
+
+    #[test]
+    fn tabularx_requires_its_width_argument_and_its_package() {
+        // Without the package the environment stays unsupported, with the
+        // same package hint real LaTeX gives.
+        let (_, diagnostics) = laid_out("\\begin{tabularx}{200pt}{XX}a&b\\end{tabularx}");
+        assert!(
+            diagnostics.iter().any(|d| d.message.contains("tabularx")),
+            "{diagnostics:?}"
+        );
+        // With the package a missing width is diagnosed exactly like
+        // `tabular*`'s: the `{XX}` group is read as the width and rejected.
+        let (_, diagnostics) = laid_out(
+            "\\documentclass{article}\\usepackage{tabularx}\\begin{document}\\begin{tabularx}{XX}a&b\\end{tabularx}\\end{document}",
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.message.contains("tabularx width")),
+            "{diagnostics:?}"
+        );
     }
 
     #[test]
@@ -1418,6 +1949,18 @@ mod tests {
         let (t, diagnostics) = array_table(
             "\\newcommand{\\am}{\\&}",
             "\\begin{tabular}{ll}a\\am b & z\\end{tabular}",
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(first_row_cells(&t), ["a & b", "z"]);
+    }
+
+    /// `\&` copied by `\edef` (`\noexpand\&`) is still escaped. pdflatex
+    /// sets `a&b` in one cell.
+    #[test]
+    fn edef_copied_escaped_ampersand_is_text_not_a_column_break() {
+        let (t, diagnostics) = array_table(
+            "\\edef\\amE{\\noexpand\\&}",
+            "\\begin{tabular}{ll}a\\amE b & z\\end{tabular}",
         );
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(first_row_cells(&t), ["a & b", "z"]);
