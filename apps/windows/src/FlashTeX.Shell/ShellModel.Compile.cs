@@ -17,6 +17,7 @@
 //   task's explicit scope for this port.
 // author: Claude Sonnet 5
 // date: 2026-09-14
+// modified: 2026-10-28 -- dispatches to the engine-host backend (ShellModel.EngineHost.cs) when attached.
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using FlashTeX.Ipc;
@@ -118,7 +119,7 @@ public partial class ShellModel : ICommandContext
     public bool HasActiveDocument => ActiveDocument is not null;
 
     /// <summary>Whether a compiler worker process is attached (<see cref="ICommandContext.HasWorkerAttached"/>).</summary>
-    public bool HasWorkerAttached => _worker is not null;
+    public bool HasWorkerAttached => _worker is not null || _engine is not null;
 
     /// <summary>Whether a validated v2 display list is loaded (<see cref="ICommandContext.HasDisplayList"/>).</summary>
     public bool HasDisplayList => LastDisplayList is not null;
@@ -201,7 +202,7 @@ public partial class ShellModel : ICommandContext
     /// </summary>
     public async Task CompileNowAsync(CancellationToken cancellationToken = default)
     {
-        if (_worker is not { } worker || Documents.Count == 0)
+        if ((_worker is null && _engine is null) || Documents.Count == 0)
         {
             return;
         }
@@ -217,7 +218,9 @@ public partial class ShellModel : ICommandContext
             do
             {
                 _compileQueuedAfterInFlight = false;
-                await RunOneCompileAsync(worker, cancellationToken).ConfigureAwait(true);
+                await (_engine is { } engine
+                    ? RunEngineCompileAsync(engine, cancellationToken)
+                    : RunOneCompileAsync(_worker!, cancellationToken)).ConfigureAwait(true); // non-null: the guard above admits only an attached backend
             }
             while (_compileQueuedAfterInFlight);
         }

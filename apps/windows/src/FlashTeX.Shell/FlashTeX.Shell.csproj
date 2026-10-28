@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\FlashTeX.Protocol\FlashTeX.Protocol.csproj" />
     <ProjectReference Include="..\FlashTeX.Ipc\FlashTeX.Ipc.csproj" />
+    <ProjectReference Include="..\FlashTeX.EngineHost\FlashTeX.EngineHost.csproj" />
   </ItemGroup>
 
   <ItemGroup>

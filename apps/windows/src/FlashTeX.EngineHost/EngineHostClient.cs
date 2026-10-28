@@ -6,6 +6,7 @@
 //   renderer can decode them later; milestone 1 reads the DONE PDF instead.
 // author: Claude Sonnet 5.5 (paired with Akilesh S)
 // date: 2026-10-28
+// modified: 2026-10-28 -- IEngineHostSession, so ShellModel can be tested without a socket.
 
 using System.Net.Sockets;
 using System.Text.Json;
@@ -15,8 +16,14 @@ namespace FlashTeX.EngineHost;
 /// <summary>What one compile produced: the final status, its diagnostics and the frames seen.</summary>
 public sealed record CompileResult(CompileDone Done, IReadOnlyList<HostDiagnostic> Diagnostics, int FrameCount);
 
+/// <summary>What a shell needs from an engine host: run one compile. Lets tests stand in for the socket.</summary>
+public interface IEngineHostSession
+{
+    Task<CompileResult> CompileAsync(CompileRequest request, Action<Dl3Frame>? onFrame, CancellationToken ct);
+}
+
 /// <summary>A connection to one flashtex-host; compiles run one at a time.</summary>
-public sealed class EngineHostClient : IAsyncDisposable
+public sealed class EngineHostClient : IEngineHostSession, IAsyncDisposable
 {
     private const string ProtocolName = "display-list-v3";
     private const string ClientName = "FlashTeX Windows";
