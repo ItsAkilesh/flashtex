@@ -5,6 +5,7 @@
 // capability declined, validation refused the frame, or a font did not resolve — the
 // runtime-v1 renderer (PreviewHost) stays, unchanged. Both raise the same SourceRequested
 // event, so click-to-source routes through one path.
+// 2026-10-28: a PDF from the new engine host (ShellModel.LastPdfPath) takes precedence over both.
 
 using FlashTeX.Preview;
 using FlashTeX.Protocol.RuntimeV1;
@@ -17,6 +18,7 @@ public sealed partial class MainWindow
     private PreviewHost? _previewHost;
     private PreviewV2Host? _previewV2Host;
     private FontFileStore? _previewFonts;
+    private readonly PdfPreviewHost _pdfPreviewHost = new();
 
     /// <summary>Why the v2 renderer is not currently showing, for the status bar; null when it is.</summary>
     internal string? PreviewV2Status { get; private set; }
@@ -42,6 +44,12 @@ public sealed partial class MainWindow
 
     private void RefreshPreview()
     {
+        if (_shell.LastPdfPath is { } pdfPath)
+        {
+            ShowEnginePdf(pdfPath);
+            return;
+        }
+        _pdfPreviewHost.Clear();
         if (TryShowDisplayListV2())
         {
             return;
@@ -54,6 +62,23 @@ public sealed partial class MainWindow
             // A frame arrived and validated on the wire but could not be PAINTED exactly
             // (typically an unresolvable font). Say so instead of quietly showing v1.
             _shell.WorkerStatus += " · v1 fallback: " + refusal;
+        }
+    }
+
+    /// <summary>The new engine's output: draw its PDF; a draw failure is surfaced in the status bar, not swallowed.</summary>
+    private void ShowEnginePdf(string pdfPath)
+    {
+        _previewV2Host?.Clear();
+        PreviewPaneHost.Child = _pdfPreviewHost;
+        _ = ShowEnginePdfAsync(pdfPath);
+    }
+
+    private async Task ShowEnginePdfAsync(string pdfPath)
+    {
+        await _pdfPreviewHost.DisplayAsync(pdfPath).ConfigureAwait(true);
+        if (_pdfPreviewHost.Failure is { } failure)
+        {
+            _shell.WorkerStatus += " · preview failed: " + failure;
         }
     }
 

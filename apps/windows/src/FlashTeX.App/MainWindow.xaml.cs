@@ -82,14 +82,18 @@ public sealed partial class MainWindow : Window
         {
             await _shell.OpenDocumentAsync(SeedDocumentPath, SeedText()).ConfigureAwait(true);
 
-            if (CompilerLocator.FindWorker() is { } worker && File.Exists(worker.ExecutablePath))
+            if (await TryStartEngineAsync().ConfigureAwait(true))
+            {
+                await _shell.CompileNowAsync().ConfigureAwait(true);
+            }
+            else if (CompilerLocator.FindWorker() is { } worker && File.Exists(worker.ExecutablePath))
             {
                 _shell.AttachWorker(worker.ExecutablePath, onStderrLine: line => _shell.WorkerStatus = "stderr: " + line, arguments: worker.Arguments);
                 await _shell.CompileNowAsync().ConfigureAwait(true);
             }
             else
             {
-                _shell.WorkerStatus = "compiler not found at expected path";
+                _shell.WorkerStatus += " · compiler not found at expected path";
             }
         }
         catch (Exception ex)
@@ -172,6 +176,7 @@ public sealed partial class MainWindow : Window
             DisposeProjectFilesClientsAsync().GetAwaiter().GetResult();
             _projectSearchSession.DisposeAsync().GetAwaiter().GetResult();
             _shell.DetachWorkerAsync().GetAwaiter().GetResult();
+            DisposeEngineAsync().GetAwaiter().GetResult();
         }
         catch (InvalidOperationException)
         {

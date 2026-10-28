@@ -61,11 +61,26 @@ this branch. **Never push to or open PRs against `origin`; only `fork`.**
   cannot read `\\?\` paths, so bundle trees never loaded on Windows).
 - Known upstream Windows test failures, not ours: two `resolve_packages` tests in
   `project-files/tests/helper_bin.rs` (`file://C:\..` inside a TOML basic string).
-- Next: (1) route ShellModel compiles through EngineHostClient instead of
-  WorkerClient/PreviewControllerClient; (2) render `DONE.pdf` with
-  Windows.Data.Pdf as the first preview, native v3 page drawing later;
-  (3) new diagnostics + source mapping; (4) bundle-consent prompt;
-  (5) new project-files ops; (6) Unicode mode via flashtex-host-unicode.
+- Also done (verified by launching the app + screenshot): ShellModel engine backend
+  (`ShellModel.EngineHost.cs`), startup in `MainWindow.Engine.cs` (finds host, asks
+  consent before a bundle download, falls back to the old worker if the host is
+  missing), `PdfPreviewHost` (Windows.Data.Pdf, fit-to-width), and
+  `BufferMaterializingSession` (writes the in-memory scratch project to disk because
+  the host requires the main file to exist; never touches a real project).
+  The seeded doc compiles through the new engine and its PDF shows in the preview.
+- DPI fix: app.manifest had no dpiAwareness, so Windows stretched the app 125%
+  (soft text). Now PerMonitorV2. Screenshot script: `PrintWindow` flag 2 on
+  `MainWindowHandle`; the window size now equals the bitmap size.
+- To run the app against the engine locally: the app uses
+  `%LOCALAPPDATA%\FlashTeXundle-cache` and `format-cache`; if the bundle is not
+  cached it shows the consent dialog (copy a cache in to skip it when automating).
+- Next: (1) preview text looks small/soft: raise render scale or re-render on
+  resize; zoom controls; (2) click-to-source and source mapping from DIAG/SOURCES
+  (needs `diag-v1` accept + native v3 page drawing); (3) real project folders:
+  Open Folder should set ProjectRoot so compiles use disk files; (4) new
+  project-files ops (manifest, set_fonts, set_mode, packages); (5) Unicode mode via
+  flashtex-host-unicode; (6) retire the old worker/v2 path once the above land;
+  (7) app-side tests for EngineHostLocator.ParseLock; (8) the bundled-host packaging.
 
 ## How to build and run right now
 
